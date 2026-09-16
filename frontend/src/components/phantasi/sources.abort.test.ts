@@ -11,7 +11,7 @@ describe('source catalog abort contract', () => {
     const api = readFileSync(join(dir, '../../services/phantasiApi.ts'), 'utf8')
     assert.match(
       api,
-      /export async function getSources\([\s\S]*options\?: \{ signal\?: AbortSignal \}/,
+      /export async function getSources\([\s\S]*options\?: \{ signal\?: AbortSignal; view\?: 'catalog' \}/,
     )
     assert.match(
       api,

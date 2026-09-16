@@ -708,6 +708,18 @@ mod tests {
     }
 
     #[test]
+    fn list_sources_catalog_skips_preview_overlay() {
+        let src = include_str!("feeds_sources.rs");
+        assert!(src.contains("is_catalog_view"));
+        assert!(src.contains("view=catalog"));
+        let body = impl_fn(src, "list_sources");
+        assert!(
+            body.contains("is_catalog_view(query.view.as_deref())"),
+            "catalog view must return source rows before unread/preview/pulse SQL"
+        );
+    }
+
+    #[test]
     fn add_source_lookups_do_not_swallow() {
         let body = impl_fn(include_str!("feeds_sources.rs"), "add_source");
         assert!(body.contains("phantasi_store_http(\"find existing source\""));

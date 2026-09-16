@@ -76,10 +76,6 @@ export function frontendActionDedupeKey(
   return JSON.stringify(action)
 }
 
-export function getRegisteredActionTypes(): string[] {
-  return Iterator.from(typedActionHandlers.keys()).toArray()
-}
-
 export function clearAllHandlers(): void {
   typedActionHandlers.clear()
   globalActionHandlers.clear()

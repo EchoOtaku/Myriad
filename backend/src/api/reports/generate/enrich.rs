@@ -337,6 +337,9 @@ pub(crate) fn finalize_public_platform_report(platform: &str, report: Value) -> 
             crate::api::profile::normalize_json_media_urls(&mut visuals);
             obj.insert("card_visuals".to_string(), visuals);
         }
+        // Home cards and /reports only read summary / insights / card_visuals.
+        // Stored platform dumps (liked songs, raw libraries) stay in the row.
+        obj.remove("metadata");
     }
     body
 }
@@ -429,5 +432,20 @@ mod finalize_public_report_media_tests {
         );
         // 应已剥掉内层 card_visuals 键
         assert!(out["card_visuals"].get("card_visuals").is_none());
+    }
+
+    #[test]
+    fn public_latest_drops_stored_platform_metadata() {
+        let raw = json!({
+            "platform": "netease",
+            "summary": "ok",
+            "insights": ["a"],
+            "metadata": { "liked_songs": [{"id": 1}, {"id": 2}] },
+            "card_visuals": { "level": 8 }
+        });
+        let out = finalize_public_platform_report("netease", raw);
+        assert!(out.get("metadata").is_none());
+        assert_eq!(out["summary"], "ok");
+        assert_eq!(out["card_visuals"]["level"], 8);
     }
 }

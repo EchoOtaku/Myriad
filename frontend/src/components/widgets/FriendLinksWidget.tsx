@@ -176,7 +176,7 @@ export const FriendLinksWidget = memo(
     const loadFriendLinks = useCallback(async () => {
       if (isPreview) return
       try {
-        const nextSources = await getSources()
+        const nextSources = await getSources(undefined, { view: 'catalog' })
         if (!mountedRef.current) return
         setSources(nextSources)
         setFailed(false)

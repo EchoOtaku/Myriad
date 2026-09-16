@@ -40,6 +40,7 @@ describe('phantasi/skin 边界', () => {
     const src = [
       'PhantasiWorkbench.tsx',
       'PhantasiWorkbenchHome.tsx',
+      'PhantasiWorkbenchHomeOptions.tsx',
       'PhantasiWorkbenchNotes.tsx',
       'PhantasiWorkbenchComments.tsx',
       'PhantasiWorkbenchReviews.tsx',
@@ -63,6 +64,11 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /filterWorkbenchComments/)
     assert.match(src, /filterWorkbenchReviews/)
     assert.match(src, /phantasi-workbench__kpis/)
+    assert.match(src, /workbenchHomeOptions/)
+    assert.match(src, /workbenchRailVisibilityTitle/)
+    assert.match(src, /SettingGroupGrid/)
+    assert.match(src, /workbenchRailShow/)
+    assert.match(src, /readWorkbenchRailVisibility/)
     assert.match(src, /workbenchHomeContinue/)
     assert.match(src, /workbenchHomeUpcoming/)
     assert.match(src, /workbenchHomeRecent/)
@@ -147,7 +153,11 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /admin/)
     assert.match(src, /SettingGroupGrid/)
     assert.match(src, /phantasi-workbench__io-grid/)
-    assert.doesNotMatch(src, /<SettingGroup[\s/>]/)
+    assert.match(src, /<SettingGroup[\s/>]/)
+    assert.doesNotMatch(
+      readFileSync(join(dir, 'PhantasiWorkbenchIo.tsx'), 'utf8'),
+      /<SettingGroup[\s/>]/,
+    )
     assert.doesNotMatch(src, /from ['"]\.\.\/manager/)
   })
 })

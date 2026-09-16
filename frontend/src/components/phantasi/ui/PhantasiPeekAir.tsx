@@ -3,8 +3,17 @@
 import type { SyntheticEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { batchWrite, scheduleTask } from '../../../hooks/animation/core'
+import {
+  onPhantasiMotion,
+  phantasiMotionBusy,
+  phantasiMotionClaim,
+  phantasiMotionOwns,
+  phantasiMotionQuiet,
+  phantasiMotionRelease,
+  whenPhantasiMotionIdle,
+} from '../../../hooks/animation/pages/phantasiMotion'
 import { getIconUrl, getImageUrl } from '../constants'
-import { phantasiMotionQuiet } from '../../../hooks/animation/pages/phantasiMotion'
 import { cx } from './cx'
 
 export const PHANTASI_PEEK_AIR_ID = 'phantasi-peek-air'
@@ -77,6 +86,20 @@ function PeekLede({ face }: { face: PhantasiPeekFace }) {
   )
 }
 
+function afterPaint(id: number, fn: () => void): () => void {
+  let cancelled = false
+  const run = () => {
+    if (!cancelled && phantasiMotionOwns(id)) fn()
+  }
+  batchWrite(() => {
+    if (cancelled || !phantasiMotionOwns(id)) return
+    batchWrite(run)
+  })
+  return () => {
+    cancelled = true
+  }
+}
+
 export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
   const [layers, setLayers] = useState<Layer[]>([])
   const host =
@@ -86,13 +109,33 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
 
   useEffect(() => {
     let cancelled = false
+    let claimId = 0
     let exitTimer = 0
-    let frame = 0
+    const stops: Array<() => void> = []
     const quiet = phantasiMotionQuiet()
     const wait = quiet ? 0 : PHANTASI_PEEK_EXIT_MS
 
+    const releaseClaim = () => {
+      if (!claimId) return
+      phantasiMotionRelease(claimId)
+      claimId = 0
+    }
+
+    const takeClaim = (): boolean => {
+      if (claimId && phantasiMotionOwns(claimId)) return true
+      claimId = phantasiMotionClaim('peek')
+      return phantasiMotionOwns(claimId)
+    }
+
     if (!face) {
+      releaseClaim()
       setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
+      if (quiet || phantasiMotionBusy()) {
+        setLayers([])
+        return () => {
+          cancelled = true
+        }
+      }
       exitTimer = window.setTimeout(() => {
         if (!cancelled) setLayers([])
       }, wait)
@@ -102,8 +145,22 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
       }
     }
 
+    const arm = () => {
+      if (cancelled || !face || !phantasiMotionOwns(claimId)) return
+      setLayers((current) =>
+        current.map((layer) => ({
+          ...layer,
+          on: sameFace(layer, face),
+        })),
+      )
+    }
+
     const reveal = () => {
       if (cancelled || !face) return
+      if (!takeClaim()) {
+        stops.push(whenPhantasiMotionIdle(reveal))
+        return
+      }
       setLayers((current) => {
         if (current.some((layer) => layer.on && sameFace(layer, face))) {
           return current
@@ -116,47 +173,49 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
           incoming,
         ]
       })
-      const arm = () => {
-        if (cancelled || !face) return
-        setLayers((current) =>
-          current.map((layer) => ({
-            ...layer,
-            on: sameFace(layer, face),
-          })),
-        )
-      }
       if (quiet) {
         arm()
         return
       }
-      frame = window.requestAnimationFrame(() => {
-        frame = window.requestAnimationFrame(arm)
-      })
+      stops.push(afterPaint(claimId, arm))
       exitTimer = window.setTimeout(() => {
-        if (!cancelled) {
-          setLayers((current) =>
-            current.filter((layer) => layer.on || sameFace(layer, face)),
-          )
-        }
+        if (cancelled || !phantasiMotionOwns(claimId)) return
+        setLayers((current) =>
+          current.filter((layer) => layer.on || sameFace(layer, face)),
+        )
       }, wait)
     }
 
+    stops.push(
+      onPhantasiMotion(() => {
+        if (cancelled || !face) return
+        if (!claimId || phantasiMotionOwns(claimId)) return
+        claimId = 0
+        stops.push(whenPhantasiMotionIdle(reveal))
+      }),
+    )
+
     const image = new Image()
     image.src = face.src
-    if (image.complete && image.naturalWidth > 0) reveal()
+    if (image.complete && image.naturalWidth > 0) scheduleTask(reveal)
     else {
-      image.onload = reveal
+      image.onload = () => scheduleTask(reveal)
       image.onerror = () => {
         if (cancelled) return
         setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
+        exitTimer = window.setTimeout(() => {
+          if (!cancelled) setLayers([])
+        }, wait)
       }
     }
+
     return () => {
       cancelled = true
       image.onload = null
       image.onerror = null
       window.clearTimeout(exitTimer)
-      window.cancelAnimationFrame(frame)
+      for (const stop of stops) stop()
+      releaseClaim()
     }
   }, [face])
 

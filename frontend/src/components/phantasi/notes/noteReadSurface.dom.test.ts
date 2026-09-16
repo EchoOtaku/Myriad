@@ -56,4 +56,27 @@ describe('decorateNoteReadSurface DOM', () => {
     assert.ok(cover.classList.contains('rounded-xl'))
     assert.equal(widgetImg.dataset.sizeProcessed, undefined)
   })
+
+  it('预览 pre 带 data-md 属性时语言仍写到外壳', () => {
+    const dom = new JSDOM(
+      '<div><pre data-md-start="1" data-md-end="9"><code class="language-rust">x</code></pre></div>',
+    )
+    const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: dom.window.document,
+    })
+    const root = dom.window.document.body.firstElementChild as HTMLElement
+    try {
+      decorateNoteReadSurface(root, 'Copy')
+    } finally {
+      if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument)
+      else delete (globalThis as { document?: unknown }).document
+    }
+    const wrapper = root.querySelector('.code-block-wrapper') as HTMLElement
+    const pre = wrapper.querySelector('pre')
+    assert.equal(wrapper.dataset.lang, 'rust')
+    assert.equal(pre?.getAttribute('data-md-start'), '1')
+    assert.equal(pre?.getAttribute('data-md-end'), '9')
+  })
 })

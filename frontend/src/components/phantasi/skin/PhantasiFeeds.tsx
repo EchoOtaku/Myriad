@@ -26,7 +26,7 @@ import {
   storySlotsByColumn,
 } from '../logic/feedStories'
 import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
-import { clearPhantasiStoryPeeks } from '../ui/StoryCard'
+import { clearPhantasiStoryPeeks, schedulePhantasiPeekResume } from '../ui/StoryCard'
 import { topicDisplayName } from '../logic/topics'
 import { PhantasiVacant } from '../ui/Empty'
 import { PhantasiFeedsSites, paintSiteInk, paintSiteOn } from './PhantasiFeedsSites'
@@ -482,6 +482,7 @@ function PhantasiFeeds({
   const onPeekEndRef = useRef(onPeekEnd)
   onPeekEndRef.current = onPeekEnd
   const dropPeek = () => {
+    clearPhantasiStoryPeeks(itemsTrackRef.current)
     onPeekEndRef.current?.()
   }
   const onPeekStory = useCallback((item: FeedStory) => {
@@ -995,6 +996,9 @@ function PhantasiFeeds({
       pendingStoryAlignRef.current = column
       dropStoryDomShells(itemsTrackRef.current)
       clearPhantasiStoryPeeks(itemsTrackRef.current)
+      if (!grabbingRef.current && onPeekItem) {
+        schedulePhantasiPeekResume(onPeekItem)
+      }
       mountColsRef.current = next
       liveToRef.current = Math.min(
         next.to,

@@ -7,6 +7,7 @@ type PrefetchLoader = (id: number, signal?: AbortSignal) => Promise<unknown>
 let generation = 0
 let controller = new AbortController()
 let loadDetail: PrefetchLoader = loadItem
+let activeId = 0
 
 function loadItem(id: number, signal?: AbortSignal): Promise<unknown> {
   return getItem(id, undefined, signal ? { signal } : undefined)
@@ -16,6 +17,7 @@ function bumpPrefetch(): AbortSignal {
   controller.abort()
   controller = new AbortController()
   generation += 1
+  activeId = 0
   return controller.signal
 }
 
@@ -35,8 +37,14 @@ export function selectPrefetchIds(
 }
 
 export function prefetchArticleDetails(ids: Iterable<number>): number {
+  const selected = selectPrefetchIds(ids)
+  const nextId = selected[0] ?? 0
+  if (nextId && nextId === activeId && !controller.signal.aborted) {
+    return generation
+  }
   const signal = bumpPrefetch()
-  for (const id of selectPrefetchIds(ids)) {
+  activeId = nextId
+  for (const id of selected) {
     void Promise.try(() => loadDetail(id, signal)).catch(() => undefined)
   }
   return generation

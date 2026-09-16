@@ -51,7 +51,12 @@ describe('PhantasiPeekAir', () => {
     assert.match(cards, /\.phantasi-story\.has-cover\.has-peek \.phantasi-story__peek \{[\s\S]*?position: absolute;/)
     assert.match(
       cards,
-      /\.phantasi-story\.has-cover\.has-peek:is\(:hover, :focus-visible, \.is-peek\):not\(\.is-picking\) \.phantasi-story__peek/,
+      /\.phantasi-story\.has-cover\.has-peek\.is-peek:not\(\.is-picking\) \.phantasi-story__peek/,
+    )
+    assert.match(cards, /@media \(hover: hover\) and \(pointer: fine\)/)
+    assert.doesNotMatch(
+      cards,
+      /\.phantasi-story\.has-cover\.has-peek:is\(:hover, :focus-visible, \.is-peek\)/,
     )
     assert.match(cards, /\.phantasi-story\.has-cover\.has-peek \.phantasi-story__peek \{[\s\S]*?font-size: 0\.75rem;/)
     assert.match(cards, /height: var\(--phantasi-story-h\)/)
@@ -76,15 +81,37 @@ describe('PhantasiPeekAir', () => {
     assert.match(air, /PHANTASI_PEEK_HANDOFF_MS/)
     assert.match(tokens, /scale\(1\.03\)/)
     assert.match(tokens, /\.phantasi-peek-air\.is-swap/)
-    assert.match(page, /if \(next\) setPeekFace/)
-    assert.match(feeds, /event\.currentTarget\.contains\(to\)/)
+    assert.match(page, /setPeekFace\(toPhantasiPeekFace/)
+    assert.match(page, /dropPeekSession/)
+    assert.match(page, /schedulePhantasiPeekResume/)
+    assert.match(page, /onDisplayed=\{resumePeekAfterLane\}/)
+    assert.match(page, /peekLaneIsSwapping/)
+    assert.match(page, /scheduleIdle/)
+    assert.match(page, /phantasiMotionBusy/)
+    assert.match(page, /visibilitychange/)
+    assert.match(page, /pagehide/)
+    assert.doesNotMatch(page, /documentElement\.addEventListener\('pointerleave'/)
+    assert.doesNotMatch(
+      page,
+      /dropPeekSession\(\)\n  \}, \[dropPeekSession, route\.board, route\.viewMode\]/,
+    )
+    assert.doesNotMatch(feeds, /event\.currentTarget\.contains\(to\)/)
+    assert.match(feeds, /markPhantasiStoryPeek\(node, false\)/)
+    assert.match(feeds, /peekLaneKeepsAir/)
+    assert.match(feeds, /onPointerCancel/)
+    assert.match(feeds, /clearPhantasiStoryPeeks\(itemsTrackRef\.current\)/)
     assert.match(cards, /--phantasi-peek-fade/)
     const storyCard = readFileSync(join(dir, 'StoryCard.tsx'), 'utf8')
     const face = readFileSync(join(dir, '../skin/storyFace.ts'), 'utf8')
     assert.match(storyCard, /phantasi-story__peek/)
     assert.match(storyCard, /has-peek/)
     assert.match(face, /phantasi-story__peek/)
-    assert.match(air, /requestAnimationFrame\(arm\)/)
+    assert.match(air, /phantasiMotionClaim\('peek'\)/)
+    assert.match(air, /whenPhantasiMotionIdle/)
+    assert.match(air, /onPhantasiMotion/)
+    assert.match(air, /scheduleTask/)
+    assert.match(air, /batchWrite/)
+    assert.match(air, /afterPaint/)
     assert.doesNotMatch(
       cards,
       /\.phantasi-story:is\(:hover, :focus-visible, \.is-peek\):not\(\.is-picking, \.phantasi-story--slot\) \{\n {2}z-index: 8;/,
@@ -94,6 +121,13 @@ describe('PhantasiPeekAir', () => {
       /\.phantasi-story__hit:is\(:hover, :focus-visible, \.is-peek\):not\(\.is-picking\) \.phantasi-story__summary/,
     )
     assert.match(storyCard, /markPhantasiStoryPeek/)
+    assert.match(storyCard, /releasePhantasiStoryPeek/)
+    assert.match(storyCard, /resumePhantasiStoryPeek/)
+    assert.match(storyCard, /schedulePhantasiPeekResume/)
+    assert.match(storyCard, /whenPhantasiMotionIdle/)
+    assert.match(storyCard, /scheduleTask/)
+    assert.match(storyCard, /peekSwapHoldsAir/)
+    assert.match(storyCard, /onPointerCancel/)
     assert.match(storyCard, /peekLaneKeepsAir/)
     assert.match(list, /data-phantasi-peek-lane/)
     assert.match(page, /clearPhantasiStoryPeeks/)

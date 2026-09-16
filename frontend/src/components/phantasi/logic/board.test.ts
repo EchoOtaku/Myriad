@@ -8,7 +8,6 @@ import {
   sourceMatchesCategory,
   sourceMatchesKind,
   workbenchSourceKind,
-  eatSearchKeys,
   filterItemsByQuery,
   filterLaneItems,
   haystackMatchesQuery,
@@ -215,8 +214,8 @@ describe('resolveBoardParam', () => {
   })
 })
 
-describe('viewForBoardEntry / eatSearchKeys / filterLaneItems', () => {
-  it('游客收藏深链降到源墙；query 落地后吃掉', () => {
+describe('viewForBoardEntry / filterLaneItems', () => {
+  it('游客收藏深链降到源墙', () => {
     assert.equal(
       viewForBoardEntry({ view: 'starred', board: 'feeds' }, false),
       'sources',
@@ -225,12 +224,6 @@ describe('viewForBoardEntry / eatSearchKeys / filterLaneItems', () => {
       viewForBoardEntry({ view: 'starred', board: 'feeds' }, true),
       'starred',
     )
-    const next = eatSearchKeys(
-      new URLSearchParams('board=notes&keep=1'),
-      ['board', 'category'],
-    )
-    assert.equal(next.get('board'), null)
-    assert.equal(next.get('keep'), '1')
     assert.deepEqual(filterLaneItems('sources', [1], []), [])
     assert.deepEqual(filterLaneItems('starred', [1], []), [1])
     assert.equal(showsFilterLane('starred', false, true), true)

@@ -4,16 +4,13 @@ import {
   clipPaintedBatches,
   coverFeedIndices,
   expandFeedCover,
-  expandFeedSpan,
   extendPaintedRange,
-  extendPaintedSlots,
   FEEDS_ARTICLE_MAX,
   FRIENDS_STORY_MAX,
   isAggregateFeedId,
   isInboxFeedSource,
   isLatestFeedId,
   isTopicFeedId,
-  jumpFeedSpan,
   LATEST_FEED_ID,
   LATEST_FEED_STACK,
   latestFeedStackFaces,
@@ -24,21 +21,16 @@ import {
   stackFaceWindow,
   latestStoryPreview,
   storyRailGroup,
-  paintReadyStories,
   reuseFeedStories,
-  reusePaintedSlots,
   sameFeedStory,
   sourceColumnStarts,
   sourceScrollStarts,
   stitchStoriesBySources,
-  storiesAreFresh,
   storiesForSource,
   shuffleBySeed,
   storiesFromSources,
   storyColumnLeads,
   storyColumnShift,
-  storyGhostColumns,
-  storyRailColumns,
   storyRailSlots,
   storySlotAtColumn,
   storySlotsByColumn,
@@ -404,19 +396,6 @@ describe('shuffleBySeed', () => {
 })
 
 describe('feed span / stitch', () => {
-  it('跳到窗外只把覆盖拉长，不换窗、不加 epoch', () => {
-    const at = { from: 1, to: 2, epoch: 0 }
-    assert.deepEqual(jumpFeedSpan(at, 2, 5), at)
-    assert.deepEqual(jumpFeedSpan(at, 4, 5), { from: 1, to: 5, epoch: 0 })
-    assert.deepEqual(expandFeedSpan(at, 1, 5), { from: 1, to: 3, epoch: 0 })
-    assert.deepEqual(expandFeedSpan(at, -1, 5), { from: 0, to: 2, epoch: 0 })
-    assert.deepEqual(expandFeedSpan({ from: 0, to: 1, epoch: 0 }, -1, 5), {
-      from: 0,
-      to: 1,
-      epoch: 0,
-    })
-  })
-
   it('覆盖只增不减，焦点附近预取后面的源', () => {
     assert.deepEqual(coverFeedIndices([], 0, 5, 2), [0, 1, 2])
     assert.deepEqual(coverFeedIndices([0, 1, 2], 4, 5, 2), [0, 1, 2, 3, 4, 5])
@@ -446,7 +425,7 @@ describe('feed span / stitch', () => {
       { id: 4, title: '乙1', source_id: 9 },
       { id: 5, title: '乙2', source_id: 9 },
     ]
-    assert.equal(storyRailColumns(stories), 3)
+    assert.equal(storyRailSlots(stories).at(-1)?.column, 3)
     assert.deepEqual(
       storyRailSlots(stories).map((slot) => ({
         id: slot.story.id,
@@ -460,10 +439,6 @@ describe('feed span / stitch', () => {
         { id: 4, column: 3, row: 1 },
         { id: 5, column: 3, row: 2 },
       ],
-    )
-    assert.deepEqual(
-      storyGhostColumns(storyRailSlots(stories), 1, 2),
-      [{ id: 4, column: 3 }],
     )
     assert.deepEqual(sourceColumnStarts(storyRailSlots(stories)), [
       { id: 8, column: 1 },
@@ -490,8 +465,6 @@ describe('feed span / stitch', () => {
     assert.equal(storyRailSlots(stories, slots), slots)
     const starts = sourceColumnStarts(slots)
     assert.equal(sourceColumnStarts(slots, starts), starts)
-    const painted = slots.filter((slot) => slot.column <= 2)
-    assert.equal(reusePaintedSlots(painted, [...painted]), painted)
     const byCol = storySlotsByColumn(slots)
     assert.equal(storySlotsByColumn(slots, byCol), byCol)
     const other = slots.find((slot) => slot.column !== slots[0]?.column)
@@ -499,12 +472,6 @@ describe('feed span / stitch', () => {
     const nextByCol = storySlotsByColumn(shifted, byCol)
     assert.notEqual(nextByCol, byCol)
     if (other) assert.equal(nextByCol.get(other.column), byCol.get(other.column))
-    const windowed = extendPaintedSlots([], 0, 0, byCol, 1, 2, true)
-    assert.equal(windowed.every((slot) => slot.column <= 2), true)
-    const wider = extendPaintedSlots(windowed, 1, 2, byCol, 1, 3)
-    assert.equal(wider.length > windowed.length, true)
-    assert.equal(wider.slice(0, windowed.length).every((slot, i) => slot === windowed[i]), true)
-    assert.equal(extendPaintedSlots(wider, 1, 3, byCol, 1, 3), wider)
     const cols = extendPaintedRange([], 0, 0, 1, 2, (col) => col, true)
     assert.deepEqual(cols, [1, 2])
     const widerCols = extendPaintedRange(cols, 1, 2, 1, 4, (col) => col)
@@ -648,17 +615,3 @@ describe('latestStoryPreview', () => {
   })
 })
 
-describe('paintReadyStories', () => {
-  it('精确戳优先，没有则用宽松缓存', () => {
-    const exact = [toFeedStory(makeItem({ id: 1, title: 'exact' }))]
-    const loose = [toFeedStory(makeItem({ id: 2, title: 'loose' }))]
-    assert.equal(paintReadyStories(1, exact, loose)?.[0]?.title, 'exact')
-    assert.equal(paintReadyStories(1, null, loose)?.[0]?.title, 'loose')
-    assert.equal(storiesAreFresh(1, exact), true)
-    assert.equal(storiesAreFresh(1, null), false)
-    assert.equal(
-      storiesAreFresh(1, null, { stamp: 1, items: loose }),
-      true,
-    )
-  })
-})

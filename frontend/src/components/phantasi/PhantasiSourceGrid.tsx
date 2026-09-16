@@ -28,6 +28,7 @@ import {
   useNoteBoardCategory,
 } from './skin/PhantasiNoteCategoryTitleTags'
 import { PhantasiViewLane } from './skin/PhantasiChip'
+import { schedulePhantasiPeekResume } from './ui/StoryCard'
 import { PhantasiPageStage } from './ui/PhantasiPageStage'
 import { PhantasiRailTitle } from './ui/PhantasiRailTitle'
 import { PhantasiVacant } from './ui/Empty'
@@ -360,6 +361,9 @@ export default function PhantasiSourceGrid({
     <PhantasiViewLane
       wave={board}
       className="relative min-h-0 flex-1 overflow-visible"
+      onDisplayed={() => {
+        if (onPeekItem) schedulePhantasiPeekResume(onPeekItem)
+      }}
     >
       {board === 'feeds' ? (
         <div className="flex min-h-0 flex-1 flex-col">{boardView}</div>

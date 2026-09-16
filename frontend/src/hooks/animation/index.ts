@@ -8,9 +8,7 @@ export {
   useIdleEffect,
   useInView,
   useLazyLoad,
-  usePageVisible as usePageVisibleAtomic,
   useThrottle,
-  useVisibilityInterval as useVisibilityIntervalAtomic,
 } from './atomicHooks'
 
 export { coordinator } from './coordinator'
@@ -18,27 +16,19 @@ export { coordinator } from './coordinator'
 export { default as AnimationCoordinator } from './coordinator'
 
 export {
-  batchRead as batchReadAtomic,
-  batchWrite as batchWriteAtomic,
   cancelIdle,
-  destroy as destroyAtomicCore,
-  getStats as getAtomicStats,
   getCurrentPageId,
   isPageVisible,
   isSchedulerActive,
   now,
-  observeIntersection as observeIntersectionAtomic,
   observeResize as observeResizeAtomic,
   onVisibility,
-  pause as pauseScheduler,
   refreshNow,
   registerPageCleanup,
-  resume as resumeScheduler,
   runPageCleanup,
   scheduleIdle,
   scheduleTask,
   startPage,
-  yieldToMain as yieldToMainAtomic,
 } from './core'
 
 export {
@@ -145,7 +135,6 @@ export { useStaggerAnimation } from './useStaggerAnimation'
 export {
   usePageVisible,
   useVisibilityInterval,
-  useVisibilityTimeout,
 } from './useVisibilityPause'
 
 export function configureAnimationCoordinator(

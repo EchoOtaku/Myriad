@@ -185,10 +185,13 @@ type PhantasiAttributionHeaders = Record<string, string>
 /** Tapp attribution skips cache. */
 export async function getSources(
   attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; view?: 'catalog' },
 ): Promise<PhantasiSource[]> {
+  const catalog = options?.view === 'catalog'
+  const path = catalog ? '/sources?view=catalog' : '/sources'
+  const cacheKey = catalog ? 'phantasi:sources:catalog' : 'phantasi:sources'
   const fetchSources = async () => {
-    const data = await request<PhantasiSourcesResponse>('/sources', {
+    const data = await request<PhantasiSourcesResponse>(path, {
       headers: attributionHeaders,
       signal: options?.signal,
     })
@@ -196,7 +199,7 @@ export async function getSources(
   }
   if (attributionHeaders) return fetchSources()
   const sources = await requestCache.fetch(
-    'phantasi:sources',
+    cacheKey,
     fetchSources,
     CACHE_TTL.SOURCES,
   )
@@ -210,6 +213,7 @@ export function invalidateStatsCache(): void {
 
 export function invalidateSourcesCache(): void {
   requestCache.delete('phantasi:sources')
+  requestCache.delete('phantasi:sources:catalog')
   invalidateStatsCache()
 }
 

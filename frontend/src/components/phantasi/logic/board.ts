@@ -296,7 +296,7 @@ const LEGACY_NAV_TO_BOARD: Record<string, PhantasiBoardEntry> = {
   starred: { view: 'starred', board: 'feeds' },
 }
 
-/** `?board=` 优先；认不出的取值返回 null，不回落默认板块。 */
+/** 导航 id 落到板块入口。认不出的取值返回 null，不回落默认板块。 */
 export function resolveBoardParam(value: string): PhantasiBoardEntry | null {
   if (isPhantasiBoard(value)) return boardEntry(value)
   if (value === 'friends') return boardEntry('sites')
@@ -324,16 +324,6 @@ export function viewForBoardEntry(
   if (entry.view === 'workbench') return isAdmin ? 'workbench' : 'sources'
   if (entry.view === 'starred' && !isAuthenticated) return 'sources'
   return entry.view
-}
-
-/** 落地后把 query 吃掉，刷新和后退不再触发一次。 */
-export function eatSearchKeys(
-  params: URLSearchParams,
-  keys: readonly string[],
-): URLSearchParams {
-  const next = new URLSearchParams(params)
-  for (const key of keys) next.delete(key)
-  return next
 }
 
 /** 分页 items 只属于收藏和主题流。 */

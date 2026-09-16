@@ -1,9 +1,15 @@
-import type { CSSProperties, MouseEvent, PointerEvent, ReactNode, RefObject } from 'react'
+import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, ReactNode, RefObject } from 'react'
 import type { FeedStory } from '../logic/feedStories'
 import type { TimeTranslations } from '../types'
 import type { PhantasiRailApi } from './usePhantasiRailPan'
 
 import { isValidElement, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  notePeekPointer,
+  peekLaneKeepsAir,
+  peekStoryNode,
+  peekSwapHoldsAir,
+} from '../ui/peekLane'
 import { markPhantasiStoryPeek } from '../ui/StoryCard'
 import { PhantasiStoryColumn } from './PhantasiStory'
 import {
@@ -31,14 +37,8 @@ function storyAtRailTarget(
   target: EventTarget | null,
   byId: ReadonlyMap<number, FeedStory>,
 ): FeedStory | undefined {
-  if (!(target instanceof Element)) return
-  const node = target.closest('.phantasi-story')
-  if (
-    !(node instanceof HTMLElement)
-    || node.classList.contains('phantasi-story--slot')
-  ) {
-    return
-  }
+  const node = peekStoryNode(target)
+  if (!node) return
   const id = Number(node.dataset.railId)
   if (!Number.isFinite(id)) return
   return byId.get(id)
@@ -705,33 +705,54 @@ export const PhantasiFeedsStories = memo(({
   }, [])
   const onTrackPointerOver = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType === 'touch') return
+      if (event.pointerType === 'touch' || grabbingRef.current) return
       const story = storyAtRailTarget(event.target, storyByIdRef.current)
       if (!story) return
-      const node = event.target instanceof Element
-        ? event.target.closest('.phantasi-story')
-        : null
+      const node = peekStoryNode(event.target)
       const from = event.relatedTarget
       if (from instanceof Node && node?.contains(from)) return
+      notePeekPointer(event)
       markPhantasiStoryPeek(node, true)
       onPeekRef.current(story)
     },
-    [],
+    [grabbingRef],
   )
   const onTrackPointerOut = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType === 'touch') return
-      const node = event.target instanceof Element
-        ? event.target.closest('.phantasi-story')
-        : null
+      if (event.pointerType === 'touch' || grabbingRef.current) return
+      const node = peekStoryNode(event.target)
       const to = event.relatedTarget
       if (node && to instanceof Node && node.contains(to)) return
-      if (storyAtRailTarget(event.relatedTarget, storyByIdRef.current)) return
-      if (to instanceof Node && event.currentTarget.contains(to)) return
+      markPhantasiStoryPeek(node, false)
+      if (peekLaneKeepsAir(node ?? event.target, to)) return
+      if (peekSwapHoldsAir(node ?? event.target)) return
       onPeekEndRef.current()
     },
-    [],
+    [grabbingRef],
   )
+  const onTrackPointerCancel = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (grabbingRef.current) return
+      markPhantasiStoryPeek(event.target, false)
+      if (peekSwapHoldsAir(event.target)) return
+      onPeekEndRef.current()
+    },
+    [grabbingRef],
+  )
+  const onTrackFocusIn = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (grabbingRef.current) return
+    const story = storyAtRailTarget(event.target, storyByIdRef.current)
+    if (!story) return
+    markPhantasiStoryPeek(event.target, true)
+    onPeekRef.current(story)
+  }, [grabbingRef])
+  const onTrackFocusOut = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (grabbingRef.current) return
+    markPhantasiStoryPeek(event.target, false)
+    if (peekLaneKeepsAir(event.target, event.relatedTarget)) return
+    if (peekSwapHoldsAir(event.target)) return
+    onPeekEndRef.current()
+  }, [grabbingRef])
   return (
     <div
       className="phantasi-feeds__items-track"
@@ -741,6 +762,9 @@ export const PhantasiFeedsStories = memo(({
       onClick={onTrackClick}
       onPointerOver={onTrackPointerOver}
       onPointerOut={onTrackPointerOut}
+      onPointerCancel={onTrackPointerCancel}
+      onFocus={onTrackFocusIn}
+      onBlur={onTrackFocusOut}
     >
       {painted}
     </div>

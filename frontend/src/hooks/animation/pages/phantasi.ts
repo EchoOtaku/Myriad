@@ -4,7 +4,15 @@ import { isExlight, useAnimationLevel } from '../../useAnimationLevel'
 import { registerPageCleanup } from '../core'
 import { phantasiMotionQuiet, phantasiMotionReset } from './phantasiMotion'
 
-export { phantasiMotionClaim, phantasiMotionRelease } from './phantasiMotion'
+export {
+  onPhantasiMotion,
+  phantasiMotionBusy,
+  phantasiMotionClaim,
+  phantasiMotionLane,
+  phantasiMotionOwns,
+  phantasiMotionRelease,
+  whenPhantasiMotionIdle,
+} from './phantasiMotion'
 export { phantasiTagQuiet } from './phantasiTag'
 
 type AnimationConfig = ReturnType<typeof useAnimationLevel>

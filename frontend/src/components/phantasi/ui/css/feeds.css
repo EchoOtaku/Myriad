@@ -63,6 +63,19 @@
   transition: none;
 }
 
+.phantasi-feeds.is-rail-grabbing .phantasi-story.has-cover.has-peek.is-peek .phantasi-story__kicker,
+.phantasi-feeds.is-rail-grabbing .phantasi-story.has-cover.has-peek.is-peek .phantasi-story__title,
+.phantasi-feeds.is-rail-grabbing .phantasi-story.has-cover.has-peek.is-peek .phantasi-story__byline,
+.phantasi-feeds.is-rail-grabbing .phantasi-story.has-cover.has-peek.is-peek .phantasi-story__thumb,
+.phantasi-feeds.is-rail-grabbing .phantasi-story.has-cover.has-peek.is-peek .phantasi-story__summary {
+  opacity: 1;
+  pointer-events: none;
+}
+
+.phantasi-feeds.is-rail-grabbing .phantasi-story.has-cover.has-peek.is-peek .phantasi-story__peek {
+  opacity: 0;
+}
+
 .phantasi-feeds.is-rail-grabbing,
 .phantasi-feeds__sites.is-rail-panning,
 .phantasi-feeds__items.is-rail-panning {

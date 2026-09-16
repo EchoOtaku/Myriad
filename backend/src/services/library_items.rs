@@ -370,6 +370,33 @@ pub const LIBRARY_SOURCE_PREFERENCES_KEY: &str = "library_source_preferences";
 pub const LIBRARY_ITEM_TYPES: [&str; 6] = ["game", "video", "music", "anime", "tv_series", "book"];
 pub const LIBRARY_PLATFORMS: [&str; 5] = ["Steam", "Bilibili", "Bangumi", "Netease", "MyAnimeList"];
 
+fn empty_library_type_counts() -> HashMap<String, usize> {
+    LIBRARY_ITEM_TYPES
+        .iter()
+        .map(|item_type| ((*item_type).to_string(), 0))
+        .collect()
+}
+
+/// Preference-filtered per-type totals. Does not clone item payloads.
+pub fn count_library_items_by_type(
+    items: &[LibraryItem],
+    preferences: Option<&LibrarySourcePreferences>,
+) -> HashMap<String, usize> {
+    let mut counts = empty_library_type_counts();
+    for item in items {
+        let allowed = preferences
+            .map(|preferences| preferences.source_enabled(&item.item_type, &item.platform))
+            .unwrap_or(true);
+        if !allowed {
+            continue;
+        }
+        if let Some(slot) = counts.get_mut(&item.item_type) {
+            *slot += 1;
+        }
+    }
+    counts
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LibraryLayout {
@@ -1054,6 +1081,10 @@ mod tests {
         let page = paginate_library_items(&items, Some(&prefs), None, None, None).unwrap();
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].id, "1");
+
+        let counts = count_library_items_by_type(&items, Some(&prefs));
+        assert_eq!(counts.get("game").copied(), Some(1));
+        assert_eq!(counts.values().copied().sum::<usize>(), 1);
     }
 
     #[test]
@@ -1112,5 +1143,54 @@ mod tests {
         assert!(cached_library_items(7).is_none());
         invalidate_library_assembly_cache();
         assert!(cached_library_items(42).is_none());
+    }
+
+    #[test]
+    fn type_counts_skip_disabled_sources_and_unknown_types() {
+        let items = vec![
+            LibraryItem {
+                id: "1".into(),
+                item_type: "game".into(),
+                title: "A".into(),
+                cover: None,
+                platform: "Steam".into(),
+                metadata: json!({}),
+            },
+            LibraryItem {
+                id: "2".into(),
+                item_type: "game".into(),
+                title: "B".into(),
+                cover: None,
+                platform: "Bangumi".into(),
+                metadata: json!({}),
+            },
+            LibraryItem {
+                id: "3".into(),
+                item_type: "music".into(),
+                title: "C".into(),
+                cover: None,
+                platform: "Netease".into(),
+                metadata: json!({}),
+            },
+            LibraryItem {
+                id: "4".into(),
+                item_type: "podcast".into(),
+                title: "D".into(),
+                cover: None,
+                platform: "Netease".into(),
+                metadata: json!({}),
+            },
+        ];
+        let prefs = LibrarySourcePreferences {
+            categories: HashMap::from([("game".into(), vec!["Steam".into()])]),
+            ..LibrarySourcePreferences::default()
+        }
+        .normalized();
+
+        let counts = count_library_items_by_type(&items, Some(&prefs));
+        assert_eq!(counts.get("game").copied(), Some(1));
+        assert_eq!(counts.get("music").copied(), Some(1));
+        assert!(!counts.contains_key("podcast"));
+        assert_eq!(counts.values().copied().sum::<usize>(), 2);
     }
 }

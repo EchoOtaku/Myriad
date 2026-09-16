@@ -505,8 +505,8 @@ pub use crate::services::image_proxy_urls::{normalize_json_media_urls, proxy_ima
 pub use crate::services::library_items::{
     CachedLibraryItems, LIBRARY_SOURCE_PREFERENCES_KEY, LibraryItem, LibrarySourcePreferences,
     append_bangumi_library_items, append_mal_library_items, cached_library_items,
-    collect_library_source_options, invalidate_library_assembly_cache, paginate_library_items,
-    store_library_items,
+    collect_library_source_options, count_library_items_by_type, invalidate_library_assembly_cache,
+    paginate_library_items, store_library_items,
 };
 async fn load_library_source_preferences(db: &DatabaseConnection) -> LibrarySourcePreferences {
     let sql = "SELECT value FROM configurations WHERE key = $1";
@@ -593,6 +593,9 @@ pub struct LibraryPageQuery {
     limit: Option<usize>,
     #[serde(rename = "type")]
     item_type: Option<String>,
+    /// Skip item payloads; return preference-filtered `type_counts` only.
+    #[serde(default)]
+    counts_only: bool,
 }
 
 async fn library_page_response(
@@ -604,6 +607,38 @@ async fn library_page_response(
     let preferences = load_library_source_preferences(db).await;
     let raw_total = raw_items.len();
     let available_sources = collect_library_source_options(&raw_items);
+    if query.counts_only {
+        let type_counts = count_library_items_by_type(raw_items.as_slice(), Some(&preferences));
+        let total: usize = type_counts.values().sum();
+        tracing::info!(
+            "📚 Library counts for user {user_id}: {total} items ({raw_total} raw before source filtering)"
+        );
+        return (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "items": [],
+                "total": total,
+                "returned": 0,
+                "offset": 0,
+                "limit": 0,
+                "type": query.item_type,
+                "has_more": false,
+                "next_offset": null,
+                "raw_total": raw_total,
+                "type_counts": type_counts,
+                "counts_only": true,
+                "preferences": preferences,
+                "available_sources": available_sources,
+                "empty": total == 0,
+                "message": if total == 0 {
+                    "No library data yet. Fetch platform data when ready."
+                } else {
+                    ""
+                }
+            })),
+        );
+    }
     let page = match paginate_library_items(
         raw_items.as_slice(),
         Some(&preferences),

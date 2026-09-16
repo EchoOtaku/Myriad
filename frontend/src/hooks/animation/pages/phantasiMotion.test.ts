@@ -2,12 +2,16 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
+  onPhantasiMotion,
+  phantasiMotionBusy,
   phantasiMotionClaim,
   phantasiMotionLane,
   phantasiMotionOwns,
   phantasiMotionQuiet,
   phantasiMotionRelease,
   phantasiMotionReset,
+  whenPhantasiMotionIdle,
+  type PhantasiMotionLane,
 } from './phantasiMotion.ts'
 
 describe('phantasiMotion', () => {
@@ -57,5 +61,59 @@ describe('phantasiMotion', () => {
 
   it('无 window 当静音', () => {
     assert.equal(phantasiMotionQuiet(), true)
+  })
+
+  it('peek 不能抢走换树，换树能顶掉 peek', () => {
+    phantasiMotionReset()
+    const lane = phantasiMotionClaim('lane')
+    assert.equal(phantasiMotionClaim('peek'), 0)
+    assert.equal(phantasiMotionOwns(lane), true)
+    assert.equal(phantasiMotionBusy(), true)
+    phantasiMotionRelease(lane)
+    const peek = phantasiMotionClaim('peek')
+    assert.equal(phantasiMotionOwns(peek), true)
+    assert.equal(phantasiMotionBusy(), false)
+    const nextLane = phantasiMotionClaim('lane')
+    assert.equal(phantasiMotionOwns(peek), false)
+    assert.equal(phantasiMotionOwns(nextLane), true)
+    phantasiMotionRelease(nextLane)
+  })
+
+  it('空闲或 peek 时立刻跑，换树结束再跑', () => {
+    phantasiMotionReset()
+    let idleHits = 0
+    whenPhantasiMotionIdle(() => {
+      idleHits += 1
+    })
+    assert.equal(idleHits, 1)
+    const lane = phantasiMotionClaim('lane')
+    let after = 0
+    const stop = whenPhantasiMotionIdle(() => {
+      after += 1
+    })
+    assert.equal(after, 0)
+    phantasiMotionRelease(lane)
+    assert.equal(after, 1)
+    stop()
+  })
+
+  it('peek 被换树顶掉后空闲再通知', () => {
+    phantasiMotionReset()
+    const peek = phantasiMotionClaim('peek')
+    const stolen: PhantasiMotionLane[] = []
+    const stop = onPhantasiMotion((lane) => {
+      stolen.push(lane)
+    })
+    const lane = phantasiMotionClaim('lane')
+    assert.equal(phantasiMotionOwns(peek), false)
+    assert.deepEqual(stolen, ['lane'])
+    let resumed = 0
+    whenPhantasiMotionIdle(() => {
+      resumed += 1
+    })
+    assert.equal(resumed, 0)
+    phantasiMotionRelease(lane)
+    assert.equal(resumed, 1)
+    stop()
   })
 })

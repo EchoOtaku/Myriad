@@ -13,9 +13,11 @@ import {
   workbenchHomeScheduleKind,
   type WorkbenchHomeRecent,
 } from '../logic/workbenchHome'
+import type { WorkbenchRailOptionPane, WorkbenchRailVisibility } from '../logic/workbenchVisibility'
 import { workbenchNoteCover, workbenchNoteListExcerpt, workbenchNoteOpen } from '../logic/workbench'
 import { noteScheduleLabel } from '../notes/noteBoard'
 import { displayImageUrl } from '../notes/noteImageUrl'
+import { WorkbenchHomeOptions } from './PhantasiWorkbenchHomeOptions'
 
 export function Thumb({
   src,
@@ -137,8 +139,10 @@ export function WorkbenchHome({
   feedCount,
   locale,
   copy,
+  railVisibility,
   onOpenNote,
   onOpen,
+  onRailVisibility,
 }: {
   empty: boolean
   drafts: readonly PhantasiNoteDoc[]
@@ -172,15 +176,27 @@ export function WorkbenchHome({
     workbenchMedia: string
     workbenchSources: string
     workbenchOverview: string
+    workbenchHomeOptions: string
+    workbenchRailVisibilityTitle: string
+    workbenchRailVisibilityDesc: string
+    workbenchRailShow: string
+    workbenchRailHide: string
+    workbenchNotesTransfer: string
+    workbenchFeedsTransfer: string
+    workbenchRsshub: string
   }
+  railVisibility: WorkbenchRailVisibility
   onOpenNote: (open: ReturnType<typeof workbenchNoteOpen>) => void
   onOpen: (pane: WorkbenchPane) => void
+  onRailVisibility: (pane: WorkbenchRailOptionPane, visible: boolean) => void
 }) {
-  if (empty) {
-    return <p className="phantasi-workbench__home-empty">{copy.workbenchHomeEmpty}</p>
-  }
   return (
     <div className="phantasi-workbench__home">
+      {empty ? (
+        <p className="phantasi-workbench__home-empty">{copy.workbenchHomeEmpty}</p>
+      ) : null}
+      {empty ? null : (
+        <>
       {pendingReviews.length > 0 ? (
         <HomeBlock title={copy.workbenchHomeReviews}>
           {pendingReviews.map((row) => (
@@ -320,6 +336,13 @@ export function WorkbenchHome({
         <Kpi value={media.length} label={copy.workbenchMedia} onPick={() => onOpen('media')} />
         <Kpi value={feedCount} label={copy.workbenchSources} onPick={() => onOpen('sources')} />
       </section>
+        </>
+      )}
+      <WorkbenchHomeOptions
+        visibility={railVisibility}
+        copy={copy}
+        onChange={onRailVisibility}
+      />
     </div>
   )
 }

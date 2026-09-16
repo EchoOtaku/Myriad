@@ -10,16 +10,6 @@ import {
   scheduleIdle,
 } from './core'
 
-export function usePageVisible(): boolean {
-  const [visible, setVisible] = useState(isPageVisible)
-
-  useEffect(() => {
-    return onVisibility(setVisible)
-  }, [])
-
-  return visible
-}
-
 export function useVisibilityInterval(
   callback: () => void,
   options: { delay: number; enabled?: boolean; immediate?: boolean },

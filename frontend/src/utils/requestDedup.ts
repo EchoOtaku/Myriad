@@ -110,22 +110,92 @@ export function invalidatePublicConfigCache(): void {
   clearDedupCache(`${API_URL}/api/config/public`)
 }
 
-export async function getLibraryDataDeduped(): Promise<any> {
-  return dedupedFetch(
-    `${API_URL}/api/library`,
+export interface LibraryTypeCounts {
+  total: number
+  game: number
+  video: number
+  music: number
+  anime: number
+  tv_series: number
+  book: number
+}
+
+function asCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : 0
+}
+
+function countsFromTypeMap(
+  total: unknown,
+  counts: Record<string, unknown>,
+): LibraryTypeCounts {
+  return {
+    total: asCount(total),
+    game: asCount(counts.game),
+    video: asCount(counts.video),
+    music: asCount(counts.music),
+    anime: asCount(counts.anime),
+    tv_series: asCount(counts.tv_series),
+    book: asCount(counts.book),
+  }
+}
+
+function countsFromItems(items: unknown[]): LibraryTypeCounts {
+  const counts: LibraryTypeCounts = {
+    total: 0,
+    game: 0,
+    video: 0,
+    music: 0,
+    anime: 0,
+    tv_series: 0,
+    book: 0,
+  }
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue
+    const type = (item as { item_type?: unknown }).item_type
+    if (typeof type !== 'string' || !Object.hasOwn(counts, type)) continue
+    counts.total++
+    counts[type as Exclude<keyof LibraryTypeCounts, 'total'>]++
+  }
+  return counts
+}
+
+export function libraryStatsFromResponse(data: unknown): LibraryTypeCounts | null {
+  if (!data || typeof data !== 'object') return null
+  const rec = data as Record<string, unknown>
+  if (rec.success !== true) return null
+  const counts = rec.type_counts
+  if (counts && typeof counts === 'object' && !Array.isArray(counts)) {
+    return countsFromTypeMap(rec.total, counts as Record<string, unknown>)
+  }
+  if (Array.isArray(rec.items)) {
+    return countsFromItems(rec.items)
+  }
+  return null
+}
+
+export async function getLibraryStatsDeduped(): Promise<LibraryTypeCounts> {
+  const url = `${API_URL}/api/library?counts_only=true`
+  const data = await dedupedFetch(
+    url,
     async () => {
-      const response = await fetch(`${API_URL}/api/library`, {
+      const response = await fetch(url, {
         credentials: 'include',
         signal: AbortSignal.timeout(30000),
       })
       if (!response.ok) {
         throw new ApiError(httpStatusMessage(response.status), response.status)
       }
-      const data = await response.json()
-      return normalizeJsonMediaUrls(data)
+      return response.json()
     },
     { cacheTTL: 2 * 60 * 1000 },
   )
+  const stats = libraryStatsFromResponse(data)
+  if (!stats) {
+    throw new ApiError('Unable to load library stats', 502)
+  }
+  return stats
 }
 
 export async function getLibraryDataPageDeduped(

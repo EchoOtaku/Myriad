@@ -40,20 +40,7 @@ export const RAIL_FLING_MIN_PX_S = 24
 /** 点选和拖轨的分界。 */
 export const RAIL_DRAG_SLOP_PX = 5
 
-/** 触控板惯性事件停了以后，还很快才接着滑。 */
-export const RAIL_WHEEL_COAST_PX_S = 480
-
-const RAIL_FLING_LOOKAHEAD_S = 0.22
 export const RAIL_FLING_SLOT_PX_S = 360
-
-/** 推过槽距这么多，松手就进下一张，不弹回。 */
-export const RAIL_COMMIT_RATIO = 0.28
-
-/** 再进一格必须几乎走过下一张，避免轻滑连跳。 */
-const RAIL_NEXT_RATIO = 0.85
-
-/** 甩的预估位移要超过这么多槽距，才允许跳第二张。 */
-const RAIL_MULTI_SPAN = 1.52
 
 export const RAIL_OVERFLOW_LEFT_PX = 0
 
@@ -853,24 +840,6 @@ export const RAIL_MOUNT_GRAB_AHEAD = 24
 /** 首屏多挂一段，刚开滑少拆卡。 */
 export const RAIL_MOUNT_BOOT_TO = RAIL_MOUNT_PAN_EXTRA + RAIL_MOUNT_GROW_AHEAD
 
-/** 下手只扩不缩，一次补出长滑预显。 */
-export function railMountColumnsGrab(
-  prev: { from: number; to: number },
-  scroll: number,
-  viewW: number,
-  colW: number,
-  totalCols: number,
-  leftPad = 1,
-  rightPad = 3,
-): { from: number; to: number } {
-  const need = railMountColumns(scroll, viewW, colW, totalCols, leftPad, rightPad)
-  const cols = Math.max(1, totalCols)
-  const from = Math.max(1, Math.min(prev.from, need.from))
-  const to = Math.min(cols, Math.max(prev.to, need.to + RAIL_MOUNT_GRAB_AHEAD))
-  if (from === prev.from && to === prev.to) return prev
-  return { from, to }
-}
-
 /** 手势窗口已经盖住视口和右侧预显，且没有大到要挪走。 */
 export function railMountColumnsCovered(
   prev: { from: number; to: number },
@@ -949,18 +918,6 @@ export function railColumnSlots(totalCols: number, colW: number): number[] {
   return slots
 }
 
-/** 等距列坐槽，不扫整轨。中点偏左，跟 nearestRailSlot 同一落点。 */
-export function railColumnSlotAt(
-  scroll: number,
-  colW: number,
-  max: number,
-): number {
-  if (colW <= 1 || max <= 0) return 0
-  const x = Math.min(max, Math.max(0, scroll))
-  const col = Math.max(0, Math.floor((x - 0.005) / colW + 0.5))
-  return Math.min(max, col * colW)
-}
-
 /** 文章轨列间距，跟 cards.css 里 items-track 的 column-gap 对齐。 */
 export const STORY_RAIL_COL_GAP = '0.75rem'
 
@@ -983,41 +940,6 @@ export function storyMountWindow(
   const cols = Math.max(1, total)
   const start = Math.max(1, Math.min(from, cols))
   return { from: start, to: Math.max(start, Math.min(to, cols)) }
-}
-
-/** 只给实装列开栅，左右空段各占一格，避免按全源列数排 200 列。 */
-export function storyMountGrid(
-  from: number,
-  to: number,
-  total: number,
-  gap = STORY_RAIL_COL_GAP,
-): {
-  from: number
-  to: number
-  mounted: number
-  left: number
-  right: number
-  template: string
-} {
-  const { from: start, to: end } = storyMountWindow(from, to, total)
-  const cols = Math.max(1, total)
-  const left = start - 1
-  const right = cols - end
-  const mounted = end - start + 1
-  const parts: string[] = []
-  if (left > 0) {
-    parts.push(`minmax(0, calc(${left} * (var(--phantasi-story-w) + ${gap}) - ${gap}))`)
-  }
-  parts.push(`repeat(${mounted}, var(--phantasi-story-w))`)
-  if (right > 0) {
-    parts.push(`minmax(0, calc(${right} * (var(--phantasi-story-w) + ${gap}) - ${gap}))`)
-  }
-  return { from: start, to: end, mounted, left, right, template: parts.join(' ') }
-}
-
-/** 短栅里卡的视觉列；data-rail-col 仍用源上的绝对列。 */
-export function storyMountGridColumn(column: number, from: number): number {
-  return column - Math.max(1, from) + 1 + (from > 1 ? 1 : 0)
 }
 
 export function railLeadIndex(
@@ -1069,16 +991,6 @@ export function railMaxScroll(slots: readonly number[], overflowLeft = 0): numbe
   return Math.max(0, (slots.at(-1) ?? 0) - Math.max(0, overflowLeft))
 }
 
-/** 吸入槽位跟座定同一套：第一张贴左缘，其后每张让出溢出。 */
-export function railSeatSlots(
-  slots: readonly number[],
-  overflowLeft = 0,
-): number[] {
-  if (slots.length === 0) return [0]
-  if (overflowLeft <= 0) return slots as number[]
-  return slots.map((slot, i) => (i === 0 ? slot : Math.max(0, slot - overflowLeft)))
-}
-
 export function railSlotOffsets(
   cards: ReadonlyArray<{ left: number }>,
 ): number[] {
@@ -1092,125 +1004,6 @@ export function railSlotOffsets(
     }
   }
   return slots
-}
-
-export function nearestRailSlot(
-  offset: number,
-  slots: readonly number[],
-  max: number,
-): number {
-  const x = clampConversationScroll(offset, max)
-  let best = clampConversationScroll(slots[0] ?? 0, max)
-  let bestDist = Math.abs(best - x)
-  for (let i = 1; i < slots.length; i++) {
-    const slot = clampConversationScroll(slots[i], max)
-    const dist = Math.abs(slot - x)
-    if (dist < bestDist - 0.01) {
-      best = slot
-      bestDist = dist
-    }
-  }
-  return best
-}
-
-function railNearestIndex(
-  offset: number,
-  slots: readonly number[],
-): number {
-  let index = 0
-  let best = Infinity
-  for (let i = 0; i < slots.length; i++) {
-    const dist = Math.abs((slots[i] ?? 0) - offset)
-    if (dist < best - 0.01) {
-      best = dist
-      index = i
-    }
-  }
-  return index
-}
-
-function railClampedSlots(
-  slots: readonly number[],
-  max: number,
-): readonly number[] {
-  for (let i = 0; i < slots.length; i++) {
-    const slot = slots[i] ?? 0
-    if (slot !== clampConversationScroll(slot, max)) {
-      return slots.map((item) => clampConversationScroll(item, max))
-    }
-  }
-  return slots
-}
-
-export function neighborRailSlot(
-  offset: number,
-  direction: number,
-  slots: readonly number[],
-  max: number,
-): number {
-  if (slots.length === 0 || max <= 0) return 0
-  if (direction === 0) return nearestRailSlot(offset, slots, max)
-  const points = railClampedSlots(slots, max)
-  const index = railNearestIndex(offset, points)
-  if (direction > 0) {
-    return points[Math.min(points.length - 1, index + 1)] ?? 0
-  }
-  return points[Math.max(0, index - 1)] ?? 0
-}
-
-export function settleRailSlot(
-  offset: number,
-  velocity: number,
-  slots: readonly number[],
-  max: number,
-  home?: number,
-): number {
-  if (slots.length <= 1 || max <= 0) return 0
-  const points = railClampedSlots(slots, max)
-  const x = clampConversationScroll(offset, max)
-  const predicted = clampConversationScroll(
-    offset + velocity * RAIL_FLING_LOOKAHEAD_S,
-    max,
-  )
-  const homeX =
-    home === undefined
-      ? nearestRailSlot(x, points, max)
-      : nearestRailSlot(home, points, max)
-  const index = railNearestIndex(homeX, points)
-  const curr = points[index] ?? 0
-  const prev = points[Math.max(0, index - 1)] ?? curr
-  const next = points[Math.min(points.length - 1, index + 1)] ?? curr
-
-  if (velocity > RAIL_FLING_SLOT_PX_S) {
-    if (next === curr) return curr
-    const span = next - curr
-    if (predicted - curr < span * RAIL_MULTI_SPAN) return next
-    return nearestRailSlot(predicted, points, max)
-  }
-  if (velocity < -RAIL_FLING_SLOT_PX_S) {
-    if (prev === curr) return curr
-    const span = curr - prev
-    if (curr - predicted < span * RAIL_MULTI_SPAN) return prev
-    return nearestRailSlot(predicted, points, max)
-  }
-
-  let i = index
-  if (x >= curr) {
-    while (i < points.length - 1) {
-      const span = (points[i + 1] ?? 0) - (points[i] ?? 0)
-      const need = i === index ? span * RAIL_COMMIT_RATIO : span * RAIL_NEXT_RATIO
-      if (span <= 0.5 || x - (points[i] ?? 0) < need) break
-      i += 1
-    }
-  } else {
-    while (i > 0) {
-      const span = (points[i] ?? 0) - (points[i - 1] ?? 0)
-      const need = i === index ? span * RAIL_COMMIT_RATIO : span * RAIL_NEXT_RATIO
-      if (span <= 0.5 || (points[i] ?? 0) - x < need) break
-      i -= 1
-    }
-  }
-  return points[i] ?? curr
 }
 
 export function railSettleTau(
@@ -1344,27 +1137,6 @@ export function sourceAtScroll(
     }
   }
   return id
-}
-
-export function followSourceRailScroll(
-  storyScroll: number,
-  storyCards: ReadonlyArray<{ id: number; left: number }>,
-  sourceOf: (id: number) => number | undefined,
-  siteCards: ReadonlyArray<{ id: number; left: number }>,
-  overflowLeft = 0,
-): number {
-  const blocks = railGroupStarts(storyCards, sourceOf)
-  if (blocks.length === 0) return 0
-  return followRailScroll(
-    storyScroll,
-    blocks.map((block) => block.start),
-    blocks.map((block) => {
-      const index = siteCards.findIndex((card) => card.id === block.id)
-      return overflowLeft > 0
-        ? railSeatScroll(siteCards, Math.max(0, index), overflowLeft)
-        : railCardOffset(siteCards, index)
-    }),
-  )
 }
 
 /** 收回全屏时接着座定，不要从 0 再吸一次。 */

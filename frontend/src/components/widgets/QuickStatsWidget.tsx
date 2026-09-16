@@ -4,7 +4,10 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import { getLibraryDataDeduped } from '../../utils/requestDedup'
+import {
+  getLibraryStatsDeduped,
+  type LibraryTypeCounts,
+} from '../../utils/requestDedup'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
@@ -12,15 +15,7 @@ import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 const CACHE_KEY = 'library_stats_cache'
 const CACHE_DURATION = 5 * 60 * 1000
 
-interface LibraryStats {
-  total: number
-  game: number
-  video: number
-  music: number
-  anime: number
-  tv_series: number
-  book: number
-}
+type LibraryStats = LibraryTypeCounts
 
 const StatCard = memo(
   ({
@@ -242,33 +237,10 @@ export const QuickStatsWidget = memo(
 
     const fetchLibraryStats = useCallback(async () => {
       try {
-        const data = await getLibraryDataDeduped()
-
-        if (data.success && Array.isArray(data.items)) {
-          const counts = data.items.reduce(
-            (acc: LibraryStats, item: any) => {
-              acc.total++
-              const type = item.item_type
-              if (Object.hasOwn(acc, type)) {
-                ;(acc as any)[type]++
-              }
-              return acc
-            },
-            {
-              total: 0,
-              game: 0,
-              video: 0,
-              music: 0,
-              anime: 0,
-              tv_series: 0,
-              book: 0,
-            },
-          )
-
-          setStats(counts)
-          setFailed(false)
-          saveToCache(counts)
-        }
+        const counts = await getLibraryStatsDeduped()
+        setStats(counts)
+        setFailed(false)
+        saveToCache(counts)
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
           console.error(`${t.quickStats.fetchStatsFailed}:`, err)

@@ -961,14 +961,6 @@ function footnoteDefinitionStart(html: string): number {
   return -1
 }
 
-/** 后端渲染的代码块只有 `class="language-x"`，挪成 `data-lang` 让样式能把语言写在角上。 */
-export function withCodeLangLabels(html: string): string {
-  return html.replaceAll(
-    /<pre((?:\s[^>]*)?)><code class="language-([\w+#.-]+)">/g,
-    '<pre$1 data-lang="$2"><code class="language-$2">',
-  )
-}
-
 export function insertTableMarkdown(): string {
   return '| 列 | 列 |\n| --- | --- |\n|  |  |'
 }

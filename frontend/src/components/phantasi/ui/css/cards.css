@@ -791,17 +791,32 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 0.85em), transparent);
 }
 
-.phantasi-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .phantasi-story__kicker,
-.phantasi-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .phantasi-story__title,
-.phantasi-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .phantasi-story__byline,
-.phantasi-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .phantasi-story__thumb,
-.phantasi-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .phantasi-story__summary {
+.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__kicker,
+.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__title,
+.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__byline,
+.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__thumb,
+.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__summary {
   opacity: 0;
   pointer-events: none;
 }
 
-.phantasi-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .phantasi-story__peek {
+.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__peek {
   opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__kicker,
+  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__title,
+  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__byline,
+  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__thumb,
+  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__summary {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__peek {
+    opacity: 1;
+  }
 }
 
 .phantasi-story__source {

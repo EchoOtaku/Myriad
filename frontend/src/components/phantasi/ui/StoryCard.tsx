@@ -3,8 +3,19 @@
 import type { CSSProperties, SyntheticEvent } from 'react'
 
 import { forwardRef } from 'react'
+import { scheduleTask } from '../../../hooks/animation/core'
+import { whenPhantasiMotionIdle } from '../../../hooks/animation/pages/phantasiMotion'
 import { cx } from './cx'
-import { peekLaneKeepsAir } from './peekLane'
+import {
+  notePeekPointer,
+  peekLaneKeepsAir,
+  peekLaneIsSwapping,
+  peekNodeFromPoint,
+  peekPreviewFromStory,
+  peekStoryNode,
+  peekSwapHoldsAir,
+  type PeekStoryPreview,
+} from './peekLane'
 import { PhantasiPick } from './Pick'
 
 function hideBrokenSourceIcon(
@@ -14,20 +25,64 @@ function hideBrokenSourceIcon(
 }
 
 export function markPhantasiStoryPeek(target: EventTarget | null, on: boolean): void {
-  if (!(target instanceof Element)) return
-  const node = target.closest('.phantasi-story')
-  if (
-    !(node instanceof HTMLElement)
-    || node.classList.contains('phantasi-story--slot')
-  ) {
-    return
-  }
+  const node = peekStoryNode(target)
+  if (!node) return
   if (on) {
     clearPhantasiStoryPeeks()
     node.classList.add('is-peek')
     return
   }
   node.classList.remove('is-peek')
+}
+
+export function releasePhantasiStoryPeek(
+  target: EventTarget | null,
+  related: EventTarget | null,
+  onEnd?: () => void,
+): void {
+  markPhantasiStoryPeek(target, false)
+  if (peekLaneKeepsAir(target, related)) return
+  if (peekSwapHoldsAir(target)) return
+  onEnd?.()
+}
+
+export function resumePhantasiStoryPeek(
+  onPeek?: (item: PeekStoryPreview) => void,
+): boolean {
+  if (peekLaneIsSwapping()) return false
+  const node = peekNodeFromPoint()
+  if (!node) return false
+  markPhantasiStoryPeek(node, true)
+  const item = peekPreviewFromStory(node)
+  if (item) onPeek?.(item)
+  return true
+}
+
+let peekResumeGen = 0
+let peekResumeStop: (() => void) | null = null
+
+export function cancelPhantasiPeekResume(): void {
+  peekResumeGen += 1
+  peekResumeStop?.()
+  peekResumeStop = null
+}
+
+export function schedulePhantasiPeekResume(
+  onPeek: (item: PeekStoryPreview) => void,
+): void {
+  cancelPhantasiPeekResume()
+  const gen = peekResumeGen
+  peekResumeStop = whenPhantasiMotionIdle(() => {
+    if (gen !== peekResumeGen) return
+    if (resumePhantasiStoryPeek(onPeek)) {
+      cancelPhantasiPeekResume()
+      return
+    }
+    scheduleTask(() => {
+      if (gen !== peekResumeGen) return
+      resumePhantasiStoryPeek(onPeek)
+    })
+  })
 }
 
 export function clearPhantasiStoryPeeks(root?: ParentNode | null): void {
@@ -274,6 +329,7 @@ export const StoryCard = forwardRef<
         onPeek
           ? (event) => {
               if (event.pointerType === 'touch') return
+              notePeekPointer(event)
               markPhantasiStoryPeek(event.currentTarget, true)
               onPeek()
             }
@@ -282,11 +338,40 @@ export const StoryCard = forwardRef<
       onPointerLeave={
         onPeekEnd
           ? (event) => {
+              if (event.pointerType === 'touch') return
+              releasePhantasiStoryPeek(
+                event.currentTarget,
+                event.relatedTarget,
+                onPeekEnd,
+              )
+            }
+          : undefined
+      }
+      onPointerCancel={
+        onPeekEnd
+          ? (event) => {
               markPhantasiStoryPeek(event.currentTarget, false)
-              if (peekLaneKeepsAir(event.currentTarget, event.relatedTarget)) {
-                return
-              }
+              if (peekSwapHoldsAir(event.currentTarget)) return
               onPeekEnd()
+            }
+          : undefined
+      }
+      onFocus={
+        onPeek
+          ? (event) => {
+              markPhantasiStoryPeek(event.currentTarget, true)
+              onPeek()
+            }
+          : undefined
+      }
+      onBlur={
+        onPeekEnd
+          ? (event) => {
+              releasePhantasiStoryPeek(
+                event.currentTarget,
+                event.relatedTarget,
+                onPeekEnd,
+              )
             }
           : undefined
       }

@@ -21,7 +21,12 @@ export const PAGE_FEATURES: Record<string, number> = {
   reports:
     Feature.Visibility | Feature.Interval | Feature.RAF | Feature.DOMBatch,
   phantasi:
-    Feature.Visibility | Feature.Intersection | Feature.Timeout | Feature.Idle,
+    Feature.Visibility |
+    Feature.Intersection |
+    Feature.Timeout |
+    Feature.Idle |
+    Feature.RAF |
+    Feature.DOMBatch,
   config: Feature.Timeout,
   login: Feature.Timeout,
   setup: Feature.Timeout,

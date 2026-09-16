@@ -10,7 +10,6 @@ export {
   clearAllHandlers,
   executeFrontendAction,
   frontendActionDedupeKey,
-  getRegisteredActionTypes,
   hasActionHandler,
   registerActionHandler,
   unregisterActionHandler,

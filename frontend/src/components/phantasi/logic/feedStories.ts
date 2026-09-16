@@ -233,12 +233,6 @@ export function storiesFromSources(
   return shuffleBySeed(stories, seed).slice(0, limit)
 }
 
-export interface FeedStorySpan {
-  from: number
-  to: number
-  epoch: number
-}
-
 export function clampFeedSpan(from: number, to: number, lastIndex: number): {
   from: number
   to: number
@@ -246,37 +240,6 @@ export function clampFeedSpan(from: number, to: number, lastIndex: number): {
   const last = Math.max(0, lastIndex)
   const start = Math.min(Math.max(0, from), last)
   return { from: start, to: Math.min(last, Math.max(start, to)) }
-}
-
-export function jumpFeedSpan(
-  current: FeedStorySpan,
-  index: number,
-  lastIndex: number,
-): FeedStorySpan {
-  const last = Math.max(0, lastIndex)
-  const at = Math.min(Math.max(0, index), last)
-  if (at >= current.from && at <= current.to) return current
-  const next = clampFeedSpan(
-    Math.min(current.from, Math.max(0, at - 1)),
-    Math.max(current.to, at + 1),
-    last,
-  )
-  if (next.from === current.from && next.to === current.to) return current
-  return { ...next, epoch: current.epoch }
-}
-
-export function expandFeedSpan(
-  current: FeedStorySpan,
-  dir: 1 | -1,
-  lastIndex: number,
-): FeedStorySpan {
-  const last = Math.max(0, lastIndex)
-  if (dir > 0) {
-    if (current.to >= last) return current
-    return { ...current, to: current.to + 1 }
-  }
-  if (current.from <= 0) return current
-  return { ...current, from: current.from - 1 }
 }
 
 /** 已拉过的源只增不减；焦点附近再预取后几源。 */
@@ -423,20 +386,6 @@ export function sourceColumnStarts(
   return starts
 }
 
-/** 实装窗里的卡没变就沿用上一份，少触发预热 effect。 */
-export function reusePaintedSlots<T>(
-  prev: readonly T[],
-  next: readonly T[],
-): T[] {
-  if (
-    prev.length === next.length
-    && prev.every((item, i) => item === next[i])
-  ) {
-    return prev as T[]
-  }
-  return next as T[]
-}
-
 /** 按列收卡，扩窗时只接右边，不扫整轨。列里的卡没变就沿用上一份。 */
 export function storySlotsByColumn<T extends { column: number }>(
   slots: readonly T[],
@@ -464,20 +413,6 @@ export function storySlotsByColumn<T extends { column: number }>(
   }
   if (reused === map.size) return prev as Map<number, T[]>
   return map
-}
-
-export function paintedSlotsInWindow<T>(
-  byCol: ReadonlyMap<number, readonly T[]>,
-  from: number,
-  to: number,
-): T[] {
-  const next: T[] = []
-  for (let col = from; col <= to; col++) {
-    const slots = byCol.get(col)
-    if (!slots) continue
-    for (const slot of slots) next.push(slot)
-  }
-  return next
 }
 
 /** 窗重叠的列接着上一份；拼轨变了或错开再造。 */
@@ -578,29 +513,6 @@ export function clipPaintedBatches<
   return out
 }
 
-/** 只扩右边时接着上一份；拼轨变了或收窗再扫列。 */
-export function extendPaintedSlots<T>(
-  prev: readonly T[],
-  prevFrom: number,
-  prevTo: number,
-  byCol: ReadonlyMap<number, readonly T[]>,
-  from: number,
-  to: number,
-  slotsChanged = false,
-): T[] {
-  if (slotsChanged || from !== prevFrom || to < prevTo || prev.length === 0) {
-    return paintedSlotsInWindow(byCol, from, to)
-  }
-  if (to === prevTo) return prev as T[]
-  const next = prev.slice()
-  for (let col = prevTo + 1; col <= to; col++) {
-    const slots = byCol.get(col)
-    if (!slots) continue
-    for (const slot of slots) next.push(slot)
-  }
-  return next
-}
-
 /** 每列第一张的下标。列不是单调递增，不能按列号直接算。 */
 export function storyColumnLeads(
   slots: ReadonlyArray<{ column: number }>,
@@ -696,30 +608,6 @@ export function reuseFeedStories(
     return story
   })
   return changed ? out : (prev as FeedStory[])
-}
-
-export function storyGhostColumns(
-  slots: ReadonlyArray<{ story: FeedStory; column: number }>,
-  from: number,
-  to: number,
-): Array<{ id: number; column: number }> {
-  const seen = new Set<number>()
-  const ghosts: Array<{ id: number; column: number }> = []
-  for (const slot of slots) {
-    if (slot.column >= from && slot.column <= to) continue
-    if (seen.has(slot.column)) continue
-    seen.add(slot.column)
-    ghosts.push({ id: slot.story.id, column: slot.column })
-  }
-  return ghosts
-}
-
-export function storyRailColumns(stories: readonly FeedStory[]): number {
-  let cols = 0
-  for (const group of groupStoriesBySource(stories)) {
-    cols += Math.max(1, Math.ceil(group.stories.length / 2))
-  }
-  return Math.max(1, cols)
 }
 
 export function latestStoryPreview(
@@ -830,28 +718,4 @@ export function storiesForSource(
 export interface FeedStorySlot {
   stamp: number
   items: FeedStory[]
-}
-
-/** 换源先画能用的：精确戳 → 本会话槽 → 宽松缓存 → 旧槽。 */
-export function paintReadyStories(
-  stamp: number,
-  exact: FeedStory[] | null,
-  loose: FeedStory[] | null,
-  slot?: FeedStorySlot,
-): FeedStory[] | null {
-  return (
-    exact ??
-    (slot?.stamp === stamp ? slot.items : null) ??
-    loose ??
-    slot?.items ??
-    null
-  )
-}
-
-export function storiesAreFresh(
-  stamp: number,
-  exact: FeedStory[] | null,
-  slot?: FeedStorySlot,
-): boolean {
-  return exact != null || slot?.stamp === stamp
 }

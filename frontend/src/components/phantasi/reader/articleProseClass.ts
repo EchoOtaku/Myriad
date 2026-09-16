@@ -146,7 +146,7 @@ export function getArticleProseClass(
               [&_th[align=center]]:text-center [&_td[align=center]]:text-center
               [&_th[align=right]]:text-right [&_td[align=right]]:text-right
 
-              /* 代码块语言角标（contentPostprocess 从 code.language-* 抄到 data-lang） */
+              /* 代码块语言角标（decorateNoteReadSurface 从 code.language-* 抄到 wrapper data-lang） */
               [&_.code-block-wrapper[data-lang]]:before:content-[attr(data-lang)]
               [&_.code-block-wrapper[data-lang]]:before:absolute
               [&_.code-block-wrapper[data-lang]]:before:top-3 [&_.code-block-wrapper[data-lang]]:before:left-4

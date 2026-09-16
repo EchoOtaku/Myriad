@@ -11,7 +11,6 @@ import {
   markdownToVisualHtml,
   setVisualImageResolver,
   visualHtmlToMarkdown,
-  withCodeLangLabels,
   withLinkDefinitions,
 } from './noteVisual.ts'
 
@@ -408,13 +407,6 @@ describe('blocksWithOffsets / blockIndexAt', () => {
     assert.equal(blockIndexAt(md, 13), 1)
     assert.equal(blockIndexAt(md, 14), 2)
     assert.equal(blockIndexAt(md, 99), 3)
-  })
-
-  it('预览 HTML 里 pre 带了别的属性，语言角标照样加', () => {
-    assert.equal(
-      withCodeLangLabels('<pre data-md-start="1" data-md-end="9"><code class="language-rust">x</code></pre>'),
-      '<pre data-md-start="1" data-md-end="9" data-lang="rust"><code class="language-rust">x</code></pre>',
-    )
   })
 })
 

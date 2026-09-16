@@ -5,8 +5,7 @@ import { it } from 'node:test'
 import {
   commentAnchorStale,
   cssCustomHighlightAvailable,
-  highlightAnchoredAnnotations,
-  highlightAnchoredComments,
+  paintAnchoredAnnotations,
   paintAnchoredComments,
   resolveCommentAnchor,
 } from './commentAnchors'
@@ -48,105 +47,93 @@ it('uses offsets and context to distinguish repeated text without guessing ambig
 })
 
 it('highlights a cross-tag quote once, preserves markup and excludes media text', () => {
-  const dom = new JSDOM('')
-  const original = Object.getOwnPropertyDescriptor(globalThis, 'DOMParser')
-  Object.defineProperty(globalThis, 'DOMParser', {
-    configurable: true,
-    value: dom.window.DOMParser,
-  })
-  try {
-    const html =
-      '<p>one <em>two</em> then one two</p><div class="phantasi-embed-card">media text</div>'
-    const comments = [
+  const live = new JSDOM(
+    '<p>one <em>two</em> then one two</p><div class="phantasi-embed-card">media text</div>',
+  )
+  const root = live.window.document.body
+  paintAnchoredComments(
+    root,
+    [
       { id: 1, selected_text: 'one two', start_offset: 0, end_offset: 7 },
       { id: 2, selected_text: 'two', start_offset: 4, end_offset: 7 },
       { id: 3, selected_text: 'media text' },
-    ] as CommentItem[]
-    const result = new dom.window.DOMParser().parseFromString(
-      highlightAnchoredComments(html, comments, 'light'),
-      'text/html',
-    )
-    assert.equal(result.body.textContent, 'one two then one twomedia text')
-    assert.equal(
-      Iterator.from(result.querySelectorAll('[data-comment-id="1"]'))
-        .map((mark: Element) => mark.textContent)
-        .toArray()
-        .join(''),
-      'one two',
-    )
-    assert.equal(
-      result.querySelector('em [data-comment-id="2"]').textContent,
-      'two',
-    )
-    assert.equal(result.querySelector('[data-comment-id="3"]'), null)
-    const widgeted = highlightAnchoredComments(
-      '<p>articlequote</p><div class="note-widget" data-widget="quote">widgetquote</div>',
-      [
-        { id: 8, selected_text: 'articlequote' },
-        { id: 9, selected_text: 'widgetquote' },
-      ] as CommentItem[],
-      'light',
-    )
-    const widgetDoc = new dom.window.DOMParser().parseFromString(widgeted, 'text/html')
-    assert.equal(widgetDoc.querySelector('[data-comment-id="8"]')?.textContent, 'articlequote')
-    assert.equal(widgetDoc.querySelector('.note-widget [data-comment-id="9"]'), null)
-    assert.equal(
-      result.querySelector('p').lastChild.textContent,
-      ' then one two',
-    )
-  } finally {
-    if (original) Object.defineProperty(globalThis, 'DOMParser', original)
-    else Reflect.deleteProperty(globalThis, 'DOMParser')
-    dom.window.close()
-  }
+    ] as CommentItem[],
+    'light',
+  )
+  assert.equal(root.textContent, 'one two then one twomedia text')
+  assert.equal(
+    Iterator.from(root.querySelectorAll('[data-comment-id="1"]'))
+      .map((mark: Element) => mark.textContent)
+      .toArray()
+      .join(''),
+    'one two',
+  )
+  assert.equal(root.querySelector('em [data-comment-id="2"]')?.textContent, 'two')
+  assert.equal(root.querySelector('[data-comment-id="3"]'), null)
+  assert.equal(root.querySelector('p')?.lastChild?.textContent, ' then one two')
+  live.window.close()
+
+  const widgeted = new JSDOM(
+    '<p>articlequote</p><div class="note-widget" data-widget="quote">widgetquote</div>',
+  )
+  paintAnchoredComments(
+    widgeted.window.document.body,
+    [
+      { id: 8, selected_text: 'articlequote' },
+      { id: 9, selected_text: 'widgetquote' },
+    ] as CommentItem[],
+    'light',
+  )
+  assert.equal(
+    widgeted.window.document.querySelector('[data-comment-id="8"]')?.textContent,
+    'articlequote',
+  )
+  assert.equal(
+    widgeted.window.document.querySelector('.note-widget [data-comment-id="9"]'),
+    null,
+  )
+  widgeted.window.close()
 })
 
 it('annotates a unique term with the comment index and skips repeats and media', () => {
-  const dom = new JSDOM('')
-  const original = Object.getOwnPropertyDescriptor(globalThis, 'DOMParser')
-  Object.defineProperty(globalThis, 'DOMParser', {
-    configurable: true,
-    value: dom.window.DOMParser,
-  })
-  try {
-    const html =
-      '<p>alpha <em>term</em> later term</p><div class="phantasi-embed-card">solo</div>'
-    const result = new dom.window.DOMParser().parseFromString(
-      highlightAnchoredAnnotations(html, [
-        { type: 'term', term: 'term', explanation: 'n', position: 6 },
-        { type: 'term', term: 'solo', explanation: 'media' },
-        { type: 'term', term: 'missing', explanation: 'no' },
-      ]),
-      'text/html',
-    )
-    assert.equal(
-      result.querySelector('em .phantasiai-annotation')?.textContent,
-      'term',
-    )
-    assert.equal(result.querySelectorAll('.phantasiai-annotation').length, 1)
-    assert.equal(result.querySelector('.phantasi-embed-card .phantasiai-annotation'), null)
-    const widgetHtml =
-      '<p>articlequote</p><div class="note-widget" data-widget="quote">widgetquote</div>'
-    const widgeted = new dom.window.DOMParser().parseFromString(
-      highlightAnchoredAnnotations(widgetHtml, [
-        { type: 'term', term: 'articlequote', explanation: 'n' },
-        { type: 'term', term: 'widgetquote', explanation: 'n' },
-      ]),
-      'text/html',
-    )
-    assert.equal(widgeted.querySelector('p .phantasiai-annotation')?.textContent, 'articlequote')
-    assert.equal(widgeted.querySelector('.note-widget .phantasiai-annotation'), null)
-    assert.equal(typeof cssCustomHighlightAvailable(), 'boolean')
-    const ambiguous = highlightAnchoredAnnotations(
-      '<p>term then term</p>',
-      [{ type: 'term', term: 'term', explanation: 'n' }],
-    )
-    assert.equal(ambiguous.includes('phantasiai-annotation'), false)
-  } finally {
-    if (original) Object.defineProperty(globalThis, 'DOMParser', original)
-    else Reflect.deleteProperty(globalThis, 'DOMParser')
-    dom.window.close()
-  }
+  const live = new JSDOM(
+    '<p>alpha <em>term</em> later term</p><div class="phantasi-embed-card">solo</div>',
+  )
+  const root = live.window.document.body
+  paintAnchoredAnnotations(root, [
+    { type: 'term', term: 'term', explanation: 'n', position: 6 },
+    { type: 'term', term: 'solo', explanation: 'media' },
+    { type: 'term', term: 'missing', explanation: 'no' },
+  ])
+  assert.equal(root.querySelector('em .phantasiai-annotation')?.textContent, 'term')
+  assert.equal(root.querySelectorAll('.phantasiai-annotation').length, 1)
+  assert.equal(root.querySelector('.phantasi-embed-card .phantasiai-annotation'), null)
+  live.window.close()
+
+  const widgeted = new JSDOM(
+    '<p>articlequote</p><div class="note-widget" data-widget="quote">widgetquote</div>',
+  )
+  paintAnchoredAnnotations(widgeted.window.document.body, [
+    { type: 'term', term: 'articlequote', explanation: 'n' },
+    { type: 'term', term: 'widgetquote', explanation: 'n' },
+  ])
+  assert.equal(
+    widgeted.window.document.querySelector('p .phantasiai-annotation')?.textContent,
+    'articlequote',
+  )
+  assert.equal(
+    widgeted.window.document.querySelector('.note-widget .phantasiai-annotation'),
+    null,
+  )
+  widgeted.window.close()
+
+  assert.equal(typeof cssCustomHighlightAvailable(), 'boolean')
+  const ambiguous = new JSDOM('<p>term then term</p>')
+  paintAnchoredAnnotations(ambiguous.window.document.body, [
+    { type: 'term', term: 'term', explanation: 'n' },
+  ])
+  assert.equal(ambiguous.window.document.querySelector('.phantasiai-annotation'), null)
+  ambiguous.window.close()
 })
 
 it('paints comment marks on a live tree without serializing the article', () => {

@@ -14,6 +14,19 @@ it('caps prefetch ids to one unique positive article', () => {
   assert.deepEqual(selectPrefetchIds([8, 9], 2), [8, 9])
 })
 
+it('same in-flight article is not prefetched again', async () => {
+  const loaded: number[] = []
+  setArticlePrefetchLoader(async (id) => {
+    loaded.push(id)
+  })
+  const first = prefetchArticleDetails([21])
+  const again = prefetchArticleDetails([21])
+  await Promise.resolve()
+  assert.equal(again, first)
+  assert.deepEqual(loaded, [21])
+  setArticlePrefetchLoader(null)
+})
+
 it('loads only the capped target and ignores later work after cancel', async () => {
   const loaded: number[] = []
   setArticlePrefetchLoader(async (id) => {

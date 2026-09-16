@@ -10,17 +10,12 @@ import {
   eagerStoryDelta,
   ensureStoryShells,
   followRailScroll,
-  followSourceRailScroll,
   isDiscreteWheel,
-  nearestRailSlot,
-  neighborRailSlot,
   paintStoryAway,
   paintStoryLiveCols,
-  RAIL_COMMIT_RATIO,
   RAIL_FLING_MIN_PX_S,
   RAIL_FLING_SLOT_PX_S,
   RAIL_MOUNT_BOOT_TO,
-  RAIL_MOUNT_GRAB_AHEAD,
   RAIL_MOUNT_GROW_AHEAD,
   RAIL_MOUNT_LIVE_PAD,
   RAIL_MOUNT_PAN_EXTRA,
@@ -29,7 +24,6 @@ import {
   railCardKeepsPaint,
   railCardOffset,
   railCoastStep,
-  railColumnSlotAt,
   railColumnSlots,
   railGroupStarts,
   railLeadColumn,
@@ -38,23 +32,18 @@ import {
   railMaxScroll,
   railMountColumns,
   railMountColumnsCovered,
-  railMountColumnsGrab,
   railMountColumnsGrow,
   railMountColumnsPan,
   railMountColumnsSettle,
   railMountColumnsSticky,
   railOverflowLeft,
   railSeatScroll,
-  railSeatSlots,
   railSettleTau,
   railSlotOffsets,
   railTrackScroll,
   recycleStoryDomShellsOutside,
   scrollFromTrackTransform,
-  settleRailSlot,
   sourceAtScroll,
-  storyMountGrid,
-  storyMountGridColumn,
   storyMountWindow,
   storyRailTrackSize,
   wakeStoryCovers,
@@ -109,14 +98,6 @@ describe('railSeatScroll', () => {
     assert.equal(railSeatScroll(cards, 2, 44), 596)
     assert.equal(railCardOffset(cards, 2), 640)
     assert.equal(railCardOffset(cards, -1), 0)
-  })
-})
-
-describe('railSeatSlots', () => {
-  it('吸入槽位跟溢出座定同一落点', () => {
-    assert.deepEqual(railSeatSlots(slots, 0), [0, 320, 640, 960])
-    assert.deepEqual(railSeatSlots(slots, 44), [0, 276, 596, 916])
-    assert.equal(railSeatSlots(slots, 44)[2], railSeatScroll(cards, 2, 44))
   })
 })
 
@@ -251,49 +232,9 @@ describe('railCardKeepsPaint / railMountColumns', () => {
     assert.ok(settled.to >= ideal.to + (RAIL_MOUNT_SETTLE_EXTRA - 2))
   })
 
-  it('下手一次补出长滑预显，不拆左边', () => {
-    const prev = { from: 5, to: 10 }
-    const grabbed = railMountColumnsGrab(prev, 840, 800, 280, 40, 1, 3)
-    const need = railMountColumns(840, 800, 280, 40, 1, 3)
-    assert.ok(grabbed.from <= prev.from)
-    assert.ok(grabbed.from <= need.from)
-    assert.ok(grabbed.to >= need.to + RAIL_MOUNT_GRAB_AHEAD)
-    assert.equal(
-      railMountColumnsGrab(grabbed, 840, 800, 280, 40, 1, 3),
-      grabbed,
-    )
-  })
-
-  it('短栅只排实装列，总宽仍按全列，视觉列不改绝对列', () => {
-    const start = storyMountGrid(1, 12, 40)
-    assert.equal(start.mounted, 12)
-    assert.equal(start.left, 0)
-    assert.equal(start.right, 28)
-    assert.equal(
-      start.template,
-      'repeat(12, var(--phantasi-story-w)) minmax(0, calc(28 * (var(--phantasi-story-w) + 0.75rem) - 0.75rem))',
-    )
-    const mid = storyMountGrid(10, 20, 40)
-    assert.equal(mid.mounted + mid.left + mid.right, 40)
-    assert.ok(mid.mounted <= 12)
-    const w = 280
-    const g = 12
-    const span = (left: number, mounted: number, right: number) => {
-      const tracks = [
-        ...(left > 0 ? [left * w + (left - 1) * g] : []),
-        ...Array.from({ length: mounted }, () => w),
-        ...(right > 0 ? [right * w + (right - 1) * g] : []),
-      ]
-      return tracks.reduce((sum, track) => sum + track, 0)
-        + Math.max(0, tracks.length - 1) * g
-    }
-    assert.equal(span(mid.left, mid.mounted, mid.right), 40 * w + 39 * g)
-    assert.equal(span(start.left, start.mounted, start.right), 40 * w + 39 * g)
-    assert.equal(storyMountGrid(1, 40, 40).template, 'repeat(40, var(--phantasi-story-w))')
+  it('实装窗夹在全列里，总宽按全列算', () => {
     assert.deepEqual(storyMountWindow(1, 12, 5), { from: 1, to: 5 })
     assert.deepEqual(storyMountWindow(10, 20, 40), { from: 10, to: 20 })
-    assert.equal(storyMountGridColumn(10, 1), 10)
-    assert.equal(storyMountGridColumn(10, 10), 2)
     assert.equal(storyRailTrackSize(1), 'var(--phantasi-story-w)')
     assert.equal(
       storyRailTrackSize(40),
@@ -684,64 +625,6 @@ describe('railOverflowLeft', () => {
   })
 })
 
-describe('settleRailSlot', () => {
-  it('没推过阈值就弹回当前槽', () => {
-    const stay = 320 * (RAIL_COMMIT_RATIO - 0.04)
-    assert.equal(settleRailSlot(stay, 0, slots, max), 0)
-  })
-
-  it('推过阈值就坐进下一槽', () => {
-    const push = 320 * (RAIL_COMMIT_RATIO + 0.04)
-    assert.equal(settleRailSlot(push, 0, slots, max), 320)
-  })
-
-  it('快甩至少进一格，远则跳多格', () => {
-    assert.equal(
-      settleRailSlot(20, RAIL_FLING_SLOT_PX_S + 10, slots, max),
-      320,
-    )
-    assert.equal(settleRailSlot(20, 2400, slots, max), 640)
-  })
-
-  it('回甩至少退一格，远则跳多格', () => {
-    assert.equal(
-      settleRailSlot(320, -(RAIL_FLING_SLOT_PX_S + 10), slots, max, 320),
-      0,
-    )
-    assert.equal(settleRailSlot(500, -2400, slots, max, 640), 0)
-  })
-
-  it('相对起手槽往回推过阈值就坐进上一张', () => {
-    const stay = 320 - 320 * (RAIL_COMMIT_RATIO - 0.04)
-    const push = 320 - 320 * (RAIL_COMMIT_RATIO + 0.04)
-    assert.equal(settleRailSlot(stay, 0, slots, max, 320), 320)
-    assert.equal(settleRailSlot(push, 0, slots, max, 320), 0)
-  })
-
-  it('一次推过好几格才吸入更远，轻推只进一格', () => {
-    assert.equal(settleRailSlot(400, 0, slots, max, 0), 320)
-    assert.equal(settleRailSlot(800, 0, slots, max, 0), 640)
-    assert.equal(settleRailSlot(500, 0, slots, max, 640), 320)
-  })
-
-  it('轻甩即使速度快也只进一格', () => {
-    assert.equal(settleRailSlot(80, 1200, slots, max, 0), 320)
-  })
-})
-
-describe('neighborRailSlot', () => {
-  it('滚轮一格推入下一张', () => {
-    assert.equal(neighborRailSlot(0, 1, slots, max), 320)
-    assert.equal(neighborRailSlot(320, 1, slots, max), 640)
-  })
-
-  it('往回一格到上一张', () => {
-    assert.equal(neighborRailSlot(80, -1, slots, max), 0)
-    assert.equal(neighborRailSlot(320, -1, slots, max), 0)
-    assert.equal(neighborRailSlot(640, -1, slots, max), 320)
-  })
-})
-
 describe('railSlotOffsets', () => {
   it('两列同左缘只记一槽', () => {
     assert.deepEqual(
@@ -762,25 +645,6 @@ describe('railMaxScroll', () => {
     assert.equal(railMaxScroll([0]), 0)
     assert.equal(railMaxScroll(slots), 960)
     assert.equal(railMaxScroll(slots, 44), 916)
-  })
-})
-
-describe('nearestRailSlot', () => {
-  it('贴最近的左缘', () => {
-    assert.equal(nearestRailSlot(10, slots, max), 0)
-    assert.equal(nearestRailSlot(300, slots, max), 320)
-  })
-})
-
-describe('railColumnSlotAt', () => {
-  it('等距列跟 nearestRailSlot 同一落点', () => {
-    const colW = 280
-    const grid = railColumnSlots(4, colW)
-    const end = railMaxScroll(grid)
-    for (const x of [0, 10, 139, 140, 141, 279, 280, 419, 420, 700, 840, 900]) {
-      assert.equal(railColumnSlotAt(x, colW, end), nearestRailSlot(x, grid, end))
-    }
-    assert.equal(railColumnSlotAt(0, 0, end), 0)
   })
 })
 
@@ -880,7 +744,14 @@ describe('followRailScroll', () => {
       ),
       3,
     )
-    assert.equal(followSourceRailScroll(200, stories, sourceOf, sites), 100)
+    assert.equal(
+      followRailScroll(
+        200,
+        railGroupStarts(stories, sourceOf).map((block) => block.start),
+        sites.map((card) => card.left),
+      ),
+      100,
+    )
   })
 })
 

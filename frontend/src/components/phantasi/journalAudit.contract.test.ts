@@ -68,7 +68,6 @@ describe('手帐审计契约', () => {
     assert.match(anchors, /export function paintAnchoredComments/)
     assert.match(anchors, /'highlights' in CSS/)
     assert.doesNotMatch(comments, /export function highlightComments/)
-    assert.doesNotMatch(comments, /applyTextDecorations\(/)
   })
 
   it('草稿列表走 pageData，墙用 excerpt 不带 content_md', () => {

@@ -5,7 +5,6 @@ use axum::{
     extract::{ConnectInfo, Path, Query, State},
     http::{HeaderMap, StatusCode},
 };
-use std::net::SocketAddr;
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
@@ -13,6 +12,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::net::SocketAddr;
 
 use crate::error::HttpError;
 use crate::middleware::client_ip::{client_ip_from_parts, trusted_proxy_headers_enabled};
@@ -237,12 +237,9 @@ pub(crate) async fn create_application(
 
     // 与 rate_limit 的 extract_client_ip 同一套：TCP peer + 可信代理头。
     // peer 不能是 None，否则 should_trust_proxy_headers 直接失败，限流和审计都空。
-    let applicant_ip = client_ip_from_parts(
-        &headers,
-        Some(peer.ip()),
-        trusted_proxy_headers_enabled(),
-    )
-    .map(|ip| ip.to_string());
+    let applicant_ip =
+        client_ip_from_parts(&headers, Some(peer.ip()), trusted_proxy_headers_enabled())
+            .map(|ip| ip.to_string());
     if let Some(ip) = applicant_ip.as_deref() {
         let since = Utc::now() - RATE_WINDOW;
         let recent = phantasi_source_applications::Entity::find()

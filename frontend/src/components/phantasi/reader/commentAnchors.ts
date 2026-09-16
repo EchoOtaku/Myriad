@@ -225,24 +225,3 @@ export function paintAnchoredAnnotations(
     })
   }
 }
-
-export function highlightAnchoredComments(
-  html: string,
-  comments: CommentItem[],
-  theme: ThemeKey,
-): string {
-  if (!comments.length) return html
-  const root = new DOMParser().parseFromString(html, 'text/html').body
-  paintAnchoredComments(root, comments, theme)
-  return root.innerHTML
-}
-
-export function highlightAnchoredAnnotations(
-  html: string,
-  annotations: AnnotationItem[],
-): string {
-  if (!annotations.length) return html
-  const root = new DOMParser().parseFromString(html, 'text/html').body
-  paintAnchoredAnnotations(root, annotations)
-  return root.innerHTML
-}

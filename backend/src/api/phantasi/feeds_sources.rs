@@ -4,7 +4,7 @@ use myriad_error::AppError;
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use chrono::Utc;
@@ -73,12 +73,24 @@ pub(crate) fn build_pulses_sql(source_count: usize) -> String {
     )
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct ListSourcesQuery {
+    /// `catalog` returns source rows only — no unread overlay, previews, or pulses.
+    view: Option<String>,
+}
+
+fn is_catalog_view(view: Option<&str>) -> bool {
+    view == Some("catalog")
+}
+
 /// 获取订阅源列表（带最新文章预览）
 /// 游客可访问（只读）。未读聚合跳过；预览 SQL 仍 LEFT JOIN 出 is_read/is_starred（游客 $1=-1）。
 /// 非管理员用户看不到 admin_only=true 的订阅源
+/// `view=catalog` 只回源行，给友情链接这类不读预览的首页卡。
 pub(crate) async fn list_sources(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
+    Query(query): Query<ListSourcesQuery>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
     if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
@@ -86,18 +98,31 @@ pub(crate) async fn list_sources(
     }
 
     // 获取订阅源（非管理员过滤掉 admin_only=true 的源）
-    let mut query = phantasi_sources::Entity::find().order_by_asc(phantasi_sources::Column::Name);
+    let mut source_query =
+        phantasi_sources::Entity::find().order_by_asc(phantasi_sources::Column::Name);
 
     if !is_admin {
-        query = query.filter(phantasi_sources::Column::AdminOnly.eq(false));
+        source_query = source_query.filter(phantasi_sources::Column::AdminOnly.eq(false));
     }
 
-    let sources = match query.all(&db).await {
+    let sources = match source_query.all(&db).await {
         Ok(s) => s,
         Err(e) => {
             return Err(phantasi_store_http("list sources", e));
         }
     };
+
+    if is_catalog_view(query.view.as_deref()) {
+        let responses: Vec<SourceWithRecentItems> = sources
+            .into_iter()
+            .map(|s| SourceWithRecentItems {
+                source: s.into(),
+                recent_items: Vec::new(),
+                pulses: Vec::new(),
+            })
+            .collect();
+        return Ok(Json(json!({ "success": true, "sources": responses })));
+    }
 
     // 获取所有订阅源的最新文章（每个源最多 8 篇）
     let source_ids: Vec<i32> = sources.iter().map(|s| s.id).collect();
