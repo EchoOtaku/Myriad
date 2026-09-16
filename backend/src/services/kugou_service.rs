@@ -82,7 +82,7 @@ impl KugouService {
 
         // 缓存（存解码后的 KRC 文本，包装为 JSON 字符串）
         {
-            let cache = MUSIC_CACHE.read().await;
+            let mut cache = MUSIC_CACHE.write().await;
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.expires_at > Instant::now() {
                     if let Some(s) = entry.data.as_str() {

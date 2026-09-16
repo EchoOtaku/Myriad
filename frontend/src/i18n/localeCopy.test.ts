@@ -5,6 +5,26 @@ import { loadLocale } from './loadLocale.ts'
 import { copyForLocale, currentCopy, formatCurrent } from './localeCopy.ts'
 
 describe('currentCopy', () => {
+  it('keeps the full English settings catalog out of the synchronous service fallback', () => {
+    const src = readFileSync(new URL('./localeCopy.ts', import.meta.url), 'utf8')
+    assert.equal(/import .* from ['"]\.\/config\.en-US\.json['"]/.test(src), false)
+  })
+
+  it('preserves every synchronous settings service message', () => {
+    const full = JSON.parse(readFileSync(new URL('./config.en-US.json', import.meta.url), 'utf8'))
+    const copy = currentCopy().config
+    for (const key of [
+      'moduleVisibilitySaveFailed', 'reportSettingsSaveFailed', 'loadConfigFailed',
+      'permissionsSaveFailed', 'usersUpdateFailed', 'usersLoadError',
+      'usersDeleteFailed', 'usersUnlinkFailed', 'discordOAuthAppMissing',
+      'hitokotoSaveFailed', 'hitokotoLoadFailed', 'mcpSaveFailed',
+      'mcpInvalidConfig', 'mcpLoadFailed',
+    ] as const) assert.equal(copy[key], full[key])
+    for (const key of ['exportFailed', 'loadFailed', 'aiUsageLoadFailed'] as const) {
+      assert.equal(copy.analytics[key], full.analytics[key])
+    }
+  })
+
   it('does not statically import ja or zh locale modules', () => {
     const src = readFileSync(new URL('./localeCopy.ts', import.meta.url), 'utf8')
     assert.equal(src.includes('ja-JP.json'), false)

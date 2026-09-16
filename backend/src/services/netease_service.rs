@@ -18,6 +18,91 @@ use super::netease_utils::{
 const MAX_TRACKS_LIMIT: usize = 5000;
 // 内存保护：限制缓存最大条目数
 const MAX_CACHE_ENTRIES: usize = 50;
+const MAX_MUSIC_CACHE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_RATE_LIMIT_KEYS: usize = 1024;
+
+struct StoredMusicEntry {
+    entry: CacheEntry,
+    size_bytes: usize,
+}
+
+/// Every music provider shares these limits; callers cannot bypass eviction.
+#[derive(Default)]
+pub struct MusicCache {
+    entries: HashMap<String, StoredMusicEntry>,
+    size_bytes: usize,
+}
+
+impl MusicCache {
+    fn prune(&mut self, now: Instant) {
+        self.entries.retain(|_, stored| {
+            if stored.entry.expires_at <= now {
+                self.size_bytes -= stored.size_bytes;
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    pub fn get(&mut self, key: &str) -> Option<&CacheEntry> {
+        self.prune(Instant::now());
+        self.entries.get(key).map(|stored| &stored.entry)
+    }
+
+    pub fn insert(&mut self, key: String, entry: CacheEntry) {
+        let now = Instant::now();
+        self.prune(now);
+        if let Some(previous) = self.entries.remove(&key) {
+            self.size_bytes -= previous.size_bytes;
+        }
+        let size_bytes = music_value_bytes(&entry.data)
+            .saturating_add(key.capacity())
+            .saturating_add(std::mem::size_of::<StoredMusicEntry>());
+        if entry.expires_at <= now || size_bytes > MAX_MUSIC_CACHE_BYTES {
+            return;
+        }
+        while self.entries.len() >= MAX_CACHE_ENTRIES
+            || self.size_bytes.saturating_add(size_bytes) > MAX_MUSIC_CACHE_BYTES
+        {
+            let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, stored)| stored.entry.expires_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            if let Some(removed) = self.entries.remove(&oldest) {
+                self.size_bytes -= removed.size_bytes;
+            }
+        }
+        self.size_bytes += size_bytes;
+        self.entries
+            .insert(key, StoredMusicEntry { entry, size_bytes });
+    }
+}
+
+// Account for JSON containers as well as string payloads, without serializing
+// another full copy just to decide whether it fits. Allocator overhead is approximate.
+fn music_value_bytes(value: &Value) -> usize {
+    let heap = match value {
+        Value::String(text) => text.capacity(),
+        Value::Array(items) => items.iter().fold(
+            items
+                .capacity()
+                .saturating_mul(std::mem::size_of::<Value>()),
+            |sum, item| sum.saturating_add(music_value_bytes(item)),
+        ),
+        Value::Object(items) => items.iter().fold(0usize, |sum, (key, item)| {
+            sum.saturating_add(key.capacity())
+                .saturating_add(std::mem::size_of::<String>() + 3 * std::mem::size_of::<usize>())
+                .saturating_add(music_value_bytes(item))
+        }),
+        _ => 0,
+    };
+    std::mem::size_of::<Value>().saturating_add(heap)
+}
 
 // 缓存结构
 pub struct CacheEntry {
@@ -44,7 +129,14 @@ impl RateLimiter {
         let one_minute_ago = now.checked_sub(Duration::from_secs(60));
         let one_hour_ago = now.checked_sub(Duration::from_secs(3600));
 
-        // 清理过期的请求记录
+        // Reclaim whole idle resources, including keys never requested again.
+        if let Some(hour_ago) = one_hour_ago {
+            self.requests
+                .retain(|_, times| times.last().is_some_and(|at| *at > hour_ago));
+        }
+        if !self.requests.contains_key(key) && self.requests.len() >= MAX_RATE_LIMIT_KEYS {
+            return false;
+        }
         let times = self.requests.entry(key.to_string()).or_default();
 
         // 如果无法计算一小时前的时间点，保留所有记录
@@ -71,8 +163,8 @@ impl RateLimiter {
 }
 
 // 全局缓存和限流器
-pub static MUSIC_CACHE: Lazy<Arc<RwLock<HashMap<String, CacheEntry>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+pub static MUSIC_CACHE: Lazy<Arc<RwLock<MusicCache>>> =
+    Lazy::new(|| Arc::new(RwLock::new(MusicCache::default())));
 pub static RATE_LIMITER: Lazy<Arc<RwLock<RateLimiter>>> =
     Lazy::new(|| Arc::new(RwLock::new(RateLimiter::new())));
 
@@ -107,7 +199,7 @@ impl NeteaseService {
 
         // 检查缓存（歌单缓存7天）
         if use_cache {
-            let cache = MUSIC_CACHE.read().await;
+            let mut cache = MUSIC_CACHE.write().await;
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.expires_at > Instant::now() {
                     tracing::debug!("✅ Cache hit for playlist: {}", playlist_id);
@@ -363,25 +455,6 @@ impl NeteaseService {
         {
             let mut cache = MUSIC_CACHE.write().await;
 
-            // 缓存清理：如果缓存条目过多，删除过期条目
-            if cache.len() >= MAX_CACHE_ENTRIES {
-                let now = Instant::now();
-                cache.retain(|_, entry| entry.expires_at > now);
-
-                // 如果仍然过多，删除最旧的条目
-                if cache.len() >= MAX_CACHE_ENTRIES {
-                    // 找到最旧的条目并删除
-                    if let Some(oldest_key) = cache
-                        .iter()
-                        .min_by_key(|(_, entry)| entry.expires_at)
-                        .map(|(key, _)| key.clone())
-                    {
-                        cache.remove(&oldest_key);
-                        tracing::debug!("🧹 Removed oldest cache entry: {}", oldest_key);
-                    }
-                }
-            }
-
             cache.insert(
                 cache_key,
                 CacheEntry {
@@ -507,7 +580,7 @@ impl NeteaseService {
 
         // 检查缓存
         {
-            let cache = MUSIC_CACHE.read().await;
+            let mut cache = MUSIC_CACHE.write().await;
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.expires_at > Instant::now() {
                     return Ok(entry.data.clone());
@@ -586,7 +659,7 @@ impl NeteaseService {
 
         // 检查缓存
         {
-            let cache = MUSIC_CACHE.read().await;
+            let mut cache = MUSIC_CACHE.write().await;
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.expires_at > Instant::now() {
                     return Ok(entry.data.clone());
@@ -661,7 +734,7 @@ impl NeteaseService {
 
         // 检查缓存（歌曲详情缓存24小时）
         {
-            let cache = MUSIC_CACHE.read().await;
+            let mut cache = MUSIC_CACHE.write().await;
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.expires_at > Instant::now() {
                     return Ok(entry.data.clone());
@@ -807,5 +880,60 @@ impl NeteaseService {
 impl Default for NeteaseService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod memory_budget_tests {
+    use super::*;
+
+    fn entry(data: Value, expires_at: Instant) -> CacheEntry {
+        CacheEntry { data, expires_at }
+    }
+
+    #[test]
+    fn music_cache_bounds_entries_bytes_and_reclaims_expired_payloads() {
+        let mut cache = MusicCache::default();
+        let future = Instant::now() + Duration::from_secs(60);
+        for i in 0..MAX_CACHE_ENTRIES + 10 {
+            cache.insert(format!("lyrics:{i}"), entry(json!(i), future));
+        }
+        assert_eq!(cache.entries.len(), MAX_CACHE_ENTRIES);
+        cache.insert(
+            "huge".into(),
+            entry(json!("x".repeat(MAX_MUSIC_CACHE_BYTES)), future),
+        );
+        assert!(cache.get("huge").is_none());
+        for i in 0..20 {
+            cache.insert(
+                format!("large:{i}"),
+                entry(json!("x".repeat(1024 * 1024)), future),
+            );
+        }
+        assert!(cache.size_bytes <= MAX_MUSIC_CACHE_BYTES);
+        assert!(cache.entries.len() < MAX_CACHE_ENTRIES);
+        cache.insert("expired".into(), entry(json!("old"), Instant::now()));
+        assert!(cache.get("expired").is_none());
+        cache.prune(future + Duration::from_secs(1));
+        assert!(cache.entries.is_empty());
+        assert_eq!(cache.size_bytes, 0);
+    }
+
+    #[test]
+    fn resource_limiter_bounds_keys_and_reclaims_idle_resources() {
+        let mut limiter = RateLimiter::new();
+        for i in 0..MAX_RATE_LIMIT_KEYS {
+            assert!(limiter.check_rate_limit(&format!("song:{i}")));
+        }
+        assert!(!limiter.check_rate_limit("overflow"));
+        assert!(limiter.check_rate_limit("song:0"));
+        assert_eq!(limiter.requests.len(), MAX_RATE_LIMIT_KEYS);
+        let old = Instant::now() - Duration::from_secs(3601);
+        limiter
+            .requests
+            .values_mut()
+            .for_each(|times| *times = vec![old]);
+        assert!(limiter.check_rate_limit("new"));
+        assert_eq!(limiter.requests.len(), 1);
     }
 }

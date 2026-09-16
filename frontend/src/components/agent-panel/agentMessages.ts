@@ -1,6 +1,6 @@
 import type { AgentAttachment } from './agentAttachments'
 import type { AgentMessageStep } from './agentThinking'
-import { useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 /** Follow-up question; confirmations are action cards. */
 export interface AgentMessageQuestion {
@@ -30,7 +30,11 @@ export interface AgentMessage {
 
 const EMPTY: readonly AgentMessage[] = Object.freeze([])
 
-let messages: readonly AgentMessage[] = EMPTY
+let messages: readonly AgentMessage[] | null = EMPTY
+const EMPTY_IDS: readonly string[] = Object.freeze([])
+let messageIds: readonly string[] = EMPTY_IDS
+let messagesById = new Map<string, AgentMessage>()
+const messageListeners = new Map<string, Set<() => void>>()
 
 let sessionId: string | null = null
 
@@ -89,20 +93,87 @@ function sameList(
   return true
 }
 
-/** Reuse unchanged message objects; streaming rebuilds the array every token. */
+/** Full replacement for history loads and structural changes. */
 export function setAgentMessages(next: readonly AgentMessage[]): void {
-  if (sameList(messages, next)) return
-  if (next.length === 0) {
-    messages = EMPTY
-  } else {
-    const prevById = new Map<string, AgentMessage>()
-    for (const item of messages) prevById.set(item.id, item)
-    messages = next.map((item) => {
-      const old = prevById.get(item.id)
-      return old && sameMessage(old, item) ? old : item
-    })
+  const previous = getAgentMessagesSnapshot()
+  if (sameList(previous, next)) return
+  const changed = new Set<string>(messageIds)
+  const nextById = new Map<string, AgentMessage>()
+  messages =
+    next.length === 0
+      ? EMPTY
+      : next.map((item) => {
+          const old = messagesById.get(item.id)
+          if (old && sameMessage(old, item)) {
+            changed.delete(item.id)
+            nextById.set(item.id, old)
+            return old
+          }
+          changed.add(item.id)
+          nextById.set(item.id, item)
+          return item
+        })
+  messagesById = nextById
+  if (
+    messageIds.length !== next.length ||
+    next.some((item, i) => item.id !== messageIds[i])
+  ) {
+    messageIds = next.length ? next.map((item) => item.id) : EMPTY_IDS
   }
+  for (const id of changed) notifyMessage(id)
   for (const listener of listeners) listener()
+}
+
+function notifyMessage(id: string): void {
+  for (const listener of messageListeners.get(id) ?? []) listener()
+}
+
+/** Content updates do not copy history or invalidate the list's ids snapshot. */
+export function updateAgentMessage(next: AgentMessage): void {
+  const old = messagesById.get(next.id)
+  if (!old || sameMessage(old, next)) return
+  messagesById.set(next.id, next)
+  messages = null
+  notifyMessage(next.id)
+  for (const listener of listeners) listener()
+}
+
+export function getAgentMessageIdsSnapshot(): readonly string[] {
+  return messageIds
+}
+
+export function getAgentMessageSnapshot(id: string): AgentMessage | undefined {
+  return messagesById.get(id)
+}
+
+export function subscribeAgentMessage(
+  id: string,
+  listener: () => void,
+): () => void {
+  let group = messageListeners.get(id)
+  if (!group) messageListeners.set(id, (group = new Set()))
+  group.add(listener)
+  return () => {
+    group.delete(listener)
+    if (!group.size) messageListeners.delete(id)
+  }
+}
+
+export function useAgentMessageIds(): readonly string[] {
+  return useSyncExternalStore(
+    subscribeAgentMessages,
+    getAgentMessageIdsSnapshot,
+    () => EMPTY_IDS,
+  )
+}
+
+export function useAgentMessage(id: string): AgentMessage | undefined {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeAgentMessage(id, listener),
+    [id],
+  )
+  const snapshot = useCallback(() => getAgentMessageSnapshot(id), [id])
+  return useSyncExternalStore(subscribe, snapshot, () => undefined)
 }
 
 export function setAgentSessionId(next: string | null): void {
@@ -135,7 +206,7 @@ export function subscribeAgentMessages(listener: () => void): () => void {
 }
 
 export function getAgentMessagesSnapshot(): readonly AgentMessage[] {
-  return messages
+  return (messages ??= messageIds.map((id) => messagesById.get(id)!))
 }
 
 export function getServerAgentMessagesSnapshot(): readonly AgentMessage[] {
@@ -152,7 +223,7 @@ export function useAgentMessages(): readonly AgentMessage[] {
 
 /** Count only: streaming content must not refresh the composer. */
 export function getAgentMessageCountSnapshot(): number {
-  return messages.length
+  return messageIds.length
 }
 
 export function useAgentMessageCount(): number {

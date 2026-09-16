@@ -202,7 +202,7 @@ pub async fn resolve_context(
                     )
                 })?;
                 let selected = if selector.is_empty() {
-                    platform_data
+                    platform_data.as_ref().clone()
                 } else {
                     platform_data.pointer(selector).cloned().ok_or_else(|| {
                         AiContextError::new(

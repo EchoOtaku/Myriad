@@ -5,14 +5,13 @@ import type { WorkbenchPane } from './logic/board'
 import type { ArticleLoader, OpenArticleOptions } from './useArticleOpen'
 import type { usePhantasiNotes } from './usePhantasiNotes'
 import type { usePhantasiSources } from './usePhantasiSources'
-import { useEffect } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import * as phantasiApi from '../../services/phantasiApi'
+import { isSiteSource, refreshableSourceCount } from './logic/board'
 import { PhantasiCategoryAdmin } from './manager/PhantasiCategoryAdmin'
 import { PhantasiWorkbenchAdmin } from './manager/PhantasiWorkbenchAdmin'
 import { useNoteTransfer } from './manager/useNoteTransfer'
 import { usePipack } from './manager/usePipack'
-import { isSiteSource, refreshableSourceCount } from './logic/board'
 import PhantasiWorkbench from './skin/PhantasiWorkbench'
 import { usePhantasiCategories } from './usePhantasiCategories'
 import { usePhantasiWorkbench } from './usePhantasiWorkbench'
@@ -41,7 +40,7 @@ export default function PhantasiWorkbenchLane({
   const { t } = useI18n()
   const pack = usePipack(sources.sources, sources.reloadBoard)
   const workbench = usePhantasiWorkbench(
-    true,
+    pane,
     notes.docsEpoch,
     {
       loadFailed: t.phantasi.workbenchLoadFailed,
@@ -58,7 +57,7 @@ export default function PhantasiWorkbenchLane({
     setError,
   )
   const categories = usePhantasiCategories(
-    true,
+    workbench.needsCategories,
     workbench.docs,
     sources.sources,
     {
@@ -77,11 +76,6 @@ export default function PhantasiWorkbenchLane({
       void workbench.reloadNotes()
     },
   )
-  useEffect(() => {
-    if (pane !== 'noteCategories' && pane !== 'sourceCategories') return
-    void categories.reload()
-    void workbench.reloadNotes()
-  }, [categories.reload, pane, workbench.reloadNotes])
   const notesIo = useNoteTransfer(workbench.docs, () => {
     notes.touchDocs()
     void workbench.reloadNotes()

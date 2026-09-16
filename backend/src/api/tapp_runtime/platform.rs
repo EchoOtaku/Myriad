@@ -17,11 +17,10 @@ use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 use crate::services::platform_cache::{
-    PlatformCacheError, append_filtered_items, build_tapp_written_item,
+    PlatformCacheError, append_filtered_items, build_tapp_written_item, get_cached_platform_items,
 };
-use crate::services::platform_items::extract_platform_items;
 
-use super::common::{authorize_tapp_permission, get_cached_platform_data, validate_platform_name};
+use super::common::{authorize_tapp_permission, validate_platform_name};
 use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
@@ -45,7 +44,7 @@ pub async fn get_platform_data(
         platform
     );
 
-    let data = match get_cached_platform_data(&platform).await {
+    let items = match get_cached_platform_items(&platform).await {
         Ok(d) => d,
         Err(error) => {
             let status = if error.starts_with("No cached ") {
@@ -59,11 +58,10 @@ pub async fn get_platform_data(
         }
     };
 
-    let items = extract_platform_items(&data, &platform);
     let total = items.len();
     let offset = query.offset.unwrap_or(0) as usize;
     let limit = (query.limit.unwrap_or(100) as usize).min(1000);
-    let paged_items: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
+    let paged_items: Vec<_> = items.iter().skip(offset).take(limit).cloned().collect();
 
     Ok(Json(json!({
         "platform": platform,
@@ -88,14 +86,13 @@ pub async fn get_platform_stats(
         platform
     );
 
-    let data = get_cached_platform_data(&platform)
+    let items = get_cached_platform_items(&platform)
         .await
-        .unwrap_or(json!({ "items": [] }));
-    let items = extract_platform_items(&data, &platform);
+        .unwrap_or_default();
     let total = items.len();
 
     let mut type_distribution: HashMap<String, usize> = HashMap::new();
-    for item in &items {
+    for item in items.iter() {
         if let Some(item_type) = item.get("type").and_then(|v| v.as_str()) {
             *type_distribution.entry(item_type.to_string()).or_default() += 1;
         }
@@ -124,13 +121,12 @@ pub async fn get_platform_distribution(
         dimension
     );
 
-    let data = get_cached_platform_data(&platform)
+    let items = get_cached_platform_items(&platform)
         .await
-        .unwrap_or(json!({ "items": [] }));
-    let items = extract_platform_items(&data, &platform);
+        .unwrap_or_default();
 
     let mut distribution: HashMap<String, usize> = HashMap::new();
-    for item in &items {
+    for item in items.iter() {
         if let Some(value) = item.get(&dimension).and_then(|v| v.as_str()) {
             *distribution.entry(value.to_string()).or_default() += 1;
         }

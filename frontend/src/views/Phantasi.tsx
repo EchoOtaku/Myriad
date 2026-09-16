@@ -191,8 +191,6 @@ function PhantasiSubjectPage() {
   )
   const starred = usePhantasiStarred(
     list.items,
-    list.setItems,
-    list.setTotal,
     t.phantasi.starFailed,
     setError,
   )
@@ -210,11 +208,7 @@ function PhantasiSubjectPage() {
   usePhantasiAgentOpen({
     itemsRef: list.itemsRef,
     openArticle: item.openArticle,
-    setItems: list.setItems,
-    setTotal: list.setTotal,
-    setError,
     webSearchLabel: t.phantasi.webSearch,
-    loadFailed: t.phantasi.loadArticlesFailed,
   })
 
   const actions = usePhantasiItemActions({
@@ -223,8 +217,6 @@ function PhantasiSubjectPage() {
     viewMode: route.viewMode,
     board: route.board,
     selectedItem: item.selectedItem,
-    setItems: list.setItems,
-    setTotal: list.setTotal,
     setError,
     itemsRef: list.itemsRef,
     unselectStarred: starred.unselect,
@@ -241,10 +233,7 @@ function PhantasiSubjectPage() {
   const notes = usePhantasiNotes(
     item.selectedItem,
     item.setSelectedItem,
-    list.setItems,
-    route.viewMode,
-    route.selectedTopic?.key,
-    list.loadItems,
+    list,
     sources.reloadBoard,
     sources.loadSources,
   )
@@ -654,17 +643,7 @@ function PhantasiSubjectPage() {
                 item.setSelectedItem((current) =>
                   current?.id === id ? { ...current, topic } : current,
                 )
-                list.setItems((rows) => {
-                  if (
-                    route.viewMode === 'topic-feed' &&
-                    topic !== route.selectedTopic?.key
-                  ) {
-                    return rows.filter((row) => row.id !== id)
-                  }
-                  return rows.map((row) =>
-                    row.id === id ? { ...row, topic } : row,
-                  )
-                })
+                list.updateTopic(id, topic)
                 sources.reloadBoard()
               }}
             />

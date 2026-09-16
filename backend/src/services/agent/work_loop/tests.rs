@@ -67,6 +67,17 @@ fn answer(state: &Checkpoint, text: &str) -> UserAnswer {
 }
 
 #[test]
+fn persisted_spend_blocks_even_pending_tools_after_resume() {
+    let mut value = serde_json::to_value(checkpoint()).unwrap();
+    value["budget"] = json!({"spent_tokens":100,"reserved_tokens":0,"limit_tokens":100});
+    let mut state: Checkpoint = serde_json::from_value(value).unwrap();
+    state.pending.push_back(pending("write", "write"));
+    assert!(state.budget_error().is_some(), "spent budget must stop pending effects, not only the next model call");
+    let restored: Checkpoint = serde_json::from_value(serde_json::to_value(state).unwrap()).unwrap();
+    assert!(restored.budget_error().is_some());
+}
+
+#[test]
 fn confirmation_checks_identity_expiry_and_explicit_choice() {
     let mut state = checkpoint();
     state.pending.push_back(pending("write", "write"));
@@ -202,6 +213,39 @@ pub(super) async fn test_database() -> sea_orm::DatabaseConnection {
             .unwrap();
     }
     db
+}
+
+#[tokio::test]
+#[ignore = "requires MYRIAD_WORK_TEST_DATABASE_URL pointing to myriad_work_loop_test"]
+async fn postgres_recipe_discovery_is_owner_scoped() {
+    use crate::models::entities::agent_task_presets;
+    use sea_orm::{ActiveModelTrait, Set};
+    let db = test_database().await;
+    let schema = Schema::new(DatabaseBackend::Postgres);
+    db.execute_raw(DatabaseBackend::Postgres.build(schema.create_table_from_entity(agent_task_presets::Entity).if_not_exists())).await.unwrap();
+    let mut state = checkpoint();
+    state.user_id = 8383;
+    state.request.user_id = 8383;
+    let now = chrono::Utc::now().fixed_offset();
+    let mut own_id = 0;
+    for owner in [8383, 8384] {
+        let row = agent_task_presets::ActiveModel {
+            user_id: Set(owner), input: Set("Time preset".into()), preset_type: Set("favorite".into()),
+            parsed_steps: Set(Some(json!(state.task.recipe))), last_used_at: Set(now),
+            use_count: Set(0), created_at: Set(now), ..Default::default()
+        }.insert(&db).await.unwrap();
+        if owner == 8383 { own_id = row.id; }
+    }
+    let agent = Agent::new(db.clone()).await;
+    let emitter = executor::events::StepEventEmitter::new(None);
+    let call = pending("presets", "list_recipes");
+    state.pending.push_back(call.clone());
+    agent.work_tool(&mut state, call, &emitter).await.unwrap();
+    let result = &state.task.step_results["presets"];
+    assert!(result.success, "saved Recipe discovery must be available: {:?}", result.error);
+    let found = result.output.as_ref().unwrap()["recipes"].as_array().unwrap();
+    assert!(found.iter().any(|item| item["id"] == own_id));
+    assert!(found.iter().all(|item| item["id"] != own_id + 1));
 }
 
 /// Uses an isolated PostgreSQL database; never falls back to the application's DB.

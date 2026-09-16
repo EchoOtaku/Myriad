@@ -160,6 +160,8 @@ export function NoteEditorView({
   fileRef,
   coverFileRef,
   visualEditing,
+  compositionStart,
+  compositionEnd,
   coverPreview,
   selectedWidgetEntry,
   selectedWidgetSizes,
@@ -451,12 +453,14 @@ export function NoteEditorView({
             <article className="phantasi-note__paper">
               <textarea
                 ref={titleInputRef}
+                onCompositionStart={compositionStart}
+                onCompositionEnd={() => compositionEnd()}
                 className="phantasi-note__title"
                 rows={1}
                 value={title}
                 onChange={(e) => setTitle(e.target.value.replaceAll('\n', ''))}
                 onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
+                  if (e.nativeEvent.isComposing || e.key !== 'Enter') return
                   e.preventDefault()
                   focusBody()
                 }}
@@ -493,6 +497,8 @@ export function NoteEditorView({
                 )}
                 <textarea
                   ref={textareaRef}
+                  onCompositionStart={compositionStart}
+                  onCompositionEnd={() => compositionEnd()}
                   value={contentMd}
                   onChange={(e) => {
                     setContentMd(e.target.value)
@@ -560,6 +566,8 @@ export function NoteEditorView({
               >
                 <div
                   ref={visualRef}
+                  onCompositionStart={compositionStart}
+                  onCompositionEnd={() => compositionEnd()}
                   className="phantasi-note-preview phantasi-note__visual"
                   style={readerSurfaceStyle}
                   contentEditable
@@ -691,7 +699,7 @@ export function NoteEditorView({
                     const root = e.currentTarget as HTMLDivElement
                     // 敲完 `)` / `` ` `` / `*` / `~` / `$`：光标前刚好凑成 Markdown 记号就地渲染。
                     const typed = (e.nativeEvent as InputEvent).data ?? ''
-                    if (/[)`*~$]/.test(typed)) {
+                    if (!e.nativeEvent.isComposing && /[)`*~$]/.test(typed)) {
                       const converted = applyInlineMarkdownAtCaret(root)
                       if (converted != null) {
                         commitVisualMd(converted)

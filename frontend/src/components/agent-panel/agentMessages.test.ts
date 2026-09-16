@@ -1,6 +1,7 @@
 import type { AgentMessage } from './agentMessages'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
+import * as store from './agentMessages'
 import {
   getAgentMessageCountSnapshot,
   getAgentMessagesSnapshot,
@@ -101,4 +102,22 @@ test('清空之后拿到的是同一个空数组，引用稳定', () => {
   setAgentMessages([])
   assert.equal(getAgentMessagesSnapshot(), first)
   assert.equal(first.length, 0)
+})
+
+test('a message patch keeps list ids stable and wakes only that message', () => {
+  setAgentMessages([message({ id: 'old' }), message({ id: 'live' })])
+  const ids = store.getAgentMessageIdsSnapshot()
+  const previous = getAgentMessagesSnapshot()
+  let oldUpdates = 0
+  let liveUpdates = 0
+  const offOld = store.subscribeAgentMessage('old', () => oldUpdates++)
+  const offLive = store.subscribeAgentMessage('live', () => liveUpdates++)
+  store.updateAgentMessage(message({ id: 'live', content: 'token' }))
+  assert.equal(store.getAgentMessageIdsSnapshot(), ids)
+  assert.equal(oldUpdates, 0)
+  assert.equal(liveUpdates, 1)
+  assert.equal(previous[1].content, '你好')
+  assert.equal(store.getAgentMessageSnapshot('live')?.content, 'token')
+  offOld()
+  offLive()
 })

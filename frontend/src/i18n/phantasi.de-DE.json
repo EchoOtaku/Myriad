@@ -178,6 +178,7 @@
   "noteDeleteConfirm": "Diese Notiz löschen? Sie kann nicht wiederhergestellt werden.",
   "noteDiscardConfirm": "Es gibt ungespeicherte Änderungen. Trotzdem schließen?",
   "noteTabWrite": "Markdown",
+  "noteEditInMarkdown": "Diesen Block im Markdown-Modus bearbeiten",
   "noteTabPreview": "Vorschau",
   "noteToolBold": "Fett",
   "noteToolItalic": "Kursiv",

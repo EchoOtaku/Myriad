@@ -4,7 +4,7 @@ import {
   FaSpinner,
   FaTimes,
 } from '@lib/icons'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { useManagedFetch } from '../hooks/useManagedFetch'
 import { reportUserFacingError } from '../utils/reportError'
@@ -40,100 +40,98 @@ export function TaskStatus({
   autoCloseDelay = 3000,
 }: TaskStatusProps) {
   const [task, setTask] = useState<Task | null>(null)
-  const [isPolling, setIsPolling] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [pollCount, setPollCount] = useState(0)
   const { fetch: managedFetch } = useManagedFetch()
   const { t, locale } = useI18n()
-
-  const fetchTaskStatus = useCallback(async () => {
-    try {
-      const data = await managedFetch<{
-        success: boolean
-        task?: Task
-        error?: string
-      }>(
-        `/api/tasks/${taskId}`,
-        {
-          credentials: 'include',
-        },
-        {
-          key: `task-status-${taskId}`,
-          priority: 1,
-        },
-      )
-
-      if (!data) {
-        return
-      }
-
-      if (data.success && data.task) {
-        const updatedTask = data.task as Task
-        setTask(updatedTask)
-        setPollCount((prev) => prev + 1)
-
-        if (updatedTask.status === 'Completed') {
-          setIsPolling(false)
-          onComplete?.(updatedTask)
-
-          if (autoClose) {
-            setTimeout(() => {
-              onClose?.()
-            }, autoCloseDelay)
-          }
-        } else if (updatedTask.status === 'Failed') {
-          setIsPolling(false)
-          onError?.(updatedTask)
-        }
-      } else {
-        throw new Error(data.error || t.task.fetchFailed)
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('cancelled')) {
-        return
-      }
-
-      console.error('Error fetching task status:', err)
-      setError(userFacingError(err, t.task.fetchFailed))
-      setIsPolling(false)
-    }
-  }, [
-    taskId,
-    onComplete,
-    onError,
-    onClose,
-    autoClose,
-    autoCloseDelay,
-    managedFetch,
-    t.task.fetchFailed,
-  ])
-
-  const getPollingInterval = useCallback(() => {
-    if (!task) return 1000
-
-    if (task.status === 'Processing') {
-      if (task.progress < 10) return 1000
-      if (task.progress < 50) return 1500
-      if (task.progress < 90) return 2000
-      return 1000
-    } else if (task.status === 'Pending') {
-      if (pollCount < 5) return 1000
-      if (pollCount < 15) return 2000
-      return 3000
-    }
-
-    return 1000
-  }, [task, pollCount])
+  const latest = useRef({
+    onComplete, onError, onClose, autoClose, autoCloseDelay,
+    fetchFailed: t.task.fetchFailed,
+  })
 
   useEffect(() => {
-    fetchTaskStatus()
+    latest.current = {
+      onComplete, onError, onClose, autoClose, autoCloseDelay,
+      fetchFailed: t.task.fetchFailed,
+    }
+  }, [onComplete, onError, onClose, autoClose, autoCloseDelay, t.task.fetchFailed])
 
-    if (!isPolling) return
+  useEffect(() => {
+    let active = true
+    let pollCount = 0
+    let currentTask: Task | null = null
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let closeTimer: ReturnType<typeof setTimeout> | undefined
+    setTask(null)
+    setError(null)
 
-    const interval = setInterval(fetchTaskStatus, getPollingInterval())
+    const getPollingInterval = () => {
+      if (currentTask?.status === 'Processing') {
+        if (currentTask.progress < 10) return 1000
+        if (currentTask.progress < 50) return 1500
+        if (currentTask.progress < 90) return 2000
+        return 1000
+      }
+      if (currentTask?.status === 'Pending') {
+        if (pollCount < 5) return 1000
+        if (pollCount < 15) return 2000
+        return 3000
+      }
+      return 1000
+    }
 
-    return () => clearInterval(interval)
-  }, [fetchTaskStatus, isPolling, getPollingInterval])
+    const fetchTaskStatus = async () => {
+      try {
+        const data = await managedFetch<{
+          success: boolean
+          task?: Task
+          error?: string
+        }>(`/api/tasks/${taskId}`, { credentials: 'include' }, {
+          key: `task-status-${taskId}`,
+          priority: 1,
+        })
+        if (!active) return
+
+        if (data) {
+          if (!data.success || !data.task) {
+            throw new Error(data.error || latest.current.fetchFailed)
+          }
+          currentTask = data.task
+          setTask(currentTask)
+          pollCount++
+
+          if (currentTask.status === 'Completed') {
+            if (latest.current.autoClose) {
+              closeTimer = setTimeout(() => {
+                if (active) latest.current.onClose?.()
+              }, latest.current.autoCloseDelay)
+            }
+            latest.current.onComplete?.(currentTask)
+            return
+          }
+          if (currentTask.status === 'Failed') {
+            latest.current.onError?.(currentTask)
+            return
+          }
+        }
+      } catch (err) {
+        if (!active) return
+        if (!(err instanceof Error && err.message.includes('cancelled'))) {
+          console.error('Error fetching task status:', err)
+          setError(userFacingError(err, latest.current.fetchFailed))
+          return
+        }
+      }
+      // Schedule only after settlement so slow requests never overlap.
+      if (active) timer = setTimeout(fetchTaskStatus, getPollingInterval())
+    }
+
+    void fetchTaskStatus()
+    return () => {
+      active = false
+      clearTimeout(timer)
+      clearTimeout(closeTimer)
+    }
+  }, [taskId, managedFetch])
 
   if (error) {
     return (

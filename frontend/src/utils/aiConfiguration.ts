@@ -3,19 +3,26 @@ import { currentCopy } from '../i18n/localeCopy'
 import { requestPathname } from './aiRequestTimeout.mjs'
 
 export const AI_CONFIGURATION_REQUIRED_EVENT = 'myriad:ai-configuration-required'
-type Capability = 'standard' | 'chat' | 'pro' | 'persona' | 'image'
+type Capability = 'standard' | 'chat' | 'pro' | 'persona' | 'personaName' | 'image'
 
 /** Only generation operations: saved content and configuration remain accessible. */
 function requiredCapability(url: string, init: RequestInit): Capability | undefined {
   if ((init.method ?? 'GET').toUpperCase() !== 'POST') return
   const path = requestPathname(url)
+  if (path === '/api/agent/confirm/stream') {
+    try {
+      if (typeof init.body === 'string' && JSON.parse(init.body).confirmed === false) return
+    } catch { /* The endpoint owns request validation. */ }
+  }
   if (/^\/api\/agent\/process(?:\/stream)?$/.test(path)) {
     try {
       if (typeof init.body === 'string' && JSON.parse(init.body).context?.mode === 'chat') return 'chat'
     } catch { /* The endpoint owns request validation. */ }
     return 'standard'
   }
-  if (/^\/api\/agent\/persona\/(draft|import|name|visual-design|visual-from-portrait)$/.test(path)) return 'persona'
+  if (path === '/api/agent/persona/name') return 'personaName'
+  if (path === '/api/agent/persona/visual-from-portrait') return 'pro'
+  if (/^\/api\/agent\/persona\/(draft|import|visual-design)$/.test(path)) return 'persona'
   if (/^\/api\/tapp-playground\/generate(?:-stream)?$/.test(path)) return 'pro'
   if (/^\/api\/merope\/rig\/(portrait|avatar)$/.test(path)) return 'image'
   if (/^\/api\/agent\/(clarify|confirm\/stream|tasks\/[^/]+\/answer(?:\/stream)?)$/.test(path)) return 'standard'

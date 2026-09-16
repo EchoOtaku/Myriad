@@ -179,6 +179,26 @@ fn map_generation_error(error: ImageGenerationError) -> HttpError {
     HttpError(app.with_code(code))
 }
 
+fn map_sticker_processing_error(
+    error: crate::services::sticker_cutout::StickerProcessingError,
+    generated: bool,
+) -> HttpError {
+    use crate::services::sticker_cutout::StickerProcessingError;
+    HttpError(match error {
+        StickerProcessingError::Busy => AppError::service_unavailable("Sticker processing is busy")
+            .with_code("STICKER_PROCESSING_BUSY"),
+        StickerProcessingError::WorkerFailed => {
+            AppError::internal("Sticker processing failed").with_code("STICKER_PROCESSING_FAILED")
+        }
+        StickerProcessingError::Invalid(message) if generated => {
+            AppError::internal(message).with_code("STICKER_CUTOUT_FAILED")
+        }
+        StickerProcessingError::Invalid(message) => {
+            AppError::bad_request(message).with_code("INVALID_STICKER_IMAGE")
+        }
+    })
+}
+
 /// POST /api/home/stickers/generate — admin only.
 pub async fn generate_home_sticker(
     crate::extract::Db(db): crate::extract::Db,
@@ -226,8 +246,9 @@ pub async fn generate_home_sticker(
     let (bytes, _) = image_generation::load_generated_bytes(&generated)
         .await
         .map_err(map_generation_error)?;
-    let png = crate::services::sticker_cutout::ensure_sticker_png(&bytes)
-        .map_err(|error| HttpError(AppError::internal(error).with_code("STICKER_CUTOUT_FAILED")))?;
+    let png = crate::services::sticker_cutout::prepare_sticker_png(bytes)
+        .await
+        .map_err(|error| map_sticker_processing_error(error, true))?;
     let stored = crate::services::image_cache::ImageCacheService::new()
         .store_bytes_with_status(&png, "image/png")
         .await
@@ -257,9 +278,9 @@ pub async fn upload_home_sticker(
     Json(payload): Json<UploadHomeStickerRequest>,
 ) -> Result<Json<GenerateHomeStickerResponse>, HttpError> {
     let (bytes, media_type) = decode_sticker_upload(&payload.image).map_err(HttpError)?;
-    let decoded = image::load_from_memory(&bytes).map_err(|error| {
-        HttpError(AppError::bad_request(error.to_string()).with_code("INVALID_STICKER_IMAGE"))
-    })?;
+    let (bytes, (width, height)) = crate::services::sticker_cutout::inspect_sticker_upload(bytes)
+        .await
+        .map_err(|error| map_sticker_processing_error(error, false))?;
     let stored = crate::services::image_cache::ImageCacheService::new()
         .store_bytes_with_status(&bytes, media_type)
         .await
@@ -277,8 +298,8 @@ pub async fn upload_home_sticker(
     .await;
     Ok(Json(GenerateHomeStickerResponse {
         image_url: stored.url,
-        width: decoded.width(),
-        height: decoded.height(),
+        width,
+        height,
     }))
 }
 

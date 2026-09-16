@@ -178,6 +178,7 @@
   "noteDeleteConfirm": "刪除這篇筆記？刪掉之後找不回來。",
   "noteDiscardConfirm": "有還沒儲存的改動，確定關掉？",
   "noteTabWrite": "Markdown",
+  "noteEditInMarkdown": "請在 Markdown 模式編輯此內容",
   "noteTabPreview": "預覽",
   "noteToolBold": "粗體",
   "noteToolItalic": "斜體",

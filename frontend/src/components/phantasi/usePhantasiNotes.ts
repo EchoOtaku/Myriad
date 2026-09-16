@@ -1,22 +1,18 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { PhantasiItem } from '../../types/phantasi'
-import type { PhantasiViewMode } from './logic/board'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
-import { dropItem } from './logic/itemState'
 import { RequestTurn } from './logic/requestTurn'
 
 export function usePhantasiNotes(
   selectedItem: PhantasiItem | null,
   setSelectedItem: Dispatch<SetStateAction<PhantasiItem | null>>,
-  setItems: Dispatch<SetStateAction<PhantasiItem[]>>,
-  viewMode: PhantasiViewMode,
-  topicKey: string | undefined,
-  loadItems: (reset?: boolean) => Promise<void>,
+  list: { reload: () => Promise<void>; removeItem: (id: number) => void },
   reloadBoard: () => void,
   loadSources: () => Promise<void>,
 ) {
+  const { reload, removeItem } = list
   const [noteEditor, setNoteEditor] = useState<
     number | 'new' | { docId: number } | null
   >(null)
@@ -41,16 +37,12 @@ export function usePhantasiNotes(
           /* 取不回来就保持原样 */
         }
       }
-      if (viewMode === 'topic-feed' && topicKey) {
-        void loadItems(true)
-      }
+      void reload()
     },
     [
       selectedItem?.id,
       setSelectedItem,
-      viewMode,
-      topicKey,
-      loadItems,
+      reload,
       loadSources,
       bumpDocs,
     ],
@@ -60,11 +52,11 @@ export function usePhantasiNotes(
     (id: number) => {
       setNoteEditor(null)
       bumpDocs()
-      setItems((prev) => dropItem(prev, id))
+      removeItem(id)
       if (selectedItem?.id === id) setSelectedItem(null)
       reloadBoard()
     },
-    [selectedItem?.id, setItems, setSelectedItem, reloadBoard, bumpDocs],
+    [selectedItem?.id, removeItem, setSelectedItem, reloadBoard, bumpDocs],
   )
 
   const write = useCallback(() => setNoteEditor('new'), [])

@@ -1,17 +1,14 @@
 /** 收藏不是板块。 */
 
-import type { Dispatch, SetStateAction } from 'react'
 import type { PhantasiItem } from '../../types/phantasi'
 
 import { useCallback, useRef, useState } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
-import { dropItems, dropStarredId } from './logic/itemState'
+import { dropStarredId } from './logic/itemState'
 import { reportPhantasiError } from './phantasiNotice'
 
 export function usePhantasiStarred(
   items: PhantasiItem[],
-  setItems: Dispatch<SetStateAction<PhantasiItem[]>>,
-  setTotal: Dispatch<SetStateAction<number>>,
   starFailed: string,
   setError: (message: string) => void,
 ) {
@@ -56,8 +53,6 @@ export function usePhantasiStarred(
         ids.map((id) => phantasiApi.unstarItem(id)),
       )
       const succeeded = new Set(ids.filter((_, index) => results[index].status === 'fulfilled'))
-      setItems((prev) => dropItems(prev, succeeded))
-      setTotal((prev) => Math.max(0, prev - succeeded.size))
       setSelectedIds((prev) => prev.difference(succeeded))
       const failure = results.find((result) => result.status === 'rejected')
       if (failure?.status === 'rejected') {
@@ -73,8 +68,6 @@ export function usePhantasiStarred(
     }
   }, [
     selectedIds,
-    setItems,
-    setTotal,
     exitEdit,
     starFailed,
     setError,

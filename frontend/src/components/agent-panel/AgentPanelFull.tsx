@@ -1,6 +1,12 @@
+import type { AgentPanelMessageProps } from './AgentPanelMessage'
 import React, { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { useAgentMessages, useAgentSessionId } from './agentMessages'
+import {
+  getAgentMessagesSnapshot,
+  useAgentMessage,
+  useAgentMessageIds,
+  useAgentSessionId,
+} from './agentMessages'
 import {
   dispatchAgentPanelAnswer,
   dispatchAgentPanelCommand,
@@ -10,6 +16,7 @@ import { AgentPanelManage } from './AgentPanelManage'
 import { AgentPanelMessage } from './AgentPanelMessage'
 import { AgentPanelSessions, useAgentSessionList } from './AgentPanelSessions'
 import { agentPanelRowWaveMs } from './agentPanelStage'
+import { useConversationHistory } from './conversationHistory'
 import { AgentPresence, AgentPresenceList } from './useAgentPresence'
 import { useConversationPan } from './useConversationPan'
 
@@ -125,6 +132,36 @@ export const AgentPanelSessionChrome: React.FC<{
   )
 }
 
+function SubscribedMessage({
+  id,
+  onSubmit,
+  ...props
+}: Omit<AgentPanelMessageProps, 'message' | 'onRetry'> & {
+  id: string
+  onSubmit: (text: string) => void
+}) {
+  const message = useAgentMessage(id)
+  // Presence retains removed rows for the exit animation.
+  const lastMessage = useRef(message)
+  if (message) lastMessage.current = message
+  const shown = message ?? lastMessage.current
+  if (!shown) return null
+  return (
+    <AgentPanelMessage
+      {...props}
+      message={shown}
+      onRetry={() => {
+        const messages = getAgentMessagesSnapshot()
+        const index = messages.findIndex((item) => item.id === id)
+        const asked = messages
+          .slice(0, index)
+          .findLast((item) => item.role === 'user')
+        if (asked) onSubmit(asked.content)
+      }}
+    />
+  )
+}
+
 export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   view,
   onView,
@@ -133,12 +170,13 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   showChrome = false,
 }) => {
   const { t } = useI18n()
-  const messages = useAgentMessages()
+  const messageIds = useAgentMessageIds()
+  const { visibleIds, onNearStart } = useConversationHistory(messageIds)
   const sessionId = useAgentSessionId()
   const sessionCountRef = useRef(0)
   const { held, exiting } = useHeldView(
     view,
-    messages.length,
+    visibleIds.length,
     sessionCountRef.current,
   )
   const sessionList = useAgentSessionList(
@@ -148,7 +186,14 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   const [zoomed, setZoomed] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
-  useConversationPan(listRef, trackRef, held === 'messages', sessionId)
+  useConversationPan(
+    listRef,
+    trackRef,
+    held === 'messages',
+    sessionId,
+    '.agent-panel-message',
+    onNearStart,
+  )
 
   const conversation =
     held === 'sessions' ? (
@@ -176,27 +221,19 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
         <div className="agent-panel-messages agent-panel-full" ref={listRef}>
           <div className="agent-panel-messages-track" ref={trackRef}>
             <AgentPresenceList
-              items={messages}
-              keyOf={(message) => message.id}
+              items={visibleIds}
+              keyOf={(id) => id}
               kind="row"
               from="composer"
             >
-              {(message) => (
-                <AgentPanelMessage
-                  message={message}
+              {(id) => (
+                <SubscribedMessage
+                  id={id}
+                  onSubmit={onSubmit}
                   onAnswer={dispatchAgentPanelAnswer}
                   onSuggest={onSubmit}
                   onWorkOffer={onWorkOffer}
                   onZoomImage={setZoomed}
-                  onRetry={() => {
-                    const index = messages.findIndex(
-                      (item) => item.id === message.id,
-                    )
-                    const asked = messages
-                      .slice(0, index)
-                      .findLast((item) => item.role === 'user')
-                    if (asked) onSubmit(asked.content)
-                  }}
                 />
               )}
             </AgentPresenceList>

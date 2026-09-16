@@ -413,6 +413,21 @@ impl AiAnalyzer {
 mod tests {
     use super::*;
 
+    #[test]
+    fn reported_usage_survives_empty_final_frames_and_counts_thinking() {
+        let mut acc = Accumulator::default();
+        acc.push(AiProvider::OpenAI, json!({"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]})).unwrap();
+        acc.push(AiProvider::OpenAI, json!({"choices":[],"usage":{"prompt_tokens":123,"completion_tokens":45,"total_tokens":168}})).unwrap();
+        let turn = serde_json::to_value(acc.finish(AiProvider::OpenAI).unwrap()).unwrap();
+        assert_eq!(turn["usage"]["input_tokens"], 123);
+        assert_eq!(turn["usage"]["output_tokens"], 45);
+        let mut acc = Accumulator::default();
+        acc.push(AiProvider::Gemini, json!({"candidates":[{"content":{"parts":[{"text":"done"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":10,"thoughtsTokenCount":30,"totalTokenCount":60}})).unwrap();
+        let turn = serde_json::to_value(acc.finish(AiProvider::Gemini).unwrap()).unwrap();
+        assert_eq!(turn["usage"]["input_tokens"], 20);
+        assert_eq!(turn["usage"]["output_tokens"], 40);
+    }
+
     /// Opt-in only: two small model calls, no application tools or user content.
     /// Reads the existing site's configuration without running migrations.
     #[tokio::test]

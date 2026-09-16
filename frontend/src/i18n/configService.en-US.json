@@ -1,0 +1,21 @@
+{
+  "moduleVisibilitySaveFailed": "Could not save page visibility settings.",
+  "reportSettingsSaveFailed": "Could not save report page settings.",
+  "loadConfigFailed": "Failed to load configuration",
+  "permissionsSaveFailed": "Failed to save permission settings",
+  "usersUpdateFailed": "Could not update that user.",
+  "usersLoadError": "Failed to load users",
+  "usersDeleteFailed": "Could not delete that user.",
+  "usersUnlinkFailed": "Could not unlink that sign-in method.",
+  "discordOAuthAppMissing": "Add and enable a Discord app under OAuth login first. Data authorization reuses that application.",
+  "hitokotoSaveFailed": "Could not save quote settings.",
+  "hitokotoLoadFailed": "Failed to load quote settings",
+  "mcpSaveFailed": "Failed to save MCP config",
+  "mcpInvalidConfig": "This MCP config is invalid. Check the command and arguments.",
+  "mcpLoadFailed": "Could not load MCP config",
+  "analytics": {
+    "exportFailed": "Failed to export analytics",
+    "loadFailed": "Failed to load analytics",
+    "aiUsageLoadFailed": "Failed to load AI usage stats"
+  }
+}

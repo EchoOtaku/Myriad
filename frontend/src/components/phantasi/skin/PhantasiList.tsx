@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react'
 import type { PhantasiItem } from '../../../types/phantasi'
-import { useCallback, useMemo, useRef } from 'react'
+import type { FeedStory } from '../logic/feedStories'
 
+import { useCallback, useMemo, useRef } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { Spinner } from '../../Spinner'
 import { PhantasiVacant } from '../ui/Empty'
@@ -9,7 +10,6 @@ import { clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
 import { PhantasiStory } from './PhantasiStory'
 import { usePhantasiTimes } from './time'
 import { useStoryWindow } from './useStoryWindow'
-import type { FeedStory } from '../logic/feedStories'
 import '../ui/phantasi.css'
 
 interface PhantasiListViewProps {

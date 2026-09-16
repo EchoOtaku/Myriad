@@ -35,11 +35,27 @@ use crate::services::note_publish::{
 pub(crate) struct NoteDocWriteRequest {
     pub title: Option<String>,
     pub content_md: Option<String>,
-    pub topic: Option<String>,
-    pub image: Option<String>,
+    #[serde(default, deserialize_with = "present_option")]
+    pub topic: Option<Option<String>>,
+    #[serde(default, deserialize_with = "present_option")]
+    pub image: Option<Option<String>>,
+    pub client_request_id: Option<String>,
     pub published_at: Option<i64>,
     pub scheduled_at: Option<i64>,
     pub revision: Option<i64>,
+}
+
+// Omitted preserves the value; explicit null clears it.
+fn present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+fn patched_text(current: Option<String>, patch: Option<Option<String>>) -> Option<String> {
+    patch.map(empty_to_none).unwrap_or(current)
 }
 
 #[derive(Debug, Deserialize)]
@@ -257,8 +273,8 @@ pub(crate) async fn create_note_doc(
         user_id: Set(user_id),
         title: Set(req.title.unwrap_or_default()),
         content_md: Set(req.content_md.unwrap_or_default()),
-        topic: Set(empty_to_none(req.topic)),
-        image: Set(empty_to_none(req.image)),
+        topic: Set(empty_to_none(req.topic.flatten())),
+        image: Set(empty_to_none(req.image.flatten())),
         status: Set(NoteDocStatus::Draft.as_str().to_string()),
         published_at: Set(req
             .published_at
@@ -368,51 +384,60 @@ pub(crate) async fn update_note_doc(
     if let Some(content_md) = req.content_md {
         active.content_md = Set(content_md);
     }
-    if req.topic.is_some() {
-        active.topic = Set(empty_to_none(req.topic));
-    }
-    if req.image.is_some() {
-        active.image = Set(empty_to_none(req.image));
-    }
+    active.topic = Set(patched_text(doc.topic, req.topic));
+    active.image = Set(patched_text(doc.image, req.image));
     if let Some(published_at) = req.published_at.and_then(millis_to_datetime) {
         active.published_at = Set(Some(published_at.into()));
     }
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
     active.last_error = Set(None);
-    let result = phantasi_note_docs::Entity::update_many()
+    // RETURNING binds the acknowledgement to this exact revision. A separate
+    // SELECT could observe another author's later save and mislabel it as ours.
+    let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
         .filter(phantasi_note_docs::Column::Revision.eq(expected))
-        .exec(&db)
+        .exec_with_returning(&db)
         .await
         .map_err(|e| phantasi_store_http("save note doc", e))?;
-    if result.rows_affected == 0 {
-        return Err(phantasi_http_err(
-            StatusCode::CONFLICT,
-            "Note draft was updated elsewhere",
-        ));
-    }
-    let saved = find_doc(&db, id).await?;
-    note_collab_hub().publish(
-        saved.id,
-        NoteCollabEvent {
-            kind: "doc".into(),
-            peer_id: String::new(),
-            user_id,
-            name: None,
-            revision: Some(saved.revision),
-            cursor: None,
-            title: Some(saved.title.clone()),
-            content_md: Some(saved.content_md.clone()),
-            topic: saved.topic.clone(),
-            image: saved.image.clone(),
-        },
-    );
+    let saved = saved_rows.pop().ok_or_else(|| {
+        phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere")
+    })?;
+    broadcast_saved_doc(&saved, user_id, req.client_request_id);
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, saved, user_id).await?,
     })))
+}
+
+fn saved_doc_event(
+    saved: &phantasi_note_docs::Model,
+    user_id: i32,
+    client_request_id: Option<String>,
+) -> NoteCollabEvent {
+    NoteCollabEvent {
+        kind: "doc".into(),
+        peer_id: String::new(),
+        user_id,
+        name: None,
+        revision: Some(saved.revision),
+        client_request_id,
+        published_at: saved.published_at.map(datetime_to_millis),
+        cursor: None,
+        title: Some(saved.title.clone()),
+        content_md: Some(saved.content_md.clone()),
+        topic: saved.topic.clone(),
+        image: saved.image.clone(),
+    }
+}
+
+fn broadcast_saved_doc(
+    saved: &phantasi_note_docs::Model,
+    user_id: i32,
+    request_id: Option<String>,
+) {
+    note_collab_hub().publish(saved.id, saved_doc_event(saved, user_id, request_id));
 }
 
 /// `DELETE /notes/docs/{id}` — 删云端文档。已发布的文章另走 DELETE /notes/{item}。
@@ -458,12 +483,8 @@ pub(crate) async fn publish_note_doc(
     if let Some(content_md) = req.content_md.clone() {
         doc.content_md = content_md;
     }
-    if req.topic.is_some() {
-        doc.topic = empty_to_none(req.topic.clone());
-    }
-    if req.image.is_some() {
-        doc.image = empty_to_none(req.image.clone());
-    }
+    doc.topic = patched_text(doc.topic, req.topic.clone());
+    doc.image = patched_text(doc.image, req.image.clone());
     let published_at = req
         .published_at
         .or(doc.published_at.map(datetime_to_millis));
@@ -490,6 +511,7 @@ pub(crate) async fn publish_note_doc(
     doc.revision = expected + 1;
     ensure_note_author(&db, doc.id, user_id, doc.user_id).await?;
     let (item, saved) = publish_doc(&db, doc, published_at).await?;
+    broadcast_saved_doc(&saved, user_id, req.client_request_id);
     Ok(Json(json!({
         "success": true,
         "id": item.id,
@@ -539,12 +561,8 @@ pub(crate) async fn schedule_note_doc(
     let mut active = <phantasi_note_docs::ActiveModel as std::default::Default>::default();
     active.title = Set(title);
     active.content_md = Set(content_md);
-    if req.topic.is_some() {
-        active.topic = Set(empty_to_none(req.topic));
-    }
-    if req.image.is_some() {
-        active.image = Set(empty_to_none(req.image));
-    }
+    active.topic = Set(patched_text(doc.topic, req.topic));
+    active.image = Set(patched_text(doc.image, req.image));
     active.status = Set(NoteDocStatus::Scheduled.as_str().to_string());
     active.scheduled_at = Set(millis_to_datetime(at).map(|value| value.into()));
     active.published_at = Set(millis_to_datetime(at).map(|value| value.into()));
@@ -565,6 +583,7 @@ pub(crate) async fn schedule_note_doc(
         ));
     }
     let saved = find_doc(&db, id).await?;
+    broadcast_saved_doc(&saved, user_id, None);
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, saved, user_id).await?,
@@ -613,6 +632,7 @@ pub(crate) async fn unschedule_note_doc(
         ));
     }
     let saved = find_doc(&db, id).await?;
+    broadcast_saved_doc(&saved, user_id, None);
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, saved, user_id).await?,
@@ -703,6 +723,8 @@ async fn handle_note_doc_socket(
             user_id,
             name: Some(username.clone()),
             revision: None,
+            client_request_id: None,
+            published_at: None,
             cursor: None,
             title: None,
             content_md: None,
@@ -712,7 +734,12 @@ async fn handle_note_doc_socket(
     );
     loop {
         tokio::select! {
-            Ok(event) = rx.recv() => {
+            event = rx.recv() => {
+                let Ok(event) = event else {
+                    // Never keep a collaborative client silently on a missed revision.
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
+                };
                 if event.peer_id == peer_id {
                     continue;
                 }
@@ -744,6 +771,8 @@ async fn handle_note_doc_socket(
                         incoming.user_id = user_id;
                         incoming.name = Some(username.clone());
                         incoming.revision = None;
+                        incoming.client_request_id = None;
+                        incoming.published_at = None;
                         if incoming.kind.is_empty() {
                             incoming.kind = "presence".into();
                         }
@@ -773,6 +802,8 @@ async fn handle_note_doc_socket(
             user_id,
             name: None,
             revision: None,
+            client_request_id: None,
+            published_at: None,
             cursor: None,
             title: None,
             content_md: None,
@@ -803,6 +834,61 @@ mod tests {
     }
 
     #[test]
+    fn metadata_patch_distinguishes_omitted_and_clear() {
+        let missing: NoteDocWriteRequest = serde_json::from_str("{}").unwrap();
+        let clear: NoteDocWriteRequest =
+            serde_json::from_str(r#"{"topic":null,"image":null}"#).unwrap();
+        assert_eq!(missing.topic, None);
+        assert_eq!(missing.image, None);
+        assert_eq!(clear.topic, Some(None));
+        assert_eq!(clear.image, Some(None));
+        for patch in [clear.topic, clear.image] {
+            assert_eq!(patched_text(Some("old".into()), patch), None);
+        }
+        assert_eq!(
+            patched_text(Some("old".into()), missing.topic),
+            Some("old".into())
+        );
+        let changed: NoteDocWriteRequest =
+            serde_json::from_str(r#"{"topic":"new","image":""}"#).unwrap();
+        assert_eq!(
+            patched_text(Some("old".into()), changed.topic),
+            Some("new".into())
+        );
+        assert_eq!(patched_text(Some("old".into()), changed.image), None);
+    }
+
+    #[test]
+    fn saved_event_identifies_revision_and_explicit_clears() {
+        let now = Utc::now().fixed_offset();
+        let doc = phantasi_note_docs::Model {
+            id: 7,
+            user_id: 1,
+            item_id: None,
+            title: "Title".into(),
+            content_md: "Body".into(),
+            topic: None,
+            image: None,
+            status: "draft".into(),
+            scheduled_at: None,
+            published_at: Some(now),
+            revision: 4,
+            last_error: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let event = saved_doc_event(&doc, 2, Some("request-4".into()));
+        let wire = serde_json::to_value(event).unwrap();
+        assert_eq!(wire["client_request_id"], "request-4");
+        assert_eq!(wire["revision"], 4);
+        assert_eq!(wire["user_id"], 2);
+        assert_eq!(wire["content_md"], "Body");
+        assert!(wire.get("topic").unwrap().is_null());
+        assert!(wire.get("image").unwrap().is_null());
+        assert_eq!(wire["published_at"], now.timestamp_millis());
+    }
+
+    #[test]
     fn draft_save_is_a_conditional_update() {
         let src = include_str!("note_docs.rs");
         let start = src
@@ -816,7 +902,8 @@ mod tests {
         let update = &body[..end];
         assert!(update.contains("update_many()"));
         assert!(update.contains("Column::Revision.eq(expected)"));
-        assert!(update.contains("rows_affected == 0"));
+        assert!(update.contains("exec_with_returning(&db)"));
+        assert!(update.contains("saved_rows.pop().ok_or_else"));
     }
 
     #[test]

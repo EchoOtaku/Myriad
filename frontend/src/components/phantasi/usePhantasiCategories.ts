@@ -25,21 +25,8 @@ import {
 import { RequestTurn } from './logic/requestTurn'
 
 async function writeNoteTopic(doc: PhantasiNoteDoc, topic: string) {
-  if (doc.status === 'published' && doc.item_id != null) {
-    const full = doc.content_md.trim()
-      ? doc
-      : await phantasiApi.getNoteDoc(doc.id)
-    await phantasiApi.updateNote(doc.item_id, {
-      title: full.title,
-      content_md: full.content_md,
-      topic,
-      image: full.image,
-      published_at: full.published_at ?? undefined,
-    })
-    return
-  }
-  await phantasiApi.updateNoteDoc(doc.id, {
-    topic,
+  return phantasiApi.updateNoteDocTopic(doc.id, {
+    topic: topic || null,
     revision: doc.revision,
   })
 }
@@ -113,17 +100,21 @@ export function usePhantasiCategories(
 
   const rewriteNotes = useCallback(
     async (from: string, to: string | null) => {
-      let changed = false
-      for (const doc of docsRef.current) {
-        const next =
-          to == null
-            ? removeCategoryPart(doc.topic, from)
-            : renameCategoryPart(doc.topic, from, to)
-        if (next === (doc.topic ?? null)) continue
-        changed = true
-        await writeNoteTopic(doc, next ?? '')
+      let attempted = false
+      try {
+        for (const doc of docsRef.current) {
+          const next =
+            to == null
+              ? removeCategoryPart(doc.topic, from)
+              : renameCategoryPart(doc.topic, from, to)
+          if (next === (doc.topic ?? null)) continue
+          attempted = true
+          await writeNoteTopic(doc, next ?? '')
+        }
+      } finally {
+        // A conflict also invalidates the revision needed for the next attempt.
+        if (attempted) onNotesRewritten()
       }
-      if (changed) onNotesRewritten()
     },
     [onNotesRewritten],
   )
@@ -148,9 +139,9 @@ export function usePhantasiCategories(
       if (!name || ids.length === 0) return false
       if (page === 'notes' && isLockedCategory(name)) return false
       setBusy(true)
+      let attemptedNotes = false
       try {
         if (page === 'notes') {
-          let changed = false
           let fullName: string | null = null
           for (const doc of docsRef.current) {
             if (!ids.includes(doc.id)) continue
@@ -162,10 +153,9 @@ export function usePhantasiCategories(
               }
               continue
             }
-            changed = true
+            attemptedNotes = true
             await writeNoteTopic(doc, result.value)
           }
-          if (changed) onNotesRewritten()
           if (fullName) {
             setError(
               formatCategoryFullNotice(
@@ -202,6 +192,7 @@ export function usePhantasiCategories(
         setError(userFacingError(err, labelsRef.current.assignFailed))
         return false
       } finally {
+        if (attemptedNotes) onNotesRewritten()
         setBusy(false)
       }
     },

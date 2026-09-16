@@ -9,6 +9,7 @@ import {
   syncProjectedMessages,
   workPlanFromData,
 } from './projectAgentMessage'
+import { mapMessagesById } from './useMessageState'
 
 function chat(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -347,4 +348,72 @@ test('流式时只投影最后一条，前面的对象沿用', () => {
   assert.equal(next[0], snap[0])
   assert.equal(next[1]?.content, '答呀')
   assert.notEqual(next[1], snap[1])
+})
+
+test('updates to an earlier message are not discarded when ids remain unchanged', () => {
+  const first = chat({ id: 'first', content: 'before' })
+  const last = chat({ id: 'last', content: 'last' })
+  syncProjectedMessages([first, last])
+  syncProjectedMessages([{ ...first, content: 'after' }, last])
+  assert.equal(getAgentMessagesSnapshot()[0].content, 'after')
+})
+
+test('stream updates do not read stable history fields', () => {
+  let reads = 0
+  const history = Array.from({ length: 1000 }, (_, index) => {
+    const item = chat({ id: `h${index}` })
+    Object.defineProperty(item, 'id', {
+      get() {
+        reads++
+        return `h${index}`
+      },
+    })
+    return item
+  })
+  let bag = { work: [...history, chat({ id: 'live', content: 'a' })], chat: [] }
+  syncProjectedMessages(bag.work)
+  bag = mapMessagesById(bag, 'live', (item) => ({ ...item, content: 'warm' }))
+  syncProjectedMessages(bag.work)
+  reads = 0
+  bag = mapMessagesById(bag, 'live', (item) => ({ ...item, content: 'ab' }))
+  syncProjectedMessages(bag.work)
+  assert.equal(reads, 0)
+  assert.equal(getAgentMessagesSnapshot().at(-1)?.content, 'ab')
+})
+
+test('batched streaming updates project every changed message', () => {
+  let bag = {
+    work: [
+      chat({ id: 'first', content: 'before' }),
+      chat({ id: 'last', content: 'tail' }),
+    ],
+    chat: [],
+  }
+  syncProjectedMessages(bag.work)
+  bag = mapMessagesById(bag, 'first', (item) => ({ ...item, content: 'after' }))
+  bag = mapMessagesById(bag, 'last', (item) => ({
+    ...item,
+    content: 'tail updated',
+  }))
+  syncProjectedMessages(bag.work)
+  assert.deepEqual(
+    getAgentMessagesSnapshot().map((item) => item.content),
+    ['after', 'tail updated'],
+  )
+})
+
+test('long background batches safely fall back to full projection', () => {
+  let bag = { work: [chat({ id: 'first' }), chat({ id: 'last' })], chat: [] }
+  syncProjectedMessages(bag.work)
+  for (let i = 0; i < 70; i++) {
+    bag = mapMessagesById(bag, i % 2 ? 'first' : 'last', (item) => ({
+      ...item,
+      content: String(i),
+    }))
+  }
+  syncProjectedMessages(bag.work)
+  assert.deepEqual(
+    getAgentMessagesSnapshot().map((item) => item.content),
+    ['69', '68'],
+  )
 })

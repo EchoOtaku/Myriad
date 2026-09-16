@@ -58,6 +58,7 @@ fn merge_lines(base: &[&str], local: &[&str], remote: &[&str]) -> Vec<String> {
             }
             (None, Some(r)) => {
                 let end = next_shared(base, bi + 1, local, li).unwrap_or(local.len());
+                out.extend(remote[ri..r].iter().map(|item| (*item).to_string()));
                 out.extend(local[li..end].iter().map(|item| (*item).to_string()));
                 li = end;
                 ri = r + 1;
@@ -65,6 +66,7 @@ fn merge_lines(base: &[&str], local: &[&str], remote: &[&str]) -> Vec<String> {
             }
             (Some(l), None) => {
                 let end = next_shared(base, bi + 1, remote, ri).unwrap_or(remote.len());
+                out.extend(local[li..l].iter().map(|item| (*item).to_string()));
                 out.extend(remote[ri..end].iter().map(|item| (*item).to_string()));
                 ri = end;
                 li = l + 1;
@@ -91,19 +93,25 @@ fn merge_inserts(local: &[&str], remote: &[&str]) -> Vec<String> {
     if local == remote {
         return local.iter().map(|item| (*item).to_string()).collect();
     }
-    let mut out = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for line in local.iter().chain(remote.iter()) {
-        if seen.insert(*line) {
-            out.push((*line).to_string());
-        }
-    }
-    out
+    // Coalesce identical edits, never repeated lines within an author's edit.
+    local
+        .iter()
+        .chain(remote.iter())
+        .map(|line| (*line).to_string())
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repeated_inserted_lines_survive() {
+        assert_eq!(
+            merge_text("anchor", "anchor\nx\nx\n\n", "anchor\ny"),
+            "anchor\nx\nx\n\n\ny"
+        );
+    }
 
     #[test]
     fn unchanged_side_takes_the_other() {

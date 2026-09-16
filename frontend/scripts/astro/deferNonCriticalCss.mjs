@@ -5,16 +5,12 @@ import { fileURLToPath } from 'node:url'
 /** Keep eager CSS in HTML; Vite's dynamic-import preloader owns lazy CSS. */
 export function deferNonCriticalCssIntegration() {
   const chunks = new Map()
-  let clientBuild = false
   const plugin = {
     name: 'collect-css-dependencies',
     apply: 'build',
     enforce: 'post',
-    configResolved(config) {
-      clientBuild = !config.build.ssr
-    },
     generateBundle(_options, bundle) {
-      if (!clientBuild) return
+      if (this.environment.config.consumer !== 'client') return
       for (const [file, chunk] of Object.entries(bundle)) {
         if (chunk.type !== 'chunk') continue
         chunks.set(file, {

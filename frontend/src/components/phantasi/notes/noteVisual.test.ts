@@ -59,10 +59,7 @@ describe('markdownToVisualHtml', () => {
   })
 
   it('任务列表带 data-task', () => {
-    assert.match(
-      markdownToVisualHtml('- [x] 做完\n- [ ] 还没'),
-      /data-task="1"/,
-    )
+    assert.match(markdownToVisualHtml('- [x] 做完\n- [ ] 还没'), /data-task="1"/)
   })
 })
 
@@ -92,8 +89,7 @@ describe('visualHtmlToMarkdown', () => {
   })
 
   it('标题、引用、有序和任务列表、表格转一圈还在', () => {
-    const md =
-      '## 节\n\n> 引\n\n1. 一\n\n- [x] 做完\n\n| 列 | 列 |\n| --- | --- |\n| 甲 | 乙 |'
+    const md = '## 节\n\n> 引\n\n1. 一\n\n- [x] 做完\n\n| 列 | 列 |\n| --- | --- |\n| 甲 | 乙 |'
     const back = visualHtmlToMarkdown(markdownToVisualHtml(md))
     assert.match(back, /^## 节$/m)
     assert.match(back, /^> 引$/m)
@@ -158,13 +154,18 @@ describe('表格对齐', () => {
   it('分隔行的冒号落到 align 属性，转回来还在', () => {
     const md = '| 左 | 中 | 右 |\n| :--- | :---: | ---: |\n| a | b | c |'
     const html = markdownToVisualHtml(md)
-    assert.match(html, /<th align="left">左<\/th><th align="center">中<\/th><th align="right">右<\/th>/)
+    assert.match(
+      html,
+      /<th align="left">左<\/th><th align="center">中<\/th><th align="right">右<\/th>/,
+    )
     assert.match(html, /<td align="center">b<\/td>/)
     assert.equal(visualHtmlToMarkdown(html), md)
   })
 
   it('表格只解释无属性的 br，代码里的 br 仍是文字', () => {
-    const html = markdownToVisualHtml('| A |\n| --- |\n| first<BR />second<br onclick="bad()">third `<br>` |')
+    const html = markdownToVisualHtml(
+      '| A |\n| --- |\n| first<BR />second<br onclick="bad()">third `<br>` |',
+    )
     assert.match(html, /first<br>second&lt;br onclick=/)
     assert.match(html, /<code>&lt;br&gt;<\/code>/)
     assert.doesNotMatch(html, /<br onclick/)
@@ -177,16 +178,23 @@ describe('表格对齐', () => {
 
 describe('带标题的图片和链接、非数字脚注、邮件自动链接', () => {
   it('`![alt](url "title")` 是图片，标题转一圈还在', () => {
-    const md = '![浅焙咖啡豆，颗粒完整](https://upload.wikimedia.org/x/Roasted_coffee_beans.jpg "Wikimedia Commons：Roasted coffee beans")'
+    const md =
+      '![浅焙咖啡豆，颗粒完整](https://upload.wikimedia.org/x/Roasted_coffee_beans.jpg "Wikimedia Commons：Roasted coffee beans")'
     const html = markdownToVisualHtml(md)
-    assert.match(html, /<img src="https:\/\/upload\.wikimedia\.org\/x\/Roasted_coffee_beans\.jpg" alt="浅焙咖啡豆，颗粒完整" title="Wikimedia Commons：Roasted coffee beans">/)
+    assert.match(
+      html,
+      /<img src="https:\/\/upload\.wikimedia\.org\/x\/Roasted_coffee_beans\.jpg" alt="浅焙咖啡豆，颗粒完整" title="Wikimedia Commons：Roasted coffee beans">/,
+    )
     assert.equal(visualHtmlToMarkdown(html), md)
   })
 
   it('`[t](url "title")` 也带标题', () => {
     const md = '看 [规范](https://spec.commonmark.org/0.31.2/ "CommonMark")'
     const html = markdownToVisualHtml(md)
-    assert.match(html, /<a href="https:\/\/spec\.commonmark\.org\/0\.31\.2\/" title="CommonMark">规范<\/a>/)
+    assert.match(
+      html,
+      /<a href="https:\/\/spec\.commonmark\.org\/0\.31\.2\/" title="CommonMark">规范<\/a>/,
+    )
     assert.equal(visualHtmlToMarkdown(html), md)
   })
 
@@ -201,7 +209,10 @@ describe('带标题的图片和链接、非数字脚注、邮件自动链接', (
   it('<mail@example.com> 是 mailto 自动链接，转回还是尖括号', () => {
     const md = '写信：<mail@example.com>'
     const html = markdownToVisualHtml(md)
-    assert.match(html, /<a href="mailto:mail@example\.com" data-autolink="1">mail@example\.com<\/a>/)
+    assert.match(
+      html,
+      /<a href="mailto:mail@example\.com" data-autolink="1">mail@example\.com<\/a>/,
+    )
     assert.equal(visualHtmlToMarkdown(html), md)
   })
 
@@ -217,8 +228,13 @@ describe('图片显示地址', () => {
   it('装上解析器后 src 是显示地址、data-src 是原地址，转回 Markdown 用原地址', () => {
     setVisualImageResolver((src) => (src.startsWith('/media/') ? `http://api${src}` : src))
     try {
-      const html = markdownToVisualHtml('![封面](/media/federation/1/a.jpg) 和 ![外](https://x.y/p.png)')
-      assert.match(html, /<img src="http:\/\/api\/media\/federation\/1\/a\.jpg" data-src="\/media\/federation\/1\/a\.jpg" alt="封面">/)
+      const html = markdownToVisualHtml(
+        '![封面](/media/federation/1/a.jpg) 和 ![外](https://x.y/p.png)',
+      )
+      assert.match(
+        html,
+        /<img src="http:\/\/api\/media\/federation\/1\/a\.jpg" data-src="\/media\/federation\/1\/a\.jpg" alt="封面">/,
+      )
       assert.match(html, /<img src="https:\/\/x\.y\/p\.png" alt="外">/)
       assert.equal(
         visualHtmlToMarkdown(html),
@@ -236,7 +252,10 @@ describe('富文本层里敲 Markdown', () => {
       length: '![封面](https://x/y.png)'.length,
       html: '<img src="https://x/y.png" alt="封面">',
     })
-    assert.equal(inlineMarkdownTail('看 [这里](https://a.b)')?.html, '<a href="https://a.b">这里</a>')
+    assert.equal(
+      inlineMarkdownTail('看 [这里](https://a.b)')?.html,
+      '<a href="https://a.b">这里</a>',
+    )
     assert.equal(inlineMarkdownTail('甲 **乙**')?.html, '<strong>乙</strong>')
     assert.equal(inlineMarkdownTail('甲 `乙`')?.html, '<code>乙</code>')
     assert.equal(inlineMarkdownTail('甲 ~~乙~~')?.html, '<del>乙</del>')
@@ -290,7 +309,10 @@ describe('参考式链接和连续脚注', () => {
     assert.match(html, /<p data-fn="didion">一<\/p>/)
     assert.match(html, /<p data-fn="swartz">二<\/p>/)
     const back = visualHtmlToMarkdown(html)
-    assert.match(back, /^\[cm\]: https:\/\/spec\.commonmark\.org\/0\.31\.2\/ "CommonMark Spec 0\.31\.2"$/m)
+    assert.match(
+      back,
+      /^\[cm\]: https:\/\/spec\.commonmark\.org\/0\.31\.2\/ "CommonMark Spec 0\.31\.2"$/m,
+    )
     assert.match(back, /^\[gfm\]: https:\/\/github\.github\.com\/gfm\/ "GFM"$/m)
     assert.match(back, /^\[\^didion\]: 一$/m)
     assert.match(back, /^\[\^swartz\]: 二$/m)
@@ -321,8 +343,14 @@ describe('参考式链接和连续脚注', () => {
     assert.match(html, /data-fn="words"/)
     assert.doesNotMatch(html, /<p>\[cm\]:/)
     const back = visualHtmlToMarkdown(html)
-    assert.match(back, /^\[cm\]: https:\/\/spec\.commonmark\.org\/0\.31\.2\/ "CommonMark Spec 0\.31\.2"$/m)
-    assert.match(back, /^\[gfm\]: https:\/\/github\.github\.com\/gfm\/ "GitHub Flavored Markdown Spec"$/m)
+    assert.match(
+      back,
+      /^\[cm\]: https:\/\/spec\.commonmark\.org\/0\.31\.2\/ "CommonMark Spec 0\.31\.2"$/m,
+    )
+    assert.match(
+      back,
+      /^\[gfm\]: https:\/\/github\.github\.com\/gfm\/ "GitHub Flavored Markdown Spec"$/m,
+    )
     assert.match(back, /^\[\^didion\]: Joan Didion/m)
     assert.match(back, /^\[\^words\]: 汉字按字/m)
     assert.doesNotMatch(back, /\[cm\]: .+ \[gfm\]:/)
@@ -337,7 +365,7 @@ describe('参考式链接和连续脚注', () => {
 
   it('引用空行上的 > 不会变成正文大于号', () => {
     const html = markdownToVisualHtml('> 上\n>\n> 下')
-    assert.match(html, /<blockquote>上\s+下<\/blockquote>/)
+    assert.match(html, /<blockquote><p>上<\/p><p>下<\/p><\/blockquote>/)
     assert.doesNotMatch(html, /&gt;/)
   })
 
@@ -366,17 +394,17 @@ describe('参考式链接和连续脚注', () => {
       expanded,
       '[cm]: https://spec.commonmark.org/0.31.2/ "CommonMark Spec 0.31.2"\n[gfm]: https://github.github.com/gfm/ "GFM"',
     )
-    assert.equal(
-      expandJammedDefinitions(`\`\`\`\n${jammed}\n\`\`\``),
-      `\`\`\`\n${jammed}\n\`\`\``,
-    )
+    assert.equal(expandJammedDefinitions(`\`\`\`\n${jammed}\n\`\`\``), `\`\`\`\n${jammed}\n\`\`\``)
   })
 
   it('withLinkDefinitions 和后端一样在脚注前补参考定义；读路径不再调用', () => {
     const md =
       '看 [规范][cm]\n\n[cm]: https://spec.commonmark.org/0.31.2/ "CommonMark Spec 0.31.2"\n\n[^1]: 底'
     const html = withLinkDefinitions('<p>看</p><div class="footnote-definition">底</div>', md)
-    assert.match(html, /<div class="link-definition"><a href="https:\/\/spec\.commonmark\.org\/0\.31\.2\/" title="CommonMark Spec 0\.31\.2">\[cm\] CommonMark Spec 0\.31\.2<\/a><\/div><div class="footnote-definition">/)
+    assert.match(
+      html,
+      /<div class="link-definition"><a href="https:\/\/spec\.commonmark\.org\/0\.31\.2\/" title="CommonMark Spec 0\.31\.2">\[cm\] CommonMark Spec 0\.31\.2<\/a><\/div><div class="footnote-definition">/,
+    )
     const stamped = withLinkDefinitions(
       '<p>看</p><div data-md-start="8" data-md-end="20" class="footnote-definition">底</div>',
       md,
@@ -488,3 +516,66 @@ describe('正文分栏和正文小组件', () => {
   })
 })
 
+describe('结构转换保留正文', () => {
+  const stable = (md: string) => {
+    let next = md
+    for (let i = 0; i < 3; i++) next = visualHtmlToMarkdown(markdownToVisualHtml(next))
+    return next
+  }
+  it('保留多行代码与内部较短围栏', () => {
+    const md = '````js\na\n\n```\nb\n````'
+    assert.equal(stable(md), md)
+  })
+  it('代码内的强调、链接与反引号都是文字', () => {
+    const md = '`a*b*c [x](https://x)` 和 ``a`b``'
+    assert.equal(stable(md), md)
+    assert.doesNotMatch(markdownToVisualHtml(md), /<em>|<a /)
+  })
+  it('escaped pipe 不增加列数或反斜线', () => {
+    const md = String.raw`| a\|b | c |
+| --- | --- |
+| x\|y<br>z | ok |`
+    assert.equal(stable(md), md)
+  })
+  it('无首尾 pipe 的表格仍生成两列', () => {
+    const md = 'a | b\n--- | ---\nx | y'
+    assert.match(markdownToVisualHtml(md), /<table>/)
+    assert.equal(stable(md), '| a | b |\n| --- | --- |\n| x | y |')
+  })
+  it('引用保留标题、空段与列表', () => {
+    const md = '> # 标题\n>\n> - 一\n> - 二\n>\n> 尾段'
+    assert.equal(stable(md), md.replaceAll('\n>\n', '\n> \n'))
+  })
+  it('有序列表保留非一的起始序号', () => {
+    assert.equal(stable('9. 九\n10. 十'), '9. 九\n10. 十')
+  })
+})
+
+describe('代码边界与未知语法', () => {
+  it('代码块首尾空行、空格和较长语言围栏连续转换仍保留', () => {
+    const md = '`````typescript\n\n  a  \n```\n\n`````'
+    const once = visualHtmlToMarkdown(markdownToVisualHtml(md))
+    assert.equal(once, '````typescript\n\n  a  \n```\n\n````')
+    assert.equal(visualHtmlToMarkdown(markdownToVisualHtml(once)), once)
+  })
+  it('行内代码以反引号开头结尾仍可往返', () => {
+    const md = '`` `a` ``'
+    assert.match(markdownToVisualHtml(md), /<code>`a`<\/code>/)
+    assert.equal(visualHtmlToMarkdown(markdownToVisualHtml(md)), md)
+  })
+  it('不支持的 HTML 以原文保留', () => {
+    const md = '<details>\n<summary>标题</summary>\n正文\n</details>'
+    const back = visualHtmlToMarkdown(markdownToVisualHtml(md))
+    assert.equal(back, md)
+  })
+})
+
+it('缩进代码保留源文而不是转成普通段落', () => {
+  const md = '    a*b*c\n    [x](url)'
+  assert.equal(visualHtmlToMarkdown(markdownToVisualHtml(md)), md)
+})
+
+it('粘贴的原文属性不能替换不同的可见正文', () => {
+  const back = visualHtmlToMarkdown('<pre data-raw-markdown="hidden">visible</pre>')
+  assert.equal(back, '```\nvisible\n```')
+})

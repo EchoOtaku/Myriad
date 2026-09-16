@@ -16,6 +16,7 @@ export class PhantasiItemState {
   private mutationListeners = new Set<
     (id: number, patch: ArticleFlags, sourceId?: number) => void
   >()
+
   private listeners = new Set<() => void>()
   getSnapshot = () => this.revision
   subscribe = (listener: () => void) => {
@@ -48,6 +49,7 @@ export class PhantasiItemState {
   clear() {
     this.entries.clear()
     this.pending.clear()
+    this.sourceIds.clear()
     this.notify()
   }
 

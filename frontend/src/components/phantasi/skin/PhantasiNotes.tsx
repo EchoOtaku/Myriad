@@ -1,7 +1,11 @@
 /** 笔记：云端稿、已发布、剩下的自有源都走文章卡。 */
 
 import type { CSSProperties } from 'react'
-import type { PhantasiItemPreview, PhantasiNoteDoc, PhantasiSource } from '../../../types/phantasi'
+import type {
+  PhantasiItemPreview,
+  PhantasiNoteDoc,
+  PhantasiSource,
+} from '../../../types/phantasi'
 import type { HomeBoardNote } from '../logic/homeBoard'
 import type { PeekStoryPreview } from '../ui/peekLane'
 import { useCallback, useMemo, useRef } from 'react'
@@ -21,7 +25,11 @@ import {
   noteStoryTopic,
 } from '../notes/noteCategory'
 import { storySourceFace } from '../notes/noteSiteSource'
-import { clearPhantasiStoryPeeks, StoryCard, usePhantasiPeekLane } from '../ui/StoryCard'
+import {
+  clearPhantasiStoryPeeks,
+  StoryCard,
+  usePhantasiPeekLane,
+} from '../ui/StoryCard'
 import { PhantasiStory } from './PhantasiStory'
 import { usePhantasiTimes } from './time'
 import { useStoryWindow } from './useStoryWindow'
@@ -74,16 +82,32 @@ export default function PhantasiNotes({
   const { t, locale } = useI18n()
   const times = usePhantasiTimes()
   const labels = t.phantasi
-  const leftover = useMemo(() => leftoverNoteSources(sources, notes), [sources, notes])
-  const byId = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources])
-  const shownDocs = useMemo(() => docs.filter((doc) => matchesNoteCategory(doc.topic, category)), [docs, category])
-  const shownNotes = useMemo(() => notes.filter((note) => matchesNoteCategory(note.topic, category)), [notes, category])
-  const shownLeftover = useMemo(() => leftover.filter((source) => {
-    if (category == null) return true
-    const story = sourceLatestStory(source)
-    if (story) return matchesNoteCategory(story.topic, category)
-    return category === NOTE_CATEGORY_NONE
-  }), [leftover, category])
+  const leftover = useMemo(
+    () => leftoverNoteSources(sources, notes),
+    [sources, notes],
+  )
+  const byId = useMemo(
+    () => new Map(sources.map((source) => [source.id, source])),
+    [sources],
+  )
+  const shownDocs = useMemo(
+    () => docs.filter((doc) => matchesNoteCategory(doc.topic, category)),
+    [docs, category],
+  )
+  const shownNotes = useMemo(
+    () => notes.filter((note) => matchesNoteCategory(note.topic, category)),
+    [notes, category],
+  )
+  const shownLeftover = useMemo(
+    () =>
+      leftover.filter((source) => {
+        if (category == null) return true
+        const story = sourceLatestStory(source)
+        if (story) return matchesNoteCategory(story.topic, category)
+        return category === NOTE_CATEGORY_NONE
+      }),
+    [leftover, category],
+  )
   const cardCount = shownDocs.length + shownNotes.length + shownLeftover.length
   const storyCols = Math.max(1, Math.ceil(cardCount / 2))
   const notesViewRef = useRef<HTMLDivElement>(null)
@@ -124,10 +148,24 @@ export default function PhantasiNotes({
     onPeekEnd,
     blocked: () => isEditMode || !onPeekItem,
   })
-  const window = useStoryWindow(cardCount, notesKey, notesViewRef, notesTrackRef, () => {
-    clearPhantasiStoryPeeks(notesTrackRef.current)
-    onPeekEnd?.()
-  }, `${category ?? "all"}:${shownDocs[0]?.id ?? ""}:${shownNotes[0]?.id ?? ""}:${shownLeftover[0]?.id ?? ""}`)
+  const window = useStoryWindow(
+    cardCount,
+    notesKey,
+    notesViewRef,
+    notesTrackRef,
+    () => {
+      clearPhantasiStoryPeeks(notesTrackRef.current)
+      onPeekEnd?.()
+    },
+    JSON.stringify([
+      category,
+      shownDocs[0]
+        ? `doc:${shownDocs[0].id}`
+        : shownNotes[0]
+          ? `note:${shownNotes[0].id}`
+          : `source:${shownLeftover[0]?.id}`,
+    ]),
+  )
 
   const activateSource = (source: PhantasiSource) => {
     if (isEditMode) {
@@ -146,16 +184,19 @@ export default function PhantasiNotes({
     onSourceClick(source)
   }
 
-  const openArticle = useCallback((item: PhantasiItemPreview & { source_id?: number }) => {
-    const sourceId = item.source_id
-    if (sourceId == null) return
-    if (isEditMode) {
-      onToggleSelect?.(sourceId)
-      return
-    }
-    const source = byId.get(sourceId)
-    if (source) onOpenItem(item, source, wallNeighbors)
-  }, [byId, isEditMode, onToggleSelect, onOpenItem, wallNeighbors])
+  const openArticle = useCallback(
+    (item: PhantasiItemPreview & { source_id?: number }) => {
+      const sourceId = item.source_id
+      if (sourceId == null) return
+      if (isEditMode) {
+        onToggleSelect?.(sourceId)
+        return
+      }
+      const source = byId.get(sourceId)
+      if (source) onOpenItem(item, source, wallNeighbors)
+    },
+    [byId, isEditMode, onToggleSelect, onOpenItem, wallNeighbors],
+  )
 
   const takeSeat = (index: number) => {
     const column = Math.floor(index / 2) + 1
@@ -179,133 +220,136 @@ export default function PhantasiNotes({
         onFocusCapture={window.onFocusCapture}
         onBlurCapture={window.onBlurCapture}
       >
-      <div
-        className="phantasi-notes-track"
-        ref={notesTrackRef}
-        data-phantasi-rail-track="items"
-        style={{ '--phantasi-story-cols': storyCols } as CSSProperties}
-      >
-      {window.indices.map((index) => {
-        if (index < shownDocs.length) {
-        const doc = shownDocs[index]!
-        const faceTopic = noteStoryTopic(doc.topic, labels)
-        const seat = takeSeat(index)
-        return (
-          <StoryCard
-            key={`doc:${doc.id}`}
-            arrive={seat.arrive}
-            railCol={seat.railCol}
-            place={seat.place}
-            unreadLabel={labels.unread}
-            starLabel={labels.starred}
-            unstarLabel={labels.unstar}
-            onOpen={() => onOpenDoc?.(doc.id)}
-            face={{
-              id: `doc:${doc.id}`,
-              title: doc.title.trim() || labels.noteCloudDraft,
-              summary: (doc.excerpt ?? doc.content_md).slice(0, 80),
-              cover: getImageUrl(doc.image),
-              when: noteDocKicker(
-                doc,
-                {
-                  failed: labels.noteScheduleFailed,
-                  scheduled: labels.noteStatusScheduled,
-                  draft: labels.noteStatusDraft,
-                },
-                locale,
-              ),
-              topic: faceTopic.topic,
-              hue: faceTopic.hue,
-            }}
-          />
-        )
-        }
-        const noteIndex = index - shownDocs.length
-        if (noteIndex < shownNotes.length) {
-        const note = shownNotes[noteIndex]!
-        const item = peekById.get(note.id)!
-        const seat = takeSeat(index)
-        return (
-          <PhantasiStory
-            key={`note:${note.id}`}
-            item={item}
-            times={times}
-            locale={locale}
-            labels={labels}
-            arrive={seat.arrive}
-            railCol={seat.railCol}
-            place={seat.place}
-            picking={isEditMode}
-            picked={!!selectedIds?.has(note.source_id)}
-            onOpen={openArticle}
-            onToggleStar={
-              isEditMode || !onToggleStar
-                ? undefined
-                : onToggleStar
+        <div
+          className="phantasi-notes-track"
+          ref={notesTrackRef}
+          data-phantasi-rail-track="items"
+          style={{ '--phantasi-story-cols': storyCols } as CSSProperties}
+        >
+          {window.indices.map((index) => {
+            if (index < shownDocs.length) {
+              const doc = shownDocs[index]!
+              const faceTopic = noteStoryTopic(doc.topic, labels)
+              const seat = takeSeat(index)
+              return (
+                <StoryCard
+                  key={`doc:${doc.id}`}
+                  arrive={seat.arrive}
+                  railCol={seat.railCol}
+                  place={seat.place}
+                  unreadLabel={labels.unread}
+                  starLabel={labels.starred}
+                  unstarLabel={labels.unstar}
+                  onOpen={() => onOpenDoc?.(doc.id)}
+                  face={{
+                    id: `doc:${doc.id}`,
+                    title: doc.title.trim() || labels.noteCloudDraft,
+                    summary: (doc.excerpt ?? doc.content_md).slice(0, 80),
+                    cover: getImageUrl(doc.image),
+                    when: noteDocKicker(
+                      doc,
+                      {
+                        failed: labels.noteScheduleFailed,
+                        scheduled: labels.noteStatusScheduled,
+                        draft: labels.noteStatusDraft,
+                      },
+                      locale,
+                    ),
+                    topic: faceTopic.topic,
+                    hue: faceTopic.hue,
+                  }}
+                />
+              )
             }
-          />
-        )
-        }
-        const source = shownLeftover[noteIndex - shownNotes.length]!
-        const story = source.recent_items?.[0] ? peekById.get(source.recent_items[0].id) : undefined
-        const seat = takeSeat(index)
-        if (story) {
-          return (
-            <PhantasiStory
-              key={`source:${source.id}`}
-              item={story}
-              times={times}
-              locale={locale}
-              labels={labels}
-              arrive={seat.arrive}
-              railCol={seat.railCol}
-              place={seat.place}
-              picking={isEditMode}
-              picked={!!selectedIds?.has(source.id)}
-              onOpen={openArticle}
-              onToggleStar={
-                isEditMode || !onToggleStar
-                  ? undefined
-                  : onToggleStar
-              }
-            />
-          )
-        }
-        const sourceFace = storySourceFace({
-          source_type: source.source_type,
-          source_name: source.name,
-          source_icon: source.icon,
-        })
-        return (
-          <StoryCard
-            key={`source:${source.id}`}
-            arrive={seat.arrive}
-            railCol={seat.railCol}
-            place={seat.place}
-            picking={isEditMode}
-            picked={!!selectedIds?.has(source.id)}
-            unreadLabel={labels.unread}
-            starLabel={labels.starred}
-            unstarLabel={labels.unstar}
-            onOpen={() => activateSource(source)}
-            face={{
-              id: `source:${source.id}`,
-              title: source.name,
-              summary: source.description || '',
-              source: sourceFace.name,
-              sourceIcon: getIconUrl(sourceFace.icon),
-            }}
-          />
-        )
-      })}
-      </div>
+            const noteIndex = index - shownDocs.length
+            if (noteIndex < shownNotes.length) {
+              const note = shownNotes[noteIndex]!
+              const item = peekById.get(note.id)!
+              const seat = takeSeat(index)
+              return (
+                <PhantasiStory
+                  key={`note:${note.id}`}
+                  item={item}
+                  times={times}
+                  locale={locale}
+                  labels={labels}
+                  arrive={seat.arrive}
+                  railCol={seat.railCol}
+                  place={seat.place}
+                  picking={isEditMode}
+                  picked={!!selectedIds?.has(note.source_id)}
+                  onOpen={openArticle}
+                  onToggleStar={
+                    isEditMode || !onToggleStar ? undefined : onToggleStar
+                  }
+                />
+              )
+            }
+            const source = shownLeftover[noteIndex - shownNotes.length]!
+            const story = source.recent_items?.[0]
+              ? peekById.get(source.recent_items[0].id)
+              : undefined
+            const seat = takeSeat(index)
+            if (story) {
+              return (
+                <PhantasiStory
+                  key={`source:${source.id}`}
+                  item={story}
+                  times={times}
+                  locale={locale}
+                  labels={labels}
+                  arrive={seat.arrive}
+                  railCol={seat.railCol}
+                  place={seat.place}
+                  picking={isEditMode}
+                  picked={!!selectedIds?.has(source.id)}
+                  onOpen={openArticle}
+                  onToggleStar={
+                    isEditMode || !onToggleStar ? undefined : onToggleStar
+                  }
+                />
+              )
+            }
+            const sourceFace = storySourceFace({
+              source_type: source.source_type,
+              source_name: source.name,
+              source_icon: source.icon,
+            })
+            return (
+              <StoryCard
+                key={`source:${source.id}`}
+                arrive={seat.arrive}
+                railCol={seat.railCol}
+                place={seat.place}
+                picking={isEditMode}
+                picked={!!selectedIds?.has(source.id)}
+                unreadLabel={labels.unread}
+                starLabel={labels.starred}
+                unstarLabel={labels.unstar}
+                onOpen={() => activateSource(source)}
+                face={{
+                  id: `source:${source.id}`,
+                  title: source.name,
+                  summary: source.description || '',
+                  source: sourceFace.name,
+                  sourceIcon: getIconUrl(sourceFace.icon),
+                }}
+              />
+            )
+          })}
+        </div>
       </div>
       {failed ? (
         <div className="phantasi-stories__more" role="status">
-          {labels.loadFailed} <button type="button" onClick={onRetry}>{t.common.retry}</button>
+          {labels.loadFailed}{' '}
+          <button type="button" onClick={onRetry}>
+            {t.common.retry}
+          </button>
         </div>
       ) : loading ? (
-        <div className="phantasi-stories__more" role="status">{labels.loading}</div>
+        <div className="phantasi-stories__more" role="status">
+          {labels.loading}
+        </div>
       ) : null}
     </div>
   )

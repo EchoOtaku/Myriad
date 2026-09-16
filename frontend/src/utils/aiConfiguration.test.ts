@@ -34,7 +34,7 @@ test('saved configuration is checked again on the next operation', async () => {
   assert.equal(generations, 1)
 })
 
-test('chat uses speaking availability, and persona uses its own Pro requirement', async () => {
+test('chat uses its own availability, and persona uses its own Pro requirement', async () => {
   const fetcher: typeof fetch = async (input) => String(input).endsWith('/config/public')
     ? Response.json({ aiAvailability: { standard: false, chat: true, persona: false } })
     : Response.json({ ok: true })
@@ -116,7 +116,6 @@ test('an older backend still validates requests and rule-based fallbacks remain 
   }
 })
 
-
 test('naming accepts strict Lite without Pro, and rejects Pro without strict Lite', async () => {
   const nameUrl = '/api/agent/persona/name'
   for (const [personaName, persona, status] of [[true, false, 200], [false, true, 409]] as const) {
@@ -126,4 +125,16 @@ test('naming accepts strict Lite without Pro, and rejects Pro without strict Lit
         : Response.json({ name: 'Merope' }))
     assert.equal(result.status, status)
   }
+})
+
+test('rejecting a pending action never requires AI configuration', async () => {
+  const path = '/api/agent/confirm/stream'
+  const calls: string[] = []
+  await fetchWithAiConfiguration(path, {
+    method: 'POST', body: JSON.stringify({ confirmed: false }),
+  }, async (input) => {
+    calls.push(String(input))
+    return Response.json({ cancelled: true })
+  })
+  assert.deepEqual(calls, [path])
 })

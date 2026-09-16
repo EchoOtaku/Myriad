@@ -262,8 +262,13 @@ export function useNoteEditorSession({
   const applyMergedFields = useCallback((fields: NoteCloudFields) => {
     // 远端合进来的是原文；可视层若还标着自己在改，会跳过灌 DOM。
     visualEditing.current = false
+    titleRef.current = fields.title
+    contentMdRef.current = expandJammedDefinitions(fields.contentMd)
+    topicRef.current = fields.topic
+    coverRef.current = fields.cover
+    publishedAtRef.current = fields.publishedAt
     setTitle(fields.title)
-    setContentMd(expandJammedDefinitions(fields.contentMd))
+    setContentMd(contentMdRef.current)
     setTopic(fields.topic)
     setCover(fields.cover)
     setPublishedAt(fields.publishedAt)
@@ -291,24 +296,13 @@ export function useNoteEditorSession({
       conflict: t.phantasi.noteRevisionConflict,
     },
   })
-  const baseRef = cloud.baseRef
   const { peers } = useNoteCollab({
     cloudId,
     loading,
     userName: user?.username,
-    revisionRef,
-    titleRef,
-    contentMdRef,
-    topicRef,
-    coverRef,
-    publishedAtRef,
     textareaRef,
-    baseRef,
-    title,
-    topic,
-    cover,
-    applyMergedFields,
-    ackRemote: cloud.ack,
+    fields: { title, contentMd, topic, cover, publishedAt },
+    cloud,
   })
   widgetSettingsOpenRef.current = widgetSettingsOpen
   overlayOpenRef.current =
@@ -598,6 +592,8 @@ export function useNoteEditorSession({
 
   return {
     t,
+    compositionStart: cloud.compositionStart,
+    compositionEnd: cloud.compositionEnd,
     animation,
     motionEnabled,
     previewSurfaceClass,

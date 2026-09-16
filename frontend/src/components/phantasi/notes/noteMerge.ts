@@ -59,7 +59,7 @@ function mergeLines(base: string[], local: string[], remote: string[]): string[]
     }
     if (localAt < 0 && remoteAt >= 0) {
       const end = nextShared(base, bi + 1, local, li)
-      out.push(...local.slice(li, end))
+      out.push(...remote.slice(ri, remoteAt), ...local.slice(li, end))
       li = end
       ri = remoteAt + 1
       bi += 1
@@ -67,7 +67,7 @@ function mergeLines(base: string[], local: string[], remote: string[]): string[]
     }
     if (localAt >= 0 && remoteAt < 0) {
       const end = nextShared(base, bi + 1, remote, ri)
-      out.push(...remote.slice(ri, end))
+      out.push(...local.slice(li, localAt), ...remote.slice(ri, end))
       ri = end
       li = localAt + 1
       bi += 1
@@ -88,14 +88,8 @@ function mergeInserts(local: string[], remote: string[]): string[] {
   if (local.length === remote.length && local.every((line, i) => line === remote[i])) {
     return local
   }
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const line of [...local, ...remote]) {
-    if (seen.has(line)) continue
-    seen.add(line)
-    out.push(line)
-  }
-  return out
+  // Only whole identical edits coalesce; repeated lines inside either edit are intentional.
+  return [...local, ...remote]
 }
 
 export function caretOffsetStyle(

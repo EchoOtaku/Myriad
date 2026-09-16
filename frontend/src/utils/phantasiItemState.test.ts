@@ -2,6 +2,16 @@ import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { PhantasiItemState } from './phantasiItemState'
 
+it('drops source ownership along with article flags when the subject changes', () => {
+  const state = new PhantasiItemState()
+  const sources: Array<number | undefined> = []
+  state.subscribeMutations((_id, _patch, sourceId) => sources.push(sourceId))
+  state.observe(1, { source_id: 42, is_read: false }, state.getSnapshot())
+  state.clear()
+  state.commit(1, { is_read: true })
+  assert.deepEqual(sources, [undefined])
+})
+
 it('projects confirmed flags across views and rejects responses started before a mutation', () => {
   const state = new PhantasiItemState()
   const before = state.getSnapshot()

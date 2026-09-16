@@ -9,49 +9,125 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
+use tokio::sync::{Mutex, OwnedMutexGuard, RwLock, Semaphore};
+
+const PLATFORM_CACHE_ENTRIES: usize = 32;
+const PLATFORM_CACHE_TTL: Duration = Duration::from_secs(30);
 
 struct CacheEntry<V> {
     value: V,
     created_at: Instant,
+    size_bytes: usize,
 }
 
 struct TtlCache<V: Clone> {
     data: HashMap<String, CacheEntry<V>>,
     ttl: Duration,
+    max_entries: usize,
+    max_bytes: usize,
+    bytes: usize,
 }
 
 impl<V: Clone> TtlCache<V> {
-    fn new(ttl: Duration) -> Self {
+    fn new(ttl: Duration, max_entries: usize, max_bytes: usize) -> Self {
         Self {
             data: HashMap::new(),
             ttl,
+            max_entries,
+            max_bytes,
+            bytes: 0,
         }
     }
 
-    fn get(&self, key: &str) -> Option<&V> {
-        self.data.get(key).and_then(|entry| {
-            if entry.created_at.elapsed() < self.ttl {
-                Some(&entry.value)
-            } else {
-                None
-            }
-        })
+    fn purge_expired(&mut self) {
+        let now = Instant::now();
+        self.data
+            .retain(|_, entry| now.duration_since(entry.created_at) < self.ttl);
+        self.bytes = self.data.values().map(|entry| entry.size_bytes).sum();
     }
 
-    fn set(&mut self, key: String, value: V) {
+    fn get(&mut self, key: &str) -> Option<V> {
+        self.purge_expired();
+        self.data.get(key).map(|entry| entry.value.clone())
+    }
+
+    fn remove(&mut self, key: &str) {
+        if let Some(entry) = self.data.remove(key) {
+            self.bytes -= entry.size_bytes;
+        }
+    }
+
+    fn trim(&mut self) {
+        self.purge_expired();
+        while self.data.len() > self.max_entries || self.bytes > self.max_bytes {
+            let Some(oldest) = self
+                .data
+                .iter()
+                .min_by_key(|(_, entry)| entry.created_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.remove(&oldest);
+        }
+    }
+
+    fn set(&mut self, key: String, value: V, size_bytes: usize) {
+        self.remove(&key);
+        self.purge_expired();
+        // Oversized snapshots may serve this request but must not displace the cache.
+        if size_bytes > self.max_bytes || self.max_entries == 0 {
+            return;
+        }
+        self.bytes += size_bytes;
         self.data.insert(
             key,
             CacheEntry {
                 value,
                 created_at: Instant::now(),
+                size_bytes,
             },
         );
+        self.trim();
     }
 
     fn len(&self) -> usize {
         self.data.len()
     }
+}
+
+struct PlatformSnapshot {
+    data: Arc<Value>,
+    items: Arc<Vec<Value>>,
+    size_bytes: usize,
+}
+
+// Account for the JSON tree rather than only its compact serialized size.
+fn json_resident_bytes(value: &Value) -> usize {
+    std::mem::size_of::<Value>().saturating_add(match value {
+        Value::String(s) => s.capacity(),
+        Value::Array(values) => values.iter().map(json_resident_bytes).sum(),
+        Value::Object(values) => values
+            .iter()
+            .map(|(key, value)| {
+                key.capacity()
+                    .saturating_add(64)
+                    .saturating_add(json_resident_bytes(value))
+            })
+            .sum(),
+        _ => 0,
+    })
+}
+
+fn build_snapshot(platform: &str, data: Value) -> Arc<PlatformSnapshot> {
+    let items = crate::services::platform_items::extract_platform_items(&data, platform);
+    let size_bytes = json_resident_bytes(&data)
+        .saturating_add(items.iter().map(json_resident_bytes).sum::<usize>());
+    Arc::new(PlatformSnapshot {
+        data: Arc::new(data),
+        items: Arc::new(items),
+        size_bytes,
+    })
 }
 
 struct SingleCache<V: Clone> {
@@ -84,8 +160,33 @@ impl<V: Clone> SingleCache<V> {
     }
 }
 
-static PLATFORM_CACHE: Lazy<Arc<RwLock<TtlCache<Value>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(TtlCache::new(Duration::from_secs(30)))));
+static PLATFORM_CACHE: Lazy<Arc<RwLock<TtlCache<Arc<PlatformSnapshot>>>>> = Lazy::new(|| {
+    Arc::new(RwLock::new(TtlCache::new(
+        PLATFORM_CACHE_TTL,
+        PLATFORM_CACHE_ENTRIES,
+        platform_cache_byte_budget(),
+    )))
+});
+static PLATFORM_LOAD_PERMITS: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(2)));
+
+fn platform_cache_byte_budget() -> usize {
+    crate::services::memory_profile::max_api_cache_bytes() / 3
+}
+
+fn ensure_cache_cleanup() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        tokio::spawn(async {
+            let mut interval = tokio::time::interval(PLATFORM_CACHE_TTL);
+            loop {
+                interval.tick().await;
+                let mut cache = PLATFORM_CACHE.write().await;
+                cache.max_bytes = platform_cache_byte_budget();
+                cache.trim();
+            }
+        });
+    });
+}
 
 static PLATFORM_LOCKS: Lazy<RwLock<HashMap<String, Weak<Mutex<()>>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
@@ -162,11 +263,13 @@ pub async fn acquire_platform_lock(platform: &str) -> Result<OwnedMutexGuard<()>
     Ok(lock.lock_owned().await)
 }
 
-/// Refresh in-memory cache after a successful file write.
-pub async fn update_cached_platform_data(platform: &str, data: Value) -> Result<(), String> {
+/// Invalidate the shared document and projection after a successful file write.
+pub async fn invalidate_cached_platform_data(platform: &str) -> Result<(), String> {
     validate_platform_name(platform)?;
     let key = platform.to_lowercase();
-    PLATFORM_CACHE.write().await.set(key.clone(), data);
+    // The caller has already persisted the new document. Invalidate instead of
+    // eagerly cloning/projecting it when nobody is reading this platform.
+    PLATFORM_CACHE.write().await.remove(&key);
 
     let mut list_cache = PLATFORM_LIST_CACHE.write().await;
     if let Some(mut platforms) = list_cache.get() {
@@ -193,48 +296,59 @@ fn platform_cache_read_failed(platform: &str, error: std::io::Error) -> String {
     }
 }
 
-/// Read platform filtered JSON with process TTL cache.
-pub async fn get_cached_platform_data(platform: &str) -> Result<Value, String> {
-    validate_platform_name(platform)?;
-    let key = platform.to_lowercase();
-
-    {
-        let cache = PLATFORM_CACHE.read().await;
-        if let Some(data) = cache.get(&key) {
-            return Ok(data.clone());
-        }
-    }
-
-    let _platform_guard = acquire_platform_lock(&key).await?;
-
-    {
-        let cache = PLATFORM_CACHE.read().await;
-        if let Some(data) = cache.get(&key) {
-            return Ok(data.clone());
-        }
-    }
-
-    let cache_file = filtered_cache_path(&key);
-    let content = tokio::fs::read_to_string(&cache_file)
-        .await
-        .map_err(|error| platform_cache_read_failed(&key, error))?;
-
-    let data: Value = serde_json::from_str(&content).map_err(|error| {
-        tracing::error!(%error, platform = %key, "failed to parse platform cache");
-        format!("Failed to parse {key} data")
-    })?;
-
-    {
-        let mut cache = PLATFORM_CACHE.write().await;
-        cache.set(key, data.clone());
-    }
-
-    Ok(data)
+/// Read a shared immutable platform document; callers clone only selected values.
+pub async fn get_cached_platform_data(platform: &str) -> Result<Arc<Value>, String> {
+    Ok(get_platform_snapshot(platform).await?.data.clone())
 }
 
-/// Number of entries currently held in the process platform cache (metrics).
+/// Item projection shares the document's TTL/invalidation and byte budget.
+pub async fn get_cached_platform_items(platform: &str) -> Result<Arc<Vec<Value>>, String> {
+    Ok(get_platform_snapshot(platform).await?.items.clone())
+}
+
+async fn get_platform_snapshot(platform: &str) -> Result<Arc<PlatformSnapshot>, String> {
+    validate_platform_name(platform)?;
+    ensure_cache_cleanup();
+    let key = platform.to_lowercase();
+    if let Some(snapshot) = PLATFORM_CACHE.write().await.get(&key) {
+        return Ok(snapshot);
+    }
+    let _platform_guard = acquire_platform_lock(&key).await?;
+    if let Some(snapshot) = PLATFORM_CACHE.write().await.get(&key) {
+        return Ok(snapshot);
+    }
+
+    // Acquire before reading/parsing; a cancelled request does not release its
+    // permit until the blocking worker (including raw-cache enrichment) finishes.
+    let permit = PLATFORM_LOAD_PERMITS
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| "Platform cache loader is unavailable".to_string())?;
+    let worker_key = key.clone();
+    let snapshot = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let content = std::fs::read_to_string(filtered_cache_path(&worker_key))
+            .map_err(|error| platform_cache_read_failed(&worker_key, error))?;
+        let data: Value = serde_json::from_str(&content).map_err(|error| {
+            tracing::error!(%error, platform = %worker_key, "failed to parse platform cache");
+            format!("Failed to parse {worker_key} data")
+        })?;
+        Ok::<_, String>(build_snapshot(&worker_key, data))
+    })
+    .await
+    .map_err(|_| "Platform cache loader failed".to_string())??;
+    let mut cache = PLATFORM_CACHE.write().await;
+    cache.max_bytes = platform_cache_byte_budget();
+    cache.set(key, snapshot.clone(), snapshot.size_bytes);
+    Ok(snapshot)
+}
+
+/// Number of unexpired snapshots currently held in the process cache.
 pub async fn platform_cache_entry_count() -> usize {
-    PLATFORM_CACHE.read().await.len()
+    let mut cache = PLATFORM_CACHE.write().await;
+    cache.trim();
+    cache.len()
 }
 
 /// Domain errors for filtered-cache IO (write path).
@@ -349,7 +463,7 @@ pub async fn write_filtered_document(
             "Failed to save platform data".to_string(),
         ));
     }
-    update_cached_platform_data(&key, data.clone())
+    invalidate_cached_platform_data(&key)
         .await
         .map_err(|error| {
             tracing::error!(%error, platform = %key, "[PLATFORM] Failed to refresh process cache");
@@ -410,6 +524,76 @@ pub fn build_tapp_written_item(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn platform_cache_enforces_budgets_and_replacement_accounting() {
+        let mut cache = super::TtlCache::new(std::time::Duration::from_secs(30), 2, 10);
+        cache.set("a".into(), 1, 4);
+        cache.set("b".into(), 2, 4);
+        cache.set("c".into(), 3, 4);
+        assert!(cache.get("a").is_none());
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.bytes, 8);
+        cache.set("b".into(), 4, 9);
+        assert!(cache.get("c").is_none());
+        assert_eq!(cache.get("b"), Some(4));
+        assert_eq!(cache.bytes, 9);
+        cache.set("too-large".into(), 5, 11);
+        assert_eq!(cache.get("b"), Some(4));
+        assert!(cache.get("too-large").is_none());
+        cache.max_bytes = 3;
+        cache.trim();
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.bytes, 0);
+    }
+
+    #[test]
+    fn platform_snapshot_hits_share_document_and_projected_items() {
+        let mut cache = super::TtlCache::new(std::time::Duration::from_secs(30), 2, 100_000);
+        let snapshot = super::build_snapshot(
+            "test",
+            serde_json::json!({
+                "items": [{"id":"one", "title":"first", "type":"book"}]
+            }),
+        );
+        cache.set("test".into(), snapshot.clone(), snapshot.size_bytes);
+        let hit = cache.get("test").unwrap();
+        assert!(std::sync::Arc::ptr_eq(&snapshot.data, &hit.data));
+        assert!(std::sync::Arc::ptr_eq(&snapshot.items, &hit.items));
+        assert_eq!(hit.items[0]["title"], "first");
+        cache.remove("test");
+        assert!(cache.get("test").is_none());
+        // Readers can finish with the immutable snapshot after invalidation.
+        assert_eq!(hit.items.len(), 1);
+    }
+
+    #[test]
+    fn platform_cache_sweep_releases_expired_payload_without_another_read() {
+        let mut cache = super::TtlCache::new(std::time::Duration::from_secs(30), 2, 4096);
+        let value = std::sync::Arc::new(vec![0u8; 128]);
+        let weak = std::sync::Arc::downgrade(&value);
+        cache.set("test".into(), value, 128);
+        cache.data.get_mut("test").unwrap().created_at =
+            std::time::Instant::now() - std::time::Duration::from_secs(31);
+        cache.trim();
+        assert!(weak.upgrade().is_none());
+        assert_eq!(cache.bytes, 0);
+    }
+
+    #[test]
+    fn expired_platform_snapshot_is_released_on_access() {
+        let mut cache = super::TtlCache::new(std::time::Duration::from_secs(30), 32, 4096);
+        let value = std::sync::Arc::new(serde_json::json!({ "items": ["large payload"] }));
+        let weak = std::sync::Arc::downgrade(&value);
+        cache.set("steam".into(), value, 100);
+        cache.data.get_mut("steam").unwrap().created_at =
+            std::time::Instant::now() - std::time::Duration::from_secs(31);
+        assert!(cache.get("steam").is_none());
+        assert!(
+            weak.upgrade().is_none(),
+            "expired payload is still retained"
+        );
+    }
+
     use super::{
         PlatformCacheError, build_tapp_written_item, filtered_cache_path,
         platform_cache_read_failed, platform_filtered_cache_path, validate_platform_name,

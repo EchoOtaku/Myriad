@@ -3,7 +3,6 @@ import { describe, it } from 'node:test'
 import {
   applyCollabPeers,
   shouldApplyRemoteDoc,
-  shouldApplyRemoteEdit,
 } from './noteCollab.ts'
 
 describe('applyCollabPeers', () => {
@@ -62,22 +61,8 @@ describe('applyCollabPeers', () => {
   })
 })
 
-describe('shouldApplyRemoteEdit', () => {
-  it('收下标题和光标，不要求正文', () => {
-    assert.equal(
-      shouldApplyRemoteEdit({
-        type: 'edit',
-        peer_id: 'a',
-        user_id: 1,
-        title: '草稿',
-      }),
-      true,
-    )
-    assert.equal(
-      shouldApplyRemoteEdit({ type: 'presence', peer_id: 'a', user_id: 1 }),
-      false,
-    )
-  })
+it('无版本 edit 只更新在场状态，不应用文档快照', () => {
+  assert.equal(shouldApplyRemoteDoc({ type: 'edit', peer_id: 'a', user_id: 1, title: '草稿', content_md: '旧快照', revision: 3 }, 2), false)
 })
 
 describe('shouldApplyRemoteDoc', () => {

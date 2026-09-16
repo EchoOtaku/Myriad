@@ -541,9 +541,14 @@ fn ai_availability(config: &crate::config::DynamicConfig) -> Value {
     };
     let standard = ready(ModelTier::Standard);
     let pro = ready(ModelTier::Pro);
+    let strict_lite = config
+        .resolve_strict_lite_ai_config()
+        .and_then(|resolved| resolved.api_key)
+        .is_some_and(|key| !key.trim().is_empty());
     json!({
         "standard": standard,
-        "chat": standard || (config.merope_enabled_resolved() && config.lite_enabled && ready(ModelTier::Lite)),
+        "chat": strict_lite,
+        "personaName": strict_lite,
         "pro": pro,
         "persona": config.pro_enabled && pro,
         "image": crate::services::image_generation::config_from_dynamic(config).is_ok(),
@@ -567,15 +572,33 @@ mod ai_availability_tests {
     }
 
     #[test]
+    fn chat_and_naming_require_explicit_lite_without_pro_or_merope() {
+        let mut config = crate::config::DynamicConfig {
+            lite_enabled: true,
+            lite_openai_model: "test-lite".into(),
+            provider_openrouter_api_key: Some("test-key".into()),
+            ..Default::default()
+        };
+        let value = ai_availability(&config);
+        assert_eq!(value["chat"], true);
+        assert_eq!(value["personaName"], true);
+        assert_eq!(value["persona"], false);
+        config.lite_openai_model.clear();
+        assert_eq!(ai_availability(&config)["chat"], false);
+        assert_eq!(ai_availability(&config)["personaName"], false);
+    }
+
+    #[test]
     fn shared_credentials_follow_runtime_resolution_without_exposing_keys() {
         let config = crate::config::DynamicConfig {
-            provider_openai_api_key: Some("test-private-key".into()),
+            provider_openrouter_api_key: Some("test-private-key".into()),
             ..Default::default()
         };
         let value = ai_availability(&config);
         assert!(config.text_ai_available());
         assert_eq!(value["standard"], true);
-        assert_eq!(value["chat"], true);
+        assert_eq!(value["chat"], false);
+        assert_eq!(value["personaName"], false);
         assert_eq!(value["pro"], true);
         assert_eq!(value["persona"], false);
         assert!(!value.to_string().contains("test-private-key"));

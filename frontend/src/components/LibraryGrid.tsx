@@ -77,8 +77,10 @@ import {
   openLibraryItemExternal,
   useLibraryCardActions,
 } from './library/libraryCardShell'
+import { buildLibraryListIndex } from './library/libraryListWindow'
 import { LIBRARY_LIVE_MS } from './library/libraryLiveMs'
 import { LibraryPlayingWaveBorder } from './library/libraryWaveBorder'
+import { useLibraryListWindow } from './library/useLibraryListWindow'
 import PlatformIcon from './PlatformIcon'
 import { QuickTransition } from './SkeletonTransition'
 import { Spinner } from './Spinner'
@@ -563,6 +565,16 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     })
   }, [laidOutItems, layoutMode, layouts])
 
+  const revealedListItems = useMemo(
+    () => listOrderedItems.slice(0, visibleCount),
+    [listOrderedItems, visibleCount],
+  )
+  const listIndex = useMemo(
+    () => buildLibraryListIndex(revealedListItems, layouts),
+    [revealedListItems, layouts],
+  )
+  const listWindow = useLibraryListWindow(containerRef, listIndex, layoutMode === 'list' && !loading)
+
   const visibleItems = useMemo(() => {
     if (layouts.size === 0) return []
 
@@ -577,7 +589,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       )
     }
 
-    return listOrderedItems.slice(0, visibleCount)
+    return listWindow
   }, [
     canvasLiveVisibleItems,
     canvasSpatialIndex,
@@ -586,8 +598,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     laidOutItems,
     layoutMode,
     layouts,
-    listOrderedItems,
-    visibleCount,
+    listWindow,
   ])
 
   const tourCardId = useMemo(() => {
@@ -602,25 +613,16 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   const renderItems = useMemo(
     () =>
-      layoutMode === 'canvas'
-        ? pinLibraryTourCard(visibleItems, laidOutItems, tourCardId)
+      layoutMode === 'canvas' || isTourDomActive()
+        ? pinLibraryTourCard(visibleItems, layoutMode === 'canvas' ? laidOutItems : revealedListItems, tourCardId)
         : visibleItems,
-    [laidOutItems, layoutMode, tourCardId, visibleItems],
+    [laidOutItems, layoutMode, revealedListItems, tourCardId, visibleItems],
   )
 
   const containerHeight = useMemo(() => {
     if (layoutMode === 'canvas') return 0
-    if (visibleItems.length === 0) return 400
-    let maxBottom = 0
-    visibleItems.forEach((item) => {
-      const layout = layouts.get(item.id)
-      if (layout) {
-        const bottom = layout.top + layout.height
-        if (bottom > maxBottom) maxBottom = bottom
-      }
-    })
-    return maxBottom + 20
-  }, [layoutMode, visibleItems, layouts])
+    return listIndex.height
+  }, [layoutMode, listIndex])
 
   const fetchLibraryData = useCallback(async () => {
     const generation = ++libraryFetchGenerationRef.current
@@ -986,7 +988,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                   const hoverLocked = isPlaying || isLeavingSong
 
                   const rowIndex = Math.floor(layout.top / 300)
-                  const listAnimationDelay = rowIndex * 0.05
+                  const listAnimationDelay = Math.min(rowIndex * 0.05, 0.3)
                   const surfaceDragging =
                     layoutMode === 'canvas' &&
                     containerRef.current?.dataset.dragging === 'true'
@@ -1050,6 +1052,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                   return (
                     <div
                       key={item.id}
+                      data-library-list-id={layoutMode === 'list' ? item.id : undefined}
                       className={`absolute group library-card-container${hoverLocked ? ' is-hover-locked' : ''}`}
                       data-tour={
                         tourCardId === item.id ? 'library-card' : undefined

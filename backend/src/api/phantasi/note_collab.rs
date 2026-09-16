@@ -17,6 +17,10 @@ pub struct NoteCollabEvent {
     pub user_id: i32,
     pub name: Option<String>,
     pub revision: Option<i64>,
+    #[serde(default)]
+    pub client_request_id: Option<String>,
+    #[serde(default)]
+    pub published_at: Option<i64>,
     pub cursor: Option<i32>,
     pub title: Option<String>,
     pub content_md: Option<String>,
@@ -99,6 +103,8 @@ mod tests {
                 user_id: 1,
                 name: Some("Ada".into()),
                 revision: None,
+                client_request_id: None,
+                published_at: None,
                 cursor: Some(4),
                 title: None,
                 content_md: None,
@@ -133,6 +139,8 @@ mod tests {
                 user_id: 1,
                 name: None,
                 revision: Some(1),
+                client_request_id: Some("save-1".into()),
+                published_at: None,
                 cursor: None,
                 title: None,
                 content_md: None,

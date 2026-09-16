@@ -24,7 +24,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::broadcast;
 
 use crate::middleware::auth::Claims;
 use crate::middleware::ws_origin::{
@@ -62,93 +62,77 @@ fn ws_ticket_http_error(
 
 // 连接管理
 
-/// 每个 Channel 的广播通道
+/// Registries are locked only for synchronous subscribe/send/drop operations.
+/// Subscription ownership keeps cleanup correct on errors and task cancellation.
 struct ChannelBroadcast {
     tx: broadcast::Sender<String>,
 }
 
-/// 全局 Channel 广播注册表
-static CHANNEL_REGISTRY: Lazy<Arc<RwLock<HashMap<String, ChannelBroadcast>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+type BroadcastRegistry = Arc<std::sync::Mutex<HashMap<String, ChannelBroadcast>>>;
 
-/// 全局 Room 广播注册表（复用同结构）
-static ROOM_REGISTRY: Lazy<Arc<RwLock<HashMap<String, ChannelBroadcast>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static CHANNEL_REGISTRY: Lazy<BroadcastRegistry> =
+    Lazy::new(|| Arc::new(std::sync::Mutex::new(HashMap::new())));
+static ROOM_REGISTRY: Lazy<BroadcastRegistry> =
+    Lazy::new(|| Arc::new(std::sync::Mutex::new(HashMap::new())));
 
-/// 获取或创建 Channel 的广播通道
-async fn get_or_create_channel_tx(channel_id: &str) -> broadcast::Sender<String> {
-    {
-        let registry = CHANNEL_REGISTRY.read().await;
-        if let Some(cb) = registry.get(channel_id) {
-            return cb.tx.clone();
+struct BroadcastSubscription {
+    registry: BroadcastRegistry,
+    id: String,
+    rx: Option<broadcast::Receiver<String>>,
+    tx: broadcast::Sender<String>,
+}
+
+impl BroadcastSubscription {
+    fn new(registry: BroadcastRegistry, id: &str, capacity: usize) -> Self {
+        let (tx, rx) = {
+            let mut entries = registry.lock().unwrap_or_else(|e| e.into_inner());
+            let entry = entries.entry(id.to_owned()).or_insert_with(|| {
+                let (tx, _) = broadcast::channel(capacity);
+                ChannelBroadcast { tx }
+            });
+            (entry.tx.clone(), entry.tx.subscribe())
+        };
+        Self {
+            registry,
+            id: id.to_owned(),
+            rx: Some(rx),
+            tx,
         }
     }
 
-    let mut registry = CHANNEL_REGISTRY.write().await;
-    // 双重检查
-    if let Some(cb) = registry.get(channel_id) {
-        return cb.tx.clone();
+    async fn recv(&mut self) -> Result<String, broadcast::error::RecvError> {
+        self.rx.as_mut().expect("live subscription").recv().await
     }
-
-    let (tx, _) = broadcast::channel(256);
-    registry.insert(channel_id.to_string(), ChannelBroadcast { tx: tx.clone() });
-    tx
 }
 
-/// 广播消息到指定 Channel 的所有 WebSocket 连接
+impl Drop for BroadcastSubscription {
+    fn drop(&mut self) {
+        // Serialize dropping the final receiver with a concurrent reconnect.
+        // No detached cleanup task: aborting the socket releases its entry too.
+        let mut entries = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        drop(self.rx.take());
+        if entries
+            .get(&self.id)
+            .is_some_and(|entry| entry.tx.receiver_count() == 0)
+        {
+            entries.remove(&self.id);
+        }
+    }
+}
+
 pub async fn broadcast_to_channel(channel_id: &str, message: &serde_json::Value) {
-    let registry = CHANNEL_REGISTRY.read().await;
-    if let Some(cb) = registry.get(channel_id) {
-        let msg = serde_json::to_string(message).unwrap_or_default();
-        let _ = cb.tx.send(msg);
-    }
+    broadcast_message(&CHANNEL_REGISTRY, channel_id, message);
 }
 
-/// 清理空的 Channel 广播通道
-async fn cleanup_channel(channel_id: &str) {
-    let mut registry = CHANNEL_REGISTRY.write().await;
-    if let Some(cb) = registry.get(channel_id) {
-        if cb.tx.receiver_count() == 0 {
-            registry.remove(channel_id);
-        }
-    }
-}
-
-// Room 广播
-
-/// 获取或创建 Room 的广播通道
-async fn get_or_create_room_tx(room_id: &str) -> broadcast::Sender<String> {
-    {
-        let registry = ROOM_REGISTRY.read().await;
-        if let Some(cb) = registry.get(room_id) {
-            return cb.tx.clone();
-        }
-    }
-    let mut registry = ROOM_REGISTRY.write().await;
-    if let Some(cb) = registry.get(room_id) {
-        return cb.tx.clone();
-    }
-    let (tx, _) = broadcast::channel(512);
-    registry.insert(room_id.to_string(), ChannelBroadcast { tx: tx.clone() });
-    tx
-}
-
-/// 广播消息到指定 Room 的所有 WebSocket 连接
 pub async fn broadcast_to_room(room_id: &str, message: &serde_json::Value) {
-    let registry = ROOM_REGISTRY.read().await;
-    if let Some(cb) = registry.get(room_id) {
-        let msg = serde_json::to_string(message).unwrap_or_default();
-        let _ = cb.tx.send(msg);
-    }
+    broadcast_message(&ROOM_REGISTRY, room_id, message);
 }
 
-/// 清理空的 Room 广播通道
-async fn cleanup_room(room_id: &str) {
-    let mut registry = ROOM_REGISTRY.write().await;
-    if let Some(cb) = registry.get(room_id) {
-        if cb.tx.receiver_count() == 0 {
-            registry.remove(room_id);
-        }
+fn broadcast_message(registry: &BroadcastRegistry, id: &str, message: &serde_json::Value) {
+    let message = serde_json::to_string(message).unwrap_or_default();
+    let registry = registry.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(entry) = registry.get(id) {
+        let _ = entry.tx.send(message);
     }
 }
 
@@ -285,8 +269,8 @@ async fn handle_channel_socket(
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
     // 加入 Channel 广播
-    let tx = get_or_create_channel_tx(&channel_id).await;
-    let mut rx = tx.subscribe();
+    let mut rx = BroadcastSubscription::new(CHANNEL_REGISTRY.clone(), &channel_id, 256);
+    let tx = rx.tx.clone();
 
     let base_url = get_base_url().await;
     let local_actor = crate::federation::types::actor_url(&base_url, &username);
@@ -379,7 +363,6 @@ async fn handle_channel_socket(
         channel_id_clone,
         user_id
     );
-    cleanup_channel(&channel_id_clone).await;
 }
 
 // Room WebSocket 处理器
@@ -490,8 +473,8 @@ async fn handle_room_socket(
 
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
-    let tx = get_or_create_room_tx(&room_id).await;
-    let mut rx = tx.subscribe();
+    let mut rx = BroadcastSubscription::new(ROOM_REGISTRY.clone(), &room_id, 512);
+    let tx = rx.tx.clone();
 
     // 发送欢迎消息
     let welcome = json!({
@@ -562,7 +545,6 @@ async fn handle_room_socket(
     }
 
     tracing::info!("[WS] Room {} disconnected: user={}", room_id_clone, user_id);
-    cleanup_room(&room_id_clone).await;
 }
 
 /// 处理 Room 客户端 WebSocket 消息
@@ -703,6 +685,60 @@ async fn handle_ws_client_message(
         _ => {
             tracing::debug!("[WS] Unknown message type: {}", msg_type);
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod registry_lifecycle_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn subscription_drop_releases_last_registry_entry() {
+        let registry = Arc::new(std::sync::Mutex::new(HashMap::new()));
+        let first = BroadcastSubscription::new(registry.clone(), "room", 4);
+        let mut second = BroadcastSubscription::new(registry.clone(), "room", 4);
+        drop(first);
+        registry.lock().unwrap()["room"]
+            .tx
+            .send("message".into())
+            .unwrap();
+        assert_eq!(second.recv().await.unwrap(), "message");
+        assert_eq!(registry.lock().unwrap().len(), 1);
+        drop(second);
+        assert!(registry.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn aborted_socket_task_releases_registry_entry() {
+        let registry = Arc::new(std::sync::Mutex::new(HashMap::new()));
+        let subscription = BroadcastSubscription::new(registry.clone(), "room", 4);
+        let task = tokio::spawn(async move {
+            let mut subscription = subscription;
+            let _ = subscription.recv().await;
+        });
+        task.abort();
+        let _ = task.await;
+        assert!(registry.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn concurrent_reconnect_and_drop_preserve_active_subscription() {
+        let registry = Arc::new(std::sync::Mutex::new(HashMap::new()));
+        for _ in 0..100 {
+            let old = BroadcastSubscription::new(registry.clone(), "room", 4);
+            let next_registry = registry.clone();
+            let next =
+                std::thread::spawn(move || BroadcastSubscription::new(next_registry, "room", 4));
+            drop(old);
+            let mut next = next.join().unwrap();
+            registry.lock().unwrap()["room"]
+                .tx
+                .send("live".into())
+                .unwrap();
+            assert_eq!(next.rx.as_mut().unwrap().try_recv().unwrap(), "live");
+            drop(next);
+            assert!(registry.lock().unwrap().is_empty());
         }
     }
 }

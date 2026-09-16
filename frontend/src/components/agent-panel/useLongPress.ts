@@ -7,7 +7,7 @@ interface LongPressIndicator {
 }
 
 const EXCLUDED_SELECTORS =
-  '.agent-panel-overlay-anchor, input, textarea, button, a, [contenteditable], [data-merope-touch-active], .global-control-bar, .control-panel-overlay, .tour-overlay, .tour-card'
+  '.agent-panel-overlay-anchor, input, textarea, button, a, [contenteditable], [data-merope-touch-active], .global-control-bar, .control-panel-overlay, .tour-overlay, .tour-card, .widget-grid-container.edit-mode .widget-grid-item'
 
 export const LONG_PRESS_DURATION = 500
 

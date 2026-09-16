@@ -178,6 +178,7 @@
   "noteDeleteConfirm": "이 노트를 삭제할까요? 되돌릴 수 없어요.",
   "noteDiscardConfirm": "저장하지 않은 변경이 있어요. 그래도 닫을까요?",
   "noteTabWrite": "Markdown",
+  "noteEditInMarkdown": "이 내용은 Markdown 모드에서 편집하세요",
   "noteTabPreview": "미리보기",
   "noteToolBold": "굵게",
   "noteToolItalic": "기울임",

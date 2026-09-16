@@ -18,6 +18,8 @@ export interface NoteCollabEvent {
   content_md?: string | null
   topic?: string | null
   image?: string | null
+  published_at?: number | null
+  client_request_id?: string | null
 }
 
 export function applyCollabPeers(
@@ -56,6 +58,3 @@ export function shouldApplyRemoteDoc(
   return revision != null && revision > currentRevision
 }
 
-export function shouldApplyRemoteEdit(event: NoteCollabEvent): boolean {
-  return event.type === 'edit'
-}

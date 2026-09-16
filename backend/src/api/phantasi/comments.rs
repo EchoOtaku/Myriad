@@ -178,11 +178,29 @@ fn apply_user_face(
     }
 }
 
-/// 文章下全部评论。能看见文章的人都能看。
+const COMMENT_PAGE_SIZE: usize = 100;
+
+#[derive(Default, Deserialize)]
+pub(crate) struct CommentPageQuery {
+    after_id: Option<i32>,
+}
+
+fn bounded_comment_page(
+    query: sea_orm::Select<phantasi_comments::Entity>,
+    page: &CommentPageQuery,
+) -> sea_orm::Select<phantasi_comments::Entity> {
+    query
+        .filter(phantasi_comments::Column::Id.gt(page.after_id.unwrap_or(0)))
+        .order_by_asc(phantasi_comments::Column::Id)
+        .limit((COMMENT_PAGE_SIZE + 1) as u64)
+}
+
+/// 文章下顶级评论的一页。按 ID 游标读取；调用方按锚点位置排列。能看见文章的人都能看。
 pub(crate) async fn list_comments(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(item_id): Path<i32>,
+    Query(page): Query<CommentPageQuery>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let (user_id, is_admin) = get_phantasi_viewer(&headers, &db).await?;
     let can_write = match user_id {
@@ -199,15 +217,20 @@ pub(crate) async fn list_comments(
         ));
     }
 
-    let comments = phantasi_comments::Entity::find()
-        .filter(phantasi_comments::Column::ItemId.eq(item_id))
-        .filter(phantasi_comments::Column::ParentId.is_null())
-        .order_by_asc(phantasi_comments::Column::StartOffset)
-        .all(&db)
-        .await;
+    let comments = bounded_comment_page(
+        phantasi_comments::Entity::find()
+            .filter(phantasi_comments::Column::ItemId.eq(item_id))
+            .filter(phantasi_comments::Column::ParentId.is_null()),
+        &page,
+    )
+    .all(&db)
+    .await;
 
     match comments {
-        Ok(comments) => {
+        Ok(mut comments) => {
+            let has_more = comments.len() > COMMENT_PAGE_SIZE;
+            comments.truncate(COMMENT_PAGE_SIZE);
+            let next_cursor = has_more.then(|| comments.last().expect("nonempty page").id);
             if comments.is_empty() {
                 return Ok(Json(
                     json!({ "success": true, "comments": [], "has_comments": false, "can_write": can_write }),
@@ -246,6 +269,7 @@ pub(crate) async fn list_comments(
                 "success": true,
                 "comments": responses,
                 "has_comments": true,
+                "next_cursor": next_cursor,
                 "can_write": can_write
             })))
         }
@@ -503,11 +527,12 @@ pub(crate) async fn delete_comment(
     }
 }
 
-/// 某条评论下的全部回复。能看见文章就能看。
+/// 某条评论下的一页回复。按 ID 游标读取；调用方按创建时间排列。能看见文章就能看。
 pub(crate) async fn list_comment_replies(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(comment_id): Path<i32>,
+    Query(page): Query<CommentPageQuery>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let (_, is_admin) = get_phantasi_viewer(&headers, &db).await?;
     let parent = match phantasi_comments::Entity::find_by_id(comment_id)
@@ -520,14 +545,19 @@ pub(crate) async fn list_comment_replies(
     };
     visible_item(&db, parent.item_id, is_admin).await?;
 
-    let replies = phantasi_comments::Entity::find()
-        .filter(phantasi_comments::Column::ParentId.eq(comment_id))
-        .order_by_asc(phantasi_comments::Column::CreatedAt)
-        .all(&db)
-        .await;
+    let replies = bounded_comment_page(
+        phantasi_comments::Entity::find()
+            .filter(phantasi_comments::Column::ParentId.eq(comment_id)),
+        &page,
+    )
+    .all(&db)
+    .await;
 
     match replies {
-        Ok(replies) => {
+        Ok(mut replies) => {
+            let has_more = replies.len() > COMMENT_PAGE_SIZE;
+            replies.truncate(COMMENT_PAGE_SIZE);
+            let next_cursor = has_more.then(|| replies.last().expect("nonempty page").id);
             if replies.is_empty() {
                 return Ok(Json(json!({ "success": true, "replies": [] })));
             }
@@ -543,7 +573,9 @@ pub(crate) async fn list_comment_replies(
                 })
                 .collect();
 
-            Ok(Json(json!({ "success": true, "replies": responses })))
+            Ok(Json(
+                json!({ "success": true, "replies": responses, "next_cursor": next_cursor }),
+            ))
         }
         Err(error) => {
             tracing::error!(%error, "Failed to load comment replies");
@@ -779,5 +811,28 @@ mod tests {
         assert!(create.contains("Ok(None) => return Err(comment_not_found())"));
         assert!(!create.contains(".ok()\n            .flatten()"));
         assert!(!list.contains("unwrap_or_default()"));
+    }
+}
+
+#[cfg(test)]
+mod bounded_page_tests {
+    use super::*;
+    use sea_orm::QueryTrait;
+
+    #[test]
+    fn comment_pages_keep_scope_and_use_bounded_keyset() {
+        let query = phantasi_comments::Entity::find()
+            .filter(phantasi_comments::Column::ItemId.eq(7))
+            .filter(phantasi_comments::Column::ParentId.is_null());
+        let sql = bounded_comment_page(query, &CommentPageQuery { after_id: Some(20) })
+            .build(DatabaseBackend::Postgres)
+            .to_string();
+        assert!(sql.contains("\"item_id\" = 7"), "{sql}");
+        assert!(sql.contains("\"parent_id\" IS NULL"), "{sql}");
+        assert!(sql.contains("\"id\" > 20"), "{sql}");
+        assert!(
+            sql.contains("ORDER BY \"phantasi_comments\".\"id\" ASC LIMIT 101"),
+            "{sql}"
+        );
     }
 }

@@ -178,6 +178,7 @@
   "noteDeleteConfirm": "删除这篇笔记？删掉之后找不回来。",
   "noteDiscardConfirm": "有还没保存的改动，确定关掉？",
   "noteTabWrite": "Markdown",
+  "noteEditInMarkdown": "请在 Markdown 模式编辑此内容",
   "noteTabPreview": "预览",
   "noteToolBold": "粗体",
   "noteToolItalic": "斜体",

@@ -816,7 +816,7 @@ pub async fn proxy_netease_play_url(
 
     // 短缓存解析结果，减轻网易侧压力；CDN 链本身有时效，缓存不宜过长
     {
-        let cache = MUSIC_CACHE.read().await;
+        let mut cache = MUSIC_CACHE.write().await;
         if let Some(entry) = cache.get(&cache_key) {
             if entry.expires_at > Instant::now() {
                 if let Some(url) = entry.data.get("url").and_then(|v| v.as_str()) {
@@ -1138,7 +1138,7 @@ pub async fn proxy_qq_play_url(
 
     // 短缓存解析结果；CDN 签名链有时效
     {
-        let cache = MUSIC_CACHE.read().await;
+        let mut cache = MUSIC_CACHE.write().await;
         if let Some(entry) = cache.get(&cache_key) {
             if entry.expires_at > Instant::now() {
                 if let Some(url) = entry.data.get("url").and_then(|v| v.as_str()) {
@@ -1299,7 +1299,7 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
     // 读路径关闭：`use_cache = false`。写入仍 604800s。
     let use_cache = false;
     if use_cache {
-        let cache = MUSIC_CACHE.read().await;
+        let mut cache = MUSIC_CACHE.write().await;
         if let Some(entry) = cache.get(&cache_key) {
             if entry.expires_at > Instant::now() {
                 tracing::debug!("Cache hit for QQ playlist: {}", playlist_id);
@@ -1737,7 +1737,7 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
 
     // 检查缓存（歌词缓存24小时）
     {
-        let cache = MUSIC_CACHE.read().await;
+        let mut cache = MUSIC_CACHE.write().await;
         if let Some(entry) = cache.get(&cache_key) {
             if entry.expires_at > Instant::now() {
                 tracing::debug!("Cache hit for QQ lyrics: {}", song_mid);

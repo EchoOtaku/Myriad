@@ -60,7 +60,16 @@ describe('并发同源请求合并', () => {
       calls += 1
       await new Promise((resolve) => setTimeout(resolve, 5))
       return Response.json({
-        items: [{ id: 42, title: 'x', summary: null, image: null, published_at: 1, source_id: 11 }],
+        items: [
+          {
+            id: 42,
+            title: 'x',
+            summary: null,
+            image: null,
+            published_at: 1,
+            source_id: 11,
+          },
+        ],
         total: 1,
         page: 1,
         per_page: 20,
@@ -93,7 +102,10 @@ describe('并发同源请求合并', () => {
     }) as typeof fetch
     try {
       const controller = new AbortController()
-      const pending = loadBoardNotes([{ id: 1, source_type: 'note' }], controller.signal)
+      const pending = loadBoardNotes(
+        [{ id: 1, source_type: 'note' }],
+        controller.signal,
+      )
       controller.abort()
       await assert.rejects(pending, (err: Error) => err.name === 'AbortError')
       assert.equal(calls, 1)
@@ -146,14 +158,16 @@ describe('并发同源请求合并', () => {
       urls.push(url)
       const second = url.searchParams.has('cursor')
       return Response.json({
-        items: [{
-          id: second ? 11 : 12,
-          title: second ? 'older' : 'newer',
-          summary: null,
-          image: null,
-          published_at: second ? 10 : 20,
-          source_id: 31,
-        }],
+        items: [
+          {
+            id: second ? 11 : 12,
+            title: second ? 'older' : 'newer',
+            summary: null,
+            image: null,
+            published_at: second ? 10 : 20,
+            source_id: 31,
+          },
+        ],
         total: second ? 0 : 2,
         page: 1,
         per_page: 100,
@@ -162,9 +176,15 @@ describe('并发同源请求合并', () => {
     }) as typeof fetch
     try {
       const notes = await loadBoardNotes([{ id: 31, source_type: 'note' }])
-      assert.deepEqual(notes.map(note => note.id), [12, 11])
+      assert.deepEqual(
+        notes.map((note) => note.id),
+        [12, 11],
+      )
       assert.equal(urls.length, 2)
-      assert.equal(urls[1]?.searchParams.get('cursor'), 'us:1700000000123456:12')
+      assert.equal(
+        urls[1]?.searchParams.get('cursor'),
+        'us:1700000000123456:12',
+      )
     } finally {
       globalThis.fetch = original
     }
@@ -205,16 +225,35 @@ describe('progressive note pages', () => {
     let calls = 0
     globalThis.fetch = (async () => {
       calls++
-      if (calls === 2) { started.resolve(); return second.promise }
-      return Response.json({ items: [{ id: 101, source_id: 91, title: 'new', published_at: 2 }], next_cursor: 'second', per_page: 100, total: 300 })
+      if (calls === 2) {
+        started.resolve()
+        return second.promise
+      }
+      return Response.json({
+        items: [{ id: 101, source_id: 91, title: 'new', published_at: 2 }],
+        next_cursor: 'second',
+        per_page: 100,
+        total: 300,
+      })
     }) as typeof fetch
     try {
-      const pending = loadBoardNotes([{ id: 91, source_type: 'note' }], controller.signal, (notes) => snapshots.push(notes.map(note => note.id)))
-      const result = pending.catch(error => error)
+      const pending = loadBoardNotes(
+        [{ id: 91, source_type: 'note' }],
+        controller.signal,
+        (notes) => snapshots.push(notes.map((note) => note.id)),
+      )
+      const result = pending.catch((error) => error)
       await started.promise
       assert.deepEqual(snapshots, [[101]])
       controller.abort()
-      second.resolve(Response.json({ items: [{ id: 100, source_id: 91, title: 'old', published_at: 1 }], next_cursor: 'third', per_page: 100, total: 0 }))
+      second.resolve(
+        Response.json({
+          items: [{ id: 100, source_id: 91, title: 'old', published_at: 1 }],
+          next_cursor: 'third',
+          per_page: 100,
+          total: 0,
+        }),
+      )
       assert.equal((await result).name, 'AbortError')
       assert.equal(calls, 2)
       assert.deepEqual(snapshots, [[101]])
@@ -224,4 +263,40 @@ describe('progressive note pages', () => {
       globalThis.fetch = original
     }
   })
+})
+
+it('reopening a large note wall reuses every page without evicting global caches', async () => {
+  const original = globalThis.fetch
+  let calls = 0
+  requestCache.set('journal-test-unrelated', 'keep')
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    calls++
+    const url = new URL(String(input), 'https://test.invalid')
+    const page = Number(url.searchParams.get('cursor') ?? 0)
+    return Response.json({
+      items: [
+        { id: page + 1, source_id: 95, title: 'note', published_at: page },
+      ],
+      next_cursor: page < 99 ? String(page + 1) : null,
+    })
+  }) as typeof fetch
+  try {
+    const sources = [{ id: 95, source_type: 'note' }]
+    assert.equal((await loadBoardNotes(sources)).length, 100)
+    const updates: number[] = []
+    assert.equal(
+      (
+        await loadBoardNotes(sources, undefined, (notes) =>
+          updates.push(notes.length),
+        )
+      ).length,
+      100,
+    )
+    assert.deepEqual(updates, [100])
+    assert.equal(calls, 100)
+    assert.equal(requestCache.get('journal-test-unrelated'), 'keep')
+  } finally {
+    requestCache.delete('journal-test-unrelated')
+    globalThis.fetch = original
+  }
 })

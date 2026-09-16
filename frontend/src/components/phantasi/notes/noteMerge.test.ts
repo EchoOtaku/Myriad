@@ -27,3 +27,7 @@ describe('mergeNoteField', () => {
     assert.equal(mergeNoteField('旧', '我的', '旧'), '我的')
   })
 })
+
+it('保留各作者插入段内部的重复行和空行', () => {
+  assert.equal(mergeNoteText('anchor', 'anchor\nx\nx\n\n', 'anchor\ny'), 'anchor\nx\nx\n\n\ny')
+})

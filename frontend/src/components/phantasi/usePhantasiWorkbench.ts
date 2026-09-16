@@ -1,15 +1,16 @@
 import type { MediaAsset } from '../../services/mediaApi'
 import type { CommentItem } from '../../services/phantasiApi'
 import type { PhantasiNoteDoc, PhantasiSourceApplication } from '../../types/phantasi'
+import type { WorkbenchPane } from './logic/board'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import * as phantasiApi from '../../services/phantasiApi'
-import { loadNoteDocs } from './pageData'
 import * as mediaApi from '../../services/mediaApi'
+import * as phantasiApi from '../../services/phantasiApi'
 import { userFacingError } from '../../utils/userFacingError'
 import { RequestTurn } from './logic/requestTurn'
+import { loadNoteDocs } from './pageData'
 
 export function usePhantasiWorkbench(
-  enabled: boolean,
+  pane: WorkbenchPane,
   docsEpoch: number,
   labels: {
     loadFailed: string
@@ -25,6 +26,22 @@ export function usePhantasiWorkbench(
   },
   setError: (message: string) => void,
 ) {
+  // Category pickers include names used only by notes; category administration
+  // also needs those notes to preserve classifications on the other page.
+  const needsCategories =
+    pane === 'notes' ||
+    pane === 'noteCategories' ||
+    pane === 'sourceCategories' ||
+    pane === 'sources' ||
+    pane === 'add'
+  const needsNotes = pane === 'home' || pane === 'notesIo' || needsCategories
+  // Overview owns real counts, the review queue, and recent media too.
+  const needsMedia = pane === 'home' || pane === 'media'
+  const needsComments = pane === 'home' || pane === 'comments'
+  const needsApplications = pane === 'home' || pane === 'reviews'
+  // Mutation completions can retain a reload callback from the previous pane.
+  const demandRef = useRef({ needsNotes, needsMedia, needsComments, needsApplications })
+  demandRef.current = { needsNotes, needsMedia, needsComments, needsApplications }
   const [docs, setDocs] = useState<PhantasiNoteDoc[]>([])
   const [media, setMedia] = useState<MediaAsset[]>([])
   const [comments, setComments] = useState<CommentItem[]>([])
@@ -44,8 +61,7 @@ export function usePhantasiWorkbench(
   labelsRef.current = labels
 
   const loadNotes = useCallback(async () => {
-    if (!enabled) {
-      setDocs([])
+    if (!needsNotes || !demandRef.current.needsNotes) {
       setNotesLoading(false)
       return
     }
@@ -61,11 +77,10 @@ export function usePhantasiWorkbench(
     } finally {
       if (!signal.aborted) setNotesLoading(false)
     }
-  }, [enabled, setError])
+  }, [needsNotes, setError])
 
   const loadMedia = useCallback(async () => {
-    if (!enabled) {
-      setMedia([])
+    if (!needsMedia || !demandRef.current.needsMedia) {
       setMediaLoading(false)
       return
     }
@@ -81,7 +96,7 @@ export function usePhantasiWorkbench(
     } finally {
       if (!signal.aborted) setMediaLoading(false)
     }
-  }, [enabled, setError])
+  }, [needsMedia, setError])
 
   useEffect(() => {
     void loadNotes()
@@ -91,11 +106,10 @@ export function usePhantasiWorkbench(
   useEffect(() => {
     void loadMedia()
     return () => mediaTurn.current.cancel()
-  }, [docsEpoch, loadMedia])
+  }, [loadMedia])
 
   const loadComments = useCallback(async () => {
-    if (!enabled) {
-      setComments([])
+    if (!needsComments || !demandRef.current.needsComments) {
       setCommentsLoading(false)
       return
     }
@@ -111,16 +125,15 @@ export function usePhantasiWorkbench(
     } finally {
       if (!signal.aborted) setCommentsLoading(false)
     }
-  }, [enabled, setError])
+  }, [needsComments, setError])
 
   useEffect(() => {
     void loadComments()
     return () => commentsTurn.current.cancel()
-  }, [docsEpoch, loadComments])
+  }, [loadComments])
 
   const loadApplications = useCallback(async () => {
-    if (!enabled) {
-      setApplications([])
+    if (!needsApplications || !demandRef.current.needsApplications) {
       setApplicationsLoading(false)
       return
     }
@@ -136,12 +149,12 @@ export function usePhantasiWorkbench(
     } finally {
       if (!signal.aborted) setApplicationsLoading(false)
     }
-  }, [enabled, setError])
+  }, [needsApplications, setError])
 
   useEffect(() => {
     void loadApplications()
     return () => applicationsTurn.current.cancel()
-  }, [docsEpoch, loadApplications])
+  }, [loadApplications])
 
   const removeNotes = useCallback(
     async (docs: PhantasiNoteDoc[]): Promise<boolean> => {
@@ -341,6 +354,7 @@ export function usePhantasiWorkbench(
   )
 
   return {
+    needsCategories,
     docs,
     media,
     comments,

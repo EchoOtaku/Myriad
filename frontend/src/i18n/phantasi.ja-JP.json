@@ -178,6 +178,7 @@
   "noteDeleteConfirm": "このノートを削除しますか？元には戻せません。",
   "noteDiscardConfirm": "保存していない変更があります。閉じますか？",
   "noteTabWrite": "Markdown",
+  "noteEditInMarkdown": "この内容は Markdown モードで編集してください",
   "noteTabPreview": "プレビュー",
   "noteToolBold": "太字",
   "noteToolItalic": "斜体",

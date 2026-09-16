@@ -1,127 +1,103 @@
 import type { MutableRefObject } from 'react'
 import type { NoteCollabEvent, NoteCollabPeer } from './noteCollab'
-import type { NoteCloudFields } from './useNoteCloudSave'
+import type { NoteCloudFields, NoteCloudSaveHandle } from './useNoteCloudSave'
 import { useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../../services/phantasiApi'
-import {
-  applyCollabPeers,
-  shouldApplyRemoteDoc,
-  shouldApplyRemoteEdit,
-} from './noteCollab'
-import { mergeCloudFields } from './useNoteCloudSave'
+import { applyCollabPeers } from './noteCollab'
 
 export function useNoteCollab({
   cloudId,
   loading,
   userName,
-  revisionRef,
-  titleRef,
-  contentMdRef,
-  topicRef,
-  coverRef,
-  publishedAtRef,
   textareaRef,
-  baseRef,
-  title,
-  topic,
-  cover,
-  applyMergedFields,
-  ackRemote,
+  fields,
+  cloud,
+  io = phantasiApi,
 }: {
   cloudId: number | null
   loading: boolean
   userName?: string
-  revisionRef: MutableRefObject<number>
-  titleRef: MutableRefObject<string>
-  contentMdRef: MutableRefObject<string>
-  topicRef: MutableRefObject<string | null>
-  coverRef: MutableRefObject<string | null>
-  publishedAtRef: MutableRefObject<number | null>
   textareaRef: MutableRefObject<HTMLTextAreaElement | null>
-  baseRef: MutableRefObject<NoteCloudFields>
-  title: string
-  topic: string | null
-  cover: string | null
-  applyMergedFields: (fields: NoteCloudFields) => void
-  ackRemote: (fields: NoteCloudFields) => void
+  fields: NoteCloudFields
+  cloud: Pick<NoteCloudSaveHandle, 'baseRef' | 'receiveRemote' | 'receiveDoc'>
+  io?: Pick<typeof phantasiApi, 'getNoteDoc' | 'noteDocWsUrl'>
 }): { peers: NoteCollabPeer[] } {
   const [peers, setPeers] = useState<NoteCollabPeer[]>([])
   const wsRef = useRef<WebSocket | null>(null)
-  const liveRef = useRef({ applyMergedFields, ackRemote })
-  liveRef.current = { applyMergedFields, ackRemote }
-
-  useEffect(() => {
-    if (cloudId == null) return
-    const ws = new WebSocket(phantasiApi.noteDocWsUrl(cloudId))
-    wsRef.current = ws
-    ws.onmessage = (event) => {
-      try {
-        const incoming = JSON.parse(String(event.data)) as NoteCollabEvent
-        setPeers((current) => applyCollabPeers(current, incoming))
-        const persist = shouldApplyRemoteDoc(incoming, revisionRef.current)
-        const live = shouldApplyRemoteEdit(incoming)
-        if (persist || live) {
-          const local: NoteCloudFields = {
-            title: titleRef.current,
-            contentMd: contentMdRef.current,
-            topic: topicRef.current,
-            cover: coverRef.current,
-            publishedAt: publishedAtRef.current,
-          }
-          const remote: NoteCloudFields = {
-            title: incoming.title ?? local.title,
-            contentMd: incoming.content_md ?? local.contentMd,
-            topic: incoming.topic ?? local.topic,
-            cover: incoming.image ?? local.cover,
-            publishedAt: local.publishedAt,
-          }
-          const merged = mergeCloudFields(baseRef.current, local, remote)
-          if (persist && incoming.revision != null) {
-            revisionRef.current = incoming.revision
-            liveRef.current.ackRemote(remote)
-          }
-          liveRef.current.applyMergedFields(merged)
-        }
-      } catch {
-        /* 坏帧丢掉 */
-      }
-    }
-    const ping = window.setInterval(() => {
-      if (ws.readyState !== WebSocket.OPEN) return
-      ws.send(
-        JSON.stringify({
-          type: 'presence',
-          name: userName,
-          cursor: textareaRef.current?.selectionStart ?? 0,
-        }),
-      )
-    }, 4000)
-    return () => {
-      window.clearInterval(ping)
-      wsRef.current = null
-      ws.close()
-      setPeers([])
-    }
-  }, [cloudId, userName])
+  const liveRef = useRef({ cloud, io })
+  liveRef.current = { cloud, io }
 
   useEffect(() => {
     if (loading || cloudId == null) return
-    const timer = window.setTimeout(() => {
+    let stopped = false
+    let retry: ReturnType<typeof setTimeout> | undefined
+    let retryDelay = 1000
+    const connect = () => {
+      if (stopped) return
+      const ws = new WebSocket(liveRef.current.io.noteDocWsUrl(cloudId))
+      wsRef.current = ws
+      ws.onopen = () => {
+        retryDelay = 1000
+        // Repair any snapshots missed while disconnected. The same revision gate
+        // handles an HTTP fetch arriving after a newer WS frame.
+        void liveRef.current.io.getNoteDoc(cloudId).then((doc) => {
+          if (!stopped && wsRef.current === ws) liveRef.current.cloud.receiveDoc(doc)
+        }).catch(() => { /* Saving will report network errors; reconnect remains active. */ })
+      }
+      ws.onmessage = (event) => {
+        if (stopped || wsRef.current !== ws) return
+        try {
+          const incoming = JSON.parse(String(event.data)) as NoteCollabEvent
+          setPeers((current) => applyCollabPeers(current, incoming))
+          // Unversioned edit snapshots have no common ancestor and replay typing.
+          // They carry presence only; text sync uses the autosave's committed doc.
+          if (incoming.type !== 'doc' || incoming.revision == null) return
+          if (typeof incoming.title !== 'string' || typeof incoming.content_md !== 'string') return
+          const base = liveRef.current.cloud.baseRef.current
+          liveRef.current.cloud.receiveRemote({
+            title: incoming.title,
+            contentMd: incoming.content_md,
+            topic: incoming.topic === undefined ? base.topic : incoming.topic,
+            cover: incoming.image === undefined ? base.cover : incoming.image,
+            publishedAt: incoming.published_at === undefined ? base.publishedAt : incoming.published_at,
+          }, incoming.revision, incoming.client_request_id)
+        } catch { /* Malformed frames are ignored. */ }
+      }
+      ws.onerror = () => ws.close()
+      ws.onclose = () => {
+        if (stopped || wsRef.current !== ws) return
+        wsRef.current = null
+        setPeers([])
+        retry = setTimeout(connect, retryDelay)
+        retryDelay = Math.min(retryDelay * 2, 10_000)
+      }
+    }
+    connect()
+    const ping = setInterval(() => {
       const ws = wsRef.current
-      if (!ws || ws.readyState !== WebSocket.OPEN) return
-      ws.send(
-        JSON.stringify({
-          type: 'edit',
-          name: userName,
-          cursor: textareaRef.current?.selectionStart ?? 0,
-          title,
-          topic,
-          image: cover,
-        }),
-      )
+      if (ws?.readyState !== WebSocket.OPEN) return
+      ws.send(JSON.stringify({ type: 'presence', name: userName, cursor: textareaRef.current?.selectionStart ?? 0 }))
+    }, 4000)
+    return () => {
+      stopped = true
+      clearInterval(ping)
+      clearTimeout(retry)
+      const ws = wsRef.current
+      wsRef.current = null
+      ws?.close()
+      setPeers([])
+    }
+  }, [cloudId, loading, textareaRef, userName])
+
+  useEffect(() => {
+    if (loading || cloudId == null) return
+    const timer = setTimeout(() => {
+      const ws = wsRef.current
+      if (ws?.readyState !== WebSocket.OPEN) return
+      ws.send(JSON.stringify({ type: 'edit', name: userName, cursor: textareaRef.current?.selectionStart ?? 0 }))
     }, 200)
-    return () => window.clearTimeout(timer)
-  }, [cloudId, cover, loading, textareaRef, title, topic, userName])
+    return () => clearTimeout(timer)
+  }, [cloudId, loading, textareaRef, userName, fields.title, fields.contentMd, fields.topic, fields.cover])
 
   return { peers }
 }

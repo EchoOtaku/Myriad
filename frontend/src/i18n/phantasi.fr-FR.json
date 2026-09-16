@@ -178,6 +178,7 @@
   "noteDeleteConfirm": "Supprimer cette note ? Irrécupérable.",
   "noteDiscardConfirm": "Des modifications ne sont pas enregistrées. Fermer quand même ?",
   "noteTabWrite": "Markdown",
+  "noteEditInMarkdown": "Modifier ce bloc en mode Markdown",
   "noteTabPreview": "Aperçu",
   "noteToolBold": "Gras",
   "noteToolItalic": "Italique",

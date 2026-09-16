@@ -787,6 +787,21 @@ export async function deleteNoteDoc(id: number): Promise<void> {
   invalidatePhantasiNoteDocsCache()
 }
 
+/** Change category without publishing the document's in-progress body. */
+export async function updateNoteDocTopic(
+  id: number,
+  req: { topic: string | null; revision: number },
+): Promise<PhantasiNoteDoc> {
+  const data = await request<{ success: boolean; doc: PhantasiNoteDoc }>(
+    `/notes/docs/${id}/topic`,
+    { method: 'PUT', body: JSON.stringify(req) },
+  ).finally(invalidatePhantasiNoteDocsCache)
+  if (data.doc.item_id != null) invalidateItemCache(data.doc.item_id)
+  invalidateSourcesCache()
+  invalidateBoardPageCache()
+  return data.doc
+}
+
 export async function publishNoteDoc(
   id: number,
   req: PhantasiNoteDocInput = {},
@@ -1077,14 +1092,29 @@ export async function syncReadingStates(
   if (states.length === 0) {
     return { synced: 0, conflicts: [] }
   }
-  return request<PhantasiSyncStatesResponse>('/sync-states', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...attributionHeaders,
-    },
-    body: JSON.stringify({ states }),
-  })
+  // Keep transactions bounded; validate the entire input above before the first write.
+  const merged: PhantasiSyncStatesResponse = { synced: 0, conflicts: [] }
+  for (let offset = 0; offset < states.length; offset += 100) {
+    let result: PhantasiSyncStatesResponse
+    try {
+      result = await request<PhantasiSyncStatesResponse>('/sync-states', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...attributionHeaders },
+        body: JSON.stringify({ states: states.slice(offset, offset + 100) }),
+      })
+    } catch (error) {
+      if (offset === 0) throw error
+      // Earlier batches committed. Keep their confirmations and leave the rest retryable.
+      merged.failed = [...(merged.failed ?? []), ...states.slice(offset).map(state => state.item_id)]
+      return merged
+    }
+    merged.synced += result.synced
+    merged.conflicts.push(...result.conflicts)
+    if (result.confirmed) merged.confirmed = [...(merged.confirmed ?? []), ...result.confirmed]
+    if (result.failed) merged.failed = [...(merged.failed ?? []), ...result.failed]
+    if (result.revisions) merged.revisions = { ...merged.revisions, ...result.revisions }
+  }
+  return merged
 }
 
 export async function updateReadProgress(
@@ -1144,6 +1174,7 @@ export function createPhantasiWebSocket(
 }
 
 interface CommentsResponse {
+  next_cursor?: number | null
   success: boolean
   comments: CommentItem[]
   has_comments: boolean
@@ -1181,15 +1212,40 @@ export async function listAdminComments(
   return request(`/comments${suffix}`, { signal: opts?.signal })
 }
 
+// Readers need all anchors for highlighting; fetch bounded pages without changing that contract.
+async function collectCommentPages<T extends CommentsResponse | RepliesResponse>(
+  path: string,
+  key: 'comments' | 'replies',
+  headers?: PhantasiAttributionHeaders,
+  signal?: AbortSignal,
+): Promise<T> {
+  let cursor = 0
+  let first: T | undefined
+  const rows = new Map<number, CommentItem>()
+  while (true) {
+    signal?.throwIfAborted()
+    const page = await request<T>(`${path}${cursor ? `?after_id=${cursor}` : ''}`, { headers, signal })
+    signal?.throwIfAborted()
+    first ??= page
+    const items = key === 'comments' ? (page as CommentsResponse).comments : (page as RepliesResponse).replies
+    for (const item of items) rows.set(item.id, item)
+    if (page.next_cursor == null) break
+    if (!Number.isSafeInteger(page.next_cursor) || page.next_cursor <= cursor) {
+      throw new Error('Invalid comment pagination cursor')
+    }
+    cursor = page.next_cursor
+  }
+  return { ...first, [key]: [...rows.values()], next_cursor: null } as T
+}
+
 export async function getComments(
   itemId: number,
   attributionHeaders?: PhantasiAttributionHeaders,
   options?: { signal?: AbortSignal },
 ): Promise<CommentsResponse> {
-  return request<CommentsResponse>(`/items/${itemId}/comments`, {
-    headers: attributionHeaders,
-    signal: options?.signal,
-  })
+  const result = await collectCommentPages<CommentsResponse>(`/items/${itemId}/comments`, 'comments', attributionHeaders, options?.signal)
+  result.comments.sort((a, b) => (a.start_offset ?? Infinity) - (b.start_offset ?? Infinity) || a.id - b.id)
+  return result
 }
 
 export async function createComment(
@@ -1227,6 +1283,7 @@ export async function deleteComment(
 }
 
 interface RepliesResponse {
+  next_cursor?: number | null
   success: boolean
   replies: CommentItem[]
   error?: string
@@ -1237,10 +1294,9 @@ export async function getCommentReplies(
   attributionHeaders?: PhantasiAttributionHeaders,
   options?: { signal?: AbortSignal },
 ): Promise<RepliesResponse> {
-  return request<RepliesResponse>(`/comments/${commentId}/replies`, {
-    headers: attributionHeaders,
-    signal: options?.signal,
-  })
+  const result = await collectCommentPages<RepliesResponse>(`/comments/${commentId}/replies`, 'replies', attributionHeaders, options?.signal)
+  result.replies.sort((a, b) => a.created_at - b.created_at || a.id - b.id)
+  return result
 }
 
 /** Omitted color/is_public inherit from the parent. */

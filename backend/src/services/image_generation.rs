@@ -522,17 +522,19 @@ pub(crate) async fn load_generated_bytes(
         .unwrap_or(&generated.media_type)
         .to_string();
     validate_media_type(&media_type)?;
-    let bytes = response
-        .bytes()
+    let bytes = crate::services::outbound_security::read_limited_body(response, MAX_IMAGE_BYTES)
         .await
-        .map_err(|error| ImageGenerationError::Provider(error.to_string()))?;
-    if bytes.len() > MAX_IMAGE_BYTES {
-        return Err(ImageGenerationError::InvalidResponse(
-            "generated image exceeds storage limit".to_string(),
-        ));
-    }
+        .map_err(|error| {
+            if error == format!("Response exceeds {MAX_IMAGE_BYTES} bytes") {
+                ImageGenerationError::InvalidResponse(
+                    "generated image exceeds storage limit".to_string(),
+                )
+            } else {
+                ImageGenerationError::Provider(error)
+            }
+        })?;
     validate_magic(&bytes, &media_type)?;
-    Ok((bytes.to_vec(), media_type))
+    Ok((bytes, media_type))
 }
 
 fn request_parts_with_background(
@@ -803,15 +805,18 @@ async fn read_image_api_response(
     let status = response.status();
     let content_type = header_value(response.headers(), reqwest::header::CONTENT_TYPE);
     let content_encoding = header_value(response.headers(), reqwest::header::CONTENT_ENCODING);
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| ImageGenerationError::InvalidResponse(display_error(&error)))?;
-    if bytes.len() > MAX_PROVIDER_BODY_BYTES {
-        return Err(ImageGenerationError::InvalidResponse(
-            "image provider response exceeds size limit".to_string(),
-        ));
-    }
+    let bytes =
+        crate::services::outbound_security::read_limited_body(response, MAX_PROVIDER_BODY_BYTES)
+            .await
+            .map_err(|error| {
+                ImageGenerationError::InvalidResponse(
+                    if error == format!("Response exceeds {MAX_PROVIDER_BODY_BYTES} bytes") {
+                        "image provider response exceeds size limit".to_string()
+                    } else {
+                        error
+                    },
+                )
+            })?;
     if !status.is_success() {
         let body = String::from_utf8_lossy(&bytes);
         let body: String = body.chars().take(600).collect();
@@ -1145,6 +1150,50 @@ fn provider_label(provider: &str) -> &str {
 mod tests {
     use super::*;
     use crate::config::DynamicConfig;
+    #[tokio::test]
+    async fn provider_body_limit_rejects_before_chunked_response_finishes() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                request.push(socket.read_u8().await.unwrap());
+            }
+            socket.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n").await.unwrap();
+            let chunk = vec![b' '; 1024 * 1024];
+            for _ in 0..=MAX_PROVIDER_BODY_BYTES / chunk.len() {
+                if socket.write_all(b"100000\r\n").await.is_err()
+                    || socket.write_all(&chunk).await.is_err()
+                    || socket.write_all(b"\r\n").await.is_err()
+                {
+                    return;
+                }
+            }
+            // No final chunk: the consumer must enforce its budget before EOF.
+            std::future::pending::<()>().await;
+        });
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(format!("http://{addr}"))
+            .send()
+            .await
+            .unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            read_image_api_response(response, "openai", 1024, 1024),
+        )
+        .await;
+        server.abort();
+        assert!(
+            matches!(result, Ok(Err(ImageGenerationError::InvalidResponse(message)))
+            if message == "image provider response exceeds size limit")
+        );
+    }
+
     #[test]
     fn builds_each_supported_provider_request() {
         for (provider, expected_suffix) in [

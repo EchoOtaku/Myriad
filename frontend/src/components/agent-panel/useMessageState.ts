@@ -31,23 +31,58 @@ export function findMessageWhereInBag(
   return bag.work.find(predicate) ?? bag.chat.find(predicate)
 }
 
+interface MessageChange {
+  previous: readonly ChatMessage[]
+  index: number
+  depth: number
+}
+const changes = new WeakMap<readonly ChatMessage[], MessageChange>()
+const indices = new WeakMap<readonly ChatMessage[], Map<string, number>>()
+
+/** A bounded journal bridges updates React may batch before projection. */
+export function changedMessageIndices(
+  previous: readonly ChatMessage[],
+  next: readonly ChatMessage[],
+): Set<number> | null {
+  const result = new Set<number>()
+  let cursor = next
+  while (cursor !== previous) {
+    const change = changes.get(cursor)
+    if (!change) return null
+    result.add(change.index)
+    changes.delete(cursor)
+    cursor = change.previous
+  }
+  return result
+}
+
 export function mapMessagesById(
   bag: MessagesByMode,
   messageId: string,
   update: (message: ChatMessage) => ChatMessage,
 ): MessagesByMode {
-  let changed = false
-  const next: MessagesByMode = { work: bag.work, chat: bag.chat }
+  let next = bag
   for (const mode of ['work', 'chat'] as const) {
     const list = bag[mode]
-    const mapped = list.map((message) => {
-      if (message.id !== messageId) return message
-      changed = true
-      return update(message)
-    })
-    next[mode] = mapped
+    let index = indices.get(list)
+    if (!index) {
+      index = new Map(list.map((message, position) => [message.id, position]))
+      indices.set(list, index)
+    }
+    const position = index.get(messageId)
+    if (position === undefined) continue
+    const updated = update(list[position])
+    if (updated === list[position]) continue
+    const mapped = list.slice()
+    mapped[position] = updated
+    indices.set(mapped, index)
+    const depth = (changes.get(list)?.depth ?? 0) + 1
+    // Prevent an inactive mode from retaining an unbounded chain of old arrays.
+    if (depth <= 32)
+      changes.set(mapped, { previous: list, index: position, depth })
+    next = { ...next, [mode]: mapped }
   }
-  return changed ? next : bag
+  return next
 }
 
 export function useMessageState(visibleMode: AgentPanelMode) {
@@ -110,7 +145,9 @@ export function useMessageState(visibleMode: AgentPanelMode) {
       setByMode((prev) =>
         mapMessagesById(prev, messageId, (message) => {
           if (!message.taskExecution) return message
-          const exists = message.taskExecution.steps.some((item) => item.id === step.id)
+          const exists = message.taskExecution.steps.some(
+            (item) => item.id === step.id,
+          )
           if (exists) {
             return {
               ...message,

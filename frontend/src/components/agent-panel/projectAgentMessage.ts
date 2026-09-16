@@ -1,11 +1,12 @@
 import type { AgentMessage } from './agentMessages'
 import type { ChatMessage } from './engineTypes'
-import { getAgentMessagesSnapshot, setAgentMessages } from './agentMessages'
+import { setAgentMessages, updateAgentMessage } from './agentMessages'
 import {
   nonemptyContent,
   peelThoughtFromContent,
   splitThinkContent,
 } from './agentThinking'
+import { changedMessageIndices } from './useMessageState'
 
 function projectState(message: ChatMessage): AgentMessage['state'] {
   if (message.taskExecution?.status === 'error') return 'error'
@@ -153,28 +154,15 @@ export function workPlanFromData(
     .slice(0, 12)
 }
 
-function prefixIdsMatch(
-  prev: readonly AgentMessage[],
-  chats: readonly ChatMessage[],
-): boolean {
-  if (prev.length !== chats.length || prev.length === 0) return false
-  if (prev.at(-1)?.id !== chats.at(-1)?.id) return false
-  for (let i = 0; i < chats.length - 1; i += 1) {
-    if (prev[i]?.id !== chats[i]?.id) return false
-  }
-  return true
-}
+let previousChats: readonly ChatMessage[] | null = null
 
 export function syncProjectedMessages(chats: readonly ChatMessage[]): void {
-  const prev = getAgentMessagesSnapshot()
-  if (prefixIdsMatch(prev, chats)) {
-    const last = chats.at(-1)
-    if (!last) {
-      setAgentMessages([])
-      return
-    }
-    setAgentMessages(prev.slice(0, -1).concat(projectAgentMessage(last)))
-    return
+  const changed = previousChats && changedMessageIndices(previousChats, chats)
+  if (changed) {
+    for (const index of changed)
+      updateAgentMessage(projectAgentMessage(chats[index]))
+  } else {
+    setAgentMessages(chats.map(projectAgentMessage))
   }
-  setAgentMessages(chats.map(projectAgentMessage))
+  previousChats = chats
 }

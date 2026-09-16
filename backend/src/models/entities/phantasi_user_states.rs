@@ -70,6 +70,9 @@ pub struct SyncStatesRequest {
 impl SyncStatesRequest {
     /// Each target has one unambiguous intent per batch. Validate before I/O.
     pub fn validate_targets(&self) -> Result<(), &'static str> {
+        if self.states.len() > 100 {
+            return Err("Too many states (max 100)");
+        }
         let mut ids = std::collections::HashSet::new();
         for state in &self.states {
             if state.expected_revision.is_some_and(|revision| revision < 0) {
@@ -174,6 +177,19 @@ mod sync_target_tests {
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn bounds_sync_batches_before_any_write() {
+        assert!(
+            request(&(1..=100).collect::<Vec<_>>())
+                .validate_targets()
+                .is_ok()
+        );
+        assert_eq!(
+            request(&(1..=101).collect::<Vec<_>>()).validate_targets(),
+            Err("Too many states (max 100)")
+        );
     }
 
     #[test]

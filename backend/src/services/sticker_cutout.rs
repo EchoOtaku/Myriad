@@ -3,6 +3,78 @@
 
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use std::io::Cursor;
+use std::sync::{Arc, LazyLock};
+use tokio::sync::Semaphore;
+
+const MAX_STICKER_EDGE: u32 = 4096;
+const MAX_STICKER_PIXELS: u64 = 2048 * 2048;
+const MAX_DECODE_ALLOC: u64 = 64 * 1024 * 1024;
+static STICKER_WORKERS: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore::new(2)));
+
+#[derive(Debug)]
+pub enum StickerProcessingError {
+    Busy,
+    Invalid(String),
+    WorkerFailed,
+}
+
+pub async fn prepare_sticker_png(bytes: Vec<u8>) -> Result<Vec<u8>, StickerProcessingError> {
+    process_with_pool(STICKER_WORKERS.clone(), move || ensure_sticker_png(&bytes)).await
+}
+
+pub async fn inspect_sticker_upload(
+    bytes: Vec<u8>,
+) -> Result<(Vec<u8>, (u32, u32)), StickerProcessingError> {
+    process_with_pool(STICKER_WORKERS.clone(), move || {
+        let dimensions = sticker_dimensions(&bytes)?;
+        Ok((bytes, dimensions))
+    })
+    .await
+}
+
+async fn process_with_pool<T: Send + 'static>(
+    pool: Arc<Semaphore>,
+    process: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, StickerProcessingError> {
+    // Reject excess work rather than retaining an unbounded queue of images.
+    let permit = pool
+        .try_acquire_owned()
+        .map_err(|_| StickerProcessingError::Busy)?;
+    tokio::task::spawn_blocking(move || {
+        // Cancellation of the HTTP handler must not release a running worker's slot.
+        let _permit = permit;
+        process().map_err(StickerProcessingError::Invalid)
+    })
+    .await
+    .map_err(|_| StickerProcessingError::WorkerFailed)?
+}
+
+fn sticker_reader(bytes: &[u8]) -> Result<image::ImageReader<Cursor<&[u8]>>, String> {
+    let mut reader = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| error.to_string())?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_STICKER_EDGE);
+    limits.max_image_height = Some(MAX_STICKER_EDGE);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    reader.limits(limits);
+    Ok(reader)
+}
+
+fn sticker_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
+    let (width, height) = sticker_reader(bytes)?
+        .into_dimensions()
+        .map_err(|error| error.to_string())?;
+    if width == 0
+        || height == 0
+        || width > MAX_STICKER_EDGE
+        || height > MAX_STICKER_EDGE
+        || u64::from(width) * u64::from(height) > MAX_STICKER_PIXELS
+    {
+        return Err("sticker dimensions exceed supported limits".to_string());
+    }
+    Ok((width, height))
+}
 
 const ALPHA_OPAQUE: u8 = 250;
 const BG_DIST2: u32 = 48 * 48 * 3;
@@ -13,8 +85,11 @@ pub fn ensure_sticker_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if bytes.is_empty() {
         return Err("generated sticker is empty".to_string());
     }
-    let decoded = image::load_from_memory(bytes).map_err(|error| error.to_string())?;
-    let mut rgba = decoded.to_rgba8();
+    sticker_dimensions(bytes)?;
+    let decoded = sticker_reader(bytes)?
+        .decode()
+        .map_err(|error| error.to_string())?;
+    let mut rgba = decoded.into_rgba8();
     if !has_useful_alpha(&rgba) {
         cut_border_background(&mut rgba);
     }
@@ -74,43 +149,45 @@ fn cut_border_background(image: &mut RgbaImage) {
     let background = average_border_rgb(image);
     let mut seen = vec![false; (width * height) as usize];
     let mut stack: Vec<(u32, u32)> = Vec::new();
-    let index = |x: u32, y: u32| (y * width + x) as usize;
+    // Mark on enqueue so each pixel occupies at most one stack entry.
+    let mut enqueue = |stack: &mut Vec<(u32, u32)>, x: u32, y: u32| {
+        let i = (y * width + x) as usize;
+        if !seen[i] {
+            seen[i] = true;
+            stack.push((x, y));
+        }
+    };
 
     for x in 0..width {
-        stack.push((x, 0));
+        enqueue(&mut stack, x, 0);
         if height > 1 {
-            stack.push((x, height - 1));
+            enqueue(&mut stack, x, height - 1);
         }
     }
     for y in 1..height.saturating_sub(1) {
-        stack.push((0, y));
+        enqueue(&mut stack, 0, y);
         if width > 1 {
-            stack.push((width - 1, y));
+            enqueue(&mut stack, width - 1, y);
         }
     }
 
     while let Some((x, y)) = stack.pop() {
-        let i = index(x, y);
-        if seen[i] {
-            continue;
-        }
-        seen[i] = true;
         let pixel = *image.get_pixel(x, y);
         if color_dist2(pixel, background) > BG_DIST2 {
             continue;
         }
         image.put_pixel(x, y, Rgba([pixel[0], pixel[1], pixel[2], 0]));
         if x > 0 {
-            stack.push((x - 1, y));
+            enqueue(&mut stack, x - 1, y);
         }
         if x + 1 < width {
-            stack.push((x + 1, y));
+            enqueue(&mut stack, x + 1, y);
         }
         if y > 0 {
-            stack.push((x, y - 1));
+            enqueue(&mut stack, x, y - 1);
         }
         if y + 1 < height {
-            stack.push((x, y + 1));
+            enqueue(&mut stack, x, y + 1);
         }
     }
 
@@ -121,6 +198,9 @@ fn cut_border_background(image: &mut RgbaImage) {
         return;
     }
 
+    drop(original);
+    drop(seen);
+    drop(stack);
     feather_edges(image, background);
 }
 
@@ -163,6 +243,67 @@ mod tests {
 
     fn encode(image: &RgbaImage) -> Vec<u8> {
         super::encode_png(image).expect("png")
+    }
+
+    #[tokio::test]
+    async fn upload_inspection_preserves_bytes_and_reads_dimensions() {
+        let bytes = encode(&RgbaImage::from_pixel(24, 12, Rgba([5, 10, 15, 255])));
+        let (stored, dimensions) = super::inspect_sticker_upload(bytes.clone()).await.unwrap();
+        assert_eq!(stored, bytes);
+        assert_eq!(dimensions, (24, 12));
+    }
+
+    #[tokio::test]
+    async fn cancelled_sticker_request_keeps_worker_slot_until_cpu_work_ends() {
+        use super::{StickerProcessingError, process_with_pool};
+        use std::sync::Arc;
+        use std::time::Duration;
+        use tokio::sync::{Semaphore, oneshot};
+
+        let pool = Arc::new(Semaphore::new(1));
+        let (started_tx, started_rx) = oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let job_pool = pool.clone();
+        let request = tokio::spawn(async move {
+            process_with_pool(job_pool, move || {
+                let _ = started_tx.send(());
+                let _ = release_rx.recv();
+                Ok(())
+            })
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(5), started_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        request.abort();
+        let _ = request.await;
+        // The blocking task survived cancellation, so a replacement must not start.
+        let rejected = tokio::time::timeout(
+            Duration::from_secs(5),
+            process_with_pool(pool.clone(), || Ok(())),
+        )
+        .await;
+        release_tx.send(()).unwrap();
+        assert!(matches!(rejected, Ok(Err(StickerProcessingError::Busy))));
+        let _permit = tokio::time::timeout(Duration::from_secs(5), pool.acquire_owned())
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[test]
+    fn rejects_sticker_dimensions_above_edge_budget() {
+        // Tiny compressed PNG but an unsupported canvas; reject before cutout.
+        let wide = RgbaImage::from_pixel(4097, 1, Rgba([0, 0, 0, 0]));
+        assert!(ensure_sticker_png(&encode(&wide)).is_err());
+    }
+
+    #[test]
+    fn rejects_sticker_pixel_budget_even_with_supported_edges() {
+        let too_many_pixels = RgbaImage::from_pixel(2049, 2048, Rgba([0, 0, 0, 0]));
+        let error = ensure_sticker_png(&encode(&too_many_pixels)).unwrap_err();
+        assert!(error.contains("dimensions"));
     }
 
     #[test]

@@ -2,7 +2,7 @@ import type { PhantasiItem, PhantasiSource } from '../../types/phantasi'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { it } from 'node:test'
-import { act, createElement, useRef, useState } from 'react'
+import { act, createElement, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { phantasiItemState } from '../../utils/phantasiItemState'
 import { putFeedStories } from './pageData'
@@ -123,39 +123,52 @@ it('Phantasi hooks reject stale opens, retry failed pages, and settle partial un
     assert.equal(list.items[0]?.content, null)
 
     const unstarred: number[] = []
+    const starredIds = new Set([1, 2])
+    let refreshed = Promise.withResolvers<void>()
     let failSecond = true
     globalThis.fetch = async (input) => {
       const url = String(input)
       if (url.includes('/csrf-token')) return Response.json({ csrf_token: null })
+      if (!url.endsWith('/unstar')) {
+        refreshed.resolve()
+        return Response.json({
+          items: [...starredIds].map(id => ({ id, is_starred: true })),
+          total: starredIds.size, per_page: 20, next_cursor: null,
+        })
+      }
       const id = Number(url.match(/items\/(\d+)\/unstar/)?.[1])
       unstarred.push(id)
       if (id === 2 && failSecond) {
         failSecond = false
         return Response.json({ error: 'unstar unavailable' }, { status: 503 })
       }
+      starredIds.delete(id)
       return Response.json({ success: true })
     }
     let starred!: ReturnType<typeof usePhantasiStarred>
     let remaining: PhantasiItem[] = []
     let count = 0
     function StarredHarness() {
-      const [items, setItems] = useState([{ id: 1 }, { id: 2 }] as PhantasiItem[])
-      const [total, setTotal] = useState(2)
-      starred = usePhantasiStarred(items, setItems, setTotal, 'star failed', report)
-      remaining = items
-      count = total
+      const page = usePhantasiItems('load failed', report, 'starred')
+      starred = usePhantasiStarred(page.items, 'star failed', report)
+      remaining = page.items
+      count = page.total
       return null
     }
     await act(async () => { root.render(createElement(StarredHarness)) })
+    refreshed = Promise.withResolvers<void>()
     await act(async () => { starred.enterEdit(); starred.selectAll() })
     await act(async () => { await Promise.all([starred.batchUnstar(), starred.batchUnstar()]) })
+    await act(async () => refreshed.promise)
     assert.deepEqual(unstarred, [1, 2])
     assert.deepEqual(remaining.map(item => item.id), [2])
     assert.deepEqual(Iterator.from(starred.selectedIds).toArray(), [2])
     assert.equal(count, 1)
     assert.equal(starred.editMode, true)
     assert.equal(starred.processing, false)
+    refreshed = Promise.withResolvers<void>()
     await act(async () => { await starred.batchUnstar() })
+    await act(async () => refreshed.promise)
     assert.deepEqual(unstarred, [1, 2, 2])
     assert.deepEqual(remaining, [])
     assert.equal(count, 0)

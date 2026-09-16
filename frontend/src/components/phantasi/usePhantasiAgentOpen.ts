@@ -1,6 +1,6 @@
 /** skin 不进口。 */
 
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import type { MutableRefObject } from 'react'
 import type { PhantasiItem } from '../../types/phantasi'
 
 import type { ArticleLoader, OpenArticleOptions } from './useArticleOpen'
@@ -51,11 +51,7 @@ interface AgentOpenIo {
     target: PhantasiItem | ArticleLoader,
     options?: OpenArticleOptions,
   ) => Promise<PhantasiItem | undefined>
-  setItems: Dispatch<SetStateAction<PhantasiItem[]>>
-  setTotal: Dispatch<SetStateAction<number>>
-  setError: (message: string) => void
   webSearchLabel: string
-  loadFailed: string
 }
 
 export function usePhantasiAgentOpen(io: AgentOpenIo) {

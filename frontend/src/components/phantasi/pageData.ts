@@ -31,14 +31,19 @@ export function peekFeedStories(
   sourceId: number,
   stamp?: number | null,
 ): FeedStory[] | null {
-  return requestCache.get<FeedStory[]>(feedStoriesCacheKey(sourceId, stamp ?? 0))
+  return requestCache.get<FeedStory[]>(
+    feedStoriesCacheKey(sourceId, stamp ?? 0),
+  )
 }
 
 export function peekLatestStory(source: {
   id: number
   recent_items?: readonly PhantasiItemPreview[] | null
 }): PhantasiItemPreview | undefined {
-  return latestStoryPreview(peekFeedStoriesLoose(source.id), source.recent_items)
+  return latestStoryPreview(
+    peekFeedStoriesLoose(source.id),
+    source.recent_items,
+  )
 }
 
 export async function loadLatestStory(
@@ -62,7 +67,9 @@ export async function loadLatestStory(
 /** 不管抓取戳；换源先画上一轮，避免闪回预览。 */
 export function peekFeedStoriesLoose(sourceId: number): FeedStory[] | null {
   const prefix = phantasiCacheKeys.feedStoriesForSource(sourceId)
-  const key = requestCache.keys.toReversed().find((candidate) => candidate.startsWith(prefix))
+  const key = requestCache.keys
+    .toReversed()
+    .find((candidate) => candidate.startsWith(prefix))
   return key ? requestCache.get<FeedStory[]>(key) : null
 }
 
@@ -90,52 +97,135 @@ export async function loadNoteDocs(
   return docs
 }
 
-/** Share individual pages, not the consumer's traversal: leaving stops later pages
- * without cancelling a page another mounted consumer is still awaiting. */
+type NotePage = Awaited<ReturnType<typeof phantasiApi.getItemPreviews>>
+interface NotePages {
+  pages: Map<string, NotePage>
+  complete?: HomeBoardNote[]
+  pending: Map<string, Promise<NotePage>>
+}
+
+function loadNotePage(sourceId: number, cursor?: string): Promise<NotePage> {
+  // One LRU slot per source, regardless of its history length. Otherwise a
+  // wall with >80 pages evicts its own first pages on every sequential visit.
+  const key = `${phantasiCacheKeys.boardNotes([sourceId])}:pages`
+  let bucket = requestCache.get<NotePages>(key)
+  if (!bucket) {
+    bucket = { pages: new Map(), pending: new Map() }
+    requestCache.set(key, bucket, BOARD_PAGE_TTL)
+  }
+  const pages = bucket
+  const pageKey = cursor ?? ''
+  const hit = pages.pages.get(pageKey)
+  if (hit) return Promise.resolve(hit)
+  const pending = pages.pending.get(pageKey)
+  if (pending) return pending
+  const request = phantasiApi
+    .getItemPreviews({
+      source_id: sourceId,
+      sort_order: 'desc',
+      per_page: BOARD_NOTES_PAGE,
+      cursor,
+    })
+    .then((page) => {
+      pages.pages.set(pageKey, page)
+      if (!page.next_cursor?.trim()) {
+        const all = new Map<number, HomeBoardNote>()
+        const seen = new Set<string>()
+        let cursorKey = ''
+        while (!seen.has(cursorKey)) {
+          seen.add(cursorKey)
+          const cached = pages.pages.get(cursorKey)
+          if (!cached) break
+          for (const item of cached.items)
+            all.set(item.id, toHomeBoardNote(item))
+          const next = cached.next_cursor?.trim()
+          if (!next) {
+            pages.complete = [...all.values()]
+            break
+          }
+          cursorKey = next
+        }
+      }
+      // An invalidation or a newer bucket owns the key now: never resurrect it.
+      if (requestCache.get(key) === pages)
+        requestCache.set(key, pages, BOARD_PAGE_TTL)
+      return page
+    })
+    .finally(() => pages.pending.delete(pageKey))
+  pages.pending.set(pageKey, request)
+  return request
+}
+
+/**
+ * Share individual pages, not the consumer's traversal: leaving stops later pages
+ * without cancelling a page another mounted consumer is still awaiting.
+ */
 export async function loadBoardNotes(
   sources: Array<{ id: number; source_type: string }>,
   signal?: AbortSignal,
   onPage?: (notes: HomeBoardNote[]) => void,
 ): Promise<HomeBoardNote[]> {
-  const queue = [...new Set(sources
-    .filter((source) => source.source_type === 'note')
-    .map((source) => source.id))]
-    .map((id) => ({ id, cursor: undefined as string | undefined, seen: new Set<string>() }))
+  signal?.throwIfAborted()
+  const ids = [
+    ...new Set(
+      sources
+        .filter((source) => source.source_type === 'note')
+        .map((source) => source.id),
+    ),
+  ]
+  const completed = ids.map(
+    (id) =>
+      requestCache.get<NotePages>(`${phantasiCacheKeys.boardNotes([id])}:pages`)
+        ?.complete,
+  )
+  if (completed.every((notes) => notes != null)) {
+    const notes = completed
+      .flatMap((notes) => notes ?? [])
+      .toSorted(
+        (left, right) =>
+          (right.published_at ?? 0) - (left.published_at ?? 0) ||
+          right.id - left.id,
+      )
+    onPage?.(notes)
+    return notes
+  }
+  const queue = ids.map((id) => ({
+    id,
+    cursor: undefined as string | undefined,
+    seen: new Set<string>(),
+  }))
   const items = new Map<number, HomeBoardNote>()
   let snapshot: HomeBoardNote[] = []
   let failed = false
   const load = async () => {
     try {
-      while (queue.length > 0 && !failed) {
+      while (queue.length > 0) {
+        if (failed) return
         signal?.throwIfAborted()
         const source = queue.shift()!
-        const page = await requestCache.fetch(
-          `${phantasiCacheKeys.boardNotes([source.id])}:page:${JSON.stringify(source.cursor ?? null)}`,
-          () => phantasiApi.getItemPreviews({
-            source_id: source.id,
-            sort_order: 'desc',
-            per_page: BOARD_NOTES_PAGE,
-            cursor: source.cursor,
-          }),
-          BOARD_PAGE_TTL,
-        )
+        const page = await loadNotePage(source.id, source.cursor)
         signal?.throwIfAborted()
         if (failed) return
         for (const item of page.items) items.set(item.id, toHomeBoardNote(item))
         snapshot = [...items.values()].toSorted(
-          (left, right) => (right.published_at ?? 0) - (left.published_at ?? 0) || right.id - left.id,
+          (left, right) =>
+            (right.published_at ?? 0) - (left.published_at ?? 0) ||
+            right.id - left.id,
         )
         onPage?.(snapshot)
         const next = page.next_cursor?.trim()
         if (next) {
           if (source.seen.has(next)) {
-            throw new Error('Journal notes pagination returned a repeated cursor')
+            throw new Error(
+              'Journal notes pagination returned a repeated cursor',
+            )
           }
           source.seen.add(next)
           queue.push({ ...source, cursor: next })
         }
         // Cached pages must not form one long microtask chain starving input/paint.
-        if (onPage && queue.length > 0) await new Promise<void>(resolve => setTimeout(resolve, 0))
+        if (onPage && queue.length > 0)
+          await new Promise<void>((resolve) => setTimeout(resolve, 0))
       }
     } catch (error) {
       failed = true
@@ -174,11 +264,7 @@ export async function loadFeedStories(
     })
     return res.items.map(toFeedStory)
   }
-  const items = await requestCache.fetch(
-    cacheKey,
-    load,
-    BOARD_PAGE_TTL,
-  )
+  const items = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
   signal?.throwIfAborted()
   return items
 }

@@ -30,17 +30,12 @@ function findIndexHtml(root = distDir) {
 
 function collectReferencedAssets(html, htmlDir) {
   const assets = new Set()
-  const patterns = [
-    /(?:src|href|component-url|renderer-url)=["']([^"']+\.(?:js|css))["']/g,
-    /<link[^>]+href=["']([^"']+\.(?:js|css))["']/g,
-  ]
-  for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
-      const href = match[1]
-      if (href.startsWith('http') || href.startsWith('data:')) continue
-      const abs = resolve(htmlDir, href.replaceAll(/^\//g, ''))
-      if (existsSync(abs)) assets.add(abs)
-    }
+  const pattern = /(?:src|href|component-url|renderer-url)=["']([^"']+\.(?:js|css))["']/g
+  for (const match of html.matchAll(pattern)) {
+    const href = match[1]
+    if (href.startsWith('http') || href.startsWith('data:')) continue
+    const abs = resolve(htmlDir, href.replaceAll(/^\//g, ''))
+    if (existsSync(abs)) assets.add(abs)
   }
   return assets
 }
@@ -51,7 +46,7 @@ function displayPath(file, root) {
   return file
 }
 
-function walkStaticImports(entryFiles, assetsDir) {
+function walkStaticImports(entryFiles) {
   const seen = new Set(entryFiles)
   const queue = Iterator.from(entryFiles).toArray()
   const importRe =
@@ -72,7 +67,6 @@ function walkStaticImports(entryFiles, assetsDir) {
         queue.push(next)
       }
     }
-    void assetsDir
   }
   return seen
 }
@@ -90,10 +84,7 @@ export async function measureHomeBudget(root = distDir) {
   const html = readFileSync(htmlPath, 'utf8')
   const htmlDir = dirname(htmlPath)
   const referenced = collectReferencedAssets(html, htmlDir)
-  const assetsDir = existsSync(join(htmlDir, 'assets'))
-    ? join(htmlDir, 'assets')
-    : join(root, 'assets')
-  const firstPaint = walkStaticImports(Iterator.from(referenced).toArray(), assetsDir)
+  const firstPaint = walkStaticImports(Iterator.from(referenced).toArray())
 
   let js = 0
   let css = 0

@@ -173,3 +173,5 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/noteSourceEdit.spec.ts
 !/frontend/tests/browser/fixture/noteSourceEdit.html
 !/frontend/tests/browser/fixture/noteSourceEdit.tsx
+!/frontend/tests/browser/journalWindow.spec.ts
+!/frontend/tests/browser/fixture/journalWindow.tsx

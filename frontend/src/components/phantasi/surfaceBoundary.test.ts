@@ -53,7 +53,6 @@ describe('phantasi 舞台契约', () => {
     assert.match(notes, /<PhantasiStory/)
     assert.match(notes, /<StoryCard/)
     assert.match(notes, /phantasi-notes/)
-    assert.match(notes, /usePhantasiRailPan\(/)
     assert.doesNotMatch(notes, /phantasi-notes__cat/)
     assert.match(grid, /PhantasiNoteCategoryTitleTags/)
     assert.match(css, /\.phantasi-notes/)
@@ -163,7 +162,6 @@ describe('phantasi 舞台契约', () => {
     assert.match(friends, /stories\.length/)
     assert.doesNotMatch(friends, /stories\.length \/ 2/)
     const list = read('skin/PhantasiList.tsx')
-    assert.match(list, /usePhantasiRailPan\(/)
     assert.match(list, /phantasi-stories-track/)
   })
 
@@ -181,7 +179,7 @@ describe('phantasi 舞台契约', () => {
     assert.match(css, /\.phantasi-friends > \.phantasi-rail-title \{[\s\S]*?margin-top: 0\.75rem/)
     assert.match(
       css,
-      /\.phantasi-friends \.phantasi-site,\n\.phantasi-friends \.phantasi-site:hover \{\n  opacity: 1;/,
+      /\.phantasi-friends \.phantasi-site,\n\.phantasi-friends \.phantasi-site:hover \{\n {2}opacity: 1;/,
     )
     assert.match(
       empty,

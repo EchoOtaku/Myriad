@@ -6,12 +6,7 @@
  */
 
 import type { InputRule } from './noteInputRules'
-import {
-  asDisplayMathBlock,
-  mathIslandHtml,
-  mathMarkdown,
-  replaceMathMarkdown,
-} from './noteMath'
+import { asDisplayMathBlock, mathIslandHtml, mathMarkdown, replaceMathMarkdown } from './noteMath'
 import {
   decodeWidgetConfigAttr,
   eatMdFence,
@@ -46,13 +41,13 @@ const ESC_MARK = '\uE000'
 function stashEscapes(text: string): string {
   return text.replaceAll(/\\([\\`*_{}[\]()#+\-.!~<>|$])/g, (_m, ch: string) => {
     const index = ESCAPABLE.indexOf(ch)
-    return `${ESC_MARK}${String.fromCharCode(0xE100 + index)}`
+    return `${ESC_MARK}${String.fromCharCode(0xe100 + index)}`
   })
 }
 
 function renderEscapes(html: string): string {
   return html.replaceAll(/\uE000([\uE100-\uE1FF])/g, (_m, code: string) => {
-    const ch = ESCAPABLE[code.charCodeAt(0) - 0xE100] ?? ''
+    const ch = ESCAPABLE[code.charCodeAt(0) - 0xe100] ?? ''
     return `<span data-esc="${escapeHtml(ch)}">${escapeHtml(ch)}</span>`
   })
 }
@@ -219,7 +214,43 @@ function inlineMarkdown(
   tableCell = false,
 ): string {
   const codes: string[] = []
-  let html = escapeHtml(stashEscapes(text))
+  // Scan code spans before any other inline syntax; equal-length runs delimit them.
+  let protectedText = ''
+  for (let i = 0; i < text.length;) {
+    if (text[i] !== '`' || (i > 0 && text[i - 1] === '\\')) {
+      protectedText += text[i++]
+      continue
+    }
+    let end = i
+    while (text[end] === '`') end++
+    const marker = text.slice(i, end)
+    let close = end
+    let found = -1
+    while (close < text.length) {
+      if (text[close] !== '`') {
+        close++
+        continue
+      }
+      let runEnd = close
+      while (text[runEnd] === '`') runEnd++
+      if (runEnd - close === marker.length) {
+        found = close
+        break
+      }
+      close = runEnd
+    }
+    if (found < 0) {
+      protectedText += marker
+      i = end
+      continue
+    }
+    let code = text.slice(end, found).replaceAll('\n', ' ')
+    if (code.startsWith(' ') && code.endsWith(' ') && code.trim()) code = code.slice(1, -1)
+    codes.push(escapeHtml(code))
+    protectedText += `\uE020${codes.length - 1}\uE021`
+    i = found + marker.length
+  }
+  let html = escapeHtml(stashEscapes(protectedText))
     .replaceAll(/(?: {2,}|\\)\n/g, '<br>')
     .replaceAll('\n', ' ')
     .replace(IMAGE_RE, (_m, alt: string, src: string, dq?: string, sq?: string) =>
@@ -254,22 +285,18 @@ function inlineMarkdown(
       /&lt;([\w.+-]+@[\w-]+(?:\.[\w-]+)+)&gt;/g,
       '<a href="mailto:$1" data-autolink="1">$1</a>',
     )
-    .replace(/`([^`]+)`/g, (_m, code: string) => {
-      codes.push(code)
-      return `\uE020${codes.length - 1}\uE021`
-    })
   // 表格用内联 br 保存格内换行；代码里的 <br> 已被上面的占位符保护。
   if (tableCell) html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>')
   html = replaceMathMarkdown(html)
-  html = html.replace(
-    /\uE020(\d+)\uE021/g,
-    (_m, index: string) => `<code>${codes[Number(index)]}</code>`,
-  )
   html = html
     .replace(/~~([^~]+)~~/g, '<del>$1</del>')
     .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+  html = html.replace(
+    /\uE020(\d+)\uE021/g,
+    (_m, index: string) => `<code>${codes[Number(index)]}</code>`,
+  )
   return renderEscapes(html)
 }
 
@@ -339,11 +366,7 @@ function splitPlainBlocks(markdown: string): MarkdownBlock[] {
       flush()
       continue
     }
-    if (
-      current.length === 1 &&
-      blockKind(current[0]!) === 'text' &&
-      isSetextUnderline(line)
-    ) {
+    if (current.length === 1 && blockKind(current[0]!) === 'text' && isSetextUnderline(line)) {
       current.push(line)
       flush()
       continue
@@ -399,7 +422,11 @@ export function blockIndexAt(markdown: string, index: number): number {
 }
 
 /** 把光标放到元素里第 n 个纯文本字符后面；文字不够就放到末尾。 */
-export function placeCaretAtTextOffset(root: HTMLElement, target: HTMLElement, offset: number): void {
+export function placeCaretAtTextOffset(
+  root: HTMLElement,
+  target: HTMLElement,
+  offset: number,
+): void {
   const doc = root.ownerDocument
   const selection = doc.getSelection()
   const range = doc.createRange()
@@ -428,15 +455,7 @@ export function placeCaretAtTextOffset(root: HTMLElement, target: HTMLElement, o
 }
 
 type BlockKind =
-  | 'heading'
-  | 'hr'
-  | 'quote'
-  | 'table'
-  | 'ul'
-  | 'ol'
-  | 'footnote'
-  | 'linkdef'
-  | 'text'
+  'heading' | 'hr' | 'quote' | 'table' | 'ul' | 'ol' | 'footnote' | 'linkdef' | 'text'
 
 function isSetextUnderline(line: string): boolean {
   return /^(={3,}|-{3,})\s*$/.test(line.trim())
@@ -445,7 +464,7 @@ function isSetextUnderline(line: string): boolean {
 function blockKind(line: string): BlockKind {
   if (/^#{1,6} /.test(line)) return 'heading'
   if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) return 'hr'
-  if (line.startsWith('> ')) return 'quote'
+  if (/^>(?: |$)/.test(line)) return 'quote'
   if (line.startsWith('|')) return 'table'
   if (/^[-*] /.test(line)) return 'ul'
   if (/^\d+\. /.test(line)) return 'ol'
@@ -457,15 +476,13 @@ function blockKind(line: string): BlockKind {
 interface ListNode {
   text: string
   ordered: boolean
+  start: number
   task: boolean | null
   children: ListNode[]
 }
 
 /** 按缩进把列表行搭成树。缩进只看相对深浅，不要求恰好两格。 */
-function parseListTree(
-  block: string,
-  defs: ReadonlyMap<string, LinkDef> = EMPTY_DEFS,
-): ListNode[] {
+function parseListTree(block: string, defs: ReadonlyMap<string, LinkDef> = EMPTY_DEFS): ListNode[] {
   const roots: ListNode[] = []
   const stack: { indent: number; node: ListNode }[] = []
   for (const row of block.split('\n')) {
@@ -480,6 +497,7 @@ function parseListTree(
     const node: ListNode = {
       text: inlineMarkdown(match[5] ?? '', defs),
       ordered: /\d/.test(match[2]!),
+      start: Number.parseInt(match[2]!, 10) || 1,
       task: match[3] ? match[4]!.toLowerCase() === 'x' : null,
       children: [],
     }
@@ -496,7 +514,9 @@ function renderListTree(nodes: ListNode[]): string {
   if (nodes.length === 0) return ''
   const ordered = nodes[0]!.ordered
   const tag = ordered ? 'ol' : 'ul'
-  const listAttr = nodes[0]!.task != null ? ' data-task="1"' : ''
+  const listAttr =
+    (nodes[0]!.task != null ? ' data-task="1"' : '') +
+    (ordered && nodes[0]!.start !== 1 ? ` start="${nodes[0]!.start}"` : '')
   const items = nodes
     .map((node) => {
       const attr = node.task == null ? '' : ` data-task="${node.task ? '1' : '0'}"`
@@ -509,7 +529,32 @@ function renderListTree(nodes: ListNode[]): string {
 type CellAlign = 'left' | 'center' | 'right' | null
 
 function splitTableRow(row: string): string[] {
-  return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|')
+  const cells: string[] = []
+  let cell = ''
+  let escaped = false
+  for (const ch of row.trim()) {
+    if (ch === '|' && !escaped) {
+      cells.push(cell)
+      cell = ''
+    } else {
+      cell += ch
+    }
+    escaped = ch === '\\' && !escaped
+  }
+  cells.push(cell)
+  if (cells[0] === '') cells.shift()
+  if (cells.at(-1) === '') cells.pop()
+  return cells
+}
+
+function isTableBlock(text: string): boolean {
+  const rows = text.split('\n')
+  if (rows.length < 2 || !rows[0]!.includes('|')) return false
+  const header = splitTableRow(rows[0]!)
+  const separator = splitTableRow(rows[1]!)
+  return (
+    header.length === separator.length && separator.every((cell) => /^:?-+:?$/.test(cell.trim()))
+  )
 }
 
 function parseAlignRow(row: string): CellAlign[] {
@@ -529,10 +574,7 @@ function alignAttr(align: CellAlign): string {
 }
 
 /** 表格：第二行 `:---:` 决定每列对齐，落在单元格的 `align` 属性上，和后端一致。 */
-function renderTable(
-  block: string,
-  defs: ReadonlyMap<string, LinkDef> = EMPTY_DEFS,
-): string {
+function renderTable(block: string, defs: ReadonlyMap<string, LinkDef> = EMPTY_DEFS): string {
   const lines = block.split('\n')
   const alignIndex = lines.findIndex((row) => /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(row))
   const aligns = alignIndex >= 0 ? parseAlignRow(lines[alignIndex]!) : []
@@ -556,13 +598,18 @@ function renderPlainVisual(markdown: string, defs: ReadonlyMap<string, LinkDef>)
   return splitPlainBlocks(markdown)
     .map((block) => {
       const text = block.text
+      // Unsupported block syntax stays visible as source and cannot be silently rewritten.
+      if (/^(?: {4}|\t| {0,3}<[/!a-z])/i.test(text)) {
+        return `<pre data-raw-markdown="${encodeURIComponent(text)}" contenteditable="false">${escapeHtml(text)}</pre>`
+      }
       const displayMath = asDisplayMathBlock(text)
       if (displayMath) return displayMath
       if (mdFenceOpen(text.split('\n')[0] ?? '')) {
         const lines = text.split('\n')
         const open = lines[0] ?? ''
-        const lang = open.replace(/^ {0,3}(?:```|~~~)/, '').trim()
-        const closed = lines.length > 1 && mdFenceClose(lines[lines.length - 1]!, mdFenceOpen(open)!)
+        const lang = open.replace(/^ {0,3}(?:`{3,}|~{3,})/, '').trim()
+        const closed =
+          lines.length > 1 && mdFenceClose(lines[lines.length - 1]!, mdFenceOpen(open)!)
         const body = lines.slice(1, closed ? -1 : undefined).join('\n')
         const attr = lang ? ` data-lang="${escapeHtml(lang)}"` : ''
         return `<pre${attr}><code>${escapeHtml(body)}</code></pre>`
@@ -588,20 +635,17 @@ function renderPlainVisual(markdown: string, defs: ReadonlyMap<string, LinkDef>)
         const body = text.slice(footnote[0].length).trimStart()
         return `<p data-fn="${footnote[1]}">${inlineMarkdown(body, defs)}</p>`
       }
-      if (/^>/.test(text)) {
-        return `<blockquote>${inlineMarkdown(text.replace(/^(> ?)/gm, ''), defs)}</blockquote>`
+      if (text.startsWith('>')) {
+        return `<blockquote>${renderPlainVisual(text.replace(/^(> ?)/gm, ''), defs)}</blockquote>`
       }
       if (/^([-*] |\d+\. )/.test(text)) return renderListTree(parseListTree(text, defs))
-      if (/^\|/.test(text)) return renderTable(text, defs)
+      if (isTableBlock(text)) return renderTable(text, defs)
       return `<p>${inlineMarkdown(text, defs)}</p>`
     })
     .join('')
 }
 
-function renderVisualLayout(
-  markdown: string,
-  defs: ReadonlyMap<string, LinkDef>,
-): string {
+function renderVisualLayout(markdown: string, defs: ReadonlyMap<string, LinkDef>): string {
   return parseNoteLayout(markdown)
     .map((seg) => {
       if (seg.kind === 'columns') {
@@ -692,8 +736,7 @@ function collapseMathHosts(html: string): string {
 }
 
 function serializeMathIsland(attrs: string, body: string, block = false): string {
-  const tex =
-    decode(/\bdata-tex="([^"]*)"/i.exec(attrs)?.[1] ?? '') || decode(body).trim()
+  const tex = decode(/\bdata-tex="([^"]*)"/i.exec(attrs)?.[1] ?? '') || decode(body).trim()
   const display =
     /\bnote-math-display\b/.test(attrs) ||
     /\bmath-display\b/.test(attrs) ||
@@ -713,17 +756,16 @@ function inlineHtml(html: string): string {
       .replace(/<img\b([^>]*)>/gi, (_tag, attrs: string) => {
         // data-src 是 Markdown 里的原地址；src 只是给浏览器看的。
         const src =
-          /\bdata-src="([^"]*)"/i.exec(attrs)?.[1] ??
-          /\bsrc="([^"]*)"/i.exec(attrs)?.[1] ??
-          ''
+          /\bdata-src="([^"]*)"/i.exec(attrs)?.[1] ?? /\bsrc="([^"]*)"/i.exec(attrs)?.[1] ?? ''
         const alt = /\balt="([^"]*)"/i.exec(attrs)?.[1] ?? ''
         const title = /\btitle="([^"]*)"/i.exec(attrs)?.[1]
         const ref = /\bdata-linkref="([^"]+)"/i.exec(attrs)?.[1]
         if (ref) return `![${alt}][${ref}]`
         return `![${alt}](${src}${title ? ` "${title}"` : ''})`
       })
-      .replace(/<span[^>]*data-esc="([^"]*)"[^>]*>[\s\S]*?<\/span>/gi, (_m, ch: string) =>
-        `\\${decode(ch)}`,
+      .replace(
+        /<span[^>]*data-esc="([^"]*)"[^>]*>[\s\S]*?<\/span>/gi,
+        (_m, ch: string) => `\\${decode(ch)}`,
       )
       .replace(/<sup[^>]*data-fnref="([^"]+)"[^>]*>[\s\S]*?<\/sup>/gi, '[^$1]')
       .replace(/<a(\s[^>]*data-autolink="1"[^>]*)>[\s\S]*?<\/a>/gi, (_m, attrs: string) => {
@@ -738,7 +780,16 @@ function inlineHtml(html: string): string {
         if (ref) return `[${label}][${decode(ref)}]`
         return `[${label}](${href}${title ? ` "${title}"` : ''})`
       })
-      .replace(/<code>([\s\S]*?)<\/code>/gi, '`$1`')
+      .replace(/<code>([\s\S]*?)<\/code>/gi, (_m, code: string) => {
+        const fence = '`'.repeat(
+          Math.max(1, ...[...code.matchAll(/`+/g)].map((run) => run[0].length + 1)),
+        )
+        const pad =
+          /^`|`$/.test(code) || (code.startsWith(' ') && code.endsWith(' ') && code.trim())
+            ? ' '
+            : ''
+        return `${fence}${pad}${code}${pad}${fence}`
+      })
       .replace(/<strong><em>([\s\S]*?)<\/em><\/strong>/gi, '***$1***')
       .replace(/<em><strong>([\s\S]*?)<\/strong><\/em>/gi, '***$1***')
       .replace(/<\/?(strong|b)>/gi, '**')
@@ -778,7 +829,11 @@ function splitBlocks(html: string, only?: string): HtmlBlock[] {
     if (only && tag !== only && depth === 0) continue
     if (!closing) {
       if (depth === 0) {
-        open = { tag, attrs: match[3] ?? '', bodyStart: match.index + match[0].length }
+        open = {
+          tag,
+          attrs: match[3] ?? '',
+          bodyStart: match.index + match[0].length,
+        }
       }
       depth += 1
       continue
@@ -817,10 +872,12 @@ function serializeList(body: string, ordered: boolean, listAttrs: string, indent
         const checked = /data-task="1"/.test(item.attrs)
         marker = `- [${checked ? 'x' : ' '}] `
       } else {
-        marker = ordered ? `${index + 1}. ` : '- '
+        marker = ordered
+          ? `${index + Number(listAttrs.match(/\bstart="(-?\d+)"/)?.[1] ?? 1)}. `
+          : '- '
       }
       const line = `${indent}${marker}${text}`
-      const childIndent = indent + ' '.repeat(ordered ? 3 : 2)
+      const childIndent = indent + ' '.repeat(ordered ? marker.length : 2)
       const children = nested
         .map((child) => serializeList(child.body, child.tag === 'ol', child.attrs, childIndent))
         .filter(Boolean)
@@ -833,7 +890,6 @@ function serializeList(body: string, ordered: boolean, listAttrs: string, indent
 export function visualHtmlToMarkdown(html: string): string {
   const normalized = collapseMathHosts(html)
     .replaceAll(/<div><br\s*\/?><\/div>/gi, '<p></p>')
-    .replaceAll(/\n+/g, '')
     .replaceAll(/<hr\s*\/?>/gi, '<hr></hr>')
   const blocks = splitBlocks(normalized)
   if (blocks.length === 0) return inlineHtml(normalized).trim()
@@ -873,9 +929,22 @@ export function visualHtmlToMarkdown(html: string): string {
         return `${'#'.repeat(level)} ${inlineHtml(body)}`
       }
       if (tag === 'pre') {
+        const raw = /(?:^|\s)data-raw-markdown="([^"]*)"/i.exec(attrs)?.[1]
+        if (raw != null) {
+          try {
+            const source = decodeURIComponent(raw)
+            // A pasted attribute must never override different visible content.
+            if (source === decode(body)) return source
+          } catch {
+            // Invalid clipboard metadata falls through to ordinary code serialization.
+          }
+        }
         const lang = attrs.match(/data-lang="([^"]*)"/)?.[1] ?? ''
         const code = decode(unwrap(body, 'code'))
-        return `\`\`\`${lang}\n${code}\n\`\`\``
+        const fence = '`'.repeat(
+          Math.max(3, ...[...code.matchAll(/`+/g)].map((run) => run[0].length + 1)),
+        )
+        return `${fence}${decode(lang)}\n${code}\n${fence}`
       }
       if (tag === 'blockquote') {
         if (/<(?:p|h[1-6]|ul|ol|pre)\b/i.test(body)) {
@@ -901,13 +970,16 @@ export function visualHtmlToMarkdown(html: string): string {
               return inlineHtml(cell[2]!)
                 .trim()
                 .replace(/ *\r?\n/g, '<br>')
-                .replaceAll('|', String.raw`\|`)
+                .replace(
+                  /(\\*)\|/g,
+                  (_m, slashes: string) => `${slashes.length % 2 ? slashes : `${slashes}\\`}|`,
+                )
             },
           )
           return `| ${cells.join(' | ')} |`
         })
         if (rows.length === 0) return ''
-        const width = (rows[0]!.match(/\|/g)?.length ?? 1) - 1
+        const width = aligns.length
         const sep = `| ${Array.from({ length: width }, (_x, col) => {
           const align = aligns[col] ?? null
           if (align === 'center') return ':---:'
@@ -1006,9 +1078,7 @@ const BLOCK_TAGS = new Set([
 ])
 
 function elementOf(node: Node): HTMLElement | null {
-  return node.nodeType === Node.TEXT_NODE
-    ? node.parentElement
-    : (node as HTMLElement)
+  return node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)
 }
 
 /** 光标所在的块级元素；找不到就是 root。 */
@@ -1034,10 +1104,7 @@ export function visualClosest<K extends keyof HTMLElementTagNameMap>(
   return found && root.contains(found) && found !== root ? found : null
 }
 
-export function visualClosestClass(
-  root: HTMLElement,
-  className: string,
-): HTMLElement | null {
+export function visualClosestClass(root: HTMLElement, className: string): HTMLElement | null {
   const selection = root.ownerDocument.getSelection()
   const fromSelection = (() => {
     if (!selection || selection.rangeCount === 0) return null
@@ -1062,8 +1129,7 @@ export function columnsAddColumn(root: HTMLElement, columns: HTMLElement): strin
 export function columnsRemoveColumn(root: HTMLElement, columns: HTMLElement): string {
   const current = visualClosestClass(root, 'note-column')
   const cols = [...columns.querySelectorAll<HTMLElement>(':scope > .note-column')]
-  const target =
-    current && columns.contains(current) ? current : cols.at(-1)
+  const target = current && columns.contains(current) ? current : cols.at(-1)
   if (!target) return visualHtmlToMarkdown(root.innerHTML)
   if (cols.length <= 1) columns.remove()
   else target.remove()
@@ -1092,11 +1158,7 @@ export function insertWidgetVisual(
   )
 }
 
-export function setNoteWidgetSize(
-  root: HTMLElement,
-  widget: HTMLElement,
-  size: string,
-): string {
+export function setNoteWidgetSize(root: HTMLElement, widget: HTMLElement, size: string): string {
   widget.dataset.size = normalizeNoteWidgetSize(size)
   return visualHtmlToMarkdown(root.innerHTML)
 }
@@ -1332,7 +1394,10 @@ export function visualOpenBlockBelow(root: HTMLElement): void {
 
 /* ---- 富文本层里直接敲 / 贴 Markdown：就地变成对应的东西 ---- */
 
-const INLINE_TAIL_RULES: Array<{ pattern: RegExp; render: (m: RegExpExecArray) => string }> = [
+const INLINE_TAIL_RULES: Array<{
+  pattern: RegExp
+  render: (m: RegExpExecArray) => string
+}> = [
   {
     pattern: /!\[([^\]]*)\]\(\s*([^\s)]+)(?:\s+"([^"]*)")?\s*\)$/,
     render: (m) => imgTag(escapeHtml(m[2]!), escapeHtml(m[1]!), escapeHtml(m[3] ?? '')),
@@ -1343,11 +1408,20 @@ const INLINE_TAIL_RULES: Array<{ pattern: RegExp; render: (m: RegExpExecArray) =
       `<a href="${escapeHtml(m[2]!)}"${m[3] ? ` title="${escapeHtml(m[3])}"` : ''}>${escapeHtml(m[1]!)}</a>`,
   },
   { pattern: /\$\$([^$]+)\$\$$/, render: (m) => mathIslandHtml(m[1]!, true) },
-  { pattern: /(?<!\$)\$([^$\n]+)\$$/, render: (m) => mathIslandHtml(m[1]!, false) },
+  {
+    pattern: /(?<!\$)\$([^$\n]+)\$$/,
+    render: (m) => mathIslandHtml(m[1]!, false),
+  },
   { pattern: /`([^`]+)`$/, render: (m) => `<code>${escapeHtml(m[1]!)}</code>` },
-  { pattern: /\*\*([^*]+)\*\*$/, render: (m) => `<strong>${escapeHtml(m[1]!)}</strong>` },
+  {
+    pattern: /\*\*([^*]+)\*\*$/,
+    render: (m) => `<strong>${escapeHtml(m[1]!)}</strong>`,
+  },
   { pattern: /~~([^~]+)~~$/, render: (m) => `<del>${escapeHtml(m[1]!)}</del>` },
-  { pattern: /(?<![*\w])\*([^*\s][^*]*)\*$/, render: (m) => `<em>${escapeHtml(m[1]!)}</em>` },
+  {
+    pattern: /(?<![*\w])\*([^*\s][^*]*)\*$/,
+    render: (m) => `<em>${escapeHtml(m[1]!)}</em>`,
+  },
 ]
 
 /** 光标前的文字尾巴刚好凑成一个行内记号：返回要替换掉的长度和替换成的 HTML。 */
@@ -1448,10 +1522,7 @@ function insertBlockHtmlAtCaret(root: HTMLElement, html: string): boolean {
     cursor = rest
   }
 
-  if (
-    !block.textContent?.trim() &&
-    !block.querySelector('img, table, .note-math, .note-widget')
-  ) {
+  if (!block.textContent?.trim() && !block.querySelector('img, table, .note-math, .note-widget')) {
     block.remove()
   }
 

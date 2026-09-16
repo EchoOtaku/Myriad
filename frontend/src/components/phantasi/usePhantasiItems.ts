@@ -18,11 +18,10 @@ export function usePhantasiItems(
 ) {
   const flags = useArticleFlags()
   const flagsRevision = flags.getSnapshot()
-  const [rawItems, setItems] = useState<PhantasiItem[]>([])
+  const [page, setPage] = useState({ items: [] as PhantasiItem[], total: 0, hasMore: true })
+  const { items: rawItems, total, hasMore } = page
   const items = useMemo(() => rawItems.map(item => flags.project(item)).filter(item => viewMode !== 'starred' || item.is_starred !== false), [rawItems, flagsRevision, viewMode])
   const [itemsLoading, setItemsLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
-  const [total, setTotal] = useState(0)
   const nextCursorRef = useRef<string | null>(null)
   const membershipDirty = useRef(false)
   const loadRequestIdRef = useRef(0)
@@ -30,6 +29,16 @@ export function usePhantasiItems(
   const turns = useRef(new RequestTurn())
   const itemsRef = useRef<PhantasiItem[]>([])
   itemsRef.current = items
+  const queryRef = useRef({ viewMode, topicKey })
+  queryRef.current = { viewMode, topicKey }
+
+  const invalidateMembership = useCallback(() => {
+    membershipDirty.current = true
+    turns.current.cancel()
+    loadRequestIdRef.current++
+    loadingRef.current = false
+    setItemsLoading(false)
+  }, [])
 
   const loadItems = useCallback(
     async (reset = false) => {
@@ -58,16 +67,17 @@ export function usePhantasiItems(
         )
         if (signal.aborted || requestId !== loadRequestIdRef.current) return
         const collected = data.items.map((item) => ({ ...item, content: null }))
-        if (rebuild) setItems(collected)
-        else setItems(prev => appendUniqueById(prev, collected))
         membershipDirty.current = false
         nextCursorRef.current = data.next_cursor ?? null
-        if (!cursor) setTotal(data.total)
         const perPage = data.per_page > 0 ? data.per_page : 20
-        setHasMore(itemListHasMore(data.next_cursor, data.items.length, perPage))
+        setPage(prev => ({
+          items: rebuild ? collected : appendUniqueById(prev.items, collected),
+          total: cursor ? prev.total : data.total,
+          hasMore: itemListHasMore(data.next_cursor, data.items.length, perPage),
+        }))
       } catch (err) {
         if (signal.aborted || requestId !== loadRequestIdRef.current) return
-        if (membershipDirty.current) setHasMore(true)
+        if (membershipDirty.current) setPage(prev => ({ ...prev, hasMore: true }))
         reportPhantasiError(err, loadFailed, setError)
       } finally {
         if (!signal.aborted && requestId === loadRequestIdRef.current) {
@@ -82,10 +92,8 @@ export function usePhantasiItems(
   useEffect(() => {
     membershipDirty.current = false
     nextCursorRef.current = null
-    setItems([])
-    setTotal(0)
+    setPage({ items: [], total: 0, hasMore: true })
     setItemsLoading(false)
-    setHasMore(true)
     void loadItems(true)
     return () => {
       turns.current.cancel()
@@ -99,31 +107,52 @@ export function usePhantasiItems(
     let timer: ReturnType<typeof setTimeout> | undefined
     const unsubscribe = flags.subscribeMutations((_id, patch) => {
       if (typeof patch.is_starred !== 'boolean') return
-      membershipDirty.current = true
-      turns.current.cancel()
-      loadRequestIdRef.current++
-      loadingRef.current = false
-      setItemsLoading(false)
+      invalidateMembership()
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => { void loadItems(true) }, 100)
     })
     return () => { unsubscribe(); if (timer) clearTimeout(timer) }
-  }, [viewMode, loadItems])
+  }, [viewMode, loadItems, invalidateMembership])
 
   const loadMore = useCallback(() => {
     if (itemsLoading || (!hasMore && !membershipDirty.current)) return
     void loadItems(false)
   }, [hasMore, itemsLoading, loadItems])
 
+  // Commands may finish after navigation; refresh the query that owns this list now.
+  const loadItemsRef = useRef(loadItems)
+  loadItemsRef.current = loadItems
+  const reload = useCallback(() => loadItemsRef.current(true), [])
+  const removeItem = useCallback((id: number) => {
+    invalidateMembership()
+    setPage(prev => {
+      const next = prev.items.filter(item => item.id !== id)
+      if (next.length === prev.items.length) return prev
+      return { ...prev, items: next, total: Math.max(0, prev.total - 1) }
+    })
+  }, [invalidateMembership])
+  const updateTopic = useCallback((id: number, topic: string | null) => {
+    const query = queryRef.current
+    if (query.viewMode === 'topic-feed' && topic !== query.topicKey) {
+      removeItem(id)
+      return
+    }
+    invalidateMembership()
+    setPage(prev => ({
+      ...prev,
+      items: prev.items.map(item => item.id === id ? { ...item, topic } : item),
+    }))
+  }, [invalidateMembership, removeItem])
+
   return {
     items,
-    setItems,
     itemsRef,
     itemsLoading,
     hasMore,
     total,
-    setTotal,
-    loadItems,
+    reload,
+    removeItem,
+    updateTopic,
     loadMore,
   }
 }

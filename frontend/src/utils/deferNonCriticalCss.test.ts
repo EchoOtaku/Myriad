@@ -22,8 +22,11 @@ test('defers only lazy-owned CSS using dependencies, regardless of chunk names',
   }
   const links = ['root', 'shared', 'renamed-page', 'form', 'unknown'].map(name => `<link rel="stylesheet" href="/assets/${name}.css">`).join('')
   try {
-    plugin.configResolved({ build: { ssr: false } })
-    plugin.generateBundle({}, bundle)
+    plugin.generateBundle.call({ environment: { config: { consumer: 'client' } } }, {}, bundle)
+    // Server output must not overwrite the client dependency graph.
+    plugin.generateBundle.call({ environment: { config: { consumer: 'server' } } }, {}, {
+      'assets/root.js': chunk([], [], []),
+    })
     writeFileSync(join(dir, 'index.html'), `<astro-island component-url="/assets/root.js"></astro-island>${links}`)
     writeFileSync(join(dir, 'direct.html'), `<script type="module" src="/assets/renamed-page.js"></script>${links}`)
     await integration.hooks['astro:build:done']({ dir: pathToFileURL(`${dir}/`) })

@@ -1338,10 +1338,33 @@ mod tests {
     }
 
     #[test]
+    fn browser_roundtrip_corpus_matches_preview_and_published_rendering() {
+        let source = include_str!("../testdata/note-roundtrip.md");
+        let edited = include_str!("../testdata/note-roundtrip-edited.md");
+        assert_eq!(
+            render_markdown(source),
+            include_str!("../testdata/note-roundtrip.html")
+        );
+        assert_eq!(
+            render_markdown(edited),
+            include_str!("../testdata/note-roundtrip-edited.html")
+        );
+        assert_eq!(
+            render_markdown_preview(edited),
+            include_str!("../testdata/note-roundtrip-edited-preview.html")
+        );
+    }
+
+    #[test]
     fn table_cell_break_stays_in_value_column() {
         let md = "| PARAM | VALUE |\n| --- | --- |\n| model | `deepseek-flash` (1)<br>`deepseek-v4-pro` (2) |";
         for html in [render_markdown(md), render_markdown_preview(md)] {
-            assert!(html.contains("<td><code>deepseek-flash</code> (1)<br><code>deepseek-v4-pro</code> (2)</td>"), "{html}");
+            assert!(
+                html.contains(
+                    "<td><code>deepseek-flash</code> (1)<br><code>deepseek-v4-pro</code> (2)</td>"
+                ),
+                "{html}"
+            );
             assert_eq!(html.matches("<td>").count(), 2, "{html}");
         }
     }

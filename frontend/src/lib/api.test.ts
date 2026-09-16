@@ -51,6 +51,17 @@ describe('shared HTTP failures', () => {
     mock.method(globalThis, 'fetch', async () => Response.json({ csrf_token: token, expires_in: 3600 }))
   })
 
+  it('blocks image generation before dispatch when the image provider is not configured', async () => {
+    mock.method(globalThis, 'fetch', async () => Response.json({ aiAvailability: { image: false } }))
+    await assert.rejects(api.post('/api/merope/rig/portrait', {}), (error: unknown) => {
+      assert.ok(axios.isAxiosError(error))
+      assert.equal(error.response?.status, 409)
+      assert.equal(error.response?.data.code, 'ai_not_configured')
+      return true
+    })
+    assert.equal(calls, 0)
+  })
+
   afterEach(() => {
     clearCSRFToken()
     mock.restoreAll()

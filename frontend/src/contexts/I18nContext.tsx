@@ -15,6 +15,12 @@ import {
 import { persistLocaleToAccount } from '../i18n/localeAccount'
 import { currentCopy } from '../i18n/localeCopy'
 
+// Begin the request while the rest of the app initializes, instead of waiting
+// for the provider's first effect. The provider handles failure and retries.
+if (typeof window !== 'undefined') {
+  void loadLocale(getDefaultLocale()).catch(() => {})
+}
+
 interface I18nContextType {
   locale: Locale
   setLocale: (locale: Locale, options?: { persist?: boolean }) => void
@@ -136,7 +142,10 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
 
 function fallbackI18n(): I18nContextType {
   const locale = getDefaultLocale()
-  const t = currentCopy()
+  // A detached React tree still needs a complete catalog. Service fallback copy
+  // deliberately omits settings UI strings, so suspend until the real pack exists.
+  const t = getCachedLocale(locale)
+  if (!t) throw loadLocale(locale)
   return {
     locale,
     setLocale: (newLocale, options) => {

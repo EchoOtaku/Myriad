@@ -191,6 +191,7 @@ export interface PhantasiNoteDoc {
 }
 
 export interface PhantasiNoteDocInput {
+  client_request_id?: string
   title?: string
   content_md?: string
   topic?: string | null

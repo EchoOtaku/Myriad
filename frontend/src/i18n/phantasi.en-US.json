@@ -178,6 +178,7 @@
   "noteDeleteConfirm": "Delete this note? It cannot be recovered.",
   "noteDiscardConfirm": "There are unsaved changes. Close anyway?",
   "noteTabWrite": "Markdown",
+  "noteEditInMarkdown": "Edit this block in Markdown mode",
   "noteTabPreview": "Preview",
   "noteToolBold": "Bold",
   "noteToolItalic": "Italic",
