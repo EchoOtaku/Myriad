@@ -315,13 +315,7 @@ pub(crate) async fn create_comment(
     // 验证 color 格式（仅允许十六进制颜色）
     let validated_color = req
         .color
-        .and_then(|c| {
-            if COMMENT_COLOR.is_match(&c) {
-                Some(c)
-            } else {
-                None
-            }
-        })
+        .filter(|c| COMMENT_COLOR.is_match(c))
         .or(inherited_color);
 
     // 验证输入长度限制

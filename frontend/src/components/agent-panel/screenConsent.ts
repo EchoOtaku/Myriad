@@ -2,7 +2,6 @@ const STORAGE_KEY = 'myriad.agentPanel.screenConsent'
 
 let enabled = false
 let loaded = false
-const listeners = new Set<() => void>()
 
 function read(): boolean {
   try {
@@ -21,27 +20,4 @@ function ensureLoaded(): void {
 export function getScreenConsent(): boolean {
   ensureLoaded()
   return enabled
-}
-
-export function setScreenConsent(next: boolean): void {
-  ensureLoaded()
-  if (enabled === next) return
-  enabled = next
-  try {
-    window.localStorage.setItem(STORAGE_KEY, next ? 'on' : 'off')
-  } catch {
-    /* session-only */
-  }
-  for (const listener of listeners) listener()
-}
-
-export function subscribeScreenConsent(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
-}
-
-export function getServerScreenConsent(): boolean {
-  return false
 }

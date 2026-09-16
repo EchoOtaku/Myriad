@@ -2,20 +2,6 @@
 //!
 //! ActivityPub 兼容 + Myriad 扩展的联邦协议类型
 //!
-//! ## 关于本文件的 allow(dead_code)
-//!
-//! 不少结构没有构造点：入站常从 `serde_json::Value` 挖字段，不少出站用 `json!`。
-//! 已接线的包括 `ChannelType` / `ChannelTransport`、`Actor`、`OrderedCollectionPage`、
-//! `NodeInfo`、`Activity`。
-//!
-//! **不要机械地把它们接到 handler 上**：抽查发现它们与真实线上格式已经对不上，
-//! 例如 `ChannelOpenObject` 缺了出站实际会发的 `id`（channel/crud.rs 的
-//! ChannelOpen 构造点）。按现状接上去会丢字段或拒收当前能收的消息。
-//!
-//! `ChannelType` / `ChannelTransport` 的 serde 就是频道创建校验表
-//! （测试 `channel_enums_serialize_to_the_mfp_wire_values`）。其余先按线上核对。
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 
 // JSON-LD 上下文
@@ -29,9 +15,6 @@ pub const MFP_CONTEXT: &str = "https://myriad.dev/ns/v1";
 
 /// ActivityPub Content-Type
 pub const AP_CONTENT_TYPE: &str = "application/activity+json";
-/// JSON-LD Content-Type
-pub const LD_CONTENT_TYPE: &str =
-    "application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"";
 
 // Actor 相关类型
 
@@ -285,17 +268,6 @@ pub struct NodeInfoWellKnownLink {
 
 // MFP Channel 协议类型
 
-/// Channel 状态
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ChannelStatus {
-    Pending,
-    Accepted,
-    Active,
-    Closed,
-    Rejected,
-}
-
 /// Channel 类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -313,119 +285,6 @@ pub enum ChannelType {
 pub enum ChannelTransport {
     Http,
     Websocket,
-}
-
-/// Channel 属性
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelProperties {
-    #[serde(rename = "maxMessageSize", skip_serializing_if = "Option::is_none")]
-    pub max_message_size: Option<u64>,
-    #[serde(rename = "supportedFormats", skip_serializing_if = "Option::is_none")]
-    pub supported_formats: Option<Vec<String>>,
-    #[serde(rename = "maxFileSize", skip_serializing_if = "Option::is_none")]
-    pub max_file_size: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resumable: Option<bool>,
-    #[serde(rename = "chunkSize", skip_serializing_if = "Option::is_none")]
-    pub chunk_size: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub methods: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schemas: Option<Vec<String>>,
-    #[serde(rename = "streamTypes", skip_serializing_if = "Option::is_none")]
-    pub stream_types: Option<Vec<String>>,
-}
-
-/// ChannelOpen.object（`myriad:Channel`）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelOpenObject {
-    #[serde(rename = "type")]
-    pub object_type: String, // "myriad:Channel"
-    #[serde(rename = "tappId")]
-    pub tapp_id: String,
-    #[serde(rename = "channelType")]
-    pub channel_type: ChannelType,
-    pub protocol: String, // "mfp/1.0"
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub capabilities: Option<Vec<String>>,
-    #[serde(
-        rename = "transportPreference",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub transport_preference: Option<Vec<ChannelTransport>>,
-}
-
-/// MFP ChannelMessage（myriad:ChannelMessage）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelMessage {
-    #[serde(rename = "type")]
-    pub message_type: String, // "myriad:ChannelMessage"
-    pub channel: String,
-    pub from: String,
-    pub payload: serde_json::Value,
-    pub timestamp: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<String>,
-}
-
-// MFP Room 协议类型
-
-/// Room 治理类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum GovernanceType {
-    Owner,
-    Democratic,
-    Open,
-}
-
-/// Room 成员角色
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RoomRole {
-    Owner,
-    Admin,
-    Member,
-    Observer,
-}
-
-/// Room 邀请策略
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum InvitePolicy {
-    AdminOnly,
-    MemberInvite,
-    Open,
-}
-
-/// Room 消息分发策略
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DistributionStrategy {
-    FanOut,
-    Mesh,
-}
-
-// MFP Ring 协议类型
-
-/// Ring 类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RingType {
-    TappStore,
-    PhantasiRecommend,
-    LibraryExchange,
-    InstanceDirectory,
-}
-
-/// Gossip 配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GossipConfig {
-    pub fanout: u32,
-    pub ttl: u32,
-    pub interval: u64, // 秒
 }
 
 // 实例信任层级
@@ -452,30 +311,6 @@ impl TrustLevel {
             _ => Self::Unknown,
         }
     }
-}
-
-// 联邦内容发布可见性
-
-/// 本文件枚举含 `Mentioned`。发布路径用 `audience::Visibility` 三值（`mentioned` 收成 Direct）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Visibility {
-    Public,
-    Followers,
-    Mentioned,
-    Direct,
-}
-
-/// 本文件枚举。线上 `ap_object` 分支是 note / report / phantasi-article / tapp / library。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum FederatedContentType {
-    Report,
-    PhantasiArticle,
-    Library,
-    Activity,
-    Tapp,
-    Dashboard,
 }
 
 // 辅助函数

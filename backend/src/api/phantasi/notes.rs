@@ -18,18 +18,14 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use chrono::Utc;
 use myriad_phantasi_notes::{render_markdown_preview, validate_note};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    Set,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use serde_json::json;
 
 use super::helpers::{get_admin_user_id_from_headers, phantasi_http_err, phantasi_store_http};
 use crate::error::HttpError;
-use crate::models::entities::{phantasi_items, phantasi_note_docs, phantasi_sources};
+use crate::models::entities::{phantasi_items, phantasi_sources};
 
 /// 笔记落在「我」分类下 —— 这是站内唯一可做文章级 SEO 的分类。
 /// 直接引用 `api::seo` 的那份取值，不另抄一个字面量。
@@ -84,21 +80,6 @@ async fn find_catalog_note(
         .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
 
     Ok((item, source))
-}
-
-/// 维护源上的条目计数缓存。笔记不走抓取路径，没人替它更新这个数。
-async fn sync_item_count(db: &DatabaseConnection, source: &phantasi_sources::Model) {
-    let count = phantasi_items::Entity::find()
-        .filter(phantasi_items::Column::SourceId.eq(source.id))
-        .count(db)
-        .await
-        .unwrap_or(0);
-    let mut active: phantasi_sources::ActiveModel = source.clone().into();
-    active.item_count = Set(i32::try_from(count).unwrap_or(i32::MAX));
-    active.updated_at = Set(Utc::now().into());
-    if let Err(error) = active.update(db).await {
-        tracing::warn!(%error, source_id = source.id, "failed to sync note item count");
-    }
 }
 
 /// `POST /api/phantasi/notes/preview` — 编辑器预览。
@@ -181,17 +162,7 @@ pub(crate) async fn delete_note(
     get_admin_user_id_from_headers(&headers, &db).await?;
     let (item, source) = find_catalog_note(&db, id).await?;
 
-    phantasi_items::Entity::delete_by_id(item.id)
-        .exec(&db)
-        .await
-        .map_err(|e| phantasi_store_http("delete note", e))?;
-    phantasi_note_docs::Entity::delete_many()
-        .filter(phantasi_note_docs::Column::ItemId.eq(item.id))
-        .exec(&db)
-        .await
-        .map_err(|e| phantasi_store_http("delete note doc", e))?;
-
-    sync_item_count(&db, &source).await;
+    crate::services::note_publish::delete_note_with_doc(&db, item.id, &source).await?;
 
     Ok(Json(json!({ "success": true })))
 }
@@ -233,18 +204,14 @@ mod tests {
             .find("async fn find_catalog_note")
             .expect("find_catalog_note");
         let body = &src[start..];
-        let end = body[1..]
-            .find("\nasync fn ")
-            .map(|index| index + 1)
-            .unwrap_or(body.len());
-        let finder = &body[..end];
+        let finder = body.split_once("\n}").expect("end of catalog finder").0;
         assert!(finder.contains("SourceType::Note"));
         assert!(
             !finder.contains("UserId.eq"),
             "shared catalog notes are not keyed by the creating admin"
         );
         for name in ["update_note", "delete_note"] {
-            assert!(src.contains(&format!("find_catalog_note(&db")));
+            assert!(src.contains("find_catalog_note(&db"));
             let start = src
                 .find(&format!("pub(crate) async fn {name}"))
                 .unwrap_or_else(|| panic!("{name}"));

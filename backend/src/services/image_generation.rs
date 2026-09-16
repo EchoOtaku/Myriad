@@ -295,10 +295,14 @@ pub async fn generate_image_with_references(
     }
     let width = width.clamp(256, 2048);
     let height = height.clamp(256, 2048);
-    let result =
-        generate_image_provider(config, prompt, width, height, references, background).await;
     let (input_tokens, output_tokens) =
         crate::services::ai_cost_ledger::estimate_image_tokens(prompt, width, height);
+    crate::services::analyzer::request_budget::charge_units(
+        input_tokens.max(0) as u64 + output_tokens.max(0) as u64,
+    )
+    .map_err(|error| ImageGenerationError::Provider(error.to_string()))?;
+    let result =
+        generate_image_provider(config, prompt, width, height, references, background).await;
     let error_code = result.as_ref().err().map(image_generation_failure_code);
     crate::services::ai_cost_ledger::record_ai_tokens_from_attribution(
         &config.provider,

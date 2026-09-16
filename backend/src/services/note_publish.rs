@@ -10,7 +10,7 @@ use myriad_phantasi_notes::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryFilter, Set, Statement, TransactionTrait, Value as SeaValue,
+    EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait, Value as SeaValue,
 };
 use serde::Serialize;
 
@@ -92,18 +92,31 @@ async fn ensure_note_source<C: ConnectionTrait>(
         .map_err(|e| phantasi_store_http("create note source", e))
 }
 
-async fn sync_item_count<C: ConnectionTrait>(db: &C, source: &phantasi_sources::Model) {
+async fn sync_item_count<C: ConnectionTrait>(
+    db: &C,
+    source: &phantasi_sources::Model,
+) -> Result<(), HttpError> {
+    // Serialize recounts before reading committed items. NO KEY UPDATE remains
+    // compatible with the foreign-key KEY SHARE held by concurrent insertions.
+    phantasi_sources::Entity::find_by_id(source.id)
+        .lock(sea_orm::sea_query::LockType::NoKeyUpdate)
+        .one(db)
+        .await
+        .map_err(|error| phantasi_store_http("lock note source count", error))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note source not found"))?;
     let count = phantasi_items::Entity::find()
         .filter(phantasi_items::Column::SourceId.eq(source.id))
         .count(db)
         .await
-        .unwrap_or(0);
+        .map_err(|error| phantasi_store_http("count notes", error))?;
     let mut active: phantasi_sources::ActiveModel = source.clone().into();
     active.item_count = Set(i32::try_from(count).unwrap_or(i32::MAX));
     active.updated_at = Set(Utc::now().into());
-    if let Err(error) = active.update(db).await {
-        tracing::warn!(%error, source_id = source.id, "failed to sync note item count");
-    }
+    active
+        .update(db)
+        .await
+        .map_err(|error| phantasi_store_http("sync note item count", error))?;
+    Ok(())
 }
 
 /// 把一篇已经校验过的笔记写进 `phantasi_items`。有 `item_id` 就改，没有就新建。
@@ -189,7 +202,7 @@ async fn write_published_item<C: ConnectionTrait>(
         .update(db)
         .await
         .map_err(|e| phantasi_store_http("save note", e))?;
-    sync_item_count(db, &source).await;
+    sync_item_count(db, &source).await?;
     Ok(PublishedNote {
         id: item.id,
         link: item.link,
@@ -285,6 +298,125 @@ pub async fn publish_doc(
     }
 }
 
+/// Delete the public article and its editor document through one owner.
+pub async fn delete_note_with_doc(
+    db: &DatabaseConnection,
+    item_id: i32,
+    source: &phantasi_sources::Model,
+) -> Result<(), HttpError> {
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| phantasi_store_http("begin note delete", e))?;
+    let outcome = async {
+        // Match publication and metadata lock order: article, then document.
+        phantasi_items::Entity::delete_by_id(item_id)
+            .exec(&txn)
+            .await
+            .map_err(|e| phantasi_store_http("delete note", e))?;
+        phantasi_note_docs::Entity::delete_many()
+            .filter(phantasi_note_docs::Column::ItemId.eq(item_id))
+            .exec(&txn)
+            .await
+            .map_err(|e| phantasi_store_http("delete note doc", e))?;
+        sync_item_count(&txn, source).await?;
+        Ok::<_, HttpError>(())
+    }
+    .await;
+    match outcome {
+        Ok(()) => txn
+            .commit()
+            .await
+            .map_err(|e| phantasi_store_http("commit note delete", e)),
+        Err(error) => {
+            if let Err(rollback) = txn.rollback().await {
+                tracing::warn!(error = %rollback, "note delete rollback failed");
+            }
+            Err(error)
+        }
+    }
+}
+
+/// Change note classification without publishing the editor's draft body.
+/// The document revision owns the linked article metadata write as well.
+pub async fn update_note_doc_topic(
+    db: &DatabaseConnection,
+    doc_id: i32,
+    expected_revision: i64,
+    topic: Option<String>,
+) -> Result<phantasi_note_docs::Model, HttpError> {
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| phantasi_store_http("begin note topic update", e))?;
+    let outcome = async {
+        let doc = phantasi_note_docs::Entity::find_by_id(doc_id)
+            .one(&txn)
+            .await
+            .map_err(|e| phantasi_store_http("find note doc", e))?
+            .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note draft not found"))?;
+        if doc.revision != expected_revision {
+            return Err(phantasi_http_err(
+                StatusCode::CONFLICT,
+                "Note draft was updated elsewhere",
+            ));
+        }
+        if let Some(item_id) = doc.item_id {
+            let mut item = <phantasi_items::ActiveModel as Default>::default();
+            item.topic = Set(topic.clone());
+            let updated = phantasi_items::Entity::update_many()
+                .set(item)
+                .filter(phantasi_items::Column::Id.eq(item_id))
+                .exec(&txn)
+                .await
+                .map_err(|e| phantasi_store_http("update published note topic", e))?;
+            if updated.rows_affected == 0 {
+                return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"));
+            }
+        }
+        // All published-note writers acquire article before document: publish/delete use
+        // the same order. A failed revision CAS rolls back the metadata update above.
+        let now = Utc::now();
+        let mut active = <phantasi_note_docs::ActiveModel as Default>::default();
+        active.topic = Set(topic.clone());
+        active.revision = Set(expected_revision + 1);
+        active.updated_at = Set(now.into());
+        let updated = phantasi_note_docs::Entity::update_many()
+            .set(active)
+            .filter(phantasi_note_docs::Column::Id.eq(doc_id))
+            .filter(phantasi_note_docs::Column::Revision.eq(expected_revision))
+            .exec(&txn)
+            .await
+            .map_err(|e| phantasi_store_http("update note topic", e))?;
+        if updated.rows_affected == 0 {
+            return Err(phantasi_http_err(
+                StatusCode::CONFLICT,
+                "Note draft was updated elsewhere",
+            ));
+        }
+        phantasi_note_docs::Entity::find_by_id(doc_id)
+            .one(&txn)
+            .await
+            .map_err(|e| phantasi_store_http("reload note doc", e))?
+            .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note draft not found"))
+    }
+    .await;
+    match outcome {
+        Ok(doc) => {
+            txn.commit()
+                .await
+                .map_err(|e| phantasi_store_http("commit note topic update", e))?;
+            Ok(doc)
+        }
+        Err(error) => {
+            if let Err(rollback) = txn.rollback().await {
+                tracing::warn!(error = %rollback, "note topic rollback failed");
+            }
+            Err(error)
+        }
+    }
+}
+
 /// 认领一篇到点的定时稿：只在 status/revision 都没变时把 revision 推一格。
 /// 推不动说明别的实例（或用户）先动了它，这一轮跳过。
 async fn claim_due_doc(
@@ -349,8 +481,9 @@ pub async fn publish_due_note_docs(db: &DatabaseConnection) -> Result<usize, Str
             Ok(_) => published += 1,
             Err(error) => {
                 tracing::error!(error = ?error, doc_id, "failed to publish scheduled note");
-                // 4xx 是这篇稿子自己的问题，打回草稿并把原因写下来；5xx 保持 scheduled 下一轮再试。
-                if error.0.status().is_client_error() {
+                // 409 是发布权已转移，不再写；其它 4xx 仅能退回仍由本次认领的稿件。
+                // 5xx 保持 scheduled 下一轮再试。
+                if error.0.status().is_client_error() && error.0.status() != StatusCode::CONFLICT {
                     if let Err(revert) = revert_due_doc(db, doc, error.0.error_label()).await {
                         tracing::error!(error = ?revert, "failed to revert scheduled note");
                     }
@@ -366,13 +499,19 @@ async fn revert_due_doc(
     doc: phantasi_note_docs::Model,
     label: &str,
 ) -> Result<(), HttpError> {
-    let mut active: phantasi_note_docs::ActiveModel = doc.clone().into();
+    let mut active = <phantasi_note_docs::ActiveModel as Default>::default();
     active.status = Set(NoteDocStatus::Draft.as_str().to_string());
     active.last_error = Set(Some(label.to_string()));
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(doc.revision + 1);
-    active
-        .update(db)
+    // A user edit, reschedule, or another publisher invalidates this worker's ownership.
+    // Zero rows means the current owner decides the state; never undo their work.
+    phantasi_note_docs::Entity::update_many()
+        .set(active)
+        .filter(phantasi_note_docs::Column::Id.eq(doc.id))
+        .filter(phantasi_note_docs::Column::Status.eq(NoteDocStatus::Scheduled.as_str()))
+        .filter(phantasi_note_docs::Column::Revision.eq(doc.revision))
+        .exec(db)
         .await
         .map_err(|e| phantasi_store_http("revert scheduled note", e))?;
     Ok(())
@@ -520,6 +659,519 @@ pub async fn write_note_with_doc(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn isolated_note_db() -> Option<DatabaseConnection> {
+        use sea_orm::{ConnectOptions, Database, Schema};
+        let url = std::env::var("PHANTASI_TEST_DATABASE_URL").ok()?;
+        let mut options = ConnectOptions::new(url);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options)
+            .await
+            .expect("connect note test database");
+        let schema = Schema::new(DatabaseBackend::Postgres);
+        for statement in [
+            schema.create_table_from_entity(phantasi_sources::Entity),
+            schema.create_table_from_entity(phantasi_note_docs::Entity),
+            schema.create_table_from_entity(phantasi_items::Entity),
+        ] {
+            let sql = statement
+                .to_string(sea_orm::sea_query::PostgresQueryBuilder)
+                .replacen("CREATE TABLE", "CREATE TEMP TABLE", 1);
+            db.execute_unprepared(&sql)
+                .await
+                .expect("create isolated temporary table");
+        }
+        insert_test_source(&db).await;
+        Some(db)
+    }
+
+    async fn insert_test_source(db: &DatabaseConnection) {
+        let now = Utc::now();
+        phantasi_sources::ActiveModel {
+            user_id: Set(1),
+            name: Set("Notes".into()),
+            url: Set("myriad:notes".into()),
+            feed_type: Set(phantasi_sources::FeedType::Rss),
+            source_type: Set(phantasi_sources::SourceType::Note),
+            update_interval: Set(0),
+            enabled: Set(true),
+            error_count: Set(0),
+            item_count: Set(1),
+            unread_count: Set(0),
+            admin_only: Set(false),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .unwrap();
+    }
+
+    async fn insert_test_doc(db: &DatabaseConnection) -> phantasi_note_docs::Model {
+        let now = Utc::now();
+        phantasi_note_docs::ActiveModel {
+            user_id: Set(1),
+            item_id: Set(None),
+            title: Set("Draft title".into()),
+            content_md: Set("Unpublished body".into()),
+            topic: Set(Some("Old".into())),
+            image: Set(Some("draft.png".into())),
+            status: Set("scheduled".into()),
+            scheduled_at: Set(Some(now.into())),
+            published_at: Set(Some(now.into())),
+            revision: Set(10),
+            last_error: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .unwrap()
+    }
+
+    async fn insert_test_item(db: &DatabaseConnection) -> phantasi_items::Model {
+        let now = Utc::now();
+        phantasi_items::ActiveModel {
+            source_id: Set(1),
+            guid: Set(format!("test-note-{}", uuid::Uuid::new_v4())),
+            title: Set("Published title".into()),
+            link: Set("/journal/articles/1".into()),
+            content: Set(Some("<p>Published body</p>".into())),
+            content_md: Set(Some("Published body".into())),
+            image: Set(Some("published.png".into())),
+            topic: Set(Some("Old".into())),
+            published_at: Set(now.into()),
+            fetched_at: Set(now.into()),
+            fulltext_fetched: Set(true),
+            content_revision: Set(7),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn scheduled_failure_cannot_revert_a_newer_user_change() {
+        for (status, revision) in [("scheduled", 14), ("published", 10)] {
+            let Some(db) = isolated_note_db().await else {
+                return;
+            };
+            let claimed = insert_test_doc(&db).await;
+            let mut changed: phantasi_note_docs::ActiveModel = claimed.clone().into();
+            changed.status = Set(status.into());
+            changed.revision = Set(revision);
+            let newer = changed.update(&db).await.unwrap();
+            revert_due_doc(&db, claimed, "stale publication")
+                .await
+                .unwrap();
+            let saved = phantasi_note_docs::Entity::find_by_id(newer.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                saved, newer,
+                "a stale scheduler must not mutate the new owner state"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_note_count_writes_follow_committed_item_changes() {
+        use sea_orm::{ConnectOptions, Database, QuerySelect, Schema};
+        let Ok(url) = std::env::var("PHANTASI_TEST_DATABASE_URL") else {
+            return;
+        };
+        let admin = Database::connect(&url).await.unwrap();
+        let scope = format!("journal_count_{}", uuid::Uuid::new_v4().simple());
+        admin
+            .execute_unprepared(&format!("CREATE SCHEMA {scope}"))
+            .await
+            .unwrap();
+        let connect = || {
+            let mut options = ConnectOptions::new(url.clone());
+            options
+                .max_connections(1)
+                .min_connections(1)
+                .sqlx_logging(false)
+                .set_schema_search_path(scope.clone());
+            Database::connect(options)
+        };
+        let a = connect().await.unwrap();
+        let b = connect().await.unwrap();
+        let blocker = connect().await.unwrap();
+        let schema = Schema::new(DatabaseBackend::Postgres);
+        for statement in [
+            schema.create_table_from_entity(phantasi_sources::Entity),
+            schema.create_table_from_entity(phantasi_note_docs::Entity),
+            schema.create_table_from_entity(phantasi_items::Entity),
+        ] {
+            a.execute_unprepared(&statement.to_string(sea_orm::sea_query::PostgresQueryBuilder))
+                .await
+                .unwrap();
+        }
+        insert_test_source(&a).await;
+        let first = insert_test_item(&a).await;
+        let second = insert_test_item(&a).await;
+        let source = phantasi_sources::Entity::find_by_id(1)
+            .one(&a)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut initial: phantasi_sources::ActiveModel = source.clone().into();
+        initial.item_count = Set(2);
+        initial.update(&a).await.unwrap();
+        let pid_a: i32 = a
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT pg_backend_pid() AS pid",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "pid")
+            .unwrap();
+        let pid_b: i32 = b
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT pg_backend_pid() AS pid",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "pid")
+            .unwrap();
+        let held = blocker.begin().await.unwrap();
+        phantasi_sources::Entity::find_by_id(1)
+            .lock(sea_orm::sea_query::LockType::NoKeyUpdate)
+            .one(&held)
+            .await
+            .unwrap();
+        let (delete_a, delete_b) = {
+            let (a, b, sa, sb) = (a.clone(), b.clone(), source.clone(), source.clone());
+            (
+                tokio::spawn(async move { delete_note_with_doc(&a, first.id, &sa).await }),
+                tokio::spawn(async move { delete_note_with_doc(&b, second.id, &sb).await }),
+            )
+        };
+        let mut both_blocked = false;
+        for _ in 0..500 {
+            let row = admin.query_one_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+                "SELECT count(*) AS n FROM pg_stat_activity WHERE pid IN ($1, $2) AND wait_event_type = 'Lock'",
+                [pid_a.into(), pid_b.into()])).await.unwrap().unwrap();
+            if row.try_get::<i64>("", "n").unwrap() == 2 {
+                both_blocked = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        held.commit().await.unwrap();
+        let deletion_results = (delete_a.await.unwrap(), delete_b.await.unwrap());
+        let after_delete = phantasi_sources::Entity::find_by_id(1)
+            .one(&a)
+            .await
+            .unwrap()
+            .unwrap()
+            .item_count;
+
+        // Each insertion holds a foreign-key KEY SHARE on the same source. The
+        // count lock must coexist with those locks rather than upgrade to FOR UPDATE.
+        let left = a.begin().await.unwrap();
+        let right = b.begin().await.unwrap();
+        let mut added: phantasi_items::ActiveModel = first.into();
+        added.id = sea_orm::ActiveValue::NotSet;
+        added.guid = Set(format!("test-note-{}", uuid::Uuid::new_v4()));
+        phantasi_items::Entity::insert(added.clone().reset_all())
+            .exec(&left)
+            .await
+            .unwrap();
+        added.guid = Set(format!("test-note-{}", uuid::Uuid::new_v4()));
+        phantasi_items::Entity::insert(added.reset_all())
+            .exec(&right)
+            .await
+            .unwrap();
+        let additions = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(
+                async {
+                    sync_item_count(&left, &source).await?;
+                    left.commit()
+                        .await
+                        .map_err(|e| phantasi_store_http("commit test insert", e))
+                },
+                async {
+                    sync_item_count(&right, &source).await?;
+                    right
+                        .commit()
+                        .await
+                        .map_err(|e| phantasi_store_http("commit test insert", e))
+                }
+            )
+        })
+        .await;
+        let after_add = phantasi_sources::Entity::find_by_id(1)
+            .one(&a)
+            .await
+            .unwrap()
+            .unwrap()
+            .item_count;
+        a.close().await.unwrap();
+        b.close().await.unwrap();
+        blocker.close().await.unwrap();
+        admin
+            .execute_unprepared(&format!("DROP SCHEMA {scope} CASCADE"))
+            .await
+            .unwrap();
+        assert!(
+            both_blocked,
+            "both deletes must reach the controlled count-write interleaving"
+        );
+        assert!(deletion_results.0.is_ok() && deletion_results.1.is_ok());
+        assert_eq!(
+            after_delete, 0,
+            "concurrent deletes must count both committed removals"
+        );
+        let additions = additions.expect("count locks must not deadlock with source FK locks");
+        assert!(additions.0.is_ok() && additions.1.is_ok());
+        assert_eq!(after_add, 2, "both committed inserts must be counted");
+    }
+
+    #[tokio::test]
+    async fn failed_note_doc_delete_preserves_article_document_and_count() {
+        let Some(db) = isolated_note_db().await else {
+            return;
+        };
+        let source = phantasi_sources::Entity::find_by_id(1)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        let item = insert_test_item(&db).await;
+        let doc = insert_test_doc(&db).await;
+        let mut linked: phantasi_note_docs::ActiveModel = doc.into();
+        linked.item_id = Set(Some(item.id));
+        let doc = linked.update(&db).await.unwrap();
+        db.execute_unprepared("CREATE TEMP TABLE protected_note_doc (doc_id INTEGER REFERENCES phantasi_note_docs(id)); INSERT INTO protected_note_doc VALUES (1)").await.unwrap();
+        assert!(delete_note_with_doc(&db, item.id, &source).await.is_err());
+        assert_eq!(
+            phantasi_items::Entity::find_by_id(item.id)
+                .one(&db)
+                .await
+                .unwrap(),
+            Some(item.clone()),
+            "a failed document delete must restore the already-deleted public article"
+        );
+        assert_eq!(
+            phantasi_note_docs::Entity::find_by_id(doc.id)
+                .one(&db)
+                .await
+                .unwrap(),
+            Some(doc.clone())
+        );
+        assert_eq!(
+            phantasi_sources::Entity::find_by_id(source.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .item_count,
+            1
+        );
+        db.execute_unprepared("DROP TABLE protected_note_doc")
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            "ALTER TABLE phantasi_sources ADD CONSTRAINT protect_note_count CHECK (item_count > 0)",
+        )
+        .await
+        .unwrap();
+        assert!(
+            delete_note_with_doc(&db, item.id, &source).await.is_err(),
+            "count persistence failure must not report successful deletion"
+        );
+        assert!(
+            phantasi_items::Entity::find_by_id(item.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            phantasi_note_docs::Entity::find_by_id(doc.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        db.execute_unprepared("ALTER TABLE phantasi_sources DROP CONSTRAINT protect_note_count")
+            .await
+            .unwrap();
+        delete_note_with_doc(&db, item.id, &source).await.unwrap();
+        assert!(
+            phantasi_items::Entity::find_by_id(item.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            phantasi_note_docs::Entity::find_by_id(doc.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            phantasi_sources::Entity::find_by_id(source.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .item_count,
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn note_topic_changes_preserve_both_bodies_and_reject_stale_revision() {
+        let Some(db) = isolated_note_db().await else {
+            return;
+        };
+        let doc = insert_test_doc(&db).await;
+        let item = insert_test_item(&db).await;
+        let mut linked: phantasi_note_docs::ActiveModel = doc.into();
+        linked.item_id = Set(Some(item.id));
+        linked.status = Set("published".into());
+        let doc = linked.update(&db).await.unwrap();
+        let saved = update_note_doc_topic(&db, doc.id, doc.revision, Some("New".into()))
+            .await
+            .unwrap();
+        let mut expected_doc = doc.clone();
+        expected_doc.topic = Some("New".into());
+        expected_doc.revision += 1;
+        expected_doc.updated_at = saved.updated_at;
+        assert_eq!(
+            saved, expected_doc,
+            "metadata edit must preserve the unpublished draft"
+        );
+        let saved_item = phantasi_items::Entity::find_by_id(item.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut expected_item = item;
+        expected_item.topic = Some("New".into());
+        assert_eq!(
+            saved_item, expected_item,
+            "metadata edit must not publish the draft body"
+        );
+        let conflict = update_note_doc_topic(&db, doc.id, doc.revision, None)
+            .await
+            .unwrap_err();
+        assert_eq!(conflict.0.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            phantasi_note_docs::Entity::find_by_id(doc.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap(),
+            saved
+        );
+        let cleared = update_note_doc_topic(&db, doc.id, saved.revision, None)
+            .await
+            .unwrap();
+        assert_eq!(cleared.topic, None);
+        db.execute_unprepared("ALTER TABLE phantasi_note_docs ADD CONSTRAINT fail_topic_update CHECK (topic IS DISTINCT FROM 'Rejected')").await.unwrap();
+        assert!(
+            update_note_doc_topic(&db, doc.id, cleared.revision, Some("Rejected".into()))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            phantasi_note_docs::Entity::find_by_id(doc.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap(),
+            cleared
+        );
+
+        assert_eq!(
+            phantasi_items::Entity::find_by_id(saved_item.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .topic,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn note_topic_missing_article_rolls_back_document_metadata() {
+        let Some(db) = isolated_note_db().await else {
+            return;
+        };
+        let doc = insert_test_doc(&db).await;
+        let mut linked: phantasi_note_docs::ActiveModel = doc.into();
+        linked.item_id = Set(Some(999));
+        let before = linked.update(&db).await.unwrap();
+        assert!(
+            update_note_doc_topic(&db, before.id, before.revision, None)
+                .await
+                .is_err()
+        );
+        let after = phantasi_note_docs::Entity::find_by_id(before.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            after, before,
+            "failed article update must roll back the document CAS"
+        );
+    }
+
+    #[tokio::test]
+    async fn note_topic_on_scheduled_doc_keeps_schedule_and_does_not_publish() {
+        let Some(db) = isolated_note_db().await else {
+            return;
+        };
+        let before = insert_test_doc(&db).await;
+        let after = update_note_doc_topic(&db, before.id, before.revision, None)
+            .await
+            .unwrap();
+        assert_eq!(after.item_id, None);
+        assert_eq!(after.status, "scheduled");
+        assert_eq!(after.scheduled_at, before.scheduled_at);
+        assert_eq!(after.content_md, before.content_md);
+        assert_eq!(phantasi_items::Entity::find().count(&db).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn scheduled_failure_reverts_only_its_owned_revision() {
+        let Some(db) = isolated_note_db().await else {
+            return;
+        };
+        let claimed = insert_test_doc(&db).await;
+        revert_due_doc(&db, claimed.clone(), "invalid note")
+            .await
+            .unwrap();
+        let saved = phantasi_note_docs::Entity::find_by_id(claimed.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.status, "draft");
+        assert_eq!(saved.revision, claimed.revision + 1);
+        assert_eq!(saved.last_error.as_deref(), Some("invalid note"));
+        assert_eq!(saved.content_md, claimed.content_md);
+    }
 
     #[test]
     fn note_source_is_shared_catalog_not_creator_keyed() {

@@ -235,11 +235,3 @@ export function hostUnbindAllForBridge(bridge: TappBridge): void {
   }
   maybeDetachListener()
 }
-
-/** 按 Tapp 跨桥拆除。沙箱销毁应走 hostUnbindAllForBridge。 */
-export function hostUnbindAllForTapp(tappId: string): void {
-  for (const key of Iterator.from(bindings.keys()).toArray()) {
-    if (key.startsWith(`${tappId}\0`)) bindings.delete(key)
-  }
-  maybeDetachListener()
-}

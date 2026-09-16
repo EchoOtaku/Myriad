@@ -191,6 +191,34 @@ it('a topic change invalidates an older page response instead of restoring its f
   })
 })
 
+it('removing a row preserves loaded pages and continues from the existing seek cursor', async () => {
+  await withDom(async (root) => {
+    let rows = Array.from({ length: 41 }, (_, index) => ({ id: index + 1, topic: 'science' }))
+    globalThis.fetch = async (input) => {
+      const cursor = Number(new URL(String(input), 'https://test.invalid').searchParams.get('cursor') ?? 0)
+      const remaining = rows.filter(row => row.id > cursor)
+      const items = remaining.slice(0, 20)
+      return Response.json({ items, total: rows.length, per_page: 20,
+        next_cursor: remaining.length > 20 ? String(items.at(-1)!.id) : null })
+    }
+    let list!: ReturnType<typeof usePhantasiItems>
+    const report = () => {}
+    function Harness() {
+      list = usePhantasiItems('load failed', report, 'topic-feed', 'science')
+      return null
+    }
+    await act(async () => root.render(createElement(Harness)))
+    await act(async () => list.loadMore())
+    assert.equal(list.items.length, 40)
+    rows = rows.filter(row => row.id !== 1)
+    await act(async () => list.removeItem(1))
+    await act(async () => list.loadMore())
+    assert.deepEqual(list.items.map(item => item.id), rows.map(row => row.id))
+    assert.equal(list.total, 40)
+    assert.equal(list.hasMore, false)
+  })
+})
+
 for (const operation of ['reload', 'topic'] as const) {
   it(`a delayed ${operation} callback acts on the current list query`, async () => {
     await withDom(async (root) => {

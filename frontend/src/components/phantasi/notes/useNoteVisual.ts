@@ -1,11 +1,11 @@
 import type { MutableRefObject, RefObject } from 'react'
 import { useCallback, useEffect } from 'react'
-import { replaceNoteHtml } from './noteWidgetMount'
-import { hydrateVisualMath } from './renderMath'
 import {
   markdownToVisualHtml,
   runVisualCommand,
 } from './noteVisual'
+import { replaceNoteHtml } from './noteWidgetMount'
+import { hydrateVisualMath } from './renderMath'
 
 export const VISUAL_UNDO_GROUP_MS = 600
 export const VISUAL_UNDO_LIMIT = 200

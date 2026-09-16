@@ -77,7 +77,7 @@ export function workbenchHomeScheduleKind(
 
 export type WorkbenchHomeRecentKind = 'note' | 'source' | 'media'
 
-export type WorkbenchHomeRecent = {
+export interface WorkbenchHomeRecent {
   kind: WorkbenchHomeRecentKind
   id: number
   at: number

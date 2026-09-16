@@ -1,5 +1,4 @@
 import type { CompareKind, CompareLabels, MetricDelta } from './compareDeltaLogic'
-import React from 'react'
 import { formatMessage, localeOrFallback } from '../../../i18n'
 import {
   compareColorPalette,

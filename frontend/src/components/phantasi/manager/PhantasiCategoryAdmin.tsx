@@ -16,8 +16,8 @@ import { getIconUrl, getImageUrl, isFriendLinkCategory, isMineCategory } from '.
 import { sourceMatchesCategory } from '../logic/board'
 import {
   canUseCategoryName,
-  noteMatchesCategory,
   normalizeWorkbenchCategoryName,
+  noteMatchesCategory,
 } from '../logic/categories'
 import {
   workbenchNoteCover,

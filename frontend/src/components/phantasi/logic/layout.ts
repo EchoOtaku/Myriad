@@ -1,6 +1,6 @@
 /** 窄屏降档只在这里做。内容磁贴最小 2x2；2x1 仅入口型。 */
 
-import type { PhantasiSource, CardSize } from '../../../types/phantasi'
+import type { CardSize, PhantasiSource } from '../../../types/phantasi'
 import type { ViewportBand } from '../../../utils/viewportBands'
 import type { WidgetSize } from '../../widgetGridTypes'
 import type { PhantasiViewerRole } from './score'

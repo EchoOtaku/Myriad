@@ -45,6 +45,17 @@ describe('草稿存取', () => {
     })
   })
 
+  it('原样持久化同一草稿的已确认基准', () => {
+    const base = { title: '标题', contentMd: '旧正文', topic: null, cover: null, publishedAt: null }
+    writeNoteDraft(123, { ...base, contentMd: '新正文', base }, 1000)
+    assert.deepEqual(readNoteDraft(123, 1000), { ...base, contentMd: '新正文', base, savedAt: 1000 })
+  })
+
+  it('损坏的基准按旧草稿处理，不丢弃本地正文', () => {
+    store.set(noteDraftKey(123), JSON.stringify({ title: '标题', contentMd: '新正文', savedAt: 1000, base: { contentMd: '旧正文' } }))
+    assert.deepEqual(readNoteDraft(123, 1000), { title: '标题', contentMd: '新正文', savedAt: 1000 })
+  })
+
   it('旧草稿没有主题封面时间也能读，且不盖服务端值', () => {
     store.set(
       noteDraftKey('new'),
@@ -367,5 +378,12 @@ describe('prefixLines', () => {
   it('不动选区之外的行', () => {
     const r = prefixLines('头\n甲\n尾', 2, 3, '> ')
     assert.equal(r.value, '头\n> 甲\n尾')
+  })
+})
+
+describe('canonical document draft identities', () => {
+  it('never aliases legacy item IDs with document IDs', () => {
+    assert.notEqual(noteDraftKey(7), noteDraftKey('doc:7'))
+    assert.notEqual(noteDraftKey('new'), noteDraftKey('doc:7'))
   })
 })

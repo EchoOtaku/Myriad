@@ -4,7 +4,7 @@ use chrono::Utc;
 use tracing::info;
 
 use crate::error::Result;
-use crate::state::{Job, JobStatus, JobStep, MaintenanceFile, Phase, StateDir};
+use crate::state::{JobStatus, JobStep, MaintenanceFile, Phase, StateDir};
 use crate::version::DeployTag;
 
 pub struct PhaseRecorder<'a> {
@@ -96,18 +96,4 @@ pub fn heartbeat(state: &StateDir) -> Result<()> {
         state.write_maintenance(&m)?;
     }
     Ok(())
-}
-
-pub fn append_log(state: &StateDir, job_id: &str, line: &str) -> Result<()> {
-    let mut job: Job = state.read_job(job_id)?;
-    if let Some(step) = job.steps.last_mut() {
-        if step.log_tail.len() > 64 * 1024 {
-            step.log_tail.drain(..step.log_tail.len() - 32 * 1024);
-        }
-        step.log_tail.push_str(line);
-        if !line.ends_with('\n') {
-            step.log_tail.push('\n');
-        }
-    }
-    state.write_job(&job)
 }

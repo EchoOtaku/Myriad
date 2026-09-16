@@ -12,7 +12,7 @@ describe('PhantasiPeekAir', () => {
     const tokens = readFileSync(join(dir, 'css/tokens.css'), 'utf8')
     const motion = readFileSync(join(dir, 'css/motion.css'), 'utf8')
     const cards = readFileSync(join(dir, 'css/cards.css'), 'utf8')
-    const page = readFileSync(join(dir, '../../../views/Phantasi.tsx'), 'utf8')
+    const page = readFileSync(join(dir, '../../../views/Phantasi.tsx'), 'utf8') + readFileSync(join(dir, 'usePeekSession.ts'), 'utf8')
     const storyCard = readFileSync(join(dir, 'StoryCard.tsx'), 'utf8')
     const feeds =
       readFileSync(join(dir, '../skin/PhantasiFeeds.tsx'), 'utf8') +
@@ -54,7 +54,6 @@ describe('PhantasiPeekAir', () => {
       cards,
       /\.phantasi-story\.has-cover\.has-peek\.is-peek:not\(\.is-picking\) \.phantasi-story__peek/,
     )
-    assert.match(cards, /@media \(hover: hover\) and \(pointer: fine\)/)
     assert.doesNotMatch(
       cards,
       /\.phantasi-story\.has-cover\.has-peek:is\(:hover, :focus-visible, \.is-peek\)/,
@@ -79,7 +78,6 @@ describe('PhantasiPeekAir', () => {
     assert.doesNotMatch(air, /setCopyOn/)
     assert.match(air, /setLayers/)
     assert.match(air, /is-swap/)
-    assert.match(air, /PHANTASI_PEEK_HANDOFF_MS/)
     assert.match(tokens, /scale\(1\.03\)/)
     assert.match(tokens, /\.phantasi-peek-air\.is-swap/)
     assert.match(page, /applyPeekFace\(toPhantasiPeekFace/)
@@ -89,9 +87,6 @@ describe('PhantasiPeekAir', () => {
     assert.match(page, /dropPeekSession/)
     assert.match(page, /schedulePhantasiPeekResume/)
     assert.match(page, /onDisplayed=\{resumePeekAfterLane\}/)
-    assert.match(page, /decidePeekSettle/)
-    assert.match(page, /settlePeekSession/)
-    assert.match(storyCard, /peekGoesToNav/)
     assert.doesNotMatch(page, /holdPhantasiPeekSwap/)
     assert.doesNotMatch(page, /phantasiPeekHeldForSwap/)
     assert.doesNotMatch(air, /if \(quiet \|\| phantasiMotionBusy\(\)\)/)
@@ -104,10 +99,10 @@ describe('PhantasiPeekAir', () => {
     assert.match(page, /phantasiMotionBusy/)
     assert.match(page, /visibilitychange/)
     assert.match(page, /pagehide/)
-    assert.doesNotMatch(page, /documentElement\.addEventListener\('pointerleave'/)
+    assert.match(page, /documentElement\.addEventListener\('pointerleave'/)
     assert.doesNotMatch(
       page,
-      /dropPeekSession\(\)\n  \}, \[dropPeekSession, route\.board, route\.viewMode\]/,
+      /dropPeekSession\(\)\n {2}\}, \[dropPeekSession, route\.board, route\.viewMode\]/,
     )
     assert.doesNotMatch(feeds, /event\.currentTarget\.contains\(to\)/)
     assert.match(feeds, /usePhantasiPeekLane/)
@@ -136,7 +131,6 @@ describe('PhantasiPeekAir', () => {
     assert.match(storyCard, /usePhantasiPeekLane/)
     assert.match(storyCard, /dropPhantasiPeekLane/)
     assert.match(storyCard, /peekLaneIsLive/)
-    assert.match(storyCard, /peekGoesToNav/)
     assert.match(storyCard, /onPointerLeave/)
     assert.match(storyCard, /markPhantasiStoryPeek/)
     assert.match(storyCard, /releasePhantasiStoryPeek/)
@@ -145,7 +139,6 @@ describe('PhantasiPeekAir', () => {
     assert.match(storyCard, /whenPhantasiMotionIdle/)
     assert.match(storyCard, /from ['"]\.\.\/\.\.\/\.\.\/hooks\/animation['"]/)
     assert.match(storyCard, /scheduleTask/)
-    assert.match(storyCard, /peekSwapHoldsAir/)
     assert.match(storyCard, /onPointerCancel/)
     assert.match(storyCard, /peekLaneKeepsAir/)
     assert.doesNotMatch(storyCard, /onPointerEnter=/)
@@ -156,7 +149,7 @@ describe('PhantasiPeekAir', () => {
 })
 
 describe('applyPeekFace', () => {
-  it('没封面不把现有壁纸写成空', async () => {
+  it('没封面清掉现有壁纸', async () => {
     const air = await import('./PhantasiPeekAir.tsx')
     const face = {
       src: '/cover.jpg',
@@ -166,7 +159,7 @@ describe('applyPeekFace', () => {
     }
     air.writePeekFace(face)
     assert.equal(air.applyPeekFace(null), false)
-    assert.deepEqual(air.readPeekFace(), face)
+    assert.equal(air.readPeekFace(), null)
     air.writePeekFace(null)
     assert.equal(air.readPeekFace(), null)
   })

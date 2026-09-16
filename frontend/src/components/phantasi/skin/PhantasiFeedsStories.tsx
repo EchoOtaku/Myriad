@@ -4,14 +4,14 @@ import type { TimeTranslations } from '../types'
 import type { PhantasiRailApi } from './usePhantasiRailPan'
 
 import { isValidElement, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { peekStoryNode } from '../ui/peekLane'
-import { usePhantasiPeekLane } from '../ui/StoryCard'
-import { PhantasiStoryColumn } from './PhantasiStory'
 import {
   clipPaintedBatches,
   extendPaintedRange,
   storySlotsByColumn,
 } from '../logic/feedStories'
+import { peekStoryNode } from '../ui/peekLane'
+import { usePhantasiPeekLane } from '../ui/StoryCard'
+import { PhantasiStoryColumn } from './PhantasiStory'
 import {
   eagerStoryCovers,
   onStoryMediaError,
@@ -667,7 +667,7 @@ export const PhantasiFeedsStories = memo(({
     times,
   ])
   const storyByIdRef = useRef<Map<number, FeedStory>>(new Map())
-  const storySlotsSeenRef = useRef(storySlots)
+  const storySlotsSeenRef = useRef<typeof storySlots | null>(null)
   if (storySlotsSeenRef.current !== storySlots) {
     storySlotsSeenRef.current = storySlots
     const map = new Map<number, FeedStory>()

@@ -158,9 +158,3 @@ export function dismissSettingDefaultChange(
     dismissed,
   })
 }
-
-export function resetSettingDefaultChangeNoticesForTests(): void {
-  if (typeof localStorage === 'undefined') return
-  localStorage.removeItem(STORAGE_KEY)
-  notify()
-}

@@ -3,11 +3,11 @@
 import type { PhantasiSource } from '../../../types/phantasi'
 import type { PhantasiViewerRole } from './score'
 import {
-  phantasiCategoryParts,
-  phantasiMainCategory,
   isFriendLinkCategory,
   isMineCategory,
   isOwnPhantasiSource,
+  phantasiCategoryParts,
+  phantasiMainCategory,
 } from '../constants'
 import { compareByScore } from './score'
 

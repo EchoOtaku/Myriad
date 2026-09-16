@@ -1,7 +1,6 @@
 /** 收藏在二级导航只给管理员，仍是订阅上的筛选，不是第四板块。 */
 
 import type { SecondaryNavItem } from '../../contexts/NavigationContext'
-import { journalPathForNavId } from './logic/journalRoutes'
 import {
   LuFolderOpen,
   LuInbox,
@@ -9,6 +8,7 @@ import {
   LuNotebookPen,
   LuStar,
 } from '@lib/icons'
+import { journalPathForNavId } from './logic/journalRoutes'
 
 const iconClass = 'w-5 h-5'
 

@@ -7,6 +7,7 @@ import { after, afterEach, beforeEach, it, mock } from 'node:test'
 import { act, createElement, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApiError } from '../../../services/api'
+import { readNoteRecovery } from './noteDraft'
 import { CLOUD_SAVE_DEBOUNCE_MS, useNoteCloudSave } from './useNoteCloudSave'
 import { useNoteCollab } from './useNoteCollab'
 
@@ -31,6 +32,7 @@ function doc(content: string, revision: number): PhantasiNoteDoc {
 }
 let root: Root
 beforeEach(() => {
+  localStorage.clear()
   mock.timers.enable({ apis: ['setTimeout'] })
   root = createRoot(dom.window.document.getElementById('root'))
 })
@@ -46,14 +48,15 @@ async function harness(mount = root, collaboration = false) {
   let revision!: { current: number }
   const requests: { input: Record<string, unknown>; resolve: (doc: PhantasiNoteDoc) => void; reject: (error: Error) => void }[] = []
   const saved: string[] = []
+  const serverDocs: PhantasiNoteDoc[] = []
   function Harness() {
     const [current, setFields] = useState(empty)
     fields = current
     edit = (text) => setFields((value) => ({ ...value, contentMd: text }))
     revision = useRef(1)
-    cloud = useNoteCloudSave({ cloudId: 1, loading: false, fields: current, revisionRef: revision,
-      onServerDoc: () => {}, onMerged: setFields, onSaved: (value) => saved.push(value.contentMd), onError: () => {},
-      labels: { saveFailed: 'failed', conflict: 'conflict' },
+    cloud = useNoteCloudSave({ userId: 1, cloudId: 1, loading: false, fields: current, revisionRef: revision,
+      onServerDoc: value => serverDocs.push(value), onMerged: setFields, onSaved: (value) => saved.push(value.contentMd), onError: () => {},
+      labels: { saveFailed: 'failed', conflict: 'conflict', uncertain: 'unconfirmed' },
       io: { updateNoteDoc: (_id, input) => new Promise((resolve, reject) => requests.push({ input: { ...input }, resolve, reject })), getNoteDoc: async () => fresh },
     })
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -63,7 +66,13 @@ async function harness(mount = root, collaboration = false) {
     return null
   }
   await act(async () => mount.render(createElement(Harness)))
-  return { get cloud() { return cloud }, get fields() { return fields }, get revision() { return revision.current }, requests, saved, setFresh: (value: PhantasiNoteDoc) => { fresh = value },
+  return { writeDoc: (writer: (fields: NoteCloudFields, revision: number, requestId: string) => Promise<PhantasiNoteDoc>) =>
+    cloud.runWrite(async (fields, track) => {
+      const receipt = track(fields)
+      const doc = await writer(fields, revision.current, receipt.requestId)
+      await receipt.receiveDoc(doc)
+      return doc
+    }), get cloud() { return cloud }, get fields() { return fields }, get revision() { return revision.current }, requests, saved, serverDocs, setFresh: (value: PhantasiNoteDoc) => { fresh = value },
     edit: async (text: string) => act(async () => edit(text)),
     tick: async () => act(async () => mock.timers.tick(CLOUD_SAVE_DEBOUNCE_MS)),
   }
@@ -195,6 +204,7 @@ it('WS ignores unversioned text, clears metadata, and fetches missed commits aft
     assert.equal(h.fields.topic, null)
     assert.equal(h.fields.cover, null)
     assert.equal(h.fields.publishedAt, null)
+    assert.equal(sockets.length, 1, 'committed field updates must not reconnect the socket')
     h.setFresh(doc('missed while offline', 4))
     await act(async () => sockets[0].close())
     await act(async () => mock.timers.tick(1000))
@@ -218,7 +228,7 @@ it('manual writes wait for autosave and use its confirmed revision plus latest t
   let finish!: (value: PhantasiNoteDoc) => void
   let writing!: Promise<PhantasiNoteDoc>
   await act(async () => {
-    writing = h.cloud.writeDoc((fields, revision, id) => {
+    writing = h.writeDoc((fields, revision, id) => {
       manualInput = { fields, revision, id }
       return new Promise((resolve) => { finish = resolve })
     })
@@ -239,7 +249,7 @@ it('a failed manual write rejects its caller and releases autosave', async () =>
   const h = await harness()
   await h.edit('draft')
   await act(async () => {
-    await assert.rejects(h.cloud.writeDoc(async () => { throw new ApiError('invalid request', 400) }), /invalid request/)
+    await assert.rejects(h.writeDoc(async () => { throw new ApiError('invalid request', 400) }), /invalid request/)
   })
   assert.equal(h.requests[0].input.content_md, 'draft')
   await act(async () => h.requests[0].resolve(doc('draft', 2)))
@@ -253,7 +263,7 @@ it('manual writes wait for the complete IME input', async () => {
   let received: NoteCloudFields | undefined
   let writing!: Promise<PhantasiNoteDoc>
   await act(async () => {
-    writing = h.cloud.writeDoc(async (fields) => { received = fields; return doc(fields.contentMd, 2) })
+    writing = h.writeDoc(async (fields) => { received = fields; return doc(fields.contentMd, 2) })
   })
   assert.equal(received, undefined)
   await h.edit('拼音')
@@ -301,7 +311,7 @@ it('manual receipts use server-normalized fields and retain continued typing', a
   await h.edit('text')
   let complete!: (value: PhantasiNoteDoc) => void
   let writing!: Promise<PhantasiNoteDoc>
-  await act(async () => { writing = h.cloud.writeDoc(() => new Promise((resolve) => { complete = resolve })) })
+  await act(async () => { writing = h.writeDoc(() => new Promise((resolve) => { complete = resolve })) })
   await h.edit('text continued')
   await act(async () => {
     complete({ ...doc('text', 2), title: 'Normalized title', topic: 'normalized' })
@@ -323,4 +333,132 @@ it('an exact persisted snapshot can resolve an ambiguous failure without a WS id
   assert.equal(h.fields.contentMd, 'ab')
   assert.equal(h.requests[1].input.content_md, 'ab')
   assert.equal(h.requests[1].input.revision, 2)
+})
+
+it('an ambiguous manual failure keeps the cause and blocks subsequent writes', async () => {
+  const h = await harness()
+  await h.edit('local')
+  const failure = new Error('connection lost')
+  await act(async () => {
+    await assert.rejects(h.writeDoc(async () => { throw failure }), (error: Error) => {
+      assert.equal(error.message, 'unconfirmed')
+      assert.equal(error.cause, failure)
+      return true
+    })
+  })
+  await h.tick()
+  assert.equal(h.requests.length, 0)
+  await act(async () => h.cloud.receiveDoc(doc('different remote', 2)))
+  assert.equal(h.fields.contentMd, 'local')
+  await assert.rejects(h.writeDoc(async () => doc('wrong', 3)), /unconfirmed/)
+  assert.equal(h.requests.length, 0)
+})
+
+it('restored ambiguous saves block automatic and manual writes until identified', async () => {
+  const h = await harness()
+  await h.edit('ab')
+  await act(async () => h.cloud.restorePending({ requestId: 'before-reopen', fields: { ...empty, contentMd: 'a' } }))
+  await h.tick()
+  assert.equal(h.requests.length, 0)
+  await act(async () => h.cloud.receiveDoc(doc('a remote', 3)))
+  assert.equal(h.fields.contentMd, 'ab')
+  await assert.rejects(h.writeDoc(async () => doc('wrong', 4)), /unconfirmed/)
+  await act(async () => h.cloud.receiveRemote({ ...empty, contentMd: 'a' }, 2, 'before-reopen'))
+  assert.equal(h.requests[0].input.revision, 3)
+})
+
+it('durable pending recovery retains the original baseline until its late receipt arrives', async () => {
+  const h = await harness()
+  await h.edit('ab')
+  const pending = { requestId: 'before-reopen', fields: { ...empty, contentMd: 'a' } }
+  await act(async () => {
+    h.cloud.receiveDoc(doc('a\nremote', 3))
+    h.cloud.restorePending(pending, { fields: empty, revision: 1 }, doc('a\nremote', 3))
+  })
+  await h.edit('ab')
+  await h.tick()
+  const recovery = readNoteRecovery({ userId: 1, docId: 1 })!
+  assert.equal(recovery.revision, 1)
+  assert.equal(recovery.base.contentMd, '')
+  assert.deepEqual(recovery.pending, pending)
+  assert.equal(h.requests.length, 0)
+  await act(async () => h.cloud.receiveRemote({ ...empty, contentMd: 'a' }, 2, pending.requestId))
+  assert.equal(h.fields.contentMd, 'ab\nremote')
+  assert.equal(h.requests[0].input.revision, 3)
+})
+
+for (const outcome of ['success', 'network-failure'] as const) {
+  it(`a late autosave ${outcome} after closing cannot rewrite pending recovery`, async () => {
+    const h = await harness()
+    await h.edit('a')
+    await h.tick()
+    await h.edit('ab')
+    const before = readNoteRecovery({ userId: 1, docId: 1 })!
+    assert.equal(before.pending?.requestId, h.requests[0].input.client_request_id)
+    await act(async () => root.unmount())
+    await act(async () => {
+      if (outcome === 'success') h.requests[0].resolve(doc('a', 2))
+      else h.requests[0].reject(new Error('connection lost'))
+    })
+    assert.deepEqual(readNoteRecovery({ userId: 1, docId: 1 }), before)
+  })
+}
+
+it('a detached manual write cannot resurrect a discarded recovery copy', async () => {
+  const h = await harness()
+  await h.edit('local')
+  let complete!: (value: PhantasiNoteDoc) => void
+  let writing!: Promise<PhantasiNoteDoc>
+  await act(async () => { writing = h.writeDoc(() => new Promise(resolve => { complete = resolve })) })
+  h.cloud.discardRecovery()
+  await act(async () => root.unmount())
+  await act(async () => { complete(doc('local', 2)); await writing })
+  assert.equal(readNoteRecovery({ userId: 1, docId: 1 }), null)
+})
+
+it('a newer document deferred during IME retains publication metadata until our receipt arrives', async () => {
+  const h = await harness()
+  await h.edit('a')
+  await h.tick()
+  h.cloud.compositionStart()
+  await h.edit('ab')
+  const remote = { ...doc('a\nremote', 3), status: 'published' as const, item_id: 91 }
+  await act(async () => h.cloud.receiveDoc(remote))
+  await act(async () => h.cloud.compositionEnd())
+  await h.tick()
+  assert.equal(h.fields.contentMd, 'ab')
+  await act(async () => h.cloud.receiveRemote({ ...empty, contentMd: 'a' }, 2, h.requests[0].input.client_request_id as string))
+  assert.equal(h.fields.contentMd, 'ab\nremote')
+  assert.deepEqual(h.serverDocs.at(-1), remote)
+})
+
+it('a long IME remote burst is applied once with the latest text and metadata', async () => {
+  const h = await harness()
+  h.cloud.compositionStart()
+  await h.edit('local')
+  await act(async () => {
+    for (let revision = 2; revision <= 1_000; revision += 1) {
+      h.cloud.receiveDoc({ ...doc(`remote ${revision}`, revision), status: 'published', item_id: 91 })
+    }
+  })
+  assert.equal(h.fields.contentMd, 'local')
+  assert.equal(h.serverDocs.length, 0)
+  await act(async () => h.cloud.compositionEnd())
+  await h.tick()
+  assert.equal(h.fields.contentMd, 'local\nremote 1000')
+  assert.equal(h.serverDocs.length, 1)
+  assert.equal(h.serverDocs[0].revision, 1_000)
+  assert.equal(h.serverDocs[0].status, 'published')
+  assert.equal(h.requests[0].input.revision, 1_000)
+})
+
+it('opening an unchanged second editor cannot erase the first editor recovery', async () => {
+  const first = await harness()
+  await first.edit('unconfirmed in the first window')
+  const before = readNoteRecovery({ userId: 1, docId: 1 })!
+  const second = createRoot(document.createElement('div'))
+  try {
+    await harness(second)
+    assert.deepEqual(readNoteRecovery({ userId: 1, docId: 1 }), before)
+  } finally { await act(async () => second.unmount()) }
 })

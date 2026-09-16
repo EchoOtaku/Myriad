@@ -1030,16 +1030,6 @@ get_status_text() {
     fi
 }
 
-wait_for_port() {
-    local port="$1" tries="${2:-8}" i=0
-    while [[ $i -lt $tries ]]; do
-        [[ -n "$(list_listen_pids "$port")" ]] && return 0
-        sleep 0.25
-        i=$((i + 1))
-    done
-    return 1
-}
-
 backend_health_ok() {
     curl -fsS --connect-timeout 0.2 --max-time 0.4 \
         "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1

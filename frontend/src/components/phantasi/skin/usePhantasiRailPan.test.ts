@@ -14,7 +14,6 @@ import {
   paintStoryAway,
   paintStoryLiveCols,
   RAIL_FLING_MIN_PX_S,
-  RAIL_FLING_SLOT_PX_S,
   RAIL_MOUNT_BOOT_TO,
   RAIL_MOUNT_GROW_AHEAD,
   RAIL_MOUNT_LIVE_PAD,
@@ -51,7 +50,6 @@ import {
 
 const cards = [0, 320, 640, 960].map((left) => ({ left, width: 304 }))
 const slots = railSlotOffsets(cards)
-const max = 960
 
 function wheel(
   deltaY: number,

@@ -1,14 +1,14 @@
+import type { PhantasiViewMode } from '../components/phantasi/logic/board'
 import type { PhantasiItem, PhantasiSource } from '../types/phantasi'
 import type { PageSeoInput } from './siteMetadata'
 import { isOwnPhantasiSource } from '../components/phantasi/constants'
 import {
-  JOURNAL_ROOT,
   isJournalSyndicationPath,
+  JOURNAL_ROOT,
   journalItemPath,
   seoJournalFollow,
   seoListNoindex,
 } from '../components/phantasi/logic/journalRoutes'
-import type { PhantasiViewMode } from '../components/phantasi/logic/board'
 import { buildModulePageSeo } from './modulePageSeo'
 import { formatPageTitle } from './siteMetadata'
 

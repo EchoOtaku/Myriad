@@ -13,9 +13,9 @@ import {
   predictExpandedControlPanelBox,
   predictRestoredLibraryDockBox,
 } from '../../utils/libraryDockStage'
-import { isJournalAppPath } from '../phantasi/logic/journalRoutes'
 import { getAgentPanelVisible } from '../agent-panel/agentPanelVisible'
 import { isAgentSettingsPath } from '../agent/settings/agentSettingsPath'
+import { isJournalAppPath } from '../phantasi/logic/journalRoutes'
 import { expandCollapsibleAncestors } from '../settings/guides/guideAnchor'
 import { clamp } from '../settings/settingTitleGuideLogic'
 
@@ -400,8 +400,6 @@ export interface TourCardPos {
   placement: TourPlacement
 }
 
-export const TOUR_LARGE_HOLE = 0.35
-
 export interface Box {
   top: number
   left: number
@@ -767,10 +765,6 @@ export function queryTourAnchor(anchor: string): HTMLElement | null {
   )
 }
 
-export function hasTourAnchor(anchor: string): boolean {
-  return queryTourAnchor(anchor) != null
-}
-
 // 锚在但量出来是空盒（display:contents / 未布局）时不能开步。
 export function isTourAnchorMeasurable(anchor: string): boolean {
   const node = queryTourAnchor(anchor)
@@ -919,16 +913,6 @@ function centerOnRange(
   max: number,
 ): number {
   return clamp(start + size / 2 - item / 2, min, max)
-}
-
-export function isLargeHole(
-  hole: GuideRect,
-  viewportW: number,
-  viewportH: number,
-): boolean {
-  const viewport = viewportW * viewportH
-  if (viewport <= 0) return false
-  return (hole.width * hole.height) / viewport >= TOUR_LARGE_HOLE
 }
 
 export function dockTourCard(

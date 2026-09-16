@@ -660,8 +660,7 @@ html.dark .phantasi-workbench__kpi.is-danger .phantasi-workbench__kpi-value {
 
 .phantasi-workbench__io-grid .phantasi-add-form__drop {
   position: relative;
-  flex-direction: row;
-  flex-wrap: wrap;
+  flex-flow: row wrap;
   justify-content: center;
   gap: 0.2rem 0.45rem;
   min-height: 0;

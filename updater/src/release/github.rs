@@ -740,17 +740,6 @@ impl Freshness {
         }
     }
 
-    /// Different from current and not identical (upgrade, downgrade, or diverged).
-    pub fn is_actionable(&self) -> bool {
-        !matches!(self.relation, CommitRelation::Identical)
-            && (self.is_upgrade()
-                || self.is_downgrade()
-                || matches!(
-                    self.relation,
-                    CommitRelation::Diverged | CommitRelation::Unknown
-                ) && self.current_sha != self.target_sha)
-    }
-
     /// Back-compat alias used by older call sites.
     pub fn update_available(&self) -> bool {
         self.is_upgrade()

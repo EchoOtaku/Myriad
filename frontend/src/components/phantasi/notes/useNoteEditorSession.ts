@@ -1,6 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { PhantasiNoteDoc } from '../../../types/phantasi'
-import type { InlineLink } from './noteDraft'
+import type { InlineLink, NoteDraftKey } from './noteDraft'
 import type {
   NoteEditorPane,
   NoteInsertMenuState,
@@ -17,8 +17,8 @@ import { showNoteNotice } from '../phantasiNotice'
 import { getArticleProseClass } from '../reader/articleProseClass'
 import { useReaderSettings } from '../reader/hooks/useReaderSettings'
 import {
-  prefixLines,
-  toggleWrap,
+  noteRecoveryKey,
+  prefixLines, toggleWrap,
   wrapSelection,
 } from './noteDraft'
 import {
@@ -104,8 +104,9 @@ export function useNoteEditorSession({
   const animation = usePhantasiAnimationConfig()
   const motionEnabled = !isExlight(animation)
   const [cloudId, setCloudId] = useState<number | null>(docId ?? null)
-  /** 本地草稿的键：已发布用 item id，云端稿用 doc id，还没建云端稿的新稿才是 'new'。 */
-  const draftKey: number | 'new' = noteId ?? cloudId ?? 'new'
+  /** 所有入口最终属于同一云端文档；文章 id 不参与恢复键。 */
+  const draftKey: NoteDraftKey | null = user == null || cloudId == null
+    ? null : noteRecoveryKey({ userId: user.id, docId: cloudId })
   const [categoryNames, setCategoryNames] = useState<string[]>([])
 
   const [title, setTitle] = useState('')
@@ -113,6 +114,7 @@ export function useNoteEditorSession({
   const [topic, setTopic] = useState<string | null>(null)
   const [cover, setCover] = useState<string | null>(null)
   const [publishedAt, setPublishedAt] = useState<number | null>(null)
+  const defaultPublishedAt = useRef(Date.now())
   const [saved, setSaved] = useState<NoteSnapshot>(EMPTY_SNAPSHOT)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -275,6 +277,7 @@ export function useNoteEditorSession({
   }, [])
 
   const cloud = useNoteCloudSave({
+    userId: user?.id ?? null,
     cloudId,
     loading,
     fields: { title, contentMd, topic, cover, publishedAt },
@@ -294,6 +297,7 @@ export function useNoteEditorSession({
     labels: {
       saveFailed: t.phantasi.errorSaveFailed,
       conflict: t.phantasi.noteRevisionConflict,
+      uncertain: t.phantasi.noteSaveUnconfirmed,
     },
   })
   const { peers } = useNoteCollab({
@@ -355,12 +359,8 @@ export function useNoteEditorSession({
     settingsOpen,
     loading,
     pane,
-    draftKey,
     title,
     contentMd,
-    topic,
-    cover,
-    publishedAt,
     titleInputRef,
     textareaRef,
     setAuthors,
@@ -369,9 +369,12 @@ export function useNoteEditorSession({
   })
 
   useNoteEditorOpen({
+    userId: user?.id ?? null,
     noteId,
     docId,
     cloudAck: cloud.ack,
+    loadRecovery: cloud.loadRecovery,
+    restorePending: cloud.restorePending,
     applyServerDoc,
     applyMergedFields,
     setCloudId,
@@ -488,7 +491,10 @@ export function useNoteEditorSession({
     saving,
     setSaving,
     setContentMd,
-    writeCloudDoc: cloud.writeDoc,
+    setPublishedAt,
+    revisionRef,
+    runWrite: cloud.runWrite,
+    clearRecovery: cloud.discardRecovery,
     onSaved,
     onDeleted,
     onClose,
@@ -605,7 +611,7 @@ export function useNoteEditorSession({
     setTopic,
     cover,
     setCover,
-    publishedAt,
+    publishedAt: publishedAt ?? defaultPublishedAt.current,
     setPublishedAt,
     loading,
     saving,

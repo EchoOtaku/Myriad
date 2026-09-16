@@ -497,19 +497,6 @@ impl ComposeRunner {
         self.run(&args, Duration::from_secs(1800)).await
     }
 
-    pub async fn ps_json(&self) -> Result<String> {
-        let out = self
-            .run(&["ps", "--format", "json"], Duration::from_secs(30))
-            .await?;
-        if !out.ok() {
-            return Err(UpdaterError::Docker(format!(
-                "compose ps: {}",
-                out.error_summary()
-            )));
-        }
-        Ok(out.stdout_tail)
-    }
-
     /// Resolved compose project config as JSON (full stdout; not truncated).
     ///
     /// Used by preflight network allowlist checks — must not truncate lest we

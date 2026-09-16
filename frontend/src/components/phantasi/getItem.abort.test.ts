@@ -28,9 +28,7 @@ describe('phantasi getItem abort', () => {
       const stripped = src
         .replaceAll(/\/\*[\s\S]*?\*\//g, '')
         .replaceAll(/\/\/.*$/gm, '')
-        .replaceAll(/globalThis\.localStorage\?\.getItem\(/g, 'storageGet(')
-        .replaceAll(/localStorage\.getItem\(/g, 'storageGet(')
-        .replaceAll(/sessionStorage\.getItem\(/g, 'storageGet(')
+        .replaceAll(/(?:globalThis\.)?(?:local|session)Storage\??\.getItem\(/g, 'storageGet(')
         .replaceAll(/\bstorage\.getItem\(/g, 'storageGet(')
       for (const match of stripped.matchAll(/(?:phantasiApi\.)?getItem\([^,)\n]+\)/g)) {
         hits.push(`${path.slice(phantasiDir.length + 1)}: ${match[0]}`)

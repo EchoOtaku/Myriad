@@ -1,5 +1,5 @@
-import type { CommentItem } from '../../../services/phantasiApi'
 import type { AnnotationItem } from '../../../services/phantasiaiApi'
+import type { CommentItem } from '../../../services/phantasiApi'
 import type { ThemeKey } from './types'
 
 interface TextAnchor {

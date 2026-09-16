@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { after, it } from 'node:test'
 import { notePeekPointer, peekNodeFromPoint, resetPeekPointer } from './peekLane'
-import { releasePhantasiStoryPeek, resumePhantasiStoryPeek } from './StoryCard'
 import { applyPeekFace, readPeekFace, writePeekFace } from './PhantasiPeekAir'
+import { releasePhantasiStoryPeek, resumePhantasiStoryPeek } from './StoryCard'
 
 const require = createRequire(import.meta.url)
 const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))

@@ -1,21 +1,24 @@
+import type { PhantasiNoteDoc } from '../../../types/phantasi'
+import type { NoteCloudFields, NoteCloudSaveHandle } from './useNoteCloudSave'
 import { useEffect } from 'react'
 import { userFacingError } from '../../../utils/userFacingError'
 import { showNoteNotice } from '../phantasiNotice'
+import { sameCloudFields } from './noteCloudFields'
 import {
-  clearNoteDraft,
-  draftDiffersFrom,
-  readNoteDraft,
+  readNoteRecovery,
+  recoverNoteFields,
 } from './noteDraft'
 import { normalizeNoteCover, normalizeNoteTopic } from './noteFields'
 import { expandJammedDefinitions } from './noteVisual'
 import { openNoteCloudDoc } from './useNoteCloud'
-import type { NoteCloudFields } from './useNoteCloudSave'
-import type { PhantasiNoteDoc } from '../../../types/phantasi'
 
 export function useNoteEditorOpen({
+  userId,
   noteId,
   docId,
   cloudAck,
+  loadRecovery,
+  restorePending,
   applyServerDoc,
   applyMergedFields,
   setCloudId,
@@ -24,9 +27,12 @@ export function useNoteEditorOpen({
   loadFailed,
   scheduleFailed,
 }: {
+  userId: number | null
   noteId?: number
   docId?: number
   cloudAck: (server: NoteCloudFields) => void
+  loadRecovery?: NoteCloudSaveHandle['loadRecovery']
+  restorePending?: NoteCloudSaveHandle['restorePending']
   applyServerDoc: (doc: PhantasiNoteDoc) => void
   applyMergedFields: (next: NoteCloudFields) => void
   setCloudId: (id: number) => void
@@ -36,6 +42,7 @@ export function useNoteEditorOpen({
   scheduleFailed: string
 }): void {
   useEffect(() => {
+    if (userId == null) return
     const controller = new AbortController()
     const run = async () => {
       try {
@@ -50,34 +57,19 @@ export function useNoteEditorOpen({
           contentMd: doc.content_md,
           topic: normalizeNoteTopic(doc.topic),
           cover: normalizeNoteCover(doc.image),
-          publishedAt: doc.published_at ?? Date.now(),
+          publishedAt: doc.published_at ?? null,
         }
-        const draft = readNoteDraft(noteId ?? docId ?? 'new') ?? readNoteDraft(noteId ?? doc.id)
-        if (noteId === undefined && docId === undefined) clearNoteDraft('new')
-        const useDraft = draftDiffersFrom(draft, server)
-        const next: NoteCloudFields = {
-          title: useDraft && draft ? draft.title : server.title,
-          contentMd: expandJammedDefinitions(
-            useDraft && draft ? draft.contentMd : server.contentMd,
-          ),
-          topic:
-            useDraft && draft && draft.topic !== undefined
-              ? draft.topic
-              : server.topic,
-          cover:
-            useDraft && draft && draft.cover !== undefined
-              ? draft.cover
-              : server.cover,
-          publishedAt:
-            useDraft && draft && draft.publishedAt != null
-              ? draft.publishedAt
-              : server.publishedAt,
-        }
+        const recovery = (loadRecovery ?? readNoteRecovery)({ userId, docId: doc.id })
+        const recovered = recoverNoteFields(recovery, server)
+        const next = { ...recovered, contentMd: expandJammedDefinitions(recovered.contentMd) }
         cloudAck(server)
         applyServerDoc(doc)
         setCloudId(doc.id)
         applyMergedFields(next)
-        setSaved(next)
+        setSaved(server)
+        if (recovery?.pending && !sameCloudFields(recovery.pending.fields, server)) {
+          restorePending?.(recovery.pending, { fields: recovery.base, revision: recovery.revision }, doc)
+        }
         if (doc.last_error) {
           showNoteNotice(userFacingError(doc.last_error, scheduleFailed))
         }
@@ -93,5 +85,5 @@ export function useNoteEditorOpen({
     return () => {
       controller.abort()
     }
-  }, [noteId, docId])
+  }, [noteId, docId, userId])
 }

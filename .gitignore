@@ -187,3 +187,8 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/localeDemand.spec.ts
 !/frontend/tests/browser/fixture/localeDemand.html
 !/frontend/tests/browser/fixture/localeDemand.tsx
+
+# Journal hover lifecycle regressions.
+!/frontend/tests/browser/phantasiPeek.spec.ts
+!/frontend/tests/browser/fixture/phantasiPeek.html
+!/frontend/tests/browser/fixture/phantasiPeek.tsx

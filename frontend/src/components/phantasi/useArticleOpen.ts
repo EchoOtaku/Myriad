@@ -3,9 +3,9 @@ import type { ReadingQueue } from './logic/readingQueue'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { phantasiSubject } from '../../utils/phantasiSubject'
 import { cancelArticlePrefetch, prefetchArticleDetails } from './articlePrefetch'
-import { reportPhantasiError } from './phantasiNotice'
 import { neighborsInQueue } from './logic/readingQueue'
 import { RequestTurn } from './logic/requestTurn'
+import { reportPhantasiError } from './phantasiNotice'
 import { useArticleFlags } from './useArticleFlags'
 
 export type ArticleLoader = (

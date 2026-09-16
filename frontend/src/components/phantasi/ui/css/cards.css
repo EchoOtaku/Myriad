@@ -200,6 +200,7 @@
   --stack-rot: -14deg;
   --stack-x: -16px;
   --stack-scale: 0.88;
+
   z-index: 1;
   opacity: 0.58;
   transition-delay: 0ms;
@@ -209,6 +210,7 @@
   --stack-rot: -5deg;
   --stack-x: -7px;
   --stack-scale: 0.94;
+
   z-index: 2;
   opacity: 0.84;
   transition-delay: 50ms;
@@ -217,6 +219,7 @@
 .phantasi-site__stack-face.is-front {
   --stack-rot: 6deg;
   --stack-scale: 1;
+
   z-index: 3;
   opacity: 1;
   transition-delay: 90ms;
@@ -227,6 +230,7 @@
   --stack-x: 5px;
   --stack-y: -5px;
   --stack-scale: 1.06;
+
   z-index: 4;
   opacity: 1;
   transition-delay: 0ms;
@@ -668,14 +672,12 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   display: block;
   width: 1rem;
   height: 1rem;
-  background-color: currentColor;
+  background-color: currentcolor;
   pointer-events: none;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 .phantasi-story__star.is-on::before {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'/%3E%3C/svg%3E");
 }
 
@@ -787,7 +789,6 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   line-height: 1.45;
   opacity: 0;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.85em), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 0.85em), transparent);
 }
 
@@ -802,21 +803,6 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
 
 .phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__peek {
   opacity: 1;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__kicker,
-  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__title,
-  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__byline,
-  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__thumb,
-  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__summary {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .phantasi-story.has-cover.has-peek:hover:not(.is-picking, .is-peek) .phantasi-story__peek {
-    opacity: 1;
-  }
 }
 
 .phantasi-story__source {

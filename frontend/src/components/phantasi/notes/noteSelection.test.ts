@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
-import { lineIsBlank, placeBubble, placeGutter } from './noteSelection'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { lineIsBlank, placeBubble, placeGutter } from './noteSelection'
 
 const source = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), 'noteSelection.ts'),

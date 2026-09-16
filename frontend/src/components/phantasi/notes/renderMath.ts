@@ -1,10 +1,10 @@
 import type { KatexOptions } from 'katex'
 import katex from 'katex'
-import 'katex/contrib/mhchem'
 import {
   splitBareTex,
   unwrapMathDelimiters,
 } from './noteMath'
+import 'katex/contrib/mhchem'
 
 export const MATH_SKIP_SELECTOR =
   '.math, .katex, .note-math, .note-math-edit, .notion-equation, .notion-inline-equation'

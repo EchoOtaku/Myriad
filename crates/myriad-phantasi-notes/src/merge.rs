@@ -23,87 +23,169 @@ fn split_keep_end(text: &str) -> Vec<&str> {
     text.split('\n').collect()
 }
 
-fn first_index(lines: &[&str], start: usize, needle: &str) -> Option<usize> {
-    lines[start..]
-        .iter()
-        .position(|line| *line == needle)
-        .map(|offset| start + offset)
+#[derive(Clone)]
+struct Hunk {
+    start: usize,
+    end: usize,
+    lines: Vec<String>,
+    side: usize,
 }
 
-fn next_shared(base: &[&str], from: usize, other: &[&str], other_start: usize) -> Option<usize> {
-    for line in &base[from..] {
-        if let Some(index) = first_index(other, other_start, line) {
-            return Some(index);
+const MAX_DIFF_CELLS: usize = 1_000_000;
+
+// Same bounded LCS and deletion-first tie break as noteMerge.ts.
+fn diff_hunks(base: &[&str], next: &[&str], side: usize) -> Vec<Hunk> {
+    let mut start = 0;
+    while start < base.len() && start < next.len() && base[start] == next[start] {
+        start += 1;
+    }
+    let (mut end, mut next_end) = (base.len(), next.len());
+    while end > start && next_end > start && base[end - 1] == next[next_end - 1] {
+        end -= 1;
+        next_end -= 1;
+    }
+    let (n, m) = (end - start, next_end - start);
+    if n == 0 && m == 0 {
+        return Vec::new();
+    }
+    if n == 0 || m == 0 || (n + 1).saturating_mul(m + 1) > MAX_DIFF_CELLS {
+        return vec![Hunk {
+            start,
+            end,
+            lines: next[start..next_end]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            side,
+        }];
+    }
+    let width = m + 1;
+    let mut scores = vec![0usize; (n + 1) * width];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            scores[i * width + j] = if base[start + i] == next[start + j] {
+                1 + scores[(i + 1) * width + j + 1]
+            } else {
+                scores[(i + 1) * width + j].max(scores[i * width + j + 1])
+            };
         }
     }
-    None
+    let mut hunks = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < n || j < m {
+        if i < n && j < m && base[start + i] == next[start + j] {
+            i += 1;
+            j += 1;
+            continue;
+        }
+        let mut hunk = Hunk {
+            start: start + i,
+            end: start + i,
+            lines: Vec::new(),
+            side,
+        };
+        while i < n || j < m {
+            if i < n && j < m && base[start + i] == next[start + j] {
+                break;
+            }
+            if j < m && (i == n || scores[i * width + j + 1] > scores[(i + 1) * width + j]) {
+                hunk.lines.push(next[start + j].to_string());
+                j += 1;
+            } else {
+                i += 1;
+            }
+        }
+        hunk.end = start + i;
+        hunks.push(hunk);
+    }
+    hunks
 }
 
-fn merge_lines(base: &[&str], local: &[&str], remote: &[&str]) -> Vec<String> {
+fn apply_hunks(base: &[&str], start: usize, end: usize, hunks: &[&Hunk]) -> Vec<String> {
     let mut out = Vec::new();
-    let mut li = 0;
-    let mut ri = 0;
-    let mut bi = 0;
-    while bi < base.len() {
-        let line = base[bi];
-        let local_at = first_index(local, li, line);
-        let remote_at = first_index(remote, ri, line);
-        match (local_at, remote_at) {
-            (Some(l), Some(r)) => {
-                out.extend(merge_inserts(&local[li..l], &remote[ri..r]));
-                out.push(line.to_string());
-                li = l + 1;
-                ri = r + 1;
-                bi += 1;
-            }
-            (None, Some(r)) => {
-                let end = next_shared(base, bi + 1, local, li).unwrap_or(local.len());
-                out.extend(remote[ri..r].iter().map(|item| (*item).to_string()));
-                out.extend(local[li..end].iter().map(|item| (*item).to_string()));
-                li = end;
-                ri = r + 1;
-                bi += 1;
-            }
-            (Some(l), None) => {
-                let end = next_shared(base, bi + 1, remote, ri).unwrap_or(remote.len());
-                out.extend(local[li..l].iter().map(|item| (*item).to_string()));
-                out.extend(remote[ri..end].iter().map(|item| (*item).to_string()));
-                ri = end;
-                li = l + 1;
-                bi += 1;
-            }
-            (None, None) => {
-                let local_end = next_shared(base, bi + 1, local, li).unwrap_or(local.len());
-                let remote_end = next_shared(base, bi + 1, remote, ri).unwrap_or(remote.len());
-                out.extend(merge_inserts(
-                    &local[li..local_end],
-                    &remote[ri..remote_end],
-                ));
-                li = local_end;
-                ri = remote_end;
-                bi += 1;
-            }
-        }
+    let mut cursor = start;
+    for hunk in hunks {
+        out.extend(base[cursor..hunk.start].iter().map(|s| s.to_string()));
+        out.extend(hunk.lines.iter().cloned());
+        cursor = hunk.end;
     }
-    out.extend(merge_inserts(&local[li..], &remote[ri..]));
+    out.extend(base[cursor..end].iter().map(|s| s.to_string()));
     out
 }
 
-fn merge_inserts(local: &[&str], remote: &[&str]) -> Vec<String> {
-    if local == remote {
-        return local.iter().map(|item| (*item).to_string()).collect();
+fn merge_lines(base: &[&str], local: &[&str], remote: &[&str]) -> Vec<String> {
+    let mut changes = diff_hunks(base, local, 0);
+    changes.extend(diff_hunks(base, remote, 1));
+    changes.sort_by_key(|h| (h.start, h.end, h.side));
+    let mut out = Vec::new();
+    let (mut cursor, mut i) = (0, 0);
+    while i < changes.len() {
+        let first = &changes[i];
+        i += 1;
+        let mut group = vec![first];
+        let mut end = first.end;
+        while i < changes.len()
+            && (changes[i].start < end
+                || (end == first.start && changes[i].start == end && changes[i].end == end))
+        {
+            let hunk = &changes[i];
+            i += 1;
+            group.push(hunk);
+            end = end.max(hunk.end);
+        }
+        out.extend(base[cursor..first.start].iter().map(|s| s.to_string()));
+        let left: Vec<_> = group.iter().copied().filter(|h| h.side == 0).collect();
+        let right: Vec<_> = group.iter().copied().filter(|h| h.side == 1).collect();
+        if left.is_empty() || right.is_empty() {
+            out.extend(apply_hunks(base, first.start, end, &group));
+        } else {
+            let local = apply_hunks(base, first.start, end, &left);
+            let remote = apply_hunks(base, first.start, end, &right);
+            if local == remote {
+                out.extend(local);
+            } else {
+                out.extend(local);
+                out.extend(remote);
+            }
+        }
+        cursor = end;
     }
-    // Coalesce identical edits, never repeated lines within an author's edit.
-    local
-        .iter()
-        .chain(remote.iter())
-        .map(|line| (*line).to_string())
-        .collect()
+    out.extend(base[cursor..].iter().map(|s| s.to_string()));
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_positions_handle_repeats() {
+        for (base, local, remote, expected) in [
+            ("x\nx", "X\nx", "x\nY", "X\nY"),
+            ("x\nx\nz", "x\nz", "x\nx\nZ", "x\nZ"),
+            ("x\nx", "x", "X\nx", "X"),
+            ("x\nx", "x\na\nx", "x\nx\nb", "x\na\nx\nb"),
+            ("a\nb\nc", "A\nb\nc", "A\nb\nc\nd", "A\nb\nc\nd"),
+            ("a\nb\nc", "L\nc", "a\nR", "L\nc\na\nR"),
+        ] {
+            assert_eq!(merge_text(base, local, remote), expected);
+        }
+    }
+
+    #[test]
+    fn large_changes_conservatively_preserve_both() {
+        let make = |prefix| {
+            (0..1100)
+                .map(|i| format!("{prefix}-{i}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let (base, local, remote) = (make("base"), make("local"), make("remote"));
+        assert_eq!(
+            merge_text(&base, &local, &remote),
+            format!("{local}\n{remote}")
+        );
+    }
 
     #[test]
     fn repeated_inserted_lines_survive() {

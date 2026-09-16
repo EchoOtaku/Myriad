@@ -43,14 +43,14 @@ describe('手帐审计契约', () => {
     const collab = read('notes/useNoteCollab.ts')
     const send = collab.slice(collab.indexOf('type: \'edit\''))
     assert.match(collab, /liveRef/)
-    assert.match(collab, /\}, \[cloudId, userName\]\)/)
+    const connectionDeps = collab.match(/\}, \[([^\]]+)\]\)/)?.[1] ?? ''
+    assert.match(connectionDeps, /cloudId/)
+    assert.doesNotMatch(connectionDeps, /fields|contentMd|title|topic|cover/)
     assert.doesNotMatch(collab, /COLLAB_BODY_FRAME_BYTES/)
     assert.doesNotMatch(send, /content_md/)
     assert.doesNotMatch(collab, /setInterval\([^)]{0,80}200\)/)
-    assert.match(
-      collab,
-      /\}, \[cloudId, cover, loading, textareaRef, title, topic, userName\]\)/,
-    )
+    assert.match(send, /type: 'edit'/)
+    assert.match(send, /cursor:/)
   })
 
   it('阅读热路径按来源切会话，评论装饰活 DOM 补 mark', () => {
@@ -123,7 +123,9 @@ describe('手帐审计契约', () => {
     assert.match(publish, /revision: revisionRef\.current/)
     assert.match(publish, /publishNoteDoc/)
     assert.match(publish, /scheduleNoteDoc/)
-    assert.match(publish, /unscheduleNoteDoc\(cloudId, \{\s*revision:/)
+    const unschedulePayload = publish.match(/unscheduleNoteDoc\(cloudId, \{([^}]+)\}/)?.[1] ?? ''
+    assert.match(unschedulePayload, /revision: revisionRef\.current/)
+    assert.match(unschedulePayload, /client_request_id:/)
     assert.match(fnBody(api, 'unscheduleNoteDoc'), /JSON\.stringify\(req\)/)
   })
 

@@ -2,8 +2,6 @@
 //!
 //! JSON loader (`anime_database.json`; bootstraps `entries: []` if missing) plus category analysis.
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -136,10 +134,12 @@ impl AnimeDatabase {
         Self { entries }
     }
 
+    #[allow(dead_code)]
     pub fn add_entry(&mut self, entry: AnimeEntry) {
         self.entries.insert(entry.title.clone(), entry);
     }
 
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<(), std::io::Error> {
         let file_path = Path::new("backend/data/anime_database.json");
         let file_path = if file_path.exists() || Path::new("backend").exists() {
@@ -202,7 +202,6 @@ impl AnimeDatabase {
         // watch_list: [(title, author), ...]
         let mut category_map: HashMap<ContentCategory, Vec<String>> = HashMap::new();
         let mut genre_count: HashMap<ContentCategory, HashMap<String, usize>> = HashMap::new();
-        let mut unknown_items: Vec<String> = Vec::new();
 
         let total_count = watch_list.len();
 
@@ -219,9 +218,6 @@ impl AnimeDatabase {
                 for genre in &entry.genre {
                     *genre_map.entry(genre.clone()).or_insert(0) += 1;
                 }
-            } else {
-                // Unknown titles are pushed then discarded (`analyze` returns known categories only).
-                unknown_items.push(title.clone());
             }
         }
 

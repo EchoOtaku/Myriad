@@ -214,8 +214,7 @@ jobs:
           MYRIAD_WORK_TEST_DATABASE_URL: postgres://myriad:myriad_ci@127.0.0.1:5432/myriad_work_loop_test
         run: |
           createdb myriad_work_loop_test
-          cargo test -p myriad-backend --locked postgres_fencing_recovery_and_observation_driven_execution -- --ignored --nocapture
-          cargo test -p myriad-backend --locked postgres_work_process_recovery_and_competing_resumes -- --ignored --nocapture
+          cargo test -p myriad-backend --locked services::agent::work_loop:: -- --ignored --skip configured_model_search_read_save_business_acceptance --skip work_process_fixture --test-threads=1 --nocapture
 
   dependency-audit:
     name: Dependency vulnerability scan

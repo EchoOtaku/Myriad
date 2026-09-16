@@ -22,9 +22,8 @@ import { cx } from './cx'
 export const PHANTASI_PEEK_AIR_ID = 'phantasi-peek-air'
 export const PHANTASI_PEEK_COPY_ID = 'phantasi-peek-copy'
 export const PHANTASI_PEEK_EXIT_MS = 520
-export const PHANTASI_PEEK_HANDOFF_MS = 100
 
-export type PhantasiPeekFace = {
+export interface PhantasiPeekFace {
   src: string
   title: string
   source: string
@@ -46,7 +45,7 @@ export function toPhantasiPeekFace(
   }
 }
 
-type Layer = {
+interface Layer {
   id: number
   face: PhantasiPeekFace
   on: boolean
@@ -88,11 +87,10 @@ export function writePeekFace(next: PhantasiPeekFace | null): void {
   for (const fn of sessionListeners) fn()
 }
 
-/** 没封面不把现有壁纸写成空。只有 drop 才清。 */
+/** 每次换卡都覆盖壁纸，包括没有封面的卡。 */
 export function applyPeekFace(next: PhantasiPeekFace | null): boolean {
-  if (!next) return false
   writePeekFace(next)
-  return true
+  return next !== null
 }
 
 function sameFace(layer: Layer, face: PhantasiPeekFace): boolean {
@@ -245,6 +243,7 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
     image.src = face.src
     image.onerror = () => {
       if (cancelled) return
+      window.clearTimeout(exitTimer)
       setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
       exitTimer = window.setTimeout(() => {
         if (!cancelled) setLayers([])

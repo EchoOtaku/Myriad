@@ -7,10 +7,7 @@ import { userFacingError } from '../../../utils/userFacingError'
 import { PHANTASI_MINE_CATEGORY } from '../constants'
 import { showNoteNotice } from '../phantasiNotice'
 import { collectNoteCategories } from './noteCategory'
-import { writeNoteDraft } from './noteDraft'
 import { growTextarea, textareaSupportsFieldSizing } from './noteSelection'
-
-const DRAFT_SAVE_MS = 800
 
 export function useNoteEditorSidecar(host: {
   loadFailed: string
@@ -18,12 +15,8 @@ export function useNoteEditorSidecar(host: {
   settingsOpen: boolean
   loading: boolean
   pane: NoteEditorPane
-  draftKey: number | 'new'
   title: string
   contentMd: string
-  topic: string | null
-  cover: string | null
-  publishedAt: number | null
   titleInputRef: RefObject<HTMLTextAreaElement | null>
   textareaRef: RefObject<HTMLTextAreaElement | null>
   setAuthors: Dispatch<SetStateAction<PhantasiNoteAuthor[]>>
@@ -36,12 +29,8 @@ export function useNoteEditorSidecar(host: {
     settingsOpen,
     loading,
     pane,
-    draftKey,
     title,
     contentMd,
-    topic,
-    cover,
-    publishedAt,
     titleInputRef,
     textareaRef,
     setAuthors,
@@ -100,16 +89,4 @@ export function useNoteEditorSidecar(host: {
     })
     return () => controller.abort()
   }, [setCategoryNames])
-
-  useEffect(() => {
-    if (loading) return
-    const timer = setTimeout(writeNoteDraft, DRAFT_SAVE_MS, draftKey, {
-      title,
-      contentMd,
-      topic,
-      cover,
-      publishedAt,
-    })
-    return () => clearTimeout(timer)
-  }, [contentMd, cover, draftKey, loading, publishedAt, title, topic])
 }

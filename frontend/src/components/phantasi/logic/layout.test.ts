@@ -3,12 +3,12 @@ import { describe, it } from 'node:test'
 import { daysAgo, makePreviews, makeSource, NOW } from './fixtures.ts'
 import {
   allowedTileSizes,
-  PHANTASI_TILE_SIZES,
   cardSizeForTile,
   CONTENT_TILE_SIZES,
   downgradeForBand,
   lockedTileSize,
   nextLockedSize,
+  PHANTASI_TILE_SIZES,
   SITE_TILE_SIZES,
   tileLayout,
   tileSize,

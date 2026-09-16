@@ -16,17 +16,11 @@ pub const ROUTE_NONCE_NAMESPACE: &str = "route_nonce";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InboundRouteError {
-    /// 目前不构造：inbound_route 把「路由不存在」折叠成 VerifyInvalid，
-    /// 避免向调用方泄露路由是否存在。分类与 code() 保留。
-    #[allow(dead_code)]
-    RouteNotFound,
     MethodNotAllowed,
     VerifyInvalid,
     VerifyExpired,
     VerifyReplay,
-    Blocked {
-        retry_after: u64,
-    },
+    Blocked { retry_after: u64 },
     Paused,
     BodyTooLarge,
     InvalidParams,
@@ -37,7 +31,6 @@ pub enum InboundRouteError {
 impl InboundRouteError {
     pub fn code(&self) -> &'static str {
         match self {
-            Self::RouteNotFound => "ROUTE_NOT_FOUND",
             Self::MethodNotAllowed => "ROUTE_METHOD_NOT_ALLOWED",
             Self::VerifyInvalid => "ROUTE_VERIFY_INVALID",
             Self::VerifyExpired => "ROUTE_VERIFY_EXPIRED",
@@ -53,7 +46,6 @@ impl InboundRouteError {
 
     pub fn message(&self) -> &'static str {
         match self {
-            Self::RouteNotFound => "Inbound route is not declared",
             Self::MethodNotAllowed => "Inbound route does not allow this method",
             Self::VerifyInvalid => "Inbound signature is invalid",
             Self::VerifyExpired => "Inbound timestamp is outside the allowed window",
@@ -69,7 +61,6 @@ impl InboundRouteError {
 
     pub fn status_hint(&self) -> u16 {
         match self {
-            Self::RouteNotFound => 404,
             Self::MethodNotAllowed => 405,
             Self::VerifyInvalid | Self::VerifyExpired | Self::VerifyReplay => 401,
             Self::Blocked { .. } | Self::Paused => 403,

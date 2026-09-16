@@ -124,7 +124,8 @@ interface LoadableConfigDomain {
 let activeConfigLoads = 0
 const configLoadQueue: Array<() => void> = []
 function drainConfigLoads() {
-  while (activeConfigLoads < CONFIG_LOAD_CONCURRENCY && configLoadQueue.length) {
+  while (configLoadQueue.length) {
+    if (activeConfigLoads >= CONFIG_LOAD_CONCURRENCY) break
     configLoadQueue.shift()!()
   }
 }

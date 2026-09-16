@@ -1,5 +1,5 @@
 import type { HostLanguageLabels, Locale } from '../../i18n'
-import React, { memo, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { hostLanguageName, hostLanguageShort } from '../../i18n'
 import { WeatherAssetIcon } from '../weather/WeatherAssetIcon'
 import {

@@ -4,7 +4,6 @@ import { useLocation } from 'react-router-dom'
 import {
   isPageVisible,
   onVisibility,
-  pause,
   resume,
   runPageCleanup,
   startPage,
@@ -33,11 +32,9 @@ export function useRouteScheduler(): void {
 
   useEffect(() => {
     if (isPageVisible()) resume()
-    else pause()
 
     const unsubscribeVisibility = onVisibility((visible) => {
       if (visible) resume()
-      else pause()
     })
 
     return () => {

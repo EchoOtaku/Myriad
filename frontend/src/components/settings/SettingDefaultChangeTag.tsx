@@ -1,6 +1,6 @@
 import type { SettingDefaultChangeNotice } from './SettingsDefaultsContext'
 import { LuSparkles } from '@lib/icons'
-import React, { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { useSettingsDefaults } from './SettingsDefaultsContext'
 import { SettingTitleTag } from './SettingTitleTag'

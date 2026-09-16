@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 const read = (name: string) => readFileSync(join(dir, name), 'utf8')
-const feedsSrc = () =>
-  [read('PhantasiFeeds.tsx'), read('PhantasiFeedsStories.tsx'), read('PhantasiFeedsSites.tsx')].join('\n')
+function feedsSrc() {
+  return [read('PhantasiFeeds.tsx'), read('PhantasiFeedsStories.tsx'), read('PhantasiFeedsSites.tsx')].join('\n')
+}
 
 describe('phantasi feeds 入场 class 链', () => {
   it('订阅页不再展开宫格', () => {

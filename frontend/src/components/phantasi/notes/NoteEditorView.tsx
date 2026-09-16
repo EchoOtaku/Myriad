@@ -95,6 +95,8 @@ import '../ui/phantasi.css'
 import './NoteEditor.css'
 
 export function NoteEditorView({
+  compositionStart,
+  compositionEnd,
   t,
   animation,
   motionEnabled,
@@ -160,8 +162,6 @@ export function NoteEditorView({
   fileRef,
   coverFileRef,
   visualEditing,
-  compositionStart,
-  compositionEnd,
   coverPreview,
   selectedWidgetEntry,
   selectedWidgetSizes,
@@ -450,7 +450,7 @@ export function NoteEditorView({
               <Spinner size="lg" />
             </div>
           ) : (
-            <article className="phantasi-note__paper" inert={saving || undefined}>
+            <article className="phantasi-note__paper">
               <textarea
                 ref={titleInputRef}
                 onCompositionStart={compositionStart}
@@ -460,7 +460,7 @@ export function NoteEditorView({
                 value={title}
                 onChange={(e) => setTitle(e.target.value.replaceAll('\n', ''))}
                 onKeyDown={(e) => {
-                  if (e.nativeEvent.isComposing || e.key !== 'Enter') return
+                  if (e.key !== 'Enter') return
                   e.preventDefault()
                   focusBody()
                 }}
@@ -699,7 +699,7 @@ export function NoteEditorView({
                     const root = e.currentTarget as HTMLDivElement
                     // 敲完 `)` / `` ` `` / `*` / `~` / `$`：光标前刚好凑成 Markdown 记号就地渲染。
                     const typed = (e.nativeEvent as InputEvent).data ?? ''
-                    if (!(e.nativeEvent as InputEvent).isComposing && /[)`*~$]/.test(typed)) {
+                    if (/[)`*~$]/.test(typed)) {
                       const converted = applyInlineMarkdownAtCaret(root)
                       if (converted != null) {
                         commitVisualMd(converted)

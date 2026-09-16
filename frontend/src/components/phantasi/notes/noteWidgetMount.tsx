@@ -4,8 +4,9 @@
  * 换 innerHTML 必须走 replaceNoteHtml，写完再补挂，避免 portal 还指着旧节点。
  */
 
-import type { WidgetConfig, WidgetSize, WidgetType } from '../../widgetGridTypes'
 import type { ErrorInfo, ReactNode, RefObject } from 'react'
+import type { WidgetConfig, WidgetSize, WidgetType } from '../../widgetGridTypes'
+import type { NoteWidgetConfig } from './noteLayout'
 import { Component, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
@@ -13,15 +14,15 @@ import { widgetHostConfig } from '../../widgetLibraryModel'
 import {
   decodeWidgetConfigAttr,
   encodeWidgetConfigAttr,
-  type NoteWidgetConfig,
+
 } from './noteLayout'
-import { noteWidgetInstanceId, noteWidgetIslandKey } from './noteWidgetId'
 import { NOTE_WIDGET_FACE } from './noteWidgetHtml'
+import { noteWidgetInstanceId, noteWidgetIslandKey } from './noteWidgetId'
 
 export { hasNoteWidgetMarkup, NOTE_WIDGET_FACE } from './noteWidgetHtml'
 export { noteWidgetInstanceId } from './noteWidgetId'
 
-type Surface = { paint: () => void }
+interface Surface { paint: () => void }
 
 const surfaces = new WeakMap<HTMLElement, Set<Surface>>()
 
@@ -37,12 +38,12 @@ function registerSurface(root: HTMLElement, surface: Surface): () => void {
   }
 }
 
-export type NoteWidgetHydrateOptions = {
+export interface NoteWidgetHydrateOptions {
   editable?: boolean
   onConfigChange?: (host: HTMLElement, config: NoteWidgetConfig) => void
 }
 
-export type NoteWidgetHydration = {
+export interface NoteWidgetHydration {
   portals: ReactNode
   refresh: () => void
 }
@@ -139,7 +140,7 @@ function widgetFace(host: HTMLElement): HTMLElement {
   return face
 }
 
-type Island = {
+interface Island {
   key: string
   host: HTMLElement
   face: HTMLElement

@@ -1,8 +1,8 @@
 import type { HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { usePageTransition } from '../hooks/animation/usePageTransition'
 import { pageIdFromPath } from '../hooks/animation/pageId'
+import { usePageTransition } from '../hooks/animation/usePageTransition'
 
 interface AnimatedViewProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode

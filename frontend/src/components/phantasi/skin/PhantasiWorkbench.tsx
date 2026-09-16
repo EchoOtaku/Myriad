@@ -31,12 +31,12 @@ import {
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
 import { WorkbenchCommentsPane } from './PhantasiWorkbenchComments'
-import { WorkbenchReviewsPane } from './PhantasiWorkbenchReviews'
 import { WorkbenchFeedsPanes } from './PhantasiWorkbenchFeeds'
 import { WorkbenchHome } from './PhantasiWorkbenchHome'
 import { WorkbenchIoPane } from './PhantasiWorkbenchIo'
 import { WorkbenchMediaPane } from './PhantasiWorkbenchMedia'
 import { WorkbenchNotesPane } from './PhantasiWorkbenchNotes'
+import { WorkbenchReviewsPane } from './PhantasiWorkbenchReviews'
 import '../../ConfigForm.css'
 import '../ui/css/workbench.css'
 

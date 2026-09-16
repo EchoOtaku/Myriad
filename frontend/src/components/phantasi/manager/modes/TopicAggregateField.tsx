@@ -19,7 +19,7 @@ import { topicDisplayName } from '../../logic/topics'
 import { noteScheduleLabel } from '../../notes/noteBoard'
 import { filterTopicNames } from './addSource'
 
-type TopicPreview = {
+interface TopicPreview {
   id: number
   title: string
   topic?: string | null

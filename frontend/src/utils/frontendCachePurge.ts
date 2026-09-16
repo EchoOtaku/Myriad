@@ -15,10 +15,6 @@ import { MemoryManager } from './performance'
 import { requestCache } from './requestCache'
 import { clearDedupCache } from './requestDedup'
 import { globalResourceLoader } from './resourceLoader'
-import {
-  clearAllUserCache,
-  invalidateCsrfCache,
-} from './userInfoCache'
 import { clearColorCache as clearWallpaperColorCache } from './wallpaperColorCache'
 
 export interface FrontendCachePurgeResult {
@@ -154,8 +150,6 @@ function clearInMemoryCaches(warnings: string[]): void {
   const steps: Array<[string, () => void]> = [
     ['requestCache', () => requestCache.clear()],
     ['requestDedup', () => clearDedupCache()],
-    ['userInfo', () => clearAllUserCache()],
-    ['csrfMemory', () => invalidateCsrfCache()],
     ['csrfSession', () => clearCSRFToken()],
     ['wallpaperColor', () => clearWallpaperColorCache()],
     ['colorExtractor', () => clearExtractorColorCache()],

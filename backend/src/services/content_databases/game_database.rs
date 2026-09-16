@@ -2,8 +2,6 @@
 //!
 //! 从 `game_database.json` 加载（缺失则写空数组）；用于分类用户游戏库
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -90,10 +88,12 @@ impl GameDatabase {
         Self { entries }
     }
 
+    #[allow(dead_code)]
     pub fn add_entry(&mut self, entry: GameEntry) {
         self.entries.insert(entry.name.clone(), entry);
     }
 
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<(), std::io::Error> {
         let file_path = Path::new("backend/data/game_database.json");
         let file_path = if file_path.exists() || Path::new("backend").exists() {

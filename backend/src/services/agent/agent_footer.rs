@@ -418,111 +418,59 @@ pub async fn user_is_current_admin(db: &sea_orm::DatabaseConnection, user_id: i3
     }
 }
 
-/// Agent 能力预设（权限页模板）。生产从 Elevated 候选集再经授予权限过滤。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentUsageMode {
-    /// 禁用（Agent 相关 elevated 全关）
-    #[allow(dead_code)] // Catalog template; production starts from Elevated then Tapp-filters.
-    None,
-    /// 仅 AI 对话/分析
-    #[allow(dead_code)] // Catalog template; production starts from Elevated then Tapp-filters.
-    Chat,
-    /// 标准（平台/共享 Phantasi 只读 + AI；无出站）
-    #[allow(dead_code)] // Catalog template; production starts from Elevated then Tapp-filters.
-    Standard,
-    /// 扩展（标准 + 出站抓取 + 调度 + 个人 Tapp 写）
-    Elevated,
-}
-
-impl AgentUsageMode {
-    #[cfg(test)]
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "chat" => Self::Chat,
-            "standard" => Self::Standard,
-            "elevated" => Self::Elevated,
-            _ => Self::None,
-        }
-    }
-}
-
-/// 某预设对应的 Agent 权限串（不含 phantasi:manage / report:write）
-fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet<String> {
-    use std::collections::HashSet;
-    let mut perms = HashSet::new();
-    match mode {
-        AgentUsageMode::None => {}
-        AgentUsageMode::Chat => {
-            for p in &["ai:chat", "ai:analyze", "system:read"] {
-                perms.insert((*p).to_string());
-            }
-        }
-        // 共享订阅库：候选集不含 phantasi:manage（加/改/删源仅管理员）
-        AgentUsageMode::Standard | AgentUsageMode::Elevated => {
-            for p in &[
-                "platform:read",
-                "steam:read",
-                "bilibili:read",
-                "bangumi:read",
-                "github:read",
-                "netease:read",
-                "ai:analyze",
-                "ai:chat",
-                "ai:search",
-                "ai:image",
-                "phantasi:read", // 读共享库；标记已读/收藏走 phantasi:write
-                "report:read",
-                "tapp:read",
-                "system:read",
-            ] {
-                perms.insert((*p).to_string());
-            }
-            if mode == AgentUsageMode::Elevated {
-                // 扩展：出站 + 调度 + 仅自己的 Tapp；报告生成 / 共享库管理仅管理员
-                for p in &[
-                    "http:fetch",
-                    "web:scrape",
-                    "tapp:write",
-                    "tapp:interact",
-                    "phantasi:write",
-                    "weather:read",
-                    "metadata:read",
-                    "proxy:read",
-                    "scheduler:read",
-                    "scheduler:write",
-                    "3d:generate",
-                    "ai:generate",
-                    "speech:tts",
-                    "music:control",
-                    "music:read",
-                    "storage:write",
-                    "content:write",
-                    "reminder:write",
-                    "note:write",
-                    "bookmark:write",
-                    "mcp:execute",
-                    "notion:read",
-                    "rsshub:read",
-                    "profile:read",
-                    "random:read",
-                    "search:read",
-                    "router:read",
-                    "router:write",
-                    "ui:read",
-                    "ui:interact",
-                    "page:read",
-                ] {
-                    perms.insert((*p).to_string());
-                }
-            }
-        }
-    }
-    perms
-}
-
-/// 非管理员 Agent 能力候选全集（再经 Tapp 开关过滤）
+/// 非管理员 Agent 能力候选全集；之后按当前授予权限过滤。
 fn max_user_agent_permissions() -> std::collections::HashSet<String> {
-    permissions_for_usage_mode(AgentUsageMode::Elevated)
+    // 共享订阅库管理、报告生成和系统管理不进入非管理员候选集。
+    [
+        "platform:read",
+        "steam:read",
+        "bilibili:read",
+        "bangumi:read",
+        "github:read",
+        "netease:read",
+        "ai:analyze",
+        "ai:chat",
+        "ai:search",
+        "ai:image",
+        "phantasi:read", // 读共享库；标记已读/收藏走 phantasi:write
+        "report:read",
+        "tapp:read",
+        "system:read",
+        "http:fetch",
+        "web:scrape",
+        "tapp:write",
+        "tapp:interact",
+        "phantasi:write",
+        "weather:read",
+        "metadata:read",
+        "proxy:read",
+        "scheduler:read",
+        "scheduler:write",
+        "3d:generate",
+        "ai:generate",
+        "speech:tts",
+        "music:control",
+        "music:read",
+        "storage:write",
+        "content:write",
+        "reminder:write",
+        "note:write",
+        "bookmark:write",
+        "mcp:execute",
+        "notion:read",
+        "rsshub:read",
+        "profile:read",
+        "random:read",
+        "search:read",
+        "router:read",
+        "router:write",
+        "ui:read",
+        "ui:interact",
+        "page:read",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 /// 校验当前用户是否允许使用 Agent（页面可见性 + Tapp `ai:chat`）
@@ -1041,31 +989,8 @@ mod tests {
     }
 
     #[test]
-    fn agent_usage_mode_parse_and_permission_sets() {
-        assert_eq!(AgentUsageMode::parse("none"), AgentUsageMode::None);
-        assert_eq!(AgentUsageMode::parse("chat"), AgentUsageMode::Chat);
-        assert_eq!(AgentUsageMode::parse("standard"), AgentUsageMode::Standard);
-        assert_eq!(AgentUsageMode::parse("elevated"), AgentUsageMode::Elevated);
-        assert_eq!(AgentUsageMode::parse("bogus"), AgentUsageMode::None);
-
-        let none = permissions_for_usage_mode(AgentUsageMode::None);
-        assert!(none.is_empty());
-
-        let chat = permissions_for_usage_mode(AgentUsageMode::Chat);
-        assert!(chat.contains("ai:chat"));
-        assert!(!chat.contains("ai:search"));
-        assert!(!chat.contains("phantasi:manage"));
-        assert!(!chat.contains("http:fetch"));
-
-        let standard = permissions_for_usage_mode(AgentUsageMode::Standard);
-        assert!(standard.contains("phantasi:read"));
-        assert!(!standard.contains("phantasi:write"));
-        assert!(!standard.contains("phantasi:manage"));
-        assert!(standard.contains("ai:chat"));
-        assert!(!standard.contains("http:fetch"));
-        assert!(!standard.contains("3d:generate"));
-
-        let elevated = permissions_for_usage_mode(AgentUsageMode::Elevated);
+    fn max_user_agent_permission_candidates() {
+        let elevated = max_user_agent_permissions();
         assert!(elevated.contains("http:fetch"));
         assert!(elevated.contains("web:scrape"));
         assert!(elevated.contains("tapp:write"));
@@ -1080,9 +1005,6 @@ mod tests {
         assert!(!elevated.contains("phantasi:manage"));
         assert!(!elevated.contains("report:write"));
         assert!(!elevated.contains("system:admin"));
-
-        let max = max_user_agent_permissions();
-        assert_eq!(max, elevated);
     }
 
     #[test]
@@ -1141,7 +1063,7 @@ mod tests {
         assert!(host_agent_permission("router:write"));
         assert!(!host_agent_permission("speech:tts"));
         use std::collections::HashSet;
-        let elevated = permissions_for_usage_mode(AgentUsageMode::Elevated);
+        let elevated = max_user_agent_permissions();
         assert!(granted_covers_tapp_permission(
             &elevated,
             TappPermission::NetworkFetch

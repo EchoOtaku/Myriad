@@ -4,12 +4,9 @@ export type Unsubscribe = () => void
 
 let currentPageId: string | null = null
 
-let isActive = true
-
 let visibilityInitialized = false
 let messageChannelInitialized = false
 let resizeObserverInitialized = false
-let idleSchedulerInitialized = false
 
 let _isPageVisible = true
 let _visibilityHandler: (() => void) | null = null
@@ -214,8 +211,6 @@ function scheduleIdleRun() {
     },
     { timeout: 2000 },
   ) as number
-
-  idleSchedulerInitialized = true
 }
 
 export function scheduleIdle(
@@ -312,7 +307,6 @@ export function startPage(pageId: string): void {
   }
 
   currentPageId = pageId
-  isActive = true
 
   if (hasFeature(pageId, Feature.Visibility) && !visibilityInitialized) {
     initVisibility()
@@ -339,12 +333,7 @@ function cleanupPage(): void {
   _pendingCallbacks.length = 0
 }
 
-export function pause(): void {
-  isActive = false
-}
-
 export function resume(): void {
-  isActive = true
   scheduleIdleRun()
 }
 

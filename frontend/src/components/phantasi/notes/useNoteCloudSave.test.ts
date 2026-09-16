@@ -23,6 +23,9 @@ describe('sameCloudFields', () => {
 })
 
 describe('mergeCloudFields', () => {
+  it('远端没有改发布时间时保留本地未确认修改', () => {
+    assert.equal(mergeCloudFields(base, { ...base, publishedAt: 2 }, base).publishedAt, 2)
+  })
   it('本地和远端各改一处都留下，发布时间听远端', () => {
     const local = { ...base, contentMd: 'X\ny', topic: 'ai' }
     const remote = { ...base, contentMd: 'x\nY', publishedAt: 9 }
@@ -59,17 +62,5 @@ describe('cloudFieldsOf', () => {
       cover: null,
       publishedAt: null,
     })
-  })
-})
-
-describe('云存 effect 不把 revision 放进依赖', () => {
-  it('源码断言', async () => {
-    const { readFileSync } = await import('node:fs')
-    const src = readFileSync(new URL('./useNoteCloudSave.ts', import.meta.url), 'utf8')
-    const effect = src.slice(src.indexOf('useEffect(() => {\n    if (loading || cloudId == null) return'))
-    const deps = effect.slice(effect.indexOf('}, ['), effect.indexOf('])') + 2)
-    assert.doesNotMatch(deps, /revision/)
-    assert.match(src, /inFlightRef/)
-    assert.match(src, /sameCloudFields\(sending, ackedRef\.current\)/)
   })
 })

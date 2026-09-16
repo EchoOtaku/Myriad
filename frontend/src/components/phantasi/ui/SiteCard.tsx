@@ -14,7 +14,7 @@ const STACK_DWELL_MS = 4000
 const STACK_TUCK_MS = 200
 const STACK_MOVE_MS = 720
 
-export type SiteStackFace = {
+export interface SiteStackFace {
   key: string
   src?: string | null
   mark?: string
@@ -23,7 +23,7 @@ export type SiteStackFace = {
 
 type StackSlot = 'back' | 'mid' | 'front' | 'tuck'
 
-type StackSeat = {
+interface StackSeat {
   id: number
   slot: StackSlot
   face: SiteStackFace

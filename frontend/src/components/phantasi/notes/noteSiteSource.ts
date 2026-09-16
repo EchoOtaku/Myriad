@@ -2,7 +2,7 @@
 
 import { getCurrentMetadata } from '../../../utils/siteMetadata'
 
-export type StoryAttribution = {
+export interface StoryAttribution {
   name: string
   icon: string | null
 }

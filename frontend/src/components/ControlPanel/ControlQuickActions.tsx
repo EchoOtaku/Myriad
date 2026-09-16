@@ -1,7 +1,7 @@
 import type { AnimationPreference } from '../../contexts/AnimationPreferenceContext'
 import type { AnimationLevel } from '../../hooks/useAnimationLevel'
 import type { Locale, TranslationKeys } from '../../i18n'
-import React, { memo } from 'react'
+import { memo } from 'react'
 import { WEATHER_ICON_ASSETS } from '../../utils/weather'
 import { WeatherAssetIcon } from '../weather/WeatherAssetIcon'
 import { LanguageSwitch } from './LanguageSwitch'

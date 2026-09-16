@@ -209,18 +209,6 @@ export function getAgentMessagesSnapshot(): readonly AgentMessage[] {
   return (messages ??= messageIds.map((id) => messagesById.get(id)!))
 }
 
-export function getServerAgentMessagesSnapshot(): readonly AgentMessage[] {
-  return EMPTY
-}
-
-export function useAgentMessages(): readonly AgentMessage[] {
-  return useSyncExternalStore(
-    subscribeAgentMessages,
-    getAgentMessagesSnapshot,
-    getServerAgentMessagesSnapshot,
-  )
-}
-
 /** Count only: streaming content must not refresh the composer. */
 export function getAgentMessageCountSnapshot(): number {
   return messageIds.length

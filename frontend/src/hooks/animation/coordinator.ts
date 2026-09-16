@@ -43,11 +43,7 @@ class AnimationCoordinator {
 
   private listeners = new Map<string, Set<AnimationListener>>()
 
-  private visibilityUnsubscribe: (() => void) | null = null
-
   private currentPageId: string | null = null
-  private pageReadyResolve: (() => void) | null = null
-  private pageReadyPromise: Promise<void> | null = null
   private isPageReady = false
 
   private pageReadyCallbacks = new Set<() => void>()
@@ -170,7 +166,7 @@ class AnimationCoordinator {
   constructor(config: Partial<CoordinatorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
 
-    this.visibilityUnsubscribe = onVisibility((visible) => {
+    onVisibility((visible) => {
       if (visible) {
         if (this.fpsMonitorRunning) {
           this.lastFrameTimestamp = performance.now()
@@ -183,22 +179,6 @@ class AnimationCoordinator {
 
     // 首屏爆发 10s。
     this.activateBurstMode(10000)
-  }
-
-  private cleanupAnimationState(animationId: string) {
-    this.states.delete(animationId)
-    this.listeners.delete(animationId)
-    this.pendingUpdates.delete(animationId)
-
-    this.removeQueuedAnimation(animationId)
-
-    if (this.activeSlots.has(animationId)) {
-      this.activeSlots.delete(animationId)
-      this.processWaitQueue()
-    }
-
-    this.scheduleVersions.delete(animationId)
-    this.stopTimeoutCheckerIfIdle()
   }
 
   private startTimeoutChecker() {
@@ -295,10 +275,6 @@ class AnimationCoordinator {
 
     // 页面切换爆发 10s。
     this.activateBurstMode(10000)
-
-    const { promise, resolve } = Promise.withResolvers<void>()
-    this.pageReadyPromise = promise
-    this.pageReadyResolve = resolve
   }
 
   completePageTransition(pageId?: string): boolean {
@@ -306,9 +282,6 @@ class AnimationCoordinator {
     if (pageId && this.currentPageId !== pageId) return false
 
     this.isPageReady = true
-
-    this.pageReadyResolve?.()
-    this.pageReadyResolve = null
 
     const callbackCount = this.pageReadyCallbacks.size
     if (callbackCount > 0) {
@@ -364,9 +337,6 @@ class AnimationCoordinator {
   }
 
   private cleanupPage(_pageId: string) {
-    this.pageReadyResolve?.()
-    this.pageReadyResolve = null
-    this.pageReadyPromise = null
     this.pageReadyCallbacks.clear()
 
     this.states.clear()
@@ -857,9 +827,6 @@ class AnimationCoordinator {
   }
 
   reset() {
-    this.pageReadyResolve?.()
-    this.pageReadyResolve = null
-    this.pageReadyPromise = null
     this.states.clear()
     this.listeners.clear()
     this.pendingUpdates.clear()

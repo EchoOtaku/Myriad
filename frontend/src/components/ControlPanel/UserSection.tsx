@@ -12,7 +12,6 @@ import { onProfileDisplayChanged } from '../../services/avatarSourceApi'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
 import { lockScroll } from '../../utils/scrollLock'
-import { clearAllUserCache } from '../../utils/userInfoCache'
 import { Avatar } from '../Avatar'
 import LoginForm from '../LoginForm'
 import { UserModal } from './UserModal'
@@ -189,8 +188,6 @@ export const UserSection: React.FC<UserSectionProps> = memo(
         })
       } catch {
       }
-
-      clearAllUserCache()
 
       localStorage.clear()
       sessionStorage.clear()

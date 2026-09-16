@@ -76,6 +76,12 @@ struct ProviderCallFailure {
     error: anyhow::Error,
 }
 
+impl From<anyhow::Error> for ProviderCallFailure {
+    fn from(error: anyhow::Error) -> Self {
+        Self::transport(error)
+    }
+}
+
 impl ProviderCallFailure {
     fn http(status: reqwest::StatusCode, error: anyhow::Error) -> Self {
         Self {
@@ -283,7 +289,10 @@ impl AiAnalyzer {
             .client
             .post(&url)
             .header("x-goog-api-key", &self.api_key)
-            .json(&request_body)
+            .json(&super::request_budget::prepare(
+                &request_body,
+                self.provider,
+            )?)
             .send()
             .await
             .context("Failed to send request to Gemini API")?;
@@ -357,7 +366,10 @@ impl AiAnalyzer {
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .json(&request_body)
+            .json(&super::request_budget::prepare(
+                &request_body,
+                self.provider,
+            )?)
             .send()
             .await
             .with_context(|| {
@@ -449,7 +461,7 @@ impl AiAnalyzer {
                     .post(&url)
                     .header("Authorization", format!("Bearer {}", self.api_key))
                     .header("Content-Type", "application/json")
-                    .json(&request_body)
+                    .json(&super::request_budget::prepare(&request_body, self.provider)?)
                     .send()
                     .await
                     .with_context(|| {
@@ -703,7 +715,10 @@ impl AiAnalyzer {
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .json(&request_body)
+            .json(&super::request_budget::prepare(
+                &request_body,
+                self.provider,
+            )?)
             .send()
             .await
             .map_err(|e| ProviderCallFailure::transport(e.into()))?;
@@ -757,7 +772,10 @@ impl AiAnalyzer {
                     .client
                     .post(&url)
                     .header("x-goog-api-key", &self.api_key)
-                    .json(&request_body)
+                    .json(&super::request_budget::prepare(
+                        &request_body,
+                        self.provider,
+                    )?)
                     .send()
                     .await
                     .map_err(|e| ProviderCallFailure::transport(e.into()))?;
@@ -842,7 +860,10 @@ impl AiAnalyzer {
                     .post(&url)
                     .header("Authorization", format!("Bearer {}", self.api_key))
                     .header("Content-Type", "application/json")
-                    .json(&request_body)
+                    .json(&super::request_budget::prepare(
+                        &request_body,
+                        self.provider,
+                    )?)
                     .send()
                     .await
                     .map_err(|e| ProviderCallFailure::transport(e.into()))?;
@@ -928,7 +949,10 @@ impl AiAnalyzer {
                     .client
                     .post(&url)
                     .header("x-goog-api-key", &self.api_key)
-                    .json(&request_body)
+                    .json(&super::request_budget::prepare(
+                        &request_body,
+                        self.provider,
+                    )?)
                     .send()
                     .await
                     .context("Failed to send streaming request to Gemini API")?;
@@ -1000,7 +1024,7 @@ impl AiAnalyzer {
                     .post(&url)
                     .header("Authorization", format!("Bearer {}", self.api_key))
                     .header("Content-Type", "application/json")
-                    .json(&request_body)
+                    .json(&super::request_budget::prepare(&request_body, self.provider)?)
                     .send()
                     .await
                     .with_context(|| {

@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  isJournalSyndicationPath,
   JOURNAL_ROOT,
-  WORKBENCH_PANE_PATHS,
   journalBoardPath,
   journalItemPath,
   journalListPath,
   journalPathForNavId,
   navIdForJournalLocation,
   parseJournalPath,
-  pathShowsNavId,
   pathForActiveIdChange,
-  isJournalSyndicationPath,
+  pathShowsNavId,
   seoJournalFollow,
   seoListNoindex,
+  WORKBENCH_PANE_PATHS,
 } from './journalRoutes.ts'
 
 describe('parseJournalPath', () => {

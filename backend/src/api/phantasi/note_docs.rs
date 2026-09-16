@@ -59,6 +59,13 @@ fn patched_text(current: Option<String>, patch: Option<Option<String>>) -> Optio
 }
 
 #[derive(Debug, Deserialize)]
+pub(crate) struct NoteDocTopicRequest {
+    #[serde(deserialize_with = "present_option")]
+    pub topic: Option<Option<String>>,
+    pub revision: i64,
+}
+
+#[derive(Debug, Deserialize)]
 pub(crate) struct NoteAuthorWriteRequest {
     pub user_id: i32,
 }
@@ -438,6 +445,30 @@ fn broadcast_saved_doc(
     request_id: Option<String>,
 ) {
     note_collab_hub().publish(saved.id, saved_doc_event(saved, user_id, request_id));
+}
+
+/// `PUT /notes/docs/{id}/topic` — classify without publishing draft content.
+pub(crate) async fn update_note_doc_topic(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+    Json(req): Json<NoteDocTopicRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let topic = req
+        .topic
+        .ok_or_else(|| phantasi_http_err(StatusCode::BAD_REQUEST, "A topic is required"))?;
+    let saved = crate::services::note_publish::update_note_doc_topic(
+        &db,
+        id,
+        req.revision,
+        empty_to_none(topic),
+    )
+    .await?;
+    broadcast_saved_doc(&saved, user_id, None);
+    Ok(Json(
+        json!({ "success": true, "doc": respond_doc(&db, saved).await? }),
+    ))
 }
 
 /// `DELETE /notes/docs/{id}` — 删云端文档。已发布的文章另走 DELETE /notes/{item}。
@@ -831,6 +862,15 @@ async fn handle_note_doc_socket(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn topic_command_requires_topic_and_revision_but_accepts_null() {
+        assert!(serde_json::from_value::<NoteDocTopicRequest>(json!({"revision": 1})).is_err());
+        assert!(serde_json::from_value::<NoteDocTopicRequest>(json!({"topic": null})).is_err());
+        let clear: NoteDocTopicRequest =
+            serde_json::from_value(json!({"topic": null, "revision": 1})).unwrap();
+        assert_eq!(clear.topic, Some(None));
+    }
 
     #[test]
     fn empty_strings_become_none() {

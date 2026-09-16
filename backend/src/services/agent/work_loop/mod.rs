@@ -1,11 +1,15 @@
 //! Work is an observation-driven tool loop. Fixed Recipes retain their executor.
 //! Model messages are server-only; public task state is a projection, not the
 //! continuation. Waiting, effects and model boundaries are durable checkpoints.
-mod output;
-#[cfg(test)]
-mod recovery_tests;
 #[cfg(test)]
 mod acceptance_tests;
+mod budget;
+mod output;
+#[cfg(test)]
+mod recipe_tests;
+mod recipes;
+#[cfg(test)]
+mod recovery_tests;
 mod state;
 mod store;
 #[cfg(test)]
@@ -90,6 +94,8 @@ impl Agent {
         task.execution_context = Some(context);
         let evidence = request_evidence(&request, &recipe, &task);
         let mut state = Checkpoint {
+            budget: Some(budget::Budget::default()),
+            recipe_run: None,
             version: 1,
             revision: 0,
             lease_id: uuid::Uuid::new_v4().to_string(),
@@ -249,6 +255,40 @@ impl Agent {
         emitter: &executor::events::StepEventEmitter,
         analyzer: &crate::services::analyzer::AiAnalyzer,
     ) -> Result<(), String> {
+        // Legacy checkpoints keep their already-consumed context estimate.
+        let budget = state.budget.get_or_insert_with(|| budget::Budget {
+            spent_tokens: (state.input_chars.div_ceil(4) as u64).saturating_add(
+                state
+                    .history
+                    .iter()
+                    .filter_map(|message| {
+                        if let ToolMessage::Assistant { turn } = message {
+                            Some(turn.native.to_string().len().div_ceil(4) as u64)
+                        } else {
+                            None
+                        }
+                    })
+                    .sum::<u64>(),
+            ),
+            ..Default::default()
+        });
+        // A reservation left by a killed request is charged once, never reset.
+        budget.settle(None);
+        store::save(&self.db, state).await?;
+        crate::services::ai_cost_ledger::with_work_usage_meter(
+            crate::services::ai_cost_ledger::AiUsageMeter::new(),
+            self.drive_metered_work_loop(state, tx, emitter, analyzer),
+        )
+        .await
+    }
+
+    async fn drive_metered_work_loop(
+        &self,
+        state: &mut Checkpoint,
+        tx: Option<Sender<AgentProgressEvent>>,
+        emitter: &executor::events::StepEventEmitter,
+        analyzer: &crate::services::analyzer::AiAnalyzer,
+    ) -> Result<(), String> {
         loop {
             if executor::is_cancelled(&state.task.task_id).await {
                 return Err("Task cancelled".into());
@@ -262,6 +302,7 @@ impl Agent {
                 while let Some(pending) = state.pending.pop_front() {
                     state.tool_result(pending.call,&json!({"cancelled":"Superseded by a new user instruction before execution"}));
                 }
+                recipes::abort(state, "Saved recipe superseded by a new user instruction");
                 let instruction = steering.join("\n");
                 state.history.push(ToolMessage::User {
                     content: instruction.clone(),
@@ -272,6 +313,10 @@ impl Agent {
                         .push_str(&format!("\nUser update: {instruction}"));
                 }
                 store::save(&self.db, state).await?;
+            }
+            if recipes::advance(state, &self.executor)? {
+                store::save(&self.db, state).await?;
+                continue;
             }
             if let Some(pending) = state.pending.front().cloned() {
                 let previous_plan = state.plan.clone();
@@ -310,6 +355,18 @@ impl Agent {
             if state.input_chars.saturating_add(input_chars) > MAX_INPUT_CHARS {
                 return Err("The task reached its context budget".into());
             }
+            // UTF-8 bytes provide a conservative preflight estimate; provider usage
+            // settles the reservation. No tokenizer or dollar price is invented.
+            let input_estimate = (system.len()
+                + serde_json::to_vec(&state.history).unwrap().len()
+                + serde_json::to_vec(&definitions).unwrap().len())
+                as u64;
+            let max_output = state
+                .budget
+                .as_mut()
+                .unwrap()
+                .reserve_model(input_estimate)?;
+            let before_tokens = crate::services::ai_cost_ledger::work_tokens();
             state.input_chars += input_chars;
             state.rounds += 1;
             store::save(&self.db, state).await?;
@@ -320,7 +377,7 @@ impl Agent {
                 let progress = state.task.progress;
                 let completed_steps = state.calls as u32;
                 let inference =
-                    analyzer.tool_turn(&system, &state.history, &definitions, 8192, |text| {
+                    analyzer.tool_turn(&system, &state.history, &definitions, max_output, |text| {
                         visible.push_str(&text);
                         let snapshot = visible.clone();
                         let tx = tx.clone();
@@ -359,6 +416,13 @@ impl Agent {
             state.active_ms = state
                 .active_ms
                 .saturating_add(started.elapsed().as_millis() as u64);
+            let charged =
+                crate::services::ai_cost_ledger::work_tokens().saturating_sub(before_tokens);
+            state
+                .budget
+                .as_mut()
+                .unwrap()
+                .settle((turn.is_ok() && charged > 0).then_some(charged));
             let turn = match turn {
                 Ok(turn) => turn,
                 Err(error) => {
@@ -440,7 +504,26 @@ impl Agent {
         }
         let granted = tools::granted_for(state, &self.db).await;
         let Some(id) = &pending.capability_id else {
-            let output = tools::local_call(state, call, &params, &granted).await;
+            let output = match tools::validate_local(&call.name, &params) {
+                Err(error) => Err(error),
+                Ok(()) if call.name == "list_recipes" => {
+                    recipes::list(&self.db, state.user_id).await
+                }
+                Ok(()) if call.name == "run_recipe" => {
+                    match recipes::start(
+                        &self.db,
+                        state,
+                        call.clone(),
+                        params["preset_id"].as_i64().unwrap() as i32,
+                    )
+                    .await
+                    {
+                        Ok(()) => return Ok(false),
+                        Err(error) => Err(error),
+                    }
+                }
+                Ok(()) => tools::local_call(state, call, &params, &granted).await,
+            };
             if call.name == "ask_user" && output.is_ok() {
                 let question = UserQuestion::free_text(
                     params["question"].as_str().unwrap(),
@@ -551,25 +634,43 @@ impl Agent {
                 return Ok(true);
             }
         }
+        let template = state.recipe_run.as_ref().and_then(|frame| {
+            (frame.active_call.as_ref() == Some(&call.id))
+                .then(|| frame.steps[frame.cursor].clone())
+        });
         let step = RecipeStep {
             id: call.id.clone(),
             order: state.calls as u32,
             capability_id: id.clone(),
-            action: context.user_intent.clone(),
+            action: template
+                .as_ref()
+                .map(|step| step.action.clone())
+                .unwrap_or_else(|| context.user_intent.clone()),
             params: params_map.clone(),
             depends_on: vec![],
             on_failure: FailureStrategy::Abort,
             retry: None,
-            timeout_ms: None,
-            model_tier: None,
+            timeout_ms: template.as_ref().and_then(|step| step.timeout_ms),
+            model_tier: template.as_ref().and_then(|step| step.model_tier),
             generator: None,
         };
         // Conservative: only declared DataRead operations are replay-safe. Unknown
         // MCP/network/write outcomes need reconciliation, never automatic retries.
+        // Some read/UI tools optionally call AI despite requires_ai=false.
+        // Reserve for every handler; unused allowance is returned on completion.
+        let budget = state.budget.get_or_insert_with(Default::default);
+        let allowance = budget.remaining().min(32768);
+        if allowance == 0 {
+            return Err("The task reached its token budget".into());
+        }
+        budget.reserved_tokens = allowance;
+        let request_budget =
+            crate::services::analyzer::request_budget::RequestBudget::new(allowance);
         let effectful = capability.category != CapabilityCategory::DataRead;
         if effectful {
             state.attempted_effects.insert(effect_key);
         }
+        let before_tokens = crate::services::ai_cost_ledger::work_tokens();
         state.inflight = Some(call.id.clone());
         if let Some(recipe) = state.task.recipe.as_mut() {
             recipe.steps.push(step.clone());
@@ -585,7 +686,7 @@ impl Agent {
             )
             .await;
         let started = std::time::Instant::now();
-        let tier = executor::Executor::resolve_tier_with_breaker(id, None);
+        let tier = executor::Executor::resolve_tier_with_breaker(id, step.model_tier);
         let analyzer = crate::services::ai::create_ai_analyzer_for_tier(tier).await;
         let handler = executor::handlers::HandlerContext {
             db: &self.db,
@@ -596,22 +697,31 @@ impl Agent {
             autonomy_permission_cap: context.autonomy_permission_cap.clone(),
         };
         let timeout = super::executor_utils_pure::step_timeout_secs(
-            None,
+            step.timeout_ms,
             capability.estimated_duration_ms,
             super::executor_utils_pure::category_timeout_fallback_secs(&capability.category),
             capability.requires_ai,
         )
         .min(MAX_ACTIVE_MS.saturating_sub(state.active_ms).div_ceil(1000));
-        let output = executor::executor_footer::execute_capability_with_timeout_and_cancel(
-            id,
-            &step.action,
-            &capability.category,
-            &params_map,
-            &handler,
-            timeout,
-            Some(&state.task.task_id),
-        )
-        .await;
+        let output = request_budget
+            .scope(
+                executor::executor_footer::execute_capability_with_timeout_and_cancel(
+                    id,
+                    &step.action,
+                    &capability.category,
+                    &params_map,
+                    &handler,
+                    timeout,
+                    Some(&state.task.task_id),
+                ),
+            )
+            .await;
+        let charged = crate::services::ai_cost_ledger::work_tokens().saturating_sub(before_tokens);
+        if let Some(budget) = state.budget.as_mut() {
+            if charged > 0 || budget.reserved_tokens > 0 {
+                budget.settle(Some(charged.max(request_budget.charged())));
+            }
+        }
         let duration = started.elapsed().as_millis() as u64;
         let output = match output {
             Ok(output) => {
@@ -741,6 +851,10 @@ fn apply_answer(state: &mut Checkpoint, answer: &UserAnswer) -> Result<(), Strin
                     pending.call,
                     &json!({"error":"The user declined this operation. Do not repeat it."}),
                 );
+                recipes::abort(
+                    state,
+                    "Saved recipe stopped because the user declined an operation",
+                );
             }
         }
         Wait::Answer { call } => state.tool_result(
@@ -776,6 +890,10 @@ fn apply_answer(state: &mut Checkpoint, answer: &UserAnswer) -> Result<(), Strin
                     &json!({"cancelled":"Re-evaluate after recovery before executing this action"}),
                 );
             }
+            recipes::abort(
+                state,
+                "Saved recipe interrupted; inspect completed effects before starting another workflow",
+            );
             state.history.push(ToolMessage::User {
                 content: format!(
                     "Continue from the saved progress. User update: {}",

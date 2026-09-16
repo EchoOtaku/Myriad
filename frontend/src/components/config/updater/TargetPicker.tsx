@@ -3,7 +3,7 @@ import type {
   makeUpdaterApi, ReleaseListItem,
 } from '../../../services/updaterApi'
 import type { ChannelOption, U } from './helpers'
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { InputItem, SettingsButton, SettingTitleTag } from '../../settings'
 import { Spinner } from '../../Spinner'

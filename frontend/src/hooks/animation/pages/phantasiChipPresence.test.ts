@@ -3,6 +3,8 @@ import { createRequire } from 'node:module'
 import { describe, it } from 'node:test'
 import {
   awaitLaneSwap,
+  chipExitFrames,
+  collectPhantasiSurfaceNodes,
   PHANTASI_CARD_EXIT_TRANSFORM,
   PHANTASI_SURFACE_CARD_CAP,
   PHANTASI_SURFACE_CARD_SELECTOR,
@@ -10,8 +12,6 @@ import {
   PHANTASI_TAG_SWAP_PAD_MS,
   phantasiSurfaceSwapWait,
   phantasiTagSwapWait,
-  chipExitFrames,
-  collectPhantasiSurfaceNodes,
   planChipLaneSwap,
 } from './phantasiChipPresence.ts'
 import { PHANTASI_TAG_EXIT_MS, phantasiTagDelay } from './phantasiTag.ts'

@@ -298,16 +298,6 @@ pub fn release_channel_name_for_self_update(channel: &str) -> &'static str {
     }
 }
 
-/// Release-channel names accepted by the UI / API: `stable` | `preview`.
-pub fn is_release_channel(s: &str) -> bool {
-    matches!(s, "stable" | "preview")
-}
-
-/// Commit-mode branch names (also valid DeployTag branch tips).
-pub fn is_commit_branch(s: &str) -> bool {
-    BRANCH_TIPS.contains(&s)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

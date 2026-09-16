@@ -184,10 +184,7 @@ function measureTextarea(
 let fieldSizingSupport: boolean | null = null
 
 export function textareaSupportsFieldSizing(): boolean {
-  if (fieldSizingSupport == null) {
-    fieldSizingSupport =
-      typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content')
-  }
+  fieldSizingSupport ??= typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content')
   return fieldSizingSupport
 }
 

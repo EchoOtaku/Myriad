@@ -69,21 +69,12 @@ pub struct DistilledReportDna {
 #[derive(Debug)]
 pub enum DistillReportDnaError {
     Db(DbErr),
-    #[allow(dead_code)]
-    AnalyzerUnavailable,
-    #[allow(dead_code)]
-    ProviderFailed,
-    #[allow(dead_code)]
-    EmptyResponse,
 }
 
 impl std::fmt::Display for DistillReportDnaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Db(error) => write!(f, "{error}"),
-            Self::AnalyzerUnavailable => write!(f, "onboarding analyzer unavailable"),
-            Self::ProviderFailed => write!(f, "report dna provider failed"),
-            Self::EmptyResponse => write!(f, "report dna empty response"),
         }
     }
 }

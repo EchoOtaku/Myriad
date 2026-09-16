@@ -208,20 +208,4 @@ impl SmartFilter {
         tracing::debug!("Loaded {} from cache", platform);
         Ok(data)
     }
-
-    /// 检查平台缓存是否存在
-    pub fn has_platform_cache(platform: &str) -> bool {
-        let cache_file = platform_filtered_file(platform);
-        cache_file.exists()
-    }
-
-    /// 清除平台缓存
-    pub fn clear_platform_cache(platform: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let cache_file = platform_filtered_file(platform);
-        if cache_file.exists() {
-            fs::remove_file(&cache_file)?;
-            tracing::info!("Cleared cache for {}", platform);
-        }
-        Ok(())
-    }
 }

@@ -23,64 +23,91 @@ function splitLines(text: string): string[] {
   return text.split('\n')
 }
 
-function firstIndex(lines: string[], start: number, needle: string): number {
-  return lines.indexOf(needle, start)
+interface Hunk {
+  start: number
+  end: number
+  lines: string[]
 }
 
-function nextShared(
-  base: string[],
-  from: number,
-  other: string[],
-  otherStart: number,
-): number {
-  for (const line of base.slice(from)) {
-    const index = firstIndex(other, otherStart, line)
-    if (index >= 0) return index
+// Trim equal edges before allocating LCS. Large changed regions stay one conservative
+// conflict instead of allocating a document-sized quadratic matrix.
+const MAX_DIFF_CELLS = 1_000_000
+function diffHunks(base: string[], next: string[]): Hunk[] {
+  let start = 0
+  while (start < base.length && start < next.length && base[start] === next[start]) start++
+  let end = base.length
+  let nextEnd = next.length
+  while (end > start && nextEnd > start && base[end - 1] === next[nextEnd - 1]) { end--; nextEnd-- }
+  const n = end - start
+  const m = nextEnd - start
+  if (!n && !m) return []
+  if (!n || !m || (n + 1) * (m + 1) > MAX_DIFF_CELLS) {
+    return [{ start, end, lines: next.slice(start, nextEnd) }]
   }
-  return other.length
+  const width = m + 1
+  const scores = new Uint32Array((n + 1) * width)
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      scores[i * width + j] = base[start + i] === next[start + j]
+        ? 1 + scores[(i + 1) * width + j + 1]!
+        : Math.max(scores[(i + 1) * width + j]!, scores[i * width + j + 1]!)
+    }
+  }
+  const hunks: Hunk[] = []
+  let i = 0
+  let j = 0
+  while (i < n || j < m) {
+    if (i < n && j < m && base[start + i] === next[start + j]) { i++; j++; continue }
+    const hunk: Hunk = { start: start + i, end: start + i, lines: [] }
+    while (i < n || j < m) {
+      if (i < n && j < m && base[start + i] === next[start + j]) break
+      if (j < m && (i === n || scores[i * width + j + 1]! > scores[(i + 1) * width + j]!)) {
+        hunk.lines.push(next[start + j++]!)
+      } else { i++ }
+    }
+    hunk.end = start + i
+    hunks.push(hunk)
+  }
+  return hunks
+}
+
+function applyHunks(base: string[], start: number, end: number, hunks: Hunk[]): string[] {
+  const out: string[] = []
+  let cursor = start
+  for (const hunk of hunks) {
+    out.push(...base.slice(cursor, hunk.start), ...hunk.lines)
+    cursor = hunk.end
+  }
+  out.push(...base.slice(cursor, end))
+  return out
 }
 
 function mergeLines(base: string[], local: string[], remote: string[]): string[] {
+  const changes = [
+    ...diffHunks(base, local).map((hunk) => ({ ...hunk, side: 0 })),
+    ...diffHunks(base, remote).map((hunk) => ({ ...hunk, side: 1 })),
+  ].sort((a, b) => a.start - b.start || a.end - b.end || a.side - b.side)
   const out: string[] = []
-  let li = 0
-  let ri = 0
-  let bi = 0
-  while (bi < base.length) {
-    const line = base[bi]
-    const localAt = firstIndex(local, li, line)
-    const remoteAt = firstIndex(remote, ri, line)
-    if (localAt >= 0 && remoteAt >= 0) {
-      out.push(...mergeInserts(local.slice(li, localAt), remote.slice(ri, remoteAt)))
-      out.push(line)
-      li = localAt + 1
-      ri = remoteAt + 1
-      bi += 1
-      continue
+  let cursor = 0
+  for (let i = 0; i < changes.length;) {
+    const first = changes[i++]!
+    const group = [first]
+    let end = first.end
+    // Boundary insertions are independent; insertions inside a replaced range conflict.
+    while (i < changes.length && (changes[i]!.start < end ||
+      (end === first.start && changes[i]!.start === end && changes[i]!.end === end))) {
+      const hunk = changes[i++]!
+      group.push(hunk)
+      end = Math.max(end, hunk.end)
     }
-    if (localAt < 0 && remoteAt >= 0) {
-      const end = nextShared(base, bi + 1, local, li)
-      out.push(...remote.slice(ri, remoteAt), ...local.slice(li, end))
-      li = end
-      ri = remoteAt + 1
-      bi += 1
-      continue
-    }
-    if (localAt >= 0 && remoteAt < 0) {
-      const end = nextShared(base, bi + 1, remote, ri)
-      out.push(...local.slice(li, localAt), ...remote.slice(ri, end))
-      ri = end
-      li = localAt + 1
-      bi += 1
-      continue
-    }
-    const localEnd = nextShared(base, bi + 1, local, li)
-    const remoteEnd = nextShared(base, bi + 1, remote, ri)
-    out.push(...mergeInserts(local.slice(li, localEnd), remote.slice(ri, remoteEnd)))
-    li = localEnd
-    ri = remoteEnd
-    bi += 1
+    out.push(...base.slice(cursor, first.start))
+    const left = group.filter((hunk) => hunk.side === 0)
+    const right = group.filter((hunk) => hunk.side === 1)
+    if (!left.length || !right.length) out.push(...applyHunks(base, first.start, end, group))
+    else out.push(...mergeInserts(applyHunks(base, first.start, end, left), applyHunks(base, first.start, end, right)))
+    cursor = end
   }
-  out.push(...mergeInserts(local.slice(li), remote.slice(ri)))
+  out.push(...base.slice(cursor))
   return out
 }
 

@@ -6,12 +6,6 @@ import agentCapsKo from './agentCaps.ko-KR.json' with { type: 'json' }
 import agentCapsZh from './agentCaps.zh-CN.json' with { type: 'json' }
 import agentCapsTw from './agentCaps.zh-TW.json' with { type: 'json' }
 import { assembleLocale } from './assembleLocale'
-import phantasiDe from './phantasi.de-DE.json' with { type: 'json' }
-import phantasiFr from './phantasi.fr-FR.json' with { type: 'json' }
-import phantasiJa from './phantasi.ja-JP.json' with { type: 'json' }
-import phantasiKo from './phantasi.ko-KR.json' with { type: 'json' }
-import phantasiZh from './phantasi.zh-CN.json' with { type: 'json' }
-import phantasiTw from './phantasi.zh-TW.json' with { type: 'json' }
 import configDe from './config.de-DE.json' with { type: 'json' }
 import configFr from './config.fr-FR.json' with { type: 'json' }
 import configJa from './config.ja-JP.json' with { type: 'json' }
@@ -34,6 +28,12 @@ import meropeJa from './merope.ja-JP.json' with { type: 'json' }
 import meropeKo from './merope.ko-KR.json' with { type: 'json' }
 import meropeZh from './merope.zh-CN.json' with { type: 'json' }
 import meropeTw from './merope.zh-TW.json' with { type: 'json' }
+import phantasiDe from './phantasi.de-DE.json' with { type: 'json' }
+import phantasiFr from './phantasi.fr-FR.json' with { type: 'json' }
+import phantasiJa from './phantasi.ja-JP.json' with { type: 'json' }
+import phantasiKo from './phantasi.ko-KR.json' with { type: 'json' }
+import phantasiZh from './phantasi.zh-CN.json' with { type: 'json' }
+import phantasiTw from './phantasi.zh-TW.json' with { type: 'json' }
 import tappDe from './tapp.de-DE.json' with { type: 'json' }
 import tappFr from './tapp.fr-FR.json' with { type: 'json' }
 import tappJa from './tapp.ja-JP.json' with { type: 'json' }

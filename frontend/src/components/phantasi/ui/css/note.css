@@ -108,6 +108,7 @@ html.dark .phantasi-note__peer {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+
   /* html 写了 scroll-behavior:smooth 且会继承。换栏时高度一变，浏览器就
    * 平滑滑进新位置，像卡进槽。写作纸只要瞬间到位，不要这条惯性。 */
   scroll-behavior: auto;
@@ -130,6 +131,7 @@ html.dark .phantasi-note__peer {
   padding: clamp(1.5rem, 6vh, 4rem)
     max(var(--note-gutter), calc((100% - var(--note-col)) / 2))
     35vh;
+
   --note-out: min(
     var(--note-wide-pad),
     max(0px, (100% - var(--note-col)) / 2 - var(--note-gutter))
@@ -152,6 +154,7 @@ html.dark .phantasi-note__peer {
   overflow: hidden;
   resize: none;
   field-sizing: content;
+
   /* 纸面已经随外壳抬起，标题只淡，避免再叠一层位移。 */
   animation: sm-fade-in var(--sm-dur-slow, 320ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
     both;
@@ -233,7 +236,7 @@ html.dark .phantasi-note__peer {
     both;
 }
 
-.phantasi-note__write:not(.phantasi-note__source):not(.is-hidden) {
+.phantasi-note__write:not(.phantasi-note__source, .is-hidden) {
   animation: sm-fade-in var(--sm-dur-base, 220ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
     both;
 }

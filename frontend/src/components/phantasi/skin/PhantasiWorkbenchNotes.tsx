@@ -23,10 +23,10 @@ import {
   workbenchNoteWhen,
 } from '../logic/workbench'
 import { noteScheduleLabel } from '../notes/noteBoard'
-import { listSelectChrome, useListSelection } from '../useListSelection'
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
-import { Thumb } from './PhantasiWorkbenchHome'
+import { listSelectChrome, useListSelection } from '../useListSelection'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
+import { Thumb } from './PhantasiWorkbenchHome'
 
 function noteTone(
   key: WorkbenchNoteStatusKey,

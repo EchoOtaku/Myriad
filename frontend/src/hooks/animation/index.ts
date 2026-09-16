@@ -12,13 +12,7 @@ export {
   startPage,
 } from './core'
 
-export {
-  phantasiAnimationPresets,
-  getPhantasiTransition,
-  playPhantasiVeilEnter,
-  playPhantasiVeilExit,
-  usePhantasiAnimationConfig,
-} from './pages/phantasi'
+export { pageIdFromPath } from './pageId'
 
 export {
   useHomeResizeObserver,
@@ -31,14 +25,20 @@ export {
   useLibraryScheduler,
 } from './pages/library'
 
-export { useTappScheduler, useTappStagger } from './pages/tapp'
+export {
+  getPhantasiTransition,
+  phantasiAnimationPresets,
+  playPhantasiVeilEnter,
+  playPhantasiVeilExit,
+  usePhantasiAnimationConfig,
+} from './pages/phantasi'
 
+export { useTappScheduler, useTappStagger } from './pages/tapp'
 export { useLoopAnimation } from './useLoopAnimation'
+
 export { usePageReady } from './usePageReady'
 
 export { usePageTransition } from './usePageTransition'
-
-export { pageIdFromPath } from './pageId'
 export { useRouteScheduler } from './useRouteScheduler'
 
 export { useStaggerAnimation } from './useStaggerAnimation'

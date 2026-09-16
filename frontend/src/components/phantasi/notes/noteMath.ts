@@ -4,10 +4,10 @@ export function looksLikeTex(tex: string): boolean {
   const t = tex.trim()
   if (!t || t.length > 4000) return false
   if (/^\d+([.,]\d+)*$/.test(t)) return false
-  if (/\\[a-zA-Z]+/.test(t)) return true
+  if (/\\[a-z]+/i.test(t)) return true
   if (/[\^_{}]/.test(t)) return true
-  if (/^[A-Za-z][A-Za-z0-9']*$/.test(t)) return true
-  return /=/.test(t) && /[A-Za-z\\]/.test(t)
+  if (/^[A-Z][A-Z0-9']*$/i.test(t)) return true
+  return /=/.test(t) && /[A-Z\\]/i.test(t)
 }
 
 export function unwrapMathDelimiters(raw: string): { tex: string; display: boolean } {

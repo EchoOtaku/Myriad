@@ -284,14 +284,12 @@ export default function Home() {
     }
   }, [hasChecked, checkAuth])
 
-  // Force server CSRF; avoid dual-cache drift after axios rotation.
+  // Refresh the server CSRF token after authentication.
   useEffect(() => {
     async function fetchCsrfToken() {
       if (isAuthenticated && hasChecked) {
         try {
           const { getCSRFToken } = await import('../utils/csrf')
-          const { invalidateCsrfCache } = await import('../utils/userInfoCache')
-          invalidateCsrfCache()
           const token = await getCSRFToken(true)
           if (token) {
             setCsrfToken(token)

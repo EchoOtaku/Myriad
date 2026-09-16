@@ -1,6 +1,7 @@
+import type { PhantasiMotionLane } from './phantasiMotion.ts'
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
 
+import { describe, it } from 'node:test'
 import { coordinator } from '../coordinator.ts'
 import { AnimationState } from '../types.ts'
 import {
@@ -9,13 +10,13 @@ import {
   phantasiMotionBusy,
   phantasiMotionClaim,
   phantasiMotionLane,
+
   phantasiMotionOwns,
   phantasiMotionQuiet,
   phantasiMotionRelease,
   phantasiMotionReset,
   whenPhantasiMotionIdle,
   whenPhantasiPeekReady,
-  type PhantasiMotionLane,
 } from './phantasiMotion.ts'
 
 function readyPhantasiPage(): void {

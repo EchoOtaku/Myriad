@@ -32,13 +32,16 @@ export function usePhantasiItems(
   const queryRef = useRef({ viewMode, topicKey })
   queryRef.current = { viewMode, topicKey }
 
-  const invalidateMembership = useCallback(() => {
-    membershipDirty.current = true
+  const cancelPageRead = useCallback(() => {
     turns.current.cancel()
     loadRequestIdRef.current++
     loadingRef.current = false
     setItemsLoading(false)
   }, [])
+  const invalidateMembership = useCallback(() => {
+    membershipDirty.current = true
+    cancelPageRead()
+  }, [cancelPageRead])
 
   const loadItems = useCallback(
     async (reset = false) => {
@@ -124,25 +127,26 @@ export function usePhantasiItems(
   loadItemsRef.current = loadItems
   const reload = useCallback(() => loadItemsRef.current(true), [])
   const removeItem = useCallback((id: number) => {
-    invalidateMembership()
+    // Removing a row does not invalidate the keyset cursor or already loaded pages.
+    cancelPageRead()
     setPage(prev => {
       const next = prev.items.filter(item => item.id !== id)
       if (next.length === prev.items.length) return prev
       return { ...prev, items: next, total: Math.max(0, prev.total - 1) }
     })
-  }, [invalidateMembership])
+  }, [cancelPageRead])
   const updateTopic = useCallback((id: number, topic: string | null) => {
     const query = queryRef.current
     if (query.viewMode === 'topic-feed' && topic !== query.topicKey) {
       removeItem(id)
       return
     }
-    invalidateMembership()
+    cancelPageRead()
     setPage(prev => ({
       ...prev,
       items: prev.items.map(item => item.id === id ? { ...item, topic } : item),
     }))
-  }, [invalidateMembership, removeItem])
+  }, [cancelPageRead, removeItem])
 
   return {
     items,

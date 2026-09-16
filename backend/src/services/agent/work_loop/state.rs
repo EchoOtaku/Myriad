@@ -27,6 +27,10 @@ pub(super) enum Wait {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Checkpoint {
+    #[serde(default)]
+    pub budget: Option<super::budget::Budget>,
+    #[serde(default)]
+    pub recipe_run: Option<super::recipes::RecipeRun>,
     pub version: u32,
     pub revision: u64,
     pub lease_id: String,
@@ -71,6 +75,14 @@ impl Checkpoint {
                 duration_ms: 0,
                 retry_count: 0,
             });
+        if self
+            .recipe_run
+            .as_ref()
+            .and_then(|frame| frame.active_call.as_ref())
+            == Some(&call.id)
+        {
+            return;
+        }
         self.history.push(ToolMessage::Tool {
             call,
             content: preview(output, RESULT_CHARS),
@@ -78,7 +90,13 @@ impl Checkpoint {
     }
 
     pub fn budget_error(&self) -> Option<&'static str> {
-        if self.pending.is_empty() && self.rounds >= MAX_ROUNDS {
+        if self
+            .budget
+            .as_ref()
+            .is_some_and(|budget| budget.remaining() == 0)
+        {
+            Some("The task reached its token budget")
+        } else if self.pending.is_empty() && self.rounds >= MAX_ROUNDS {
             Some("The task reached its model-turn limit")
         } else if self.calls >= MAX_CALLS {
             Some("The task reached its tool-call limit")

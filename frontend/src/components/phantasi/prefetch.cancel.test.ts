@@ -14,7 +14,7 @@ describe('article prefetch cancel', () => {
       readFileSync(join(phantasiDir, 'skin/PhantasiFeedsStories.tsx'), 'utf8')
     const board = readFileSync(join(phantasiDir, 'skin/PhantasiBoard.tsx'), 'utf8')
     const grid = readFileSync(join(phantasiDir, 'PhantasiSourceGrid.tsx'), 'utf8')
-    const page = readFileSync(join(viewsDir, 'Phantasi.tsx'), 'utf8')
+    const page = readFileSync(join(viewsDir, 'Phantasi.tsx'), 'utf8') + readFileSync(join(phantasiDir, 'ui/usePeekSession.ts'), 'utf8')
     const filter = readFileSync(join(phantasiDir, 'PhantasiFilterLane.tsx'), 'utf8')
     const list = readFileSync(join(phantasiDir, 'skin/PhantasiList.tsx'), 'utf8')
     assert.match(feeds, /onPeekEnd\?\.\(\)/)

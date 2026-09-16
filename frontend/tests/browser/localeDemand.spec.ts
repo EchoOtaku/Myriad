@@ -1,7 +1,9 @@
 import type { Route } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 
 test('settings catalogs load on demand and stale locale imports cannot replace the latest copy', async ({ page }) => {
+  const germanTitle = JSON.parse(readFileSync(new URL('../../src/i18n/config.de-DE.json', import.meta.url), 'utf8')).title as string
   const pending = new Map<string, Route>()
   const requested: string[] = []
   const errors: string[] = []
@@ -38,17 +40,16 @@ test('settings catalogs load on demand and stale locale imports cannot replace t
   await expect(page.getByTestId('shell')).toHaveText('読み込み中...')
   await expect.poll(() => pending.has('ja-JP')).toBe(true)
   await expect(page.getByTestId('settings-loading')).toBeVisible()
+  await expect(page.getByTestId('settings')).not.toBeVisible()
 
   await page.getByRole('button', { name: 'de-DE', exact: true }).click()
   await expect(page.getByTestId('shell')).toHaveAttribute('data-locale', 'de-DE')
   await expect.poll(() => pending.has('de-DE')).toBe(true)
   await release('de-DE')
   await expect(page.getByTestId('settings')).toHaveAttribute('data-locale', 'de-DE')
-  const germanTitle = await page.getByTestId('settings').locator('h1').textContent()
-  expect(germanTitle).toBeTruthy()
-  expect(germanTitle).not.toBe('System Configuration')
+  await expect(page.getByTestId('settings').locator('h1')).toHaveText(germanTitle)
   await page.getByRole('button', { name: 'Read settings copy' }).click()
-  await expect(page.getByTestId('event-copy')).toHaveText(germanTitle!)
+  await expect(page.getByTestId('event-copy')).toHaveText(germanTitle)
 
   const staleLoaded = page.waitForResponse(response => /config\.ja-JP\.json/.test(response.url()))
   await release('ja-JP')
@@ -56,7 +57,7 @@ test('settings catalogs load on demand and stale locale imports cannot replace t
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   await expect(page.getByTestId('shell')).toHaveAttribute('data-locale', 'de-DE')
   await expect(page.getByTestId('settings')).toHaveAttribute('data-locale', 'de-DE')
-  await expect(page.getByTestId('settings').locator('h1')).toHaveText(germanTitle!)
+  await expect(page.getByTestId('settings').locator('h1')).toHaveText(germanTitle)
   expect(requested).toEqual(['en-US', 'ja-JP', 'de-DE'])
   expect(errors).toEqual([])
 })

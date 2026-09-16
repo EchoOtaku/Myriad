@@ -29,7 +29,7 @@ export function captureNoteSelection(root: HTMLElement): NoteSelection | null {
     range.selectNodeContents(block)
     if (node === root) range.collapse(offset < blocks.length)
     else range.setEnd(node, offset)
-    return { index: blocks.indexOf(block), text: block.textContent ?? '', offset: range.toString().length }
+    return { index: blocks.findIndex(candidate => candidate === block), text: block.textContent ?? '', offset: range.toString().length }
   }
   const anchor = endpoint(selection.anchorNode, selection.anchorOffset)
   const focus = endpoint(selection.focusNode, selection.focusOffset)

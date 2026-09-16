@@ -73,17 +73,8 @@ pub use runtime_grant::{
     revoke_all_tapp_runtime_grants, revoke_runtime_grant, revoke_tapp_runtime_grants,
 };
 
-// Federation WebSocket one-time tickets (browser WS cannot carry grant headers).
-// Domain: `services::tapp_ws_ticket`. Federation gateway consumes via services;
-// mint routes stay here. Re-exports preserve `api::tapp_runtime::*` path stability.
-#[allow(unused_imports)]
-pub use ws_ticket::{
-    ConsumedWsTicket, TAPP_WS_TICKET_QUERY, WsTicketKind, consume_ws_ticket,
-    mint_channel_ws_ticket, mint_room_ws_ticket,
-};
-
-// Ensure the public query-param constant is linked (used by clients / docs).
-const _: &str = TAPP_WS_TICKET_QUERY;
+// Federation WebSocket one-time ticket mint routes.
+pub use ws_ticket::{mint_channel_ws_ticket, mint_room_ws_ticket};
 
 // Data API
 pub use data::data_transform;

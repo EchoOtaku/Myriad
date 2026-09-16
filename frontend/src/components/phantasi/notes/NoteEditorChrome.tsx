@@ -25,7 +25,7 @@ import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { phantasiMotionQuiet } from '../../../hooks/animation/pages/phantasiMotion'
 import { noteEditorStatus } from './noteBoard'
-import { noteCategoryLabel, normalizeNoteCategory } from './noteCategory'
+import { normalizeNoteCategory, noteCategoryLabel } from './noteCategory'
 import {
   NoteButton,
   NoteChip,

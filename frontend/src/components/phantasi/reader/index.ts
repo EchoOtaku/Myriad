@@ -20,7 +20,6 @@ export {
 export { Lightbox } from './Lightbox'
 export { MobileReaderBar } from './MobileReaderBar'
 export { ReaderArticleBody } from './ReaderArticleBody'
-export { ReaderTopicField } from './ReaderTopicField'
 export { default as ReaderLeftPanel } from './ReaderLeftPanel'
 export { ReaderProgressRail } from './ReaderProgress'
 export { default as ReaderRightPanel } from './ReaderRightPanel'
@@ -29,3 +28,4 @@ export {
   CommentInputPopup,
   CommentTooltip,
 } from './ReaderTooltips'
+export { ReaderTopicField } from './ReaderTopicField'

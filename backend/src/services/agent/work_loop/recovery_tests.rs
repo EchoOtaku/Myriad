@@ -230,7 +230,7 @@ async fn work_process_fixture() {
             state.history.push(ToolMessage::Assistant { turn: crate::services::analyzer::tool_calling::ToolTurn {
                 text: String::new(), calls: vec![call.clone()],
                 native: json!({"role":"assistant","content":null,"tool_calls":[{"id":call.id,"type":"function","function":{"name":call.name,"arguments":call.arguments}}]}),
-                provider: crate::services::analyzer::AiProvider::OpenAI.as_str().into(), model: Some("fixture-model".into()),
+                provider: crate::services::analyzer::AiProvider::OpenAI.as_str().into(), model: Some("fixture-model".into()), usage: None,
             }});
             store::save(&db, &mut state).await.unwrap();
             let _lease = store::lease(db.clone(), task_id.clone(), state.lease_id.clone());

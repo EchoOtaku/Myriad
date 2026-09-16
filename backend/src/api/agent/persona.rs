@@ -603,21 +603,6 @@ fn distill_error(error: merope::report_dna::DistillReportDnaError) -> HttpError 
         merope::report_dna::DistillReportDnaError::Db(error) => {
             persona_store_http("load persona reports", error)
         }
-        merope::report_dna::DistillReportDnaError::AnalyzerUnavailable => HttpError::from((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Pro model is unavailable",
-                "code": "pro_unavailable"
-            })),
-        )),
-        merope::report_dna::DistillReportDnaError::ProviderFailed
-        | merope::report_dna::DistillReportDnaError::EmptyResponse => HttpError::from((
-            StatusCode::BAD_GATEWAY,
-            Json(json!({
-                "error": "Failed to distill report signals",
-                "code": "report_dna_failed"
-            })),
-        )),
     }
 }
 

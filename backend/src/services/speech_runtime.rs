@@ -884,7 +884,6 @@ fn openai_message(error: &OpenAiSpeechError) -> String {
         OpenAiSpeechError::NetworkError(_) => "Speech service is unreachable".to_string(),
         OpenAiSpeechError::ApiError { .. } => "Speech service request failed".to_string(),
         OpenAiSpeechError::InvalidAudioData(_) => "Invalid audio data".to_string(),
-        OpenAiSpeechError::TtsNotAvailable(_) => "Official speech requires OpenAI".to_string(),
     }
 }
 

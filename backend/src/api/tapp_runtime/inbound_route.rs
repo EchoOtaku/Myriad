@@ -159,9 +159,7 @@ pub async fn execute_inbound_route(
         Ok(verified) => verified,
         Err(error) => {
             let error = match error {
-                InboundRouteError::MethodNotAllowed | InboundRouteError::RouteNotFound => {
-                    InboundRouteError::VerifyInvalid
-                }
+                InboundRouteError::MethodNotAllowed => InboundRouteError::VerifyInvalid,
                 other => other,
             };
             if matches!(

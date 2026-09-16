@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Smart filter: normalize platform raw JSON into compact filtered payloads.
 //!
 //! Real submodules: types in [`helpers`], platform pipelines in process / filter_impl /

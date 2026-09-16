@@ -7,11 +7,11 @@ import { defineConfig, fontProviders } from 'astro/config'
 import { backendDevProxyPlugin } from './scripts/astro/backendDevProxy.mjs'
 import { BACKEND_TARGET } from './scripts/astro/constants.mjs'
 import { deferNonCriticalCssIntegration } from './scripts/astro/deferNonCriticalCss.mjs'
+import { reloadOnOutdatedOptimizeDepPlugin } from './scripts/astro/reloadOnOutdatedOptimizeDep.mjs'
 import { siteBrandingStampPlugin } from './scripts/astro/siteBrandingStampPlugin.mjs'
 import { spaFallbackPlugin } from './scripts/astro/spaFallback.mjs'
 import { stripDevSourcemapsPlugin } from './scripts/astro/stripDevSourcemaps.mjs'
 import { SITE_FONTS } from './src/siteFonts.mjs'
-// rollup-plugin-visualizer is incompatible with Vite/Rolldown; do not import it.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -66,6 +66,8 @@ export default defineConfig({
       // Mid-session discovery rewrites the dep browserHash. Vite then 504s
       // the old hash, and Astro's island retry of App.tsx dies with
       // "Outdated Optimize Dep" instead of a clean full reload.
+      // Rolldown can also rename `client-*.js` without changing `?v=`;
+      // reloadOnOutdatedOptimizeDepPlugin turns that 504 into a full reload.
       noDiscovery: true,
       include: [
         'axios',
@@ -127,6 +129,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(),
+      reloadOnOutdatedOptimizeDepPlugin(),
       siteBrandingStampPlugin({ backendTarget: BACKEND_TARGET, frontendRoot: __dirname }),
       backendDevProxyPlugin(),
       spaFallbackPlugin(),

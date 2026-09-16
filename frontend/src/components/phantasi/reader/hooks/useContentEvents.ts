@@ -1,5 +1,5 @@
-import type { CommentItem } from '../../../../services/phantasiApi'
 import type { AnnotationItem, AnnotationType } from '../../../../services/phantasiaiApi'
+import type { CommentItem } from '../../../../services/phantasiApi'
 import type { ReaderCopy } from '../types'
 import { useCallback, useEffect, useRef } from 'react'
 import { playNeteaseSong } from '../../../../utils/embedProcessor'

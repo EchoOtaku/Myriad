@@ -9,8 +9,6 @@ interface UsePhantasiKeyboardOptions {
   onSelectItem: (item: PhantasiItem | null) => void
   onToggleRead?: (item: PhantasiItem) => void
   onToggleStar?: (item: PhantasiItem) => void
-  onRefresh?: () => void
-  onAddSource?: () => void
   onMarkAllRead?: () => void
   onCloseReader?: () => void
   onShowHelp?: () => void
@@ -26,14 +24,12 @@ export type ShortcutDescKey =
   | 'shortcutDescToggleRead'
   | 'shortcutDescToggleStar'
   | 'shortcutDescMarkAllRead'
-  | 'shortcutDescRefreshSource'
-  | 'shortcutDescAddSource'
   | 'shortcutDescShowHelp'
 
 interface KeyboardShortcut {
   key: string
   descriptionKey: ShortcutDescKey
-  category: 'navigation' | 'article' | 'source' | 'other'
+  category: 'navigation' | 'article' | 'other'
 }
 
 export const PHANTASI_SHORTCUTS: KeyboardShortcut[] = [
@@ -71,9 +67,6 @@ export const PHANTASI_SHORTCUTS: KeyboardShortcut[] = [
     category: 'article',
   },
 
-  { key: 'r', descriptionKey: 'shortcutDescRefreshSource', category: 'source' },
-  { key: 'a', descriptionKey: 'shortcutDescAddSource', category: 'source' },
-
   { key: '?', descriptionKey: 'shortcutDescShowHelp', category: 'other' },
 ]
 
@@ -84,8 +77,6 @@ export function usePhantasiKeyboard({
   onSelectItem,
   onToggleRead,
   onToggleStar,
-  onRefresh,
-  onAddSource,
   onMarkAllRead,
   onCloseReader,
   onShowHelp,
@@ -188,18 +179,10 @@ export function usePhantasiKeyboard({
           }
           break
 
-        case 'r':
-          e.preventDefault()
-          onRefresh?.()
-          break
-
         case 'a':
           if (e.shiftKey) {
             e.preventDefault()
             onMarkAllRead?.()
-          } else {
-            e.preventDefault()
-            onAddSource?.()
           }
           break
 
@@ -223,8 +206,6 @@ export function usePhantasiKeyboard({
       onSelectItem,
       onToggleRead,
       onToggleStar,
-      onRefresh,
-      onAddSource,
       onMarkAllRead,
       onCloseReader,
       onShowHelp,

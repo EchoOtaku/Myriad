@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { daysAgo, makeSource, NOW } from './fixtures.ts'
 import {
-  phantasiScore,
   bucketScore,
   compareByScore,
   daysSinceLastPublish,
   lastPublishAt,
+  phantasiScore,
   roleFromAuth,
   SCORE_BUCKET,
   SCORE_WEIGHTS,

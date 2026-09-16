@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { widgetDisplayLabel, widgetSearchExtras } from '../../widgetLibraryModel'
 import { widgetTypeMatchesLibrarySearch } from '../../widgetLibrarySearch'
-import { NOTE_WIDGET_SIZES, normalizeNoteWidgetSize } from './noteLayout'
+import { normalizeNoteWidgetSize, NOTE_WIDGET_SIZES } from './noteLayout'
 
 interface NoteWidgetPickerProps {
   open: boolean

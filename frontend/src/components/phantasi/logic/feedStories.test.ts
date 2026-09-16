@@ -15,26 +15,26 @@ import {
   LATEST_FEED_STACK,
   latestFeedStackFaces,
   latestFeedStories,
-  railGroupSourceCount,
-  topicFeedId,
-  topicFeedStories,
-  stackFaceWindow,
   latestStoryPreview,
-  storyRailGroup,
+  railGroupSourceCount,
   reuseFeedStories,
   sameFeedStory,
+  shuffleBySeed,
   sourceColumnStarts,
   sourceScrollStarts,
+  stackFaceWindow,
   stitchStoriesBySources,
   storiesForSource,
-  shuffleBySeed,
   storiesFromSources,
   storyColumnLeads,
   storyColumnShift,
+  storyRailGroup,
   storyRailSlots,
   storySlotAtColumn,
   storySlotsByColumn,
   toFeedStory,
+  topicFeedId,
+  topicFeedStories,
 } from './feedStories.ts'
 import { makeItem, makePreview, makeSource } from './fixtures.ts'
 
@@ -614,4 +614,3 @@ describe('latestStoryPreview', () => {
     assert.equal(latestStoryPreview(null, null), undefined)
   })
 })
-

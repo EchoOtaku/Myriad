@@ -51,7 +51,7 @@ describe('hasNoteWidgetMarkup', () => {
 
   it('只认占位上的实例配置，不搬首页宫格', () => {
     assert.doesNotMatch(mount, /useHomeWidgetDefaults|homeWidgetConfigsFromUi|widgetPreviewConfig/)
-    assert.match(mount, /\.\.\.widgetHostConfig\(widgetType\.id\),\s*\n\s*\.\.\.instanceConfig/)
+    assert.match(mount, /\.\.\.widgetHostConfig\(widgetType\.id\),[\t\v\f\r \xA0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]*\n\s*\.\.\.instanceConfig/)
   })
 
   it('从这棵树上 portal 进去，不另开 createRoot，也不造 MemoryRouter', () => {

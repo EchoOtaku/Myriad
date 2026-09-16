@@ -119,7 +119,6 @@ pub fn installed_widget_layer_paths(
 }
 
 /// Every layer entry declared by a stored manifest, in a stable order.
-#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 pub fn installed_layer_entries(manifest: &serde_json::Value) -> Vec<String> {
     let mut entries = Vec::new();
     if let Some(entry) = installed_core_entry(manifest) {
@@ -199,7 +198,6 @@ pub fn manifest_declares_widgets(manifest: &serde_json::Value) -> bool {
 /// For payloads already validated against the current contract. Serving
 /// installed packages must use [`installed_manifest_declares_asset`], which
 /// reads by key and cannot fail on a manifest from another contract version.
-#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 pub fn manifest_declares_asset(
     manifest: &myriad_tapp_contract::manifest::TappManifest,
     path: &str,

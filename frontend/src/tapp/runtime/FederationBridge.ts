@@ -482,7 +482,6 @@ export function registerFederationHandlers(
 
   const objectIdHandler =
     (
-      action: string,
       fn: (
         objectId: string,
         runtimeGrant?: string,
@@ -503,19 +502,19 @@ export function registerFederationHandlers(
 
   bridge.registerHandler(
     'federation.like',
-    objectIdHandler('like', (id, g) => federationApi.like(id, g)),
+    objectIdHandler((id, g) => federationApi.like(id, g)),
   )
   bridge.registerHandler(
     'federation.unlike',
-    objectIdHandler('unlike', (id, g) => federationApi.unlike(id, g)),
+    objectIdHandler((id, g) => federationApi.unlike(id, g)),
   )
   bridge.registerHandler(
     'federation.bookmark',
-    objectIdHandler('bookmark', (id, g) => federationApi.bookmark(id, g)),
+    objectIdHandler((id, g) => federationApi.bookmark(id, g)),
   )
   bridge.registerHandler(
     'federation.unbookmark',
-    objectIdHandler('unbookmark', (id, g) => federationApi.unbookmark(id, g)),
+    objectIdHandler((id, g) => federationApi.unbookmark(id, g)),
   )
   bridge.registerHandler('federation.announce', async (message: TappMessage) => {
     const args = (message.payload as { args: unknown[] }).args || []
@@ -537,7 +536,7 @@ export function registerFederationHandlers(
   })
   bridge.registerHandler(
     'federation.unannounce',
-    objectIdHandler('unannounce', (id, g) => federationApi.unannounce(id, g)),
+    objectIdHandler((id, g) => federationApi.unannounce(id, g)),
   )
 
   bridge.registerHandler('federation.getBookmarks', async () => {

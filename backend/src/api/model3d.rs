@@ -312,7 +312,6 @@ mod tests {
 
     fn runtime_config() -> TripoRuntimeConfig {
         TripoRuntimeConfig {
-            enabled: true,
             api_key: "test".to_string(),
             base_url: DEFAULT_BASE_URL.to_string(),
             model: DEFAULT_MODEL.to_string(),

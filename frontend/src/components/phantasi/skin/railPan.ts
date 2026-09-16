@@ -3,6 +3,7 @@
 import type { FeedStory } from '../logic/feedStories'
 import type { TimeTranslations } from '../types'
 
+import type { StoryCardFace } from './storyFace'
 import {
   clampConversationScroll,
   CONVERSATION_FADE_PX,
@@ -11,8 +12,8 @@ import {
 import {
   cloneStoryCardInner,
   storyCardFace,
+
   storyCardInnerHtml,
-  type StoryCardFace,
 } from './storyFace'
 
 /** 比对话轨略慢，才能看见下一张进来。 */

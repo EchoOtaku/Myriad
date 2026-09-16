@@ -7,8 +7,6 @@ import {
   LuChevronDown,
   LuChevronUp,
   LuKeyboard,
-  LuPlus,
-  LuRefreshCw,
   LuSearch,
   LuStar,
   LuX,
@@ -26,15 +24,12 @@ const SHORTCUT_ICON: Record<ShortcutDescKey, ReactNode> = {
   shortcutDescToggleRead: <LuCheckCircle />,
   shortcutDescToggleStar: <LuStar />,
   shortcutDescMarkAllRead: <LuCheckSquare />,
-  shortcutDescRefreshSource: <LuRefreshCw />,
-  shortcutDescAddSource: <LuPlus />,
   shortcutDescShowHelp: <LuKeyboard />,
 }
 
 const GROUPS = [
   'navigation',
   'article',
-  'source',
   'other',
 ] as const
 
@@ -50,7 +45,6 @@ export function PhantasiSearchGuide() {
   const labels = {
     navigation: phantasi.shortcutNavigation,
     article: phantasi.shortcutArticle,
-    source: phantasi.shortcutSource,
     other: phantasi.shortcutOther,
   }
 

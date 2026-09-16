@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
-import { PhantasiSearchGuide } from './PhantasiSearchGuide'
 import { cx } from './cx'
+import { PhantasiSearchGuide } from './PhantasiSearchGuide'
 
 export const phantasiSearchInputRef: { current: HTMLInputElement | null } = {
   current: null,

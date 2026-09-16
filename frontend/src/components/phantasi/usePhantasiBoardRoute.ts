@@ -5,23 +5,24 @@ import type {
   PhantasiViewMode,
   WorkbenchPane,
 } from './logic/board'
-import type { JournalLocation } from './logic/journalRoutes'
+import type { PendingPathSync } from './logic/boardRouteSync'
 
+import type { JournalLocation } from './logic/journalRoutes'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { resolveBoardParam, viewForBoardEntry } from './logic/board'
 import {
+  decideNavWrite,
+  decidePathSync,
+
+} from './logic/boardRouteSync'
+import {
   JOURNAL_ROOT,
-  WORKBENCH_PANE_PATHS,
   journalListPath,
   journalSourcePath,
   journalTopicPath,
   parseJournalPath,
+  WORKBENCH_PANE_PATHS,
 } from './logic/journalRoutes'
-import {
-  decideNavWrite,
-  decidePathSync,
-  type PendingPathSync,
-} from './logic/boardRouteSync'
 import { normalizeTopicName } from './logic/topics'
 
 function applyLocationState(

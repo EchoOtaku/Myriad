@@ -23,9 +23,6 @@ use crate::services::tapp_validation::{
 pub enum DeclaredResourceKind {
     /// UTF-8 text entrypoint / CSS / HTML / widget templates.
     Text,
-    /// Unused. Install classifies page layer files as Text.
-    #[allow(dead_code)]
-    PageModule,
     /// Agent interaction JSON schema (size-bounded + subset schema rules).
     AgentSchema,
     /// Binary-allowed package asset under `assets/`.
@@ -327,10 +324,6 @@ Every layer entry and layer resource declared in the manifest must ship in the p
 
 pub fn not_regular_in_sandbox(relative: &str) -> String {
     format!("Declared Tapp resource is not a regular in-sandbox file: {relative}")
-}
-
-pub fn not_regular_file(relative: &str) -> String {
-    format!("Declared Tapp resource is not a regular file: {relative}")
 }
 
 pub fn resource_not_found(relative: &str) -> String {

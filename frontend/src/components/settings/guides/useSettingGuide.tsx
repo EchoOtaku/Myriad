@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { SettingGuideEntry } from './types'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConfigI18n as useI18n } from '../../../contexts/I18nContext'
 import {
   getSettingGuidesCatalog,

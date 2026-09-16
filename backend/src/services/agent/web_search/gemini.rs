@@ -167,6 +167,11 @@ async fn grounding_generate(
         "generationConfig": generation_config
     });
 
+    let request_body = crate::services::analyzer::request_budget::prepare(
+        &request_body,
+        crate::services::analyzer::AiProvider::Gemini,
+    )
+    .map_err(|error| error.to_string())?;
     let url = crate::services::http_client::GeminiApiUrl::generate_content_url(model).await;
     let client = crate::services::http_client::get_gemini_grounding_client().await;
     let response = client

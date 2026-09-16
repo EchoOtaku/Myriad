@@ -22,7 +22,7 @@ use crate::services::tapp_rate_limit::{self, RateLimitError};
 pub use crate::services::platform_cache::{
     get_available_platforms, get_cached_platform_data, validate_platform_name,
 };
-// acquire_platform_lock / update_cached_platform_data: import from services::platform_cache
+// acquire_platform_lock / invalidate_cached_platform_data: import from services::platform_cache
 // (write paths use append_filtered_items / write_filtered_document).
 
 // 速率限制器

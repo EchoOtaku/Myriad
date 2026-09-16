@@ -177,7 +177,6 @@ fn test_users_schema_includes_token_version() {
         .iter()
         .find(|c| c.name == "token_version")
         .expect("users must define token_version (MYR-005 session epoch)");
-    assert!(!col.is_nullable);
     assert_eq!(col.default_value.as_deref(), Some("0"));
 }
 
@@ -193,7 +192,6 @@ fn test_users_schema_includes_locale() {
         .iter()
         .find(|c| c.name == "locale")
         .expect("users must define locale (account UI language)");
-    assert!(col.is_nullable);
     assert_eq!(col.data_type, "character varying");
 }
 
@@ -210,7 +208,6 @@ fn test_agent_addressee_schema_includes_music_mood_cooldown() {
         .find(|column| column.name == "music_mood_credited_at")
         .expect("music mood cooldown must be durable and field-healed");
     assert_eq!(column.data_type, "timestamp with time zone");
-    assert!(column.is_nullable);
 }
 
 #[test]
@@ -371,13 +368,12 @@ fn test_tapps_schema_includes_approved_permissions() {
         .find(|c| c.name == "approved_permissions")
         .expect("tapps.approved_permissions must be in expected schema (002 + generic ADD)");
     assert_eq!(col.data_type, "jsonb");
-    assert!(!col.is_nullable);
     assert_eq!(col.default_value.as_deref(), Some("'[]'"));
 }
 
 #[test]
 fn test_tapps_schema_includes_needs_reauthorization_marker() {
-    // Durable re-authorization marker, non-null, default false.
+    // Durable re-authorization marker, default false.
     let tables = get_expected_schema();
     let tapps = tables
         .iter()
@@ -389,7 +385,6 @@ fn test_tapps_schema_includes_needs_reauthorization_marker() {
         .find(|c| c.name == "needs_reauthorization")
         .expect("tapps.needs_reauthorization must be in expected schema (002 + 016 + generic ADD)");
     assert_eq!(col.data_type, "boolean");
-    assert!(!col.is_nullable);
     assert_eq!(col.default_value.as_deref(), Some("false"));
 }
 
@@ -410,7 +405,6 @@ fn test_tapp_storage_schema_includes_credential_fields() {
             .find(|column| column.name == name)
             .unwrap_or_else(|| panic!("tapp_storage.{name} must be field-healed"));
         assert_eq!(column.data_type, data_type);
-        assert!(column.is_nullable);
     }
 }
 
@@ -419,7 +413,6 @@ fn test_generate_add_column_ddl() {
     let col = ColumnDef {
         name: "test_col".into(),
         data_type: "VARCHAR(255)".into(),
-        is_nullable: true,
         default_value: Some("'default'".into()),
     };
 

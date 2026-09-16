@@ -95,15 +95,6 @@ impl DockerClient {
         Ok(info.config.and_then(|c| c.image).unwrap_or_default())
     }
 
-    /// Docker healthcheck status if defined: "healthy" | "unhealthy" | "starting" | …
-    pub async fn container_health_status(&self, name: &str) -> Option<String> {
-        let info = self.inner.inspect_container(name, None).await.ok()?;
-        info.state?
-            .health?
-            .status
-            .map(|s| s.to_string().to_ascii_lowercase())
-    }
-
     /// Inspect a container by name and return whether it is running.
     pub async fn is_running(&self, name: &str) -> Result<bool> {
         let info = self

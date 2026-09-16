@@ -6,14 +6,12 @@
  */
 
 import type { WidgetType } from '../../widgetGridTypes'
-import { WIDGET_SIZE_KEYS, type WidgetSizeKey } from '../../../utils/widgetSizeScale'
+import { WIDGET_SIZE_KEYS } from '../../../utils/widgetSizeScale'
 
 export const NOTE_MAX_COLUMNS = 4
 
 /** 工具条和原文合法键跟宫格同一份，和后端 layout.rs 对齐。 */
 export const NOTE_WIDGET_SIZES = WIDGET_SIZE_KEYS
-
-export type NoteWidgetSize = WidgetSizeKey
 
 /** 原文 JSON 和 `data-config` 解码后的上限。再长就丢掉，不当配置。 */
 export const NOTE_WIDGET_CONFIG_MAX = 2048
@@ -24,7 +22,7 @@ const COLUMNS_OPEN = /^:::columns\s*$/
 const COLUMN_MARK = /^:::col\s*$/
 const FENCE_CLOSE = /^:::\s*$/
 
-export type MdFence = { ch: '`' | '~'; n: number }
+export interface MdFence { ch: '`' | '~'; n: number }
 
 export function mdFenceOpen(line: string): MdFence | null {
   const t = line.replace(/^ {0,3}/, '')
@@ -66,10 +64,6 @@ export type NoteLayoutSegment =
       start: number
       end: number
     }
-
-export function isNoteWidgetSize(size: string): size is NoteWidgetSize {
-  return (NOTE_WIDGET_SIZES as readonly string[]).includes(size)
-}
 
 export function normalizeNoteWidgetSize(size: string | undefined): string {
   if (size && (WIDGET_SIZE_KEYS as readonly string[]).includes(size)) return size
@@ -163,7 +157,7 @@ export function parseWidgetDirective(line: string): {
   if (after.length > 0 && !/^[ \t]/.test(after)) return null
 
   const rest = after.replace(/^[ \t]+/, '')
-  const typeMatch = /^([A-Za-z][A-Za-z0-9._-]*)/.exec(rest)
+  const typeMatch = /^([A-Z][\w.-]*)/i.exec(rest)
   if (!typeMatch) return null
   const type = typeMatch[1]!.toLowerCase()
   if (!isWidgetType(type)) return null
@@ -173,7 +167,7 @@ export function parseWidgetDirective(line: string): {
   remain = remain.replace(/^[ \t]+/, '')
 
   let sizeRaw: string | undefined
-  const sizeMatch = /^([0-9]+x[0-9]+)/.exec(remain)
+  const sizeMatch = /^(\d+x\d+)/.exec(remain)
   if (sizeMatch) {
     const afterSize = remain.slice(sizeMatch[1]!.length)
     if (afterSize.length === 0 || /^[ \t]/.test(afterSize)) {

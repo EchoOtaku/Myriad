@@ -14,14 +14,19 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useImmersiveChrome } from '../../contexts/NavigationContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import {
-  phantasiAnimationPresets,
   getPhantasiTransition,
+  phantasiAnimationPresets,
   usePhantasiAnimationConfig,
 } from '../../hooks/animation'
 import { isExlight } from '../../hooks/useAnimationLevel'
 import { authSubject } from '../../utils/authSubject'
 import { showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
+import { getIconUrl } from './constants'
+import { isNoteStorySource, storySourceFace } from './notes/noteSiteSource'
+import { preloadNoteWidgets, useNoteWidgetCatalog } from './notes/noteWidgetCatalog'
+import { hasNoteWidgetMarkup, noteWidgetTypesInHtml } from './notes/noteWidgetHtml'
+import { useNoteWidgetHydration } from './notes/noteWidgetMount'
 import {
   AnnotationTooltip,
   CommentInputPopup,
@@ -45,11 +50,6 @@ import {
   useReaderControls,
   useReaderSettings,
 } from './reader'
-import { getIconUrl } from './constants'
-import { hasNoteWidgetMarkup, noteWidgetTypesInHtml } from './notes/noteWidgetHtml'
-import { isNoteStorySource, storySourceFace } from './notes/noteSiteSource'
-import { preloadNoteWidgets, useNoteWidgetCatalog } from './notes/noteWidgetCatalog'
-import { useNoteWidgetHydration } from './notes/noteWidgetMount'
 import {
   idleAnnotations,
   idleComments,
@@ -305,7 +305,6 @@ function ReaderSessionBody({
           isPhantasiai: sourceType === 'phantasiai',
         },
       })
-
     }
 
     return () => {

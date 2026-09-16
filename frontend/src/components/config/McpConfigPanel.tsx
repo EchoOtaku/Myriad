@@ -4,7 +4,7 @@ import type {
   ManagedListStat,
   ManagedListTone,
 } from '../settings/ManagedList'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { FaEdit, FaPlus, FaSearch, FaSyncAlt, LuServer } from '../../lib/icons'

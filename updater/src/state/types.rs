@@ -271,6 +271,7 @@ pub struct JobStep {
     pub started_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
     pub ok: Option<bool>,
+    /// Retained for persisted job and API compatibility; new steps have no log producer.
     pub log_tail: String,
     pub error: Option<String>,
 }

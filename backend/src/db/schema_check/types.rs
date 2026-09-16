@@ -5,8 +5,6 @@
 pub(crate) struct ColumnDef {
     pub name: String,
     pub data_type: String,
-    #[allow(dead_code)]
-    pub is_nullable: bool,
     pub default_value: Option<String>,
 }
 

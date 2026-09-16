@@ -10,7 +10,6 @@ import {
   subscribeAgentSelection,
   turnSelectionText,
 } from '../../../components/agent-panel/agentSelection'
-import { subscribeScreenConsent } from '../../../components/agent-panel/screenConsent'
 import {
   getCurrentPageContent,
   subscribeCurrentPageContent,
@@ -200,7 +199,7 @@ export async function reportPresence(reason: string): Promise<void> {
   if (!inboundArmed) {
     return
   }
-  const consentChange = reason === 'page-consent' || reason === 'screen-consent'
+  const consentChange = reason === 'page-consent'
   if (documentIsHidden() && reason !== 'visibility' && !consentChange) {
     return
   }
@@ -310,9 +309,6 @@ export function startPresenceInbound(): () => void {
     const stopConsent = subscribeAgentContextConsent(() => {
       void reportPresence('page-consent')
     })
-    const stopScreen = subscribeScreenConsent(() => {
-      void reportPresence('screen-consent')
-    })
     const stopVoice = subscribeVoicePresence(() => {
       const playing = getVoicePresence().ttsPlaying
       if (lastTtsPlaying === playing) return
@@ -339,7 +335,6 @@ export function startPresenceInbound(): () => void {
         document.removeEventListener('visibilitychange', onVisibility)
       }
       stopConsent()
-      stopScreen()
       stopVoice()
       stopSong()
       stopPage()

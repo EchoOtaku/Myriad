@@ -53,7 +53,7 @@ export function collectWorkbenchNoteTopics(
   return [...names].toSorted((a, b) => a.localeCompare(b, 'zh'))
 }
 
-export type WorkbenchNoteAuthor = {
+export interface WorkbenchNoteAuthor {
   user_id: number
   user_name?: string
   user_display_name?: string
@@ -447,13 +447,13 @@ function plainNoteExcerpt(markdown: string): string {
   text = text.replace(/!\[[^\]]*\]\[[^\]]*\]/g, ' ')
   text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
   text = text.replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
-  text = text.replace(/^\s*\[(?!\^)[^\]]+\]:\s+\S+.*$/gm, ' ')
+  text = text.replace(/^\s*\[(?!\^)[^\]]+\]:\s+\S.*$/gm, ' ')
   text = text.replace(/^\s*\[\^[^\]]+\]:.*$/gm, ' ')
   text = text.replace(/\[\^[^\]]+\]/g, '')
   text = text.replace(/^\s{0,3}#{1,6}\s+/gm, '')
   text = text.replace(/^\s{0,3}>\s?/gm, '')
-  text = text.replace(/^\s{0,3}(?:[-*+]|\d+\.)\s+(?:\[[ xX]\]\s+)?/gm, '')
-  text = text.replace(/^\s{0,3}(?:[-*_]){3,}\s*$/gm, ' ')
+  text = text.replace(/^\s{0,3}(?:[-*+]|\d+\.)\s+(?:\[[ x]\]\s+)?/gim, '')
+  text = text.replace(/^\s{0,3}[-*_]{3,}\s*$/gm, ' ')
   text = text.replace(/`([^`]+)`/g, '$1')
   text = text.replace(/(\*\*|__)(.*?)\1/g, '$2')
   text = text.replace(/(\*|_)(.*?)\1/g, '$2')

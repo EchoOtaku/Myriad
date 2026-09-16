@@ -1,14 +1,14 @@
 import type { FrontendAction, PageElementTarget } from '../services/agent'
 import { useCallback, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  isJournalAppPath,
+} from '../components/phantasi/logic/journalRoutes'
 import { currentCopy } from '../i18n/localeCopy'
 import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../services/agent'
-import {
-  isJournalAppPath,
-} from '../components/phantasi/logic/journalRoutes'
 import { phantasiSubject } from '../utils/phantasiSubject'
 import { useMusicPlayerControl } from './MusicPlayerContext'
 
@@ -823,8 +823,6 @@ export function AgentGlobalActions() {
   )
 
   useEffect(() => {
-    console.log('[AgentGlobalActions] Registering global action handlers')
-
     registerActionHandler('navigate', handleNavigate)
     registerActionHandler('page_interact', handlePageInteract)
     registerActionHandler('phantasi_open_article', handlePhantasiOpenArticle)
@@ -840,7 +838,6 @@ export function AgentGlobalActions() {
     registerActionHandler('show_report', handleShowReport)
 
     return () => {
-      console.log('[AgentGlobalActions] Unregistering global action handlers')
       releasePlayAudio()
       unregisterActionHandler('navigate')
       unregisterActionHandler('page_interact')

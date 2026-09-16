@@ -79,6 +79,10 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
                 .delete(note_docs::delete_note_doc),
         )
         .route(
+            "/notes/docs/{id}/topic",
+            put(note_docs::update_note_doc_topic),
+        )
+        .route(
             "/notes/docs/{id}/publish",
             post(note_docs::publish_note_doc),
         )

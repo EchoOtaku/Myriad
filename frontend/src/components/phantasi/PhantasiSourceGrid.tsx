@@ -1,5 +1,4 @@
 import type {
-  AddSourceInput,
   PhantasiItemPreview,
   PhantasiNoteDoc,
   PhantasiSource,
@@ -48,8 +47,6 @@ interface PhantasiSourceGridProps {
   onRailFocus?: (sourceId: number | null) => void
   onSourceClick: (source: PhantasiSource) => void
   onRefreshSource: (sourceId: number) => void
-  onSourcesChange?: () => void
-  onAddSource?: (input: AddSourceInput) => Promise<void>
   onUpdateSource?: (id: number, data: UpdateSourceRequest) => Promise<void>
   onDiscoverSource?: (url: string) => Promise<{
     url: string
@@ -61,10 +58,6 @@ interface PhantasiSourceGridProps {
     sourceId: number,
     signal?: AbortSignal,
   ) => Promise<{ success: boolean; tags?: string[] }>
-  onImportOpml?: (
-    content: string,
-    signal?: AbortSignal,
-  ) => Promise<{ imported: number; skipped: number }>
   onRemoveSources?: (ids: number[]) => Promise<void>
   onOpenItem: (item: PhantasiItemPreview, source: PhantasiSource) => void
   onPeekItem?: (item: PeekStoryPreview) => void

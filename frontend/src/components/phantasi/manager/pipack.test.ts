@@ -2,14 +2,14 @@ import type { PhantasiSource } from '../../../types/phantasi'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  PIPACK_LEGACY_VERSION,
-  PIPACK_VERSION,
   buildPipackManifest,
   categoryToPackEntry,
   dataImageInfo,
   isDataImageUrl,
   normalizePipackUrl,
   parsePipackManifest,
+  PIPACK_LEGACY_VERSION,
+  PIPACK_VERSION,
   resolvePackIcon,
   rsshubInstanceToPackEntry,
   sourceAddPayload,

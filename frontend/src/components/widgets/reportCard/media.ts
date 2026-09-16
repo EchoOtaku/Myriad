@@ -1,4 +1,4 @@
-import { proxyImageUrl, proxyImageUrlOr } from '../../../utils/proxyImageUrl'
+import { proxyImageUrlOr } from '../../../utils/proxyImageUrl'
 
 export function normalizeHttpsMediaUrl(url?: string | null): string | null {
   if (!url || typeof url !== 'string') return null
@@ -17,13 +17,6 @@ export function normalizeXboxMediaUrl(url?: string | null): string | null {
     '://images-eds.xboxlive.com',
     '://images-eds-ssl.xboxlive.com',
   )
-}
-
-// 仅用于未走 extractCardVisuals 的路径；报告卡 body 走入口 normalizeJsonMediaUrls。
-export function resolveMediaUrl(url?: string | null): string | null {
-  const base = normalizeHttpsMediaUrl(url)
-  if (!base) return null
-  return proxyImageUrl(base) ?? base
 }
 
 // B 站封面无图占位，有图走 proxy。

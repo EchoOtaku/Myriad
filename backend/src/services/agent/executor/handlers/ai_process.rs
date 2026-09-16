@@ -646,6 +646,11 @@ async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, St
         force_regenerate,
     };
 
+    let (input, output) = crate::services::ai_cost_ledger::estimate_tts_tokens(text);
+    crate::services::analyzer::request_budget::charge_units(
+        input.max(0) as u64 + output.max(0) as u64,
+    )
+    .map_err(|error| error.to_string())?;
     let response = synthesize_standalone_tts(&request).await?;
     let audio = response
         .audio

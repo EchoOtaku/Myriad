@@ -1,5 +1,3 @@
-import React from 'react'
-
 export function AnthropicMark() {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden>

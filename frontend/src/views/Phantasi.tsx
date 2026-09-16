@@ -16,10 +16,6 @@ import {
   useMatch,
   useNavigate,
 } from 'react-router-dom'
-import {
-  cancelArticlePrefetch,
-  prefetchArticleDetails,
-} from '../components/phantasi/articlePrefetch'
 import { phantasiBoardNavItems } from '../components/phantasi/boardNav'
 import {
   filterItemsByQuery,
@@ -33,22 +29,14 @@ import {
 import { journalItemPath } from '../components/phantasi/logic/journalRoutes'
 import { shouldPopOpenedItem } from '../components/phantasi/logic/phantasiItemRoute'
 import { topicDisplayName } from '../components/phantasi/logic/topics'
-import { storySourceFace } from '../components/phantasi/notes/noteSiteSource'
 import PhantasiFilterLane from '../components/phantasi/PhantasiFilterLane'
 import PhantasiSourceGrid from '../components/phantasi/PhantasiSourceGrid'
 import { PhantasiViewLane } from '../components/phantasi/skin/PhantasiChip'
 import { AnimatePresence, PhantasiPage } from '../components/phantasi/skin/PhantasiPage'
 import {
-  decidePeekSettle,
-  notePeekPointer,
-} from '../components/phantasi/ui/peekLane'
-import {
-  applyPeekFace,
-  PHANTASI_PEEK_HANDOFF_MS,
   PhantasiPeekAir,
   readPeekFace,
   subscribePeekFace,
-  toPhantasiPeekFace,
   writePeekFace,
 } from '../components/phantasi/ui/PhantasiPeekAir'
 import {
@@ -56,12 +44,7 @@ import {
   phantasiSearchInputRef,
   showPhantasiSearchGuide,
 } from '../components/phantasi/ui/PhantasiSearch'
-import {
-  cancelPhantasiPeekResume,
-  clearPhantasiStoryPeeks,
-  resumePhantasiStoryPeek,
-  schedulePhantasiPeekResume,
-} from '../components/phantasi/ui/StoryCard'
+import { usePeekSession } from '../components/phantasi/ui/usePeekSession'
 import { usePhantasiAgentOpen } from '../components/phantasi/usePhantasiAgentOpen'
 import { usePhantasiBoardRoute } from '../components/phantasi/usePhantasiBoardRoute'
 import { usePhantasiItemActions } from '../components/phantasi/usePhantasiItemActions'
@@ -77,11 +60,6 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useReadingListOptional } from '../contexts/ReadingListContext'
-import { cancelIdleTask, scheduleIdleTask } from '../hooks/animation'
-import {
-  onPhantasiMotion,
-  phantasiMotionBusy,
-} from '../hooks/animation/pages/phantasiMotion'
 import { usePhantasiKeyboard } from '../hooks/usePhantasiKeyboard'
 import {
   canAccessModuleVisibility,
@@ -386,8 +364,6 @@ function PhantasiSubjectPage() {
     onSelectItem: handleKeyboardSelect,
     onToggleRead: actions.toggleRead,
     onToggleStar: isAdmin ? actions.toggleStar : undefined,
-    onRefresh: () => {},
-    onAddSource: () => {},
     onMarkAllRead: actions.markAllRead,
     onCloseReader: handleCloseReader,
     onShowHelp: showPhantasiSearchGuide,
@@ -408,107 +384,10 @@ function PhantasiSubjectPage() {
     return () => window.cancelIdleCallback(id)
   }, [isAdmin, sources.booting])
 
-  const peekFace = useSyncExternalStore(
-    subscribePeekFace,
-    readPeekFace,
-    readPeekFace,
+  const { handlePeekItem, handlePeekEnd, resumePeekAfterLane } = usePeekSession(
+    location.pathname,
+    !!item.selectedItem || notes.noteEditor !== null,
   )
-  const peekEndTimer = useRef(0)
-  const dropPeekSession = useCallback(() => {
-    window.clearTimeout(peekEndTimer.current)
-    peekEndTimer.current = 0
-    cancelIdleTask('phantasi-peek-warm')
-    cancelPhantasiPeekResume()
-    cancelArticlePrefetch()
-    clearPhantasiStoryPeeks()
-    writePeekFace(null)
-  }, [])
-  const handlePeekItem = useCallback(
-    (item: {
-      id: number
-      title: string
-      image?: string | null
-      source_name?: string | null
-      source_icon?: string | null
-      source_type?: string | null
-      guid?: string | null
-    }) => {
-      window.clearTimeout(peekEndTimer.current)
-      peekEndTimer.current = 0
-      cancelIdleTask('phantasi-peek-warm')
-      applyPeekFace(toPhantasiPeekFace(item, storySourceFace(item)))
-      const id = item.id
-      scheduleIdleTask(
-        'phantasi-peek-warm',
-        () => {
-          if (phantasiMotionBusy()) return
-          prefetchArticleDetails([id])
-          void import('../components/phantasi/PhantasiReader')
-        },
-        { priority: 'low' },
-      )
-    },
-    [],
-  )
-  const settlePeekSession = useCallback(() => {
-    window.clearTimeout(peekEndTimer.current)
-    peekEndTimer.current = window.setTimeout(() => {
-      peekEndTimer.current = 0
-      if (item.selectedItem || notes.noteEditor !== null) {
-        dropPeekSession()
-        return
-      }
-      const decision = decidePeekSettle()
-      if (decision === 'resume') {
-        resumePhantasiStoryPeek(handlePeekItem)
-        return
-      }
-      if (decision === 'wait') {
-        settlePeekSession()
-        return
-      }
-      if (decision === 'hold') return
-      dropPeekSession()
-    }, PHANTASI_PEEK_HANDOFF_MS)
-  }, [dropPeekSession, handlePeekItem, item.selectedItem, notes.noteEditor])
-  useEffect(() => {
-    if (item.selectedItem || notes.noteEditor !== null) dropPeekSession()
-  }, [dropPeekSession, item.selectedItem, notes.noteEditor])
-  useEffect(() => {
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') dropPeekSession()
-    }
-    const onPageHide = () => dropPeekSession()
-    document.addEventListener('visibilitychange', onHide)
-    window.addEventListener('pagehide', onPageHide)
-    return () => {
-      document.removeEventListener('visibilitychange', onHide)
-      window.removeEventListener('pagehide', onPageHide)
-    }
-  }, [dropPeekSession])
-  const handlePeekEnd = useCallback(() => {
-    settlePeekSession()
-  }, [settlePeekSession])
-  const resumePeekAfterLane = useCallback(() => {
-    if (item.selectedItem || notes.noteEditor !== null) return
-    schedulePhantasiPeekResume(handlePeekItem)
-  }, [handlePeekItem, item.selectedItem, notes.noteEditor])
-  useEffect(() => {
-    return onPhantasiMotion((lane) => {
-      if (lane !== 'intro' && lane !== 'flip' && lane !== 'lane') return
-      window.clearTimeout(peekEndTimer.current)
-      peekEndTimer.current = 0
-    })
-  }, [])
-  useEffect(() => {
-    if (!peekFace) return
-    const onMove = (event: PointerEvent) => {
-      notePeekPointer(event)
-      settlePeekSession()
-    }
-    document.addEventListener('pointermove', onMove, { passive: true })
-    return () => document.removeEventListener('pointermove', onMove)
-  }, [peekFace, settlePeekSession])
 
   if (sources.booting) {
     return <PhantasiPage lock={false} loading />
@@ -566,12 +445,9 @@ function PhantasiSubjectPage() {
             }}
             onSourceClick={actions.openLatest}
             onRefreshSource={sources.refreshSource}
-            onSourcesChange={sources.reloadBoard}
-            onAddSource={sources.addSource}
             onUpdateSource={sources.updateSource}
             onDiscoverSource={sources.discoverSource}
             onGenerateStyleTags={sources.generateStyleTags}
-            onImportOpml={sources.importOpml}
             onRemoveSources={sources.removeSources}
             onOpenItem={actions.openPreview}
             onPeekItem={handlePeekItem}

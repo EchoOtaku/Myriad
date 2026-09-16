@@ -904,6 +904,9 @@ mod memory_budget_tests {
             entry(json!("x".repeat(MAX_MUSIC_CACHE_BYTES)), future),
         );
         assert!(cache.get("huge").is_none());
+        // Isolate the byte budget from the count fixture. Equal expirations may
+        // evict any entry, so retaining 50 mixed small/large values can be valid.
+        let mut cache = MusicCache::default();
         for i in 0..20 {
             cache.insert(
                 format!("large:{i}"),
@@ -911,7 +914,7 @@ mod memory_budget_tests {
             );
         }
         assert!(cache.size_bytes <= MAX_MUSIC_CACHE_BYTES);
-        assert!(cache.entries.len() < MAX_CACHE_ENTRIES);
+        assert!(cache.entries.len() < 20);
         cache.insert("expired".into(), entry(json!("old"), Instant::now()));
         assert!(cache.get("expired").is_none());
         cache.prune(future + Duration::from_secs(1));

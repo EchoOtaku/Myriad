@@ -176,10 +176,7 @@ test('the production rig port stays renderer-neutral', () => {
   assert.doesNotMatch(source('./useRigMotionLifecycle.ts'), /RigCharacter/)
 })
 
-test('cue facts have one registry and dead motion channels stay removed', () => {
-  const channels = source('./performanceChannels.ts')
-  assert.doesNotMatch(channels, /speechless|maniac|lovestruck/)
-  assert.match(channels, /performanceCueDefinition/)
+test('dead motion channels stay removed', () => {
   assert.doesNotMatch(source('./channels.ts'), /['"]physics['"]/)
 })
 

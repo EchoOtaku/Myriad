@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react'
+import type { Root } from 'react-dom/client'
 import type { WidgetComponentProps, WidgetType } from '../../widgetGridTypes'
+import type { NoteWidgetHydration } from './noteWidgetMount.tsx'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { after, afterEach, describe, it } from 'node:test'
@@ -6,18 +9,18 @@ import {
   act,
   createElement,
   Fragment,
+
   useLayoutEffect,
   useRef,
-  type ReactNode,
 } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { prepareNoteReaderHtml } from './noteImageUrl.ts'
 import { noteWidgetInstanceId } from './noteWidgetId.ts'
 import {
+
   replaceNoteHtml,
   useNoteWidgetHydration,
-  type NoteWidgetHydration,
 } from './noteWidgetMount.tsx'
 
 const require = createRequire(import.meta.url)

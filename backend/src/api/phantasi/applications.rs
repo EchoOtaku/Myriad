@@ -7,8 +7,8 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -102,8 +102,8 @@ fn source_matches_key(source: &phantasi_sources::Model, key: &str) -> bool {
             .is_some_and(|site| url_match_key(site) == key)
 }
 
-async fn find_existing_source(
-    db: &DatabaseConnection,
+async fn find_existing_source<C: ConnectionTrait>(
+    db: &C,
     keys: &[String],
 ) -> Result<Option<phantasi_sources::Model>, HttpError> {
     let sources = phantasi_sources::Entity::find()
@@ -135,8 +135,8 @@ async fn find_pending_for_keys(
     }))
 }
 
-async fn create_friend_source(
-    db: &DatabaseConnection,
+async fn create_friend_source<C: ConnectionTrait>(
+    db: &C,
     admin_id: i32,
     app: &phantasi_source_applications::Model,
 ) -> Result<phantasi_sources::Model, HttpError> {
@@ -178,11 +178,6 @@ async fn create_friend_source(
         .insert(db)
         .await
         .map_err(|error| phantasi_store_http("save source", error))?;
-    if source_type.is_fetchable() {
-        if let Some(scheduler) = get_phantasi_scheduler() {
-            let _ = scheduler.refresh_source(source.id).await;
-        }
-    }
     Ok(source)
 }
 
@@ -384,43 +379,93 @@ pub(crate) async fn approve_application(
     Json(req): Json<phantasi_source_applications::ReviewApplicationRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let admin_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let app = load_application(&db, id).await?;
-    if app.status != "pending" {
-        return Err(phantasi_http_err(
-            StatusCode::CONFLICT,
-            "Application is not pending",
-        ));
-    }
     let review_note = trim_opt(req.review_note, MAX_NOTE)?;
-    let mut keys = vec![url_match_key(&app.site_url)];
-    if let Some(feed) = app.feed_url.as_deref() {
-        let key = url_match_key(feed);
-        if !keys.contains(&key) {
-            keys.push(key);
+    let (updated, source, created) =
+        approve_pending_application(&db, admin_id, id, review_note).await?;
+    // Fetching is an external side effect and must happen only after the review commits.
+    if created && source.source_type.is_fetchable() {
+        if let Some(scheduler) = get_phantasi_scheduler() {
+            let _ = scheduler.refresh_source(source.id).await;
         }
     }
-    let source = match find_existing_source(&db, &keys).await? {
-        Some(existing) => existing,
-        None => create_friend_source(&db, admin_id, &app).await?,
-    };
-    let now = Utc::now();
-    let mut active: phantasi_source_applications::ActiveModel = app.into();
-    active.status = Set("approved".into());
-    active.result_source_id = Set(Some(source.id));
-    active.review_note = Set(review_note);
-    active.reviewed_by = Set(Some(admin_id));
-    active.reviewed_at = Set(Some(now.into()));
-    active.updated_at = Set(now.into());
-    let updated = active
-        .update(&db)
-        .await
-        .map_err(|error| phantasi_store_http("approve application", error))?;
     let response: phantasi_sources::SourceResponse = source.into();
     Ok(Json(json!({
         "success": true,
         "application": ApplicationResponse::from_model(updated, true),
         "source": response,
     })))
+}
+
+async fn approve_pending_application(
+    db: &DatabaseConnection,
+    admin_id: i32,
+    id: i32,
+    review_note: Option<String>,
+) -> Result<
+    (
+        phantasi_source_applications::Model,
+        phantasi_sources::Model,
+        bool,
+    ),
+    HttpError,
+> {
+    let txn = db
+        .begin()
+        .await
+        .map_err(|error| phantasi_store_http("begin application approval", error))?;
+    let outcome = async {
+        let app = phantasi_source_applications::Entity::find_by_id(id)
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|error| phantasi_store_http("find application", error))?
+            .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Application not found"))?;
+        if app.status != "pending" {
+            return Err(phantasi_http_err(
+                StatusCode::CONFLICT,
+                "Application is not pending",
+            ));
+        }
+        let mut keys = vec![url_match_key(&app.site_url)];
+        if let Some(feed) = app.feed_url.as_deref() {
+            let key = url_match_key(feed);
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+        let (source, created) = match find_existing_source(&txn, &keys).await? {
+            Some(existing) => (existing, false),
+            None => (create_friend_source(&txn, admin_id, &app).await?, true),
+        };
+        let now = Utc::now();
+        let mut active: phantasi_source_applications::ActiveModel = app.into();
+        active.status = Set("approved".into());
+        active.result_source_id = Set(Some(source.id));
+        active.review_note = Set(review_note);
+        active.reviewed_by = Set(Some(admin_id));
+        active.reviewed_at = Set(Some(now.into()));
+        active.updated_at = Set(now.into());
+        let updated = active
+            .update(&txn)
+            .await
+            .map_err(|error| phantasi_store_http("approve application", error))?;
+        Ok((updated, source, created))
+    }
+    .await;
+    match outcome {
+        Ok(reviewed) => {
+            txn.commit()
+                .await
+                .map_err(|error| phantasi_store_http("commit application approval", error))?;
+            Ok(reviewed)
+        }
+        Err(error) => {
+            if let Err(rollback) = txn.rollback().await {
+                tracing::warn!(error = %rollback, "application approval rollback failed");
+            }
+            Err(error)
+        }
+    }
 }
 
 pub(crate) async fn reject_application(
@@ -430,29 +475,42 @@ pub(crate) async fn reject_application(
     Json(req): Json<phantasi_source_applications::ReviewApplicationRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let admin_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let app = load_application(&db, id).await?;
-    if app.status != "pending" {
-        return Err(phantasi_http_err(
-            StatusCode::CONFLICT,
-            "Application is not pending",
-        ));
-    }
     let review_note = trim_opt(req.review_note, MAX_NOTE)?;
+    let updated = reject_pending_application(&db, admin_id, id, review_note).await?;
+    Ok(Json(json!({
+        "success": true,
+        "application": ApplicationResponse::from_model(updated, true),
+    })))
+}
+
+async fn reject_pending_application(
+    db: &DatabaseConnection,
+    admin_id: i32,
+    id: i32,
+    review_note: Option<String>,
+) -> Result<phantasi_source_applications::Model, HttpError> {
     let now = Utc::now();
-    let mut active: phantasi_source_applications::ActiveModel = app.into();
+    let mut active = <phantasi_source_applications::ActiveModel as Default>::default();
     active.status = Set("rejected".into());
     active.review_note = Set(review_note);
     active.reviewed_by = Set(Some(admin_id));
     active.reviewed_at = Set(Some(now.into()));
     active.updated_at = Set(now.into());
-    let updated = active
-        .update(&db)
+    let result = phantasi_source_applications::Entity::update_many()
+        .set(active)
+        .filter(phantasi_source_applications::Column::Id.eq(id))
+        .filter(phantasi_source_applications::Column::Status.eq("pending"))
+        .exec(db)
         .await
         .map_err(|error| phantasi_store_http("reject application", error))?;
-    Ok(Json(json!({
-        "success": true,
-        "application": ApplicationResponse::from_model(updated, true),
-    })))
+    let saved = load_application(db, id).await?;
+    if result.rows_affected == 0 {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Application is not pending",
+        ));
+    }
+    Ok(saved)
 }
 
 pub(crate) async fn delete_application(
@@ -477,6 +535,146 @@ pub(crate) async fn delete_application(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn isolated_application_db() -> Option<DatabaseConnection> {
+        use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, Schema};
+        let url = std::env::var("PHANTASI_TEST_DATABASE_URL").ok()?;
+        let mut options = ConnectOptions::new(url);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options).await.unwrap();
+        let schema = Schema::new(DatabaseBackend::Postgres);
+        for statement in [
+            schema.create_table_from_entity(phantasi_sources::Entity),
+            schema.create_table_from_entity(phantasi_source_applications::Entity),
+        ] {
+            let sql = statement
+                .to_string(sea_orm::sea_query::PostgresQueryBuilder)
+                .replacen("CREATE TABLE", "CREATE TEMP TABLE", 1);
+            db.execute_unprepared(&sql).await.unwrap();
+        }
+        Some(db)
+    }
+
+    async fn pending_application(db: &DatabaseConnection) -> phantasi_source_applications::Model {
+        let now = Utc::now();
+        phantasi_source_applications::ActiveModel {
+            kind: Set("friend".into()),
+            status: Set("pending".into()),
+            site_name: Set("Test friend".into()),
+            site_url: Set("https://friend.example".into()),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn application_failure_does_not_leave_an_approved_source() {
+        use sea_orm::ConnectionTrait;
+        let Some(db) = isolated_application_db().await else {
+            return;
+        };
+        let app = pending_application(&db).await;
+        db.execute_unprepared("ALTER TABLE phantasi_source_applications ADD CONSTRAINT reject_test_approval CHECK (status <> 'approved')").await.unwrap();
+        assert!(
+            approve_pending_application(&db, 1, app.id, None)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            phantasi_sources::Entity::find().count(&db).await.unwrap(),
+            0,
+            "an application update failure must roll back its new source"
+        );
+        assert_eq!(load_application(&db, app.id).await.unwrap(), app);
+    }
+
+    #[tokio::test]
+    async fn application_approval_is_linked_and_cannot_be_repeated() {
+        let Some(db) = isolated_application_db().await else {
+            return;
+        };
+        let app = pending_application(&db).await;
+        let (reviewed, source, created) = approve_pending_application(&db, 1, app.id, None)
+            .await
+            .unwrap();
+        assert!(created);
+        assert_eq!(reviewed.status, "approved");
+        assert_eq!(reviewed.result_source_id, Some(source.id));
+        assert_eq!(source.category.as_deref(), Some("友情链接"));
+        assert_eq!(source.source_type, phantasi_sources::SourceType::Link);
+        let error = approve_pending_application(&db, 2, app.id, None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.0.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            phantasi_sources::Entity::find().count(&db).await.unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn application_rejection_cannot_overwrite_a_completed_review() {
+        let Some(db) = isolated_application_db().await else {
+            return;
+        };
+        let app = pending_application(&db).await;
+        let (approved, _, _) = approve_pending_application(&db, 1, app.id, None)
+            .await
+            .unwrap();
+        let error = reject_pending_application(&db, 2, app.id, Some("stale review".into()))
+            .await
+            .unwrap_err();
+        assert_eq!(error.0.status(), StatusCode::CONFLICT);
+        assert_eq!(load_application(&db, app.id).await.unwrap(), approved);
+
+        let another = pending_application(&db).await;
+        let rejected = reject_pending_application(&db, 2, another.id, Some("declined".into()))
+            .await
+            .unwrap();
+        assert_eq!(rejected.status, "rejected");
+        assert_eq!(rejected.reviewed_by, Some(2));
+        assert_eq!(rejected.review_note.as_deref(), Some("declined"));
+        let error = approve_pending_application(&db, 1, another.id, None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.0.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            phantasi_sources::Entity::find().count(&db).await.unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn application_approval_reuses_an_existing_source() {
+        let Some(db) = isolated_application_db().await else {
+            return;
+        };
+        let first = pending_application(&db).await;
+        let (_, source, _) = approve_pending_application(&db, 1, first.id, None)
+            .await
+            .unwrap();
+        let second = pending_application(&db).await;
+        let (reviewed, reused, created) = approve_pending_application(&db, 2, second.id, None)
+            .await
+            .unwrap();
+        assert!(
+            !created,
+            "reused sources must not trigger first-fetch side effects"
+        );
+        assert_eq!(source.id, reused.id);
+        assert_eq!(reviewed.result_source_id, Some(source.id));
+        assert_eq!(
+            phantasi_sources::Entity::find().count(&db).await.unwrap(),
+            1
+        );
+    }
 
     #[test]
     fn email_needs_user_and_host() {

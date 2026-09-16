@@ -110,13 +110,6 @@ export function getStandardWidgetDimensionsForBand(
   }
 }
 
-export function getStandardWidgetDimensions(widgetSize: WidgetSizeKey): {
-  width: number
-  height: number
-} {
-  return getStandardWidgetDimensionsForBand(widgetSize, 'desktop')
-}
-
 export function resolveWidgetContentScale(input: {
   measuredWidth: number
   measuredHeight: number

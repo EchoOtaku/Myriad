@@ -2,7 +2,7 @@
 
 export const NOTE_WIDGET_FACE = 'note-widget__face'
 
-const NOTE_WIDGET_MARK = /<div\b[^>]*(?:\bnote-widget\b|data-widget=)/i
+const NOTE_WIDGET_MARK = /<div\b[^>]+(?:\bnote-widget\b|data-widget=)/i
 const NOTE_WIDGET_CLASS = /(?:^|\s)note-widget(?:\s|$)/
 const NOT_PROSE_CLASS = /(?:^|\s)not-prose(?:\s|$)/
 
@@ -31,7 +31,7 @@ export function noteWidgetTypesInHtml(html: string | null | undefined): string[]
  */
 export function stampNoteWidgetNotProse(html: string): string {
   return html.replaceAll(
-    /<div\b([^>]*?)\bclass="([^"]*)"/g,
+    /<div\b([^>]+?)\bclass="([^"]*)"/g,
     (full, before: string, classes: string) => {
       if (!NOTE_WIDGET_CLASS.test(classes) || NOT_PROSE_CLASS.test(classes)) {
         return full
@@ -44,7 +44,7 @@ export function stampNoteWidgetNotProse(html: string): string {
 /** 旧稿占位里常塞着类型名。读路径先清掉，水合前不闪字。有子节点的不碰。 */
 export function emptyNoteWidgetText(html: string): string {
   return html.replaceAll(
-    /(<div\b(?=[^>]*\bnote-widget\b)[^>]*>)[^<]*(<\/div>)/gi,
+    /(<div\b(?=[^>]+\bnote-widget\b)[^>]+>)[^<]*(<\/div>)/gi,
     '$1$2',
   )
 }

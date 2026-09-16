@@ -3,13 +3,13 @@ import type { PhantasiSource } from '../../types/phantasi'
 import { useEffect, useMemo, useRef } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
 import { JOURNAL_ROOT, journalItemPath } from './logic/journalRoutes'
+import { ownItemState } from './logic/ownState'
 import {
   phantasiItemNavigateMode,
   phantasiItemParamId,
   phantasiOpenedItemState,
   restoreAfterFailedOpen,
 } from './logic/phantasiItemRoute'
-import { ownItemState } from './logic/ownState'
 import { useArticleOpen } from './useArticleOpen'
 
 export function usePhantasiItemRoute(

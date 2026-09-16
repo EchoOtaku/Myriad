@@ -1,6 +1,8 @@
-/** 轨道只做 transform，不设 overflow、不切遮罩。前一张从左边溢出，不退场。
+/**
+ * 轨道只做 transform，不设 overflow、不切遮罩。前一张从左边溢出，不退场。
  *  跟手、惯性都停在该处，不吸入槽位，到边即停，不越界回弹。
- *  只有点选 / 外部对齐才坐到某一张。 */
+ *  只有点选 / 外部对齐才坐到某一张。
+ */
 
 import type { RefObject } from 'react'
 import type { ConversationExitStyle } from '../../agent-panel/conversationPan'
@@ -121,7 +123,6 @@ export function usePhantasiRailPan(
     let last = 0
     let wheelStarted = 0
     let wheelAcc = 0
-    let wheelVel = 0
     let home = 0
     let coastVel = 0
     let viewW = 0
@@ -763,7 +764,6 @@ export function usePhantasiRailPan(
         if (viewW < 32) measure()
         wheelAcc = 0
         wheelStarted = 0
-        wheelVel = 0
         const max = maxScroll()
         if (current < 0 || current > max) {
           current = clampConversationScroll(current, max)
@@ -805,7 +805,6 @@ export function usePhantasiRailPan(
       if (isDiscreteWheel(event)) {
         wheelAcc = 0
         wheelStarted = 0
-        wheelVel = 0
         seating = false
         target = clampConversationScroll(target + delta, max)
         current = target
@@ -822,7 +821,6 @@ export function usePhantasiRailPan(
         wheelAcc = 0
       }
       wheelAcc += delta
-      wheelVel = wheelAcc / Math.max((now - wheelStarted) / 1000, 0.016)
       seating = false
       target = clampConversationScroll(home + wheelAcc, max)
       current = target

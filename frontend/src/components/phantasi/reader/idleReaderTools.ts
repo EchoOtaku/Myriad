@@ -1,7 +1,6 @@
-import type { AnnotationItem } from '../../../services/phantasiaiApi'
+import type { AnnotationItem, PodcastDialogue } from '../../../services/phantasiaiApi'
 import type { CommentItem } from '../../../services/phantasiApi'
 import type { ArticleCacheResponse, TTSEngine, VoiceInfo } from '../../../services/speechApi'
-import type { PodcastDialogue } from '../../../services/phantasiaiApi'
 
 const noop = () => undefined
 const asyncNoop = async () => undefined

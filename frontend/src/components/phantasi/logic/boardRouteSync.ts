@@ -1,10 +1,10 @@
 /** 手帐地址 ↔ 二级导航：只让「用户点导航」改 URL，刷新深链不得回写。 */
 
 import {
-  JOURNAL_ROOT,
-  NOTES_RSS_PATH,
   isJournalAppPath,
+  JOURNAL_ROOT,
   navIdForJournalLocation,
+  NOTES_RSS_PATH,
   parseJournalPath,
   pathForActiveIdChange,
 } from './journalRoutes.ts'
@@ -16,7 +16,7 @@ export type PathSync =
   | { action: 'bounce'; to: string }
 
 /** 路径同步还没落到 activeId 时记下「从哪来、要去哪」，避免把首屏旧值当成用户点击。 */
-export type PendingPathSync = { target: string; from: string }
+export interface PendingPathSync { target: string; from: string }
 
 export function decidePathSync(
   pathname: string,

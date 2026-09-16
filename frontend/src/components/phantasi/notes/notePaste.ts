@@ -76,7 +76,9 @@ export function insertPastedMarkdown(
   if (block) {
     if (start > 0 && value[start - 1] !== '\n') lead = '\n\n'
     else if (start > 1 && value[start - 1] === '\n' && value[start - 2] !== '\n') lead = '\n'
-    if (end < value.length && value[end] !== '\n') tail = '\n\n'
+    if (end < value.length && value[end] !== '\n') {
+      tail = '\n\n'
+    }
     else if (end < value.length - 1 && value[end] === '\n' && value[end + 1] !== '\n') {
       tail = '\n'
     }
@@ -176,7 +178,7 @@ function stripOfficeJunk(root: Element): void {
   for (const node of comments) node.remove()
   for (const el of [...root.querySelectorAll('*')]) {
     const name = el.tagName
-    if (!(name.includes(':') || /^(o|w|v|m):/i.test(name))) continue
+    if (!(name.includes(':') || /^([owvm]):/i.test(name))) continue
     const island = pastedMathIsland(el)
     if (island) {
       const wrap = el.ownerDocument.createElement('span')
@@ -266,7 +268,9 @@ function buildWordList(paras: Element[]): Element {
     if (stack.at(-1)!.level < level) {
       const nested = doc.createElement(kind)
       const lastLi = stack.at(-1)!.el.lastElementChild
-      if (lastLi) lastLi.appendChild(nested)
+      if (lastLi) {
+        lastLi.appendChild(nested)
+      }
       else {
         const li = doc.createElement('li')
         li.appendChild(nested)
@@ -484,7 +488,7 @@ function serializeList(el: Element, tag: 'ul' | 'ol'): string {
 }
 
 function isInlineish(el: Element): boolean {
-  return /^(A|ABBR|B|BR|CODE|DEL|EM|I|IMG|S|SPAN|STRONG|STRIKE|SUB|SUP|U)$/.test(el.tagName)
+  return /^([ABISU]|ABBR|BR|CODE|DEL|EM|IMG|SPAN|STRONG|STRIKE|SUB|SUP)$/.test(el.tagName)
 }
 
 function serializeFlow(root: Element): string {

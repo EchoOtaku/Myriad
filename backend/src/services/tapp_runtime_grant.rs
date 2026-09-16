@@ -70,23 +70,8 @@ impl RuntimeGrant {
         self.stored.subject_id
     }
 
-    #[allow(dead_code)]
-    pub fn instance_id(&self) -> &str {
-        &self.stored.instance_id
-    }
-
-    #[allow(dead_code)]
-    pub fn kind(&self) -> RuntimeKind {
-        self.stored.kind
-    }
-
     pub fn expires_at(&self) -> i64 {
         self.stored.expires_at
-    }
-
-    #[allow(dead_code)]
-    pub fn permissions(&self) -> &[String] {
-        &self.stored.permissions
     }
 
     pub fn has(&self, permission: TappPermission) -> bool {

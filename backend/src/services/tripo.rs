@@ -20,8 +20,6 @@ const JSON_CHUNK_TYPE: u32 = 0x4e4f_534a;
 
 #[derive(Debug, Clone)]
 pub struct TripoRuntimeConfig {
-    #[allow(dead_code)] // resolve 成功后恒为 true，之后不再读取。
-    pub enabled: bool,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
@@ -76,7 +74,6 @@ impl TripoRuntimeConfig {
             .clamp(1, 150) as usize;
 
         Ok(Self {
-            enabled,
             api_key,
             base_url,
             model,
@@ -1039,7 +1036,6 @@ mod tests {
 
     fn test_runtime_config() -> TripoRuntimeConfig {
         TripoRuntimeConfig {
-            enabled: true,
             api_key: "test".to_string(),
             base_url: DEFAULT_BASE_URL.to_string(),
             model: DEFAULT_MODEL.to_string(),

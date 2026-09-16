@@ -63,8 +63,8 @@ impl AiLedgerAttribution {
 /// meter rides the same task-local scope the ledger already uses and is
 /// incremented from the one place every call passes through.
 ///
-/// Counts are the same length/4 estimates written to the ledger, so a settled
-/// reservation and the ledger rows agree.
+/// Counts match ledger usage: provider-reported tokens when available, otherwise
+/// length/4 estimates. Durable Work reservations may conservatively charge more.
 #[derive(Debug, Clone, Default)]
 pub struct AiUsageMeter {
     total_tokens: Arc<AtomicU64>,
@@ -88,6 +88,7 @@ impl AiUsageMeter {
 tokio::task_local! {
     static AI_LEDGER_ATTRIBUTION: AiLedgerAttribution;
     static AI_USAGE_METER: AiUsageMeter;
+    static WORK_USAGE_METER: AiUsageMeter;
     static AI_LEDGER_SUPPRESSED: bool;
 }
 
@@ -109,6 +110,17 @@ where
     F: Future<Output = T>,
 {
     AI_USAGE_METER.scope(meter, fut).await
+}
+
+/// Work accounting coexists with the outer daily-quota meter.
+pub(crate) async fn with_work_usage_meter<F: Future>(meter: AiUsageMeter, fut: F) -> F::Output {
+    WORK_USAGE_METER.scope(meter, fut).await
+}
+
+pub(crate) fn work_tokens() -> u64 {
+    WORK_USAGE_METER
+        .try_with(AiUsageMeter::total_tokens)
+        .unwrap_or(0)
 }
 
 /// Skip hook writes inside `fut` because the caller records the task itself.
@@ -248,6 +260,10 @@ pub async fn record_ai_tokens_from_attribution(
         meter.add(u64::from(input_tokens as u32) + u64::from(output_tokens as u32));
     });
 
+    let _ = WORK_USAGE_METER.try_with(|meter| {
+        meter.add(u64::from(input_tokens as u32) + u64::from(output_tokens as u32))
+    });
+
     if !ledger_write_enabled() {
         return;
     }
@@ -337,6 +353,7 @@ mod tests {
         record_ai_call_from_attribution, with_ai_ledger_attribution, with_ai_ledger_suppressed,
         with_ai_usage_meter, with_site_ai_ledger,
     };
+    use super::{record_ai_tokens_from_attribution, with_work_usage_meter};
 
     #[tokio::test]
     async fn meter_accumulates_across_nested_calls() {
@@ -386,6 +403,22 @@ mod tests {
         })
         .await;
         assert_eq!(meter.total_tokens(), 1_000 + 2_000);
+    }
+
+    #[tokio::test]
+    async fn work_meter_keeps_outer_quota_accounting() {
+        let outer = AiUsageMeter::new();
+        let inner = AiUsageMeter::new();
+        with_ai_usage_meter(
+            outer.clone(),
+            with_work_usage_meter(inner.clone(), async {
+                record_ai_tokens_from_attribution("openai", "fixture", 123, 45, "completed", None)
+                    .await;
+            }),
+        )
+        .await;
+        assert_eq!(outer.total_tokens(), 168);
+        assert_eq!(inner.total_tokens(), 168);
     }
 
     #[tokio::test]

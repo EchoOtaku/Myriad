@@ -1,3 +1,5 @@
+import type { MutableRefObject } from 'react'
+import type { NoteDraftKey } from './noteDraft'
 import type { NoteCloudSaveHandle } from './useNoteCloudSave'
 import { useCallback } from 'react'
 import * as phantasiApi from '../../../services/phantasiApi'
@@ -5,7 +7,6 @@ import { userFacingError } from '../../../utils/userFacingError'
 import { showNoteNotice } from '../phantasiNotice'
 import {
   clearNoteDraft,
-  pruneOrphanFootnotes,
 } from './noteDraft'
 import {
   countNoteChars,
@@ -15,7 +16,6 @@ import {
   noteScheduleError,
   toNoteWritePayload,
 } from './noteFields'
-import { expandJammedDefinitions } from './noteVisual'
 
 export function useNotePublish({
   title,
@@ -27,11 +27,14 @@ export function useNotePublish({
   noteId,
   cloudId,
   draftKey,
+  clearRecovery,
   docStatus,
   saving,
   setSaving,
   setContentMd,
-  writeCloudDoc,
+  setPublishedAt,
+  revisionRef,
+  runWrite,
   onSaved,
   onDeleted,
   onClose,
@@ -46,12 +49,15 @@ export function useNotePublish({
   scheduledAt: number | null
   noteId?: number
   cloudId: number | null
-  draftKey: number | 'new'
+  draftKey: NoteDraftKey | null
+  clearRecovery?: () => void
   docStatus: 'draft' | 'scheduled' | 'published'
   saving: boolean
   setSaving: (value: boolean) => void
   setContentMd: (value: string) => void
-  writeCloudDoc: NoteCloudSaveHandle['writeDoc']
+  setPublishedAt: (value: number | null) => void
+  revisionRef: MutableRefObject<number>
+  runWrite: NoteCloudSaveHandle['runWrite']
   onSaved: (id: number) => void
   onDeleted?: (id: number) => void
   onClose: () => void
@@ -75,6 +81,11 @@ export function useNotePublish({
   handleDelete: () => Promise<void>
   requestClose: (dirty: boolean) => Promise<void>
 } {
+  const clearLocalRecovery = useCallback(() => {
+    if (clearRecovery) clearRecovery()
+    else clearNoteDraft(draftKey)
+  }, [clearRecovery, draftKey])
+
   const fieldMessage = useCallback(
     (kind: ReturnType<typeof noteFieldError>) => {
       if (kind === 'empty-title') return labels.titleRequired
@@ -103,35 +114,31 @@ export function useNotePublish({
       return
     }
     setSaving(true)
-    const body = pruneOrphanFootnotes(expandJammedDefinitions(contentMd))
-    if (body !== contentMd) setContentMd(body)
-    const payload = toNoteWritePayload(title, body, topic, cover, publishedAt)
+    const payload = toNoteWritePayload(title, contentMd, topic, cover, publishedAt)
     try {
       if (cloudId != null) {
-        let publishedId: number | undefined
-        await writeCloudDoc(async (fields, revision, requestId) => {
-          const latestBody = pruneOrphanFootnotes(expandJammedDefinitions(fields.contentMd))
-          const latest = toNoteWritePayload(fields.title, latestBody, fields.topic, fields.cover, fields.publishedAt)
+        await runWrite(async (current, track) => {
+          const latest = toNoteWritePayload(current.title, current.contentMd, current.topic, current.cover, current.publishedAt)
+          const receipt = track({
+            title: latest.title, contentMd: latest.content_md, topic: latest.topic,
+            cover: latest.image ?? null, publishedAt: latest.published_at ?? null,
+          })
           const result = await phantasiApi.publishNoteDoc(cloudId, {
             ...latest,
+            client_request_id: receipt.requestId,
             image: latest.image ?? null,
-            revision,
-            client_request_id: requestId,
+            revision: revisionRef.current,
           })
-          publishedId = result.id
-          return result.doc
+          if (!await receipt.receiveDoc(result.doc)) return
+          onSaved(result.id)
         })
-        clearNoteDraft(draftKey)
-        clearNoteDraft('new')
-        if (publishedId !== undefined) onSaved(publishedId)
         return
       }
       const result =
         noteId === undefined
           ? await phantasiApi.createNote(payload)
           : await phantasiApi.updateNote(noteId, payload)
-      clearNoteDraft(draftKey)
-      if (noteId === undefined) clearNoteDraft('new')
+      clearLocalRecovery()
       onSaved(result.id)
     } catch (err) {
       showNoteNotice(userFacingError(err, labels.saveFailed))
@@ -139,16 +146,17 @@ export function useNotePublish({
       setSaving(false)
     }
   }, [
-    writeCloudDoc,
+    runWrite,
     cloudId,
     contentMd,
     cover,
-    draftKey,
+    clearLocalRecovery,
     fieldMessage,
     labels.saveFailed,
     noteId,
     onSaved,
     publishedAt,
+    revisionRef,
     saving,
     setContentMd,
     setSaving,
@@ -176,22 +184,26 @@ export function useNotePublish({
     if (when == null) return
     setSaving(true)
     try {
-      await writeCloudDoc((fields, revision, requestId) => phantasiApi.scheduleNoteDoc(cloudId, {
-        title: fields.title,
-        content_md: fields.contentMd,
-        topic: fields.topic,
-        image: fields.cover,
-        scheduled_at: when,
-        revision,
-        client_request_id: requestId,
-      }))
+      await runWrite(async (current, track) => {
+        const receipt = track(current)
+        const doc = await phantasiApi.scheduleNoteDoc(cloudId, {
+          client_request_id: receipt.requestId,
+          title: current.title,
+          content_md: current.contentMd,
+          topic: current.topic,
+          image: current.cover,
+          scheduled_at: when,
+          revision: revisionRef.current,
+        })
+        if (await receipt.receiveDoc(doc)) setPublishedAt(doc.published_at)
+      })
     } catch (err) {
       showNoteNotice(userFacingError(err, labels.saveFailed))
     } finally {
       setSaving(false)
     }
   }, [
-    writeCloudDoc,
+    runWrite,
     cloudId,
     contentMd,
     cover,
@@ -199,8 +211,10 @@ export function useNotePublish({
     labels.saveFailed,
     labels.scheduleNeedTime,
     labels.schedulePast,
+    revisionRef,
     saving,
     scheduledAt,
+    setPublishedAt,
     setSaving,
     title,
     topic,
@@ -210,21 +224,20 @@ export function useNotePublish({
     if (cloudId == null || saving) return
     setSaving(true)
     try {
-      await writeCloudDoc((fields, revision, requestId) => phantasiApi.unscheduleNoteDoc(cloudId, {
-        title: fields.title,
-        content_md: fields.contentMd,
-        topic: fields.topic,
-        image: fields.cover,
-        published_at: fields.publishedAt,
-        revision,
-        client_request_id: requestId,
-      }))
+      await runWrite(async (_current, track) => {
+        const receipt = track()
+        const doc = await phantasiApi.unscheduleNoteDoc(cloudId, {
+          client_request_id: receipt.requestId,
+          revision: revisionRef.current,
+        })
+        await receipt.receiveDoc(doc)
+      })
     } catch (err) {
       showNoteNotice(userFacingError(err, labels.saveFailed))
     } finally {
       setSaving(false)
     }
-  }, [writeCloudDoc, cloudId, labels.saveFailed, saving, setSaving])
+  }, [cloudId, labels.saveFailed, revisionRef, runWrite, saving, setSaving])
 
   const handleDelete = useCallback(async () => {
     if (saving) return
@@ -232,14 +245,14 @@ export function useNotePublish({
     setSaving(true)
     try {
       if (noteId !== undefined) {
-        await phantasiApi.deleteNote(noteId)
-        clearNoteDraft(noteId)
+        await runWrite(() => phantasiApi.deleteNote(noteId))
+        clearLocalRecovery()
         onDeleted?.(noteId)
         return
       }
       if (cloudId != null && docStatus !== 'published') {
-        await phantasiApi.deleteNoteDoc(cloudId)
-        clearNoteDraft('new')
+        await runWrite(() => phantasiApi.deleteNoteDoc(cloudId))
+        clearLocalRecovery()
         onClose()
       }
     } catch (err) {
@@ -247,6 +260,8 @@ export function useNotePublish({
       setSaving(false)
     }
   }, [
+    runWrite,
+    clearLocalRecovery,
     cloudId,
     docStatus,
     labels.deleteConfirm,
@@ -262,8 +277,7 @@ export function useNotePublish({
     async (dirty: boolean) => {
       if (dirty) {
         if (!window.confirm(labels.discardConfirm)) return
-        clearNoteDraft(draftKey)
-        clearNoteDraft('new')
+        clearLocalRecovery()
       }
       if (
         cloudId != null &&
@@ -273,21 +287,21 @@ export function useNotePublish({
         !contentMd.trim()
       ) {
         try {
-          await phantasiApi.deleteNoteDoc(cloudId)
+          await runWrite(() => phantasiApi.deleteNoteDoc(cloudId))
         } catch (err) {
           showNoteNotice(userFacingError(err, labels.deleteFailed))
           return
         }
-        clearNoteDraft(draftKey)
-        clearNoteDraft('new')
+        clearLocalRecovery()
       }
       onClose()
     },
     [
+      runWrite,
       cloudId,
       contentMd,
       docStatus,
-      draftKey,
+      clearLocalRecovery,
       labels.deleteFailed,
       labels.discardConfirm,
       noteId,

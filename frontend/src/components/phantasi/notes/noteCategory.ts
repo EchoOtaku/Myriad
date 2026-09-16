@@ -1,15 +1,16 @@
 /** 笔记分类是站长自建的名字，不是订阅主题。 */
 
+import type { TopicNameKey } from '../logic/topics'
 import {
-  phantasiCategoryParts,
   isFriendLinkCategory,
   isMineCategory,
+  phantasiCategoryParts,
 } from '../constants'
 import {
   topicDisplayName,
   topicHue,
   topicNameKey,
-  type TopicNameKey,
+
 } from '../logic/topics'
 
 export const MAX_NOTE_CATEGORY_CHARS = 40

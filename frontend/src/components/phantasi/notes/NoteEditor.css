@@ -222,7 +222,7 @@
   font-weight: 600;
 }
 
-.phantasi-note-preview p:not([data-fn]):not([data-linkdef]) + p[data-linkdef],
+.phantasi-note-preview p:not([data-fn], [data-linkdef]) + p[data-linkdef],
 .phantasi-note-preview p[data-linkdef]:first-child {
   margin-top: 1.5em;
   padding-top: 1em;
@@ -251,7 +251,7 @@
   text-decoration: underline;
 }
 
-.phantasi-note-preview p:not([data-fn]):not([data-linkdef]) + .link-definition,
+.phantasi-note-preview p:not([data-fn], [data-linkdef]) + .link-definition,
 .phantasi-note-preview .link-definition:first-child {
   margin-top: 1.5em;
   padding-top: 1em;
@@ -419,9 +419,9 @@ html.dark .phantasi-note-preview li[data-task='1']::before {
 
 html.dark .phantasi-note-preview p[data-fn]:first-of-type,
 html.dark .phantasi-note-preview .footnote-definition:first-of-type,
-html.dark .phantasi-note-preview p:not([data-fn]):not([data-linkdef]) + p[data-linkdef],
+html.dark .phantasi-note-preview p:not([data-fn], [data-linkdef]) + p[data-linkdef],
 html.dark .phantasi-note-preview p[data-linkdef]:first-child,
-html.dark .phantasi-note-preview p:not([data-fn]):not([data-linkdef]) + .link-definition,
+html.dark .phantasi-note-preview p:not([data-fn], [data-linkdef]) + .link-definition,
 html.dark .phantasi-note-preview .link-definition:first-child {
   border-top-color: rgb(255 255 255 / 12%);
 }

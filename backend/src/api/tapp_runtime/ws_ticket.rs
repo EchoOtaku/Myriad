@@ -2,7 +2,7 @@
 //!
 //! Domain mint/consume lives in [`crate::services::tapp_ws_ticket`]. This module
 //! owns Axum route handlers and HTTP error mapping. Federation WS gateway should
-//! call services (or the re-exported consume adapter) rather than reimplementing
+//! call services rather than reimplementing
 //! ticket storage.
 
 use axum::{
@@ -15,16 +15,10 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::error::HttpError;
-use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
-use crate::services::tapp_ws_ticket::{self, WsTicketError, WsTicketMintIdentity};
+use crate::services::tapp_ws_ticket::{self, WsTicketError, WsTicketKind, WsTicketMintIdentity};
 
 use super::RuntimeGrantContext;
-
-pub use crate::services::tapp_ws_ticket::{ConsumedWsTicket, TAPP_WS_TICKET_QUERY, WsTicketKind};
-
-// Force the public name into the non-test binary so renames stay intentional.
-const _: &str = TAPP_WS_TICKET_QUERY;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,26 +83,4 @@ pub async fn mint_room_ws_ticket(
     Path(room_id): Path<String>,
 ) -> Result<Json<WsTicketResponse>, HttpError> {
     mint_ticket(&db, &grant, WsTicketKind::Room, room_id).await
-}
-
-/// Consume a one-time ticket for a federation WebSocket upgrade.
-///
-/// Thin adapter: parse subject from Claims, map domain errors to [`HttpError`].
-/// Prefer [`tapp_ws_ticket::consume_ws_ticket`] from non-HTTP layers
-/// (`federation::ws_gateway` already does). Kept for path-stable public API.
-#[allow(dead_code)]
-pub async fn consume_ws_ticket(
-    db: &DatabaseConnection,
-    ticket: &str,
-    claims: &Claims,
-    expected_kind: WsTicketKind,
-    expected_resource_id: &str,
-) -> Result<ConsumedWsTicket, HttpError> {
-    let subject_id: i32 = claims
-        .sub
-        .parse()
-        .map_err(|_| ticket_http_error(WsTicketError::InvalidSubject))?;
-    tapp_ws_ticket::consume_ws_ticket(db, ticket, subject_id, expected_kind, expected_resource_id)
-        .await
-        .map_err(ticket_http_error)
 }

@@ -69,7 +69,7 @@ export function paintSiteInk(img: HTMLImageElement, fallback: string | null): vo
   }
 }
 
-type MixCard = {
+interface MixCard {
   id: number
   name: string
   description: string
@@ -83,7 +83,7 @@ type MixCard = {
   }>
 }
 
-export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
+export const PhantasiFeedsSites = memo(({
   sources,
   inbox,
   mixes = [],
@@ -113,7 +113,7 @@ export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
   onActivate: (id: number | string) => void
   onEdit: (id: number | string) => void
   onIconLoad: (img: HTMLImageElement) => void
-}) {
+}) => {
   return (
     <>
       {inbox ? (

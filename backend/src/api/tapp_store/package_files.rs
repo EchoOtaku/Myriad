@@ -842,7 +842,7 @@ pub(crate) fn validate_installed_resources(
     use crate::services::tapp_install_resources::{
         DeclaredResourceKind, agent_schema_not_found, agent_schema_not_regular, asset_not_found,
         asset_not_regular, collect_declared_install_resources, invalid_declared_path,
-        missing_after_install, not_regular_file, not_regular_in_sandbox, resource_not_found,
+        missing_after_install, not_regular_in_sandbox, resource_not_found,
         validate_agent_schema_bytes, validate_text_resource_bytes,
     };
 
@@ -858,12 +858,6 @@ pub(crate) fn validate_installed_resources(
                 }
                 let path = regular_resource_path(tapp_dir, relative)
                     .ok_or_else(|| not_regular_in_sandbox(relative))?;
-                let bytes = std::fs::read(path).map_err(|_| resource_not_found(relative))?;
-                validate_text_resource_bytes(relative, &bytes)?;
-            }
-            DeclaredResourceKind::PageModule => {
-                let path = regular_resource_path(tapp_dir, relative)
-                    .ok_or_else(|| not_regular_file(relative))?;
                 let bytes = std::fs::read(path).map_err(|_| resource_not_found(relative))?;
                 validate_text_resource_bytes(relative, &bytes)?;
             }

@@ -11,7 +11,7 @@ export const LATEST_FEED_ID = -1
 export const LATEST_FEED_STACK = 3
 export const LATEST_FEED_STACK_POOL = 8
 
-export type LatestFeedStackFace = {
+export interface LatestFeedStackFace {
   key: string
   src: string | null
   mark: string

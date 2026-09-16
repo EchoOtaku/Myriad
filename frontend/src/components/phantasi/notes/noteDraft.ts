@@ -1,26 +1,38 @@
-/** 草稿只在本机：不同步、不进任何载荷。 */
+/** 本机恢复副本；只把未确认修改合入云端文档。 */
 
+import type { NoteCloudFields } from './noteCloudFields'
+import type { NotePendingWrite, NoteRecovery, NoteRecoveryScope } from './noteRecoveryRecord'
+import { mergeCloudFields, sameCloudFields } from './noteCloudFields'
 import { sameNoteMinute } from './noteFields'
+import { isCloudFields, NOTE_DRAFT_TTL_MS, noteRecoveryKey } from './noteRecoveryRecord'
+import { listNoteRecoveryCopies } from './noteRecoveryStore'
+
+export { NOTE_DRAFT_TTL_MS, noteRecoveryKey } from './noteRecoveryRecord'
+export type { NotePendingWrite, NoteRecovery, NoteRecoveryScope } from './noteRecoveryRecord'
+
+export type NoteDraftKey = number | 'new' | `doc:${number}` | `user:${number}:doc:${number}`
 
 /** `new` 是还没发布的那篇。 */
-export function noteDraftKey(id: number | 'new'): string {
+export function noteDraftKey(id: NoteDraftKey): string {
   return `phantasi:note-draft:${id}`
 }
 
-interface NoteDraft {
+export type NoteDraftFields = NoteCloudFields
+
+export interface NoteDraft {
   title: string
   contentMd: string
   /** 缺字段表示旧草稿没记过，不能盖掉服务端值。 */
   topic?: string | null
   cover?: string | null
   publishedAt?: number | null
+  base?: NoteDraftFields
+  pending?: NotePendingWrite
   savedAt: number
 }
 
-export const NOTE_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000
-
 export function readNoteDraft(
-  id: number | 'new',
+  id: NoteDraftKey,
   now: number = Date.now(),
 ): NoteDraft | null {
   try {
@@ -40,6 +52,8 @@ export function readNoteDraft(
       ...(topic !== undefined ? { topic } : {}),
       ...(cover !== undefined ? { cover } : {}),
       ...(publishedAt !== undefined ? { publishedAt } : {}),
+      ...(isCloudFields(parsed.base) ? { base: parsed.base } : {}),
+      ...(parsed.pending && typeof parsed.pending.requestId === 'string' && isCloudFields(parsed.pending.fields) ? { pending: parsed.pending } : {}),
       savedAt,
     }
   } catch {
@@ -69,13 +83,15 @@ function readOptionalTime(
 }
 
 export function writeNoteDraft(
-  id: number | 'new',
+  id: NoteDraftKey,
   draft: {
     title: string
     contentMd: string
     topic?: string | null
     cover?: string | null
     publishedAt?: number | null
+    base?: NoteDraftFields
+    pending?: NotePendingWrite
   },
   now: number = Date.now(),
 ): void {
@@ -89,7 +105,8 @@ export function writeNoteDraft(
   }
 }
 
-export function clearNoteDraft(id: number | 'new'): void {
+export function clearNoteDraft(id: NoteDraftKey | null): void {
+  if (id == null) return
   try {
     globalThis.localStorage?.removeItem(noteDraftKey(id))
   } catch {
@@ -124,6 +141,40 @@ export function draftDiffersFrom(
     coverChanged ||
     publishedChanged
   )
+}
+
+/** Unowned legacy drafts must never be claimed by the next signed-in user. */
+export function readNoteRecovery(scope: NoteRecoveryScope, now = Date.now()): NoteRecovery | null {
+  return listNoteRecoveryCopies(scope, now)[0]?.recovery ?? null
+}
+
+export function writeNoteRecovery(
+  scope: NoteRecoveryScope,
+  fields: NoteCloudFields,
+  base: NoteCloudFields,
+  revision: number,
+  now = Date.now(),
+  pending?: NotePendingWrite,
+): void {
+  const key = noteRecoveryKey(scope)
+  if (!pending && sameCloudFields(fields, base)) {
+    clearNoteDraft(key)
+    return
+  }
+  try {
+    globalThis.localStorage?.setItem(noteDraftKey(key), JSON.stringify({
+      version: 2, fields, base, revision, savedAt: now, ...(pending ? { pending } : {}),
+    } satisfies NoteRecovery))
+  } catch { /* Recovery is best effort when storage is unavailable. */ }
+}
+
+export function recoverNoteFields(recovery: NoteRecovery | null, remote: NoteCloudFields): NoteCloudFields {
+  if (!recovery) return remote
+  if (recovery.pending) {
+    if (!sameCloudFields(recovery.pending.fields, remote)) return recovery.fields
+    return mergeCloudFields(recovery.pending.fields, recovery.fields, remote)
+  }
+  return mergeCloudFields(recovery.base, recovery.fields, remote)
 }
 
 interface WrapResult {

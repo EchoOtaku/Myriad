@@ -111,8 +111,6 @@ export interface LastFailedUpdate {
   job_id: string
 }
 
-export const CHECK_INTERVAL_PRESETS = [0, 3600, 21600, 43200, 86400] as const
-
 export const SNAPSHOT_LIMIT_PRESETS = [1, 2, 3, 5, 10, 15, 20] as const
 
 export const SNAPSHOT_LIMIT_DEFAULT = 3

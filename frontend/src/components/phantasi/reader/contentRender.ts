@@ -1,5 +1,5 @@
-import type { CommentItem } from '../../../services/phantasiApi'
 import type { AnnotationItem } from '../../../services/phantasiaiApi'
+import type { CommentItem } from '../../../services/phantasiApi'
 import type { PhantasiItem } from '../../../types/phantasi'
 import type { ReaderCopy, ThemeKey } from './types'
 import { useLayoutEffect, useMemo, useRef } from 'react'

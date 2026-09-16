@@ -29,6 +29,12 @@ pub(crate) enum ToolMessage {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct TokenUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct ToolTurn {
     pub text: String,
     pub calls: Vec<ToolCall>,
@@ -37,6 +43,8 @@ pub(crate) struct ToolTurn {
     pub provider: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }
 
 const MAX_STREAM_BYTES: usize = 4 * 1024 * 1024;
@@ -77,7 +85,7 @@ pub(crate) fn request_body(
                 });
             }
             Ok(
-                json!({"model":model,"messages":messages,"stream":true,"max_tokens":max_tokens,
+                json!({"model":model,"messages":messages,"stream":true,"stream_options":{"include_usage":true},"max_tokens":max_tokens,
                 "tools":tools.iter().map(|tool| json!({"type":"function","function":tool})).collect::<Vec<_>>()}),
             )
         }
@@ -115,7 +123,7 @@ pub(crate) fn request_body(
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Accumulator {
     text: String,
     reasoning: String,
@@ -123,12 +131,40 @@ struct Accumulator {
     calls: BTreeMap<usize, ToolCall>,
     parts: Vec<Value>,
     finish: Option<String>,
+    usage: Option<TokenUsage>,
 }
 
 impl Accumulator {
     fn push(&mut self, provider: AiProvider, value: Value) -> Result<String> {
         if value.get("error").is_some() {
             bail!("Model provider returned an error");
+        }
+        let counts = match provider {
+            AiProvider::OpenAI => value["usage"]["prompt_tokens"]
+                .as_u64()
+                .zip(value["usage"]["completion_tokens"].as_u64()),
+            AiProvider::Gemini => {
+                let usage = &value["usageMetadata"];
+                usage["promptTokenCount"].as_u64().and_then(|input| {
+                    let output = usage["totalTokenCount"]
+                        .as_u64()
+                        .map(|total| total.saturating_sub(input))
+                        .or_else(|| {
+                            usage["candidatesTokenCount"].as_u64().map(|count| {
+                                count.saturating_add(
+                                    usage["thoughtsTokenCount"].as_u64().unwrap_or(0),
+                                )
+                            })
+                        });
+                    output.map(|output| (input, output))
+                })
+            }
+        };
+        if let Some((input_tokens, output_tokens)) = counts {
+            self.usage = Some(TokenUsage {
+                input_tokens,
+                output_tokens,
+            });
         }
         let mut visible = String::new();
         match provider {
@@ -290,6 +326,7 @@ impl Accumulator {
             native,
             provider: provider.as_str().into(),
             model: None,
+            usage: self.usage,
         })
     }
 }
@@ -316,6 +353,8 @@ impl AiAnalyzer {
             max_tokens,
         )?;
         let input_bytes = body.to_string().len();
+        let mut acc = Accumulator::default();
+        let mut received_bytes = 0usize;
         let result = async {
             let (url, header, credential) = match self.provider {
                 AiProvider::OpenAI => (
@@ -337,7 +376,7 @@ impl AiAnalyzer {
                 .client
                 .post(url)
                 .header(header, credential)
-                .json(&body)
+                .json(&super::request_budget::prepare(&body, self.provider)?)
                 .send()
                 .await
                 .map_err(|_| anyhow::anyhow!("Model connection failed"))?;
@@ -350,13 +389,13 @@ impl AiAnalyzer {
             }
             let mut bytes = Vec::new();
             let mut total = 0;
-            let mut acc = Accumulator::default();
             while let Some(chunk) = response
                 .chunk()
                 .await
                 .map_err(|_| anyhow::anyhow!("Model stream interrupted"))?
             {
                 total += chunk.len();
+                received_bytes = total;
                 if total > MAX_STREAM_BYTES {
                     bail!("Model response exceeded the stream limit");
                 }
@@ -380,19 +419,31 @@ impl AiAnalyzer {
             if !bytes.iter().all(u8::is_ascii_whitespace) {
                 bail!("Model stream ended inside an event");
             }
-            let mut turn = acc.finish(self.provider)?;
+            let mut turn = acc.clone().finish(self.provider)?;
             turn.model = Some(self.model.clone());
             Ok(turn)
         }
         .await;
-        crate::services::ai_cost_ledger::record_ai_call_from_attribution(
-            self.provider.as_str(),
-            &self.model,
-            input_bytes,
+        let usage = result
+            .as_ref()
+            .ok()
+            .and_then(|turn| turn.usage.as_ref())
+            .or(acc.usage.as_ref());
+        let input_tokens = usage
+            .map(|usage| usage.input_tokens)
+            .unwrap_or(input_bytes.div_ceil(4) as u64);
+        let output_tokens = usage.map(|usage| usage.output_tokens).unwrap_or_else(|| {
             result
                 .as_ref()
                 .map(|turn| turn.native.to_string().len())
-                .unwrap_or(0),
+                .unwrap_or(received_bytes)
+                .div_ceil(4) as u64
+        });
+        crate::services::ai_cost_ledger::record_ai_tokens_from_attribution(
+            self.provider.as_str(),
+            &self.model,
+            input_tokens.min(i32::MAX as u64) as i32,
+            output_tokens.min(i32::MAX as u64) as i32,
             if result.is_ok() {
                 "completed"
             } else {
@@ -416,7 +467,11 @@ mod tests {
     #[test]
     fn reported_usage_survives_empty_final_frames_and_counts_thinking() {
         let mut acc = Accumulator::default();
-        acc.push(AiProvider::OpenAI, json!({"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]})).unwrap();
+        acc.push(
+            AiProvider::OpenAI,
+            json!({"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}),
+        )
+        .unwrap();
         acc.push(AiProvider::OpenAI, json!({"choices":[],"usage":{"prompt_tokens":123,"completion_tokens":45,"total_tokens":168}})).unwrap();
         let turn = serde_json::to_value(acc.finish(AiProvider::OpenAI).unwrap()).unwrap();
         assert_eq!(turn["usage"]["input_tokens"], 123);

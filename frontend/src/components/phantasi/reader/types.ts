@@ -1,9 +1,9 @@
 import type { TranslationKeys } from '../../../i18n'
-import type { CommentItem } from '../../../services/phantasiApi'
 import type {
   AnnotationItem,
   PodcastDialogue,
 } from '../../../services/phantasiaiApi'
+import type { CommentItem } from '../../../services/phantasiApi'
 import type {
   ArticleCacheResponse,
   TTSEngine,

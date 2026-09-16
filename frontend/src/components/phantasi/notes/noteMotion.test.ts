@@ -42,7 +42,7 @@ describe('笔记编辑器元素动效', () => {
     assert.match(noteCss, /\.phantasi-note__read:not\(\.is-hidden\)[\s\S]*animation:\s*sm-enter/)
     assert.match(
       noteCss,
-      /\.phantasi-note__write:not\(\.phantasi-note__source\):not\(\.is-hidden\)[\s\S]*animation:\s*sm-fade-in/,
+      /\.phantasi-note__write:not\(\.phantasi-note__source,\s*\.is-hidden\)[\s\S]*animation:\s*sm-fade-in/,
     )
   })
 

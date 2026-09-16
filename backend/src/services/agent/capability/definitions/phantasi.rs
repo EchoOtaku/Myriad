@@ -165,10 +165,10 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "title": { "type": "string" },
                 "content": { "type": "string" },
                 "plainText": { "type": "string" },
-                "author": { "type": "string" },
+                "author": { "type": ["string", "null"] },
                 "publishedAt": { "type": "string" },
                 "sourceUrl": { "type": "string" },
-                "sourceName": { "type": "string" }
+                "sourceName": { "type": ["string", "null"] }
             }
         }),
         required_permissions: vec!["phantasi:read".to_string()],

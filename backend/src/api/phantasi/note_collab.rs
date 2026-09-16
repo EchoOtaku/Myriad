@@ -13,7 +13,9 @@ const ROOM_CAP: usize = 64;
 pub struct NoteCollabEvent {
     #[serde(rename = "type")]
     pub kind: String,
+    #[serde(default)]
     pub peer_id: String,
+    #[serde(default)]
     pub user_id: i32,
     pub name: Option<String>,
     pub revision: Option<i64>,
@@ -90,6 +92,16 @@ pub fn note_collab_hub() -> Arc<NoteCollabHub> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_presence_needs_no_server_assigned_identity() {
+        let event: NoteCollabEvent =
+            serde_json::from_str(r#"{"type":"presence","cursor":3}"#).unwrap();
+        assert_eq!(event.kind, "presence");
+        assert_eq!(event.cursor, Some(3));
+        assert_eq!(event.peer_id, "");
+        assert_eq!(event.user_id, 0);
+    }
 
     #[tokio::test]
     async fn room_broadcasts_to_subscribers() {

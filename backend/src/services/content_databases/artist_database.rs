@@ -2,8 +2,6 @@
 //!
 //! JSON loader (`data/artist_database.json`, default `[]`) plus region/genre analysis.
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -88,10 +86,12 @@ impl ArtistDatabase {
         Self { entries }
     }
 
+    #[allow(dead_code)]
     pub fn add_entry(&mut self, entry: ArtistEntry) {
         self.entries.insert(entry.name.clone(), entry);
     }
 
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<(), std::io::Error> {
         let file_path = Path::new("backend/data/artist_database.json");
         let file_path = if file_path.exists() || Path::new("backend").exists() {

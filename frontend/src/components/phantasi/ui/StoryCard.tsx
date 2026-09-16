@@ -7,21 +7,19 @@ import type {
   SyntheticEvent,
 } from 'react'
 
+import type { PeekStoryPreview } from './peekLane'
 import { forwardRef, useCallback, useRef } from 'react'
 import { scheduleTask } from '../../../hooks/animation'
-import { whenPhantasiMotionIdle } from '../../../hooks/animation/pages/phantasiMotion'
+import { phantasiMotionBusy, whenPhantasiMotionIdle } from '../../../hooks/animation/pages/phantasiMotion'
 import { cx } from './cx'
 import {
   notePeekPointer,
-  peekGoesToNav,
   peekLaneIsLive,
   peekLaneKeepsAir,
-  peekLaneIsSwapping,
   peekNodeFromPoint,
   peekPreviewFromStory,
   peekStoryNode,
-  peekSwapHoldsAir,
-  type PeekStoryPreview,
+  resetPeekPointer,
 } from './peekLane'
 import { PhantasiPick } from './Pick'
 
@@ -48,8 +46,8 @@ export function releasePhantasiStoryPeek(
   onEnd?: () => void,
 ): void {
   markPhantasiStoryPeek(target, false)
+  if (!peekLaneIsLive(target)) return
   if (peekLaneKeepsAir(target, related)) return
-  if (peekSwapHoldsAir(target)) return
   onEnd?.()
 }
 
@@ -63,15 +61,15 @@ export function dropPhantasiPeekLane(
       ? (root as Element)
       : null
   clearPhantasiStoryPeeks(host)
+  if (!peekLaneIsLive(root)) return
   if (peekLaneKeepsAir(root, related)) return
-  if (peekSwapHoldsAir(root)) return
   onEnd?.()
 }
 
 export function resumePhantasiStoryPeek(
   onPeek?: (item: PeekStoryPreview) => void,
 ): boolean {
-  if (peekLaneIsSwapping()) return false
+  if (phantasiMotionBusy()) return false
   const node = peekNodeFromPoint()
   if (!node) return false
   markPhantasiStoryPeek(node, true)
@@ -98,6 +96,7 @@ export function usePhantasiPeekLane({
   onPeekEnd?: () => void
   blocked?: () => boolean
 }): {
+  onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void
   onPointerOver: (event: ReactPointerEvent<HTMLElement>) => void
   onPointerOut: (event: ReactPointerEvent<HTMLElement>) => void
   onPointerLeave: (event: ReactPointerEvent<HTMLElement>) => void
@@ -113,72 +112,50 @@ export function usePhantasiPeekLane({
   blockedRef.current = blocked
 
   const onPointerOver = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType === 'touch' || blockedRef.current?.()) return
-    const node = peekStoryNode(event.target)
-    if (!node) return
-    const from = event.relatedTarget
-    if (from instanceof Node && node.contains(from)) return
     notePeekPointer(event)
+    if (event.pointerType === 'touch' || event.buttons || blockedRef.current?.()) return
+    const node = peekStoryNode(event.target)
+    if (!node || !peekLaneIsLive(node) || phantasiMotionBusy()) return
+    if (node.classList.contains('is-peek')) return
     markPhantasiStoryPeek(node, true)
     const item = peekPreviewFromStory(node)
     if (item) onPeekRef.current?.(item)
   }, [])
 
   const onPointerOut = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType === 'touch' || blockedRef.current?.()) return
-    if (!peekLaneIsLive(event.currentTarget)) return
-    notePeekPointer(event)
     const node = peekStoryNode(event.target)
-    const to = event.relatedTarget
-    if (node && to instanceof Node && node.contains(to)) return
-    if (peekGoesToNav(to)) {
-      markPhantasiStoryPeek(node, false)
-      return
-    }
-    releasePhantasiStoryPeek(node ?? event.target, to, onPeekEndRef.current)
+    if (node && event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) return
+    releasePhantasiStoryPeek(node, event.relatedTarget, onPeekEndRef.current)
   }, [])
 
   const onPointerLeave = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType === 'touch' || blockedRef.current?.()) return
-    if (!peekLaneIsLive(event.currentTarget)) return
-    notePeekPointer(event)
-    const to = event.relatedTarget
-    if (to instanceof Node && event.currentTarget.contains(to)) return
-    if (peekGoesToNav(to)) {
-      clearPhantasiStoryPeeks(event.currentTarget)
-      return
-    }
-    dropPhantasiPeekLane(event.currentTarget, to, onPeekEndRef.current)
+    dropPhantasiPeekLane(event.currentTarget, event.relatedTarget, onPeekEndRef.current)
   }, [])
 
   const onPointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (blockedRef.current?.()) return
-    if (!peekLaneIsLive(event.currentTarget)) return
-    markPhantasiStoryPeek(event.target, false)
-    if (peekSwapHoldsAir(event.target)) return
-    onPeekEndRef.current?.()
+    resetPeekPointer()
+    dropPhantasiPeekLane(event.currentTarget, null, onPeekEndRef.current)
   }, [])
 
   const onFocus = useCallback((event: ReactFocusEvent<HTMLElement>) => {
     if (blockedRef.current?.()) return
     const node = peekStoryNode(event.target)
-    if (!node) return
+    // A touch/click focus must not manufacture hover. Keyboard focus is explicit.
+    if (!node || !peekLaneIsLive(node) || !node.matches(':focus-visible')) return
     markPhantasiStoryPeek(node, true)
     const item = peekPreviewFromStory(node)
     if (item) onPeekRef.current?.(item)
   }, [])
 
   const onBlur = useCallback((event: ReactFocusEvent<HTMLElement>) => {
-    if (blockedRef.current?.()) return
-    releasePhantasiStoryPeek(
-      event.target,
-      event.relatedTarget,
-      onPeekEndRef.current,
-    )
+    const node = peekStoryNode(event.target)
+    if (node && event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) return
+    releasePhantasiStoryPeek(node, event.relatedTarget, onPeekEndRef.current)
   }, [])
 
   return {
     onPointerOver,
+    onPointerMove: onPointerOver,
     onPointerOut,
     onPointerLeave,
     onPointerCancel,

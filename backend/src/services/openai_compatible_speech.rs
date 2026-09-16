@@ -16,15 +16,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 pub enum OpenAiSpeechError {
     ApiKeyNotConfigured,
     NetworkError(String),
-    ApiError {
-        status: u16,
-        message: String,
-    },
+    ApiError { status: u16, message: String },
     InvalidAudioData(String),
-    /// 目前不构造：speech_runtime 走自己的可用性判定后才调这里。
-    /// Display 臂保留，接入新供应商时直接可用。
-    #[allow(dead_code)]
-    TtsNotAvailable(String),
 }
 
 impl std::fmt::Display for OpenAiSpeechError {
@@ -36,7 +29,6 @@ impl std::fmt::Display for OpenAiSpeechError {
             Self::NetworkError(msg) => write!(f, "Network error: {msg}"),
             Self::ApiError { status, message } => write!(f, "API error [{status}]: {message}"),
             Self::InvalidAudioData(msg) => write!(f, "Invalid audio data: {msg}"),
-            Self::TtsNotAvailable(msg) => write!(f, "{msg}"),
         }
     }
 }

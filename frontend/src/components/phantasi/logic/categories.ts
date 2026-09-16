@@ -1,9 +1,9 @@
 /** 工作台分类：笔记 topic 和订阅 category 共用名字。预置分类不能改。 */
 
 import {
-  phantasiCategoryParts,
   isFriendLinkCategory,
   isMineCategory,
+  phantasiCategoryParts,
 } from '../constants'
 import { normalizeNoteCategory } from '../notes/noteCategory'
 
