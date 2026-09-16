@@ -87,9 +87,7 @@ export function useConversationPan(
         target += delta
       }
       trackH = nextH
-      cards = Iterator.from(
-        track.querySelectorAll<HTMLElement>(cardSelector),
-      )
+      cards = Iterator.from(track.querySelectorAll<HTMLElement>(cardSelector))
         .map((el) => {
           const box =
             (el.closest('.agent-panel-presence') as HTMLElement | null) ?? el
@@ -365,10 +363,10 @@ export function useConversationPan(
 
     const resize = new ResizeObserver(() => {
       if (blocked()) return
+      const prevMax = maxScroll()
       const nextH = track.offsetHeight
       if (nextH !== trackH || cards.length === 0) recache()
       const prevView = viewH
-      const prevMax = maxScroll()
       const wasPinned =
         nearBottom && Math.abs(current - prevMax) <= CONVERSATION_NEAR_BOTTOM_PX
       measure()
@@ -390,7 +388,9 @@ export function useConversationPan(
         kick()
         return
       }
-      if (viewH !== prevView || max !== prevMax) writeExit()
+      // Prepending history shifts both current and target in recache. Commit
+      // that offset even when no gesture or animation will schedule a frame.
+      write()
     })
     resize.observe(track)
     resize.observe(viewport)

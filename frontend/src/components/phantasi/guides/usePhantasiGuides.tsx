@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { SettingGuideEntry } from './types'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useI18n } from '../../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../../contexts/I18nContext'
 import { SettingGuideBody } from '../../settings/guides/SettingGuideBody'
 import { getPhantasiGuidesCatalog, loadPhantasiGuidesCatalog } from './catalog'
 

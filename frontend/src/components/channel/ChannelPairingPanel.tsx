@@ -2,7 +2,7 @@ import type { QqPairingStatus } from '../../services/agent/agentApi'
 import { LuCopy } from '@lib/icons'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { showError, showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'

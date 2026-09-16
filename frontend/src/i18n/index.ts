@@ -1,4 +1,4 @@
-export type { TranslationKeys } from './assembleLocale'
+export type { ShellTranslationKeys, TranslationKeys } from './assembleLocale'
 export { formatDate, formatMessage, formatNumber } from './formatMessage'
 export type { Locale } from './locales'
 

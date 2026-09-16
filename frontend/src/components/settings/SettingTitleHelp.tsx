@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { SettingHoverTooltipTone } from './useSettingHoverTooltip'
 import { LuInfo } from '@lib/icons'
 import React from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { useSettingHoverTooltip } from './useSettingHoverTooltip'
 import './SettingTitleHelp.css'
 

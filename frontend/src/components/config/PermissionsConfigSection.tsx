@@ -2,7 +2,7 @@ import type { PermissionItem, QuotaItem } from '../settings'
 import type { PermissionConfigValues } from './form/types'
 import { FaSlidersH, LuSparkles } from '@lib/icons'
 import React, { useCallback, useMemo } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 
 import {
   PermissionGroup,

@@ -145,6 +145,9 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/fixture/liquidGlass.ts
 
 # Frontend render and event performance regressions
+!/frontend/tests/browser/libraryWindow.spec.ts
+!/frontend/tests/browser/fixture/libraryWindow.html
+!/frontend/tests/browser/fixture/libraryWindow.tsx
 !/frontend/tests/browser/performance.spec.ts
 !/frontend/tests/browser/fixture/performance.html
 !/frontend/tests/browser/fixture/performance.tsx
@@ -175,3 +178,12 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/fixture/noteSourceEdit.tsx
 !/frontend/tests/browser/journalWindow.spec.ts
 !/frontend/tests/browser/fixture/journalWindow.tsx
+
+# Agent progressive history ordering and pan anchor regressions.
+!/frontend/tests/browser/agentHistory.spec.ts
+!/frontend/tests/browser/fixture/agentHistory.tsx
+
+# Client locale demand and successive language-switch regressions.
+!/frontend/tests/browser/localeDemand.spec.ts
+!/frontend/tests/browser/fixture/localeDemand.html
+!/frontend/tests/browser/fixture/localeDemand.tsx

@@ -1,0 +1,27 @@
+{
+  "moduleVisibilitySaveFailed": "ページ表示範囲設定を保存できませんでした。",
+  "reportSettingsSaveFailed": "レポートページ設定を保存できませんでした。",
+  "loadConfigFailed": "設定の読み込みに失敗しました",
+  "permissionsSaveFailed": "権限設定の保存に失敗しました",
+  "usersUpdateFailed": "そのユーザーを更新できませんでした。",
+  "usersLoadError": "ユーザー一覧の読み込みに失敗しました",
+  "usersDeleteFailed": "そのユーザーを削除できませんでした。",
+  "usersUnlinkFailed": "そのログイン方法を解除できませんでした。",
+  "discordOAuthAppMissing": "先に「OAuth ログイン」で Discord アプリを追加して有効にしてください。データ認可は同じ Application を使います。",
+  "hitokotoSaveFailed": "一言設定を保存できませんでした。",
+  "hitokotoLoadFailed": "一言設定の読み込みに失敗しました",
+  "mcpSaveFailed": "MCP 設定の保存に失敗しました",
+  "mcpInvalidConfig": "MCP 設定の形式が正しくありません。コマンドと引数を確認してください。",
+  "mcpLoadFailed": "MCP 設定を読み込めません",
+  "analytics": {
+    "exportFailed": "統計のエクスポートに失敗しました",
+    "loadFailed": "統計の読み込みに失敗しました",
+    "aiUsageLoadFailed": "AI 使用統計の読み込みに失敗しました"
+  },
+  "poweredBy": "提供",
+  "upyun": "又拍云",
+  "cloudflare": "Cloudflare",
+  "edgeone": "EdgeOne",
+  "icpBadge": "備",
+  "gonganBadge": "公"
+}

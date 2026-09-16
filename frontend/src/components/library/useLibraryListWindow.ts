@@ -49,5 +49,12 @@ export function useLibraryListWindow<T extends { id: string }>(
     }
   }, [enabled, index, initial, surfaceRef])
 
-  return snapshot?.index === index ? snapshot.items : initial
+  // Pagination and resize replace the index. Keep surviving rows until the
+  // layout effect measures again, otherwise React would discard their focus.
+  if (snapshot?.index === index) return snapshot.items
+  const retained = snapshot?.items.flatMap(item => {
+    const next = index.itemsById.get(item.id)
+    return next ? [next] : []
+  })
+  return retained?.length ? retained : initial
 }

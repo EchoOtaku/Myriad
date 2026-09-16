@@ -3,7 +3,7 @@ import type { SettingSectionConfig } from './types'
 
 import { LuChevronLeft } from '@lib/icons'
 import React, { useMemo, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { guideDomProps } from './guides/guideAnchor'
 import { prefersReducedMotion } from './motion'
 import { SettingGroup } from './SettingGroup'

@@ -31,3 +31,8 @@ describe('mergeNoteField', () => {
 it('保留各作者插入段内部的重复行和空行', () => {
   assert.equal(mergeNoteText('anchor', 'anchor\nx\nx\n\n', 'anchor\ny'), 'anchor\nx\nx\n\n\ny')
 })
+
+it('一方替换基准行时保留另一方在这行之前插入的内容', () => {
+  assert.equal(mergeNoteText('old', 'insert\nold', 'new'), 'insert\nnew')
+  assert.equal(mergeNoteText('old', 'new', 'insert\nold'), 'insert\nnew')
+})

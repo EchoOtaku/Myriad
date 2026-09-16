@@ -1,4 +1,4 @@
-import type { TranslationKeys } from '../../i18n'
+import type { ShellTranslationKeys } from '../../i18n'
 import type { WidgetComponentProps } from '../widgetGridTypes'
 
 import { motionShim as motion } from '@lib/motionShim'
@@ -43,7 +43,7 @@ interface Activity {
   legacy?: boolean
 }
 
-function metricLabel(metric: string | undefined, t: TranslationKeys): string {
+function metricLabel(metric: string | undefined, t: ShellTranslationKeys): string {
   const labels: Record<string, string> = {
     playtime_minutes: t.recentActivity.playTime,
     rating: t.recentActivity.rating,
@@ -84,7 +84,7 @@ function metricLabel(metric: string | undefined, t: TranslationKeys): string {
 
 function formatDuration(
   minutes: number,
-  t: TranslationKeys,
+  t: ShellTranslationKeys,
   format: (template: string, params: Record<string, string | number>) => string,
 ): string {
   const rounded = Math.round(Math.abs(minutes))
@@ -102,7 +102,7 @@ function formatDuration(
 function formatValue(
   value: unknown,
   metric: string | undefined,
-  t: TranslationKeys,
+  t: ShellTranslationKeys,
   locale: string,
   format: (template: string, params: Record<string, string | number>) => string,
 ): string {
@@ -127,7 +127,7 @@ function formatValue(
 
 function formatChangeCore(
   change: ActivityChange,
-  t: TranslationKeys,
+  t: ShellTranslationKeys,
   locale: string,
   format: (template: string, params: Record<string, string | number>) => string,
 ): string {
@@ -583,7 +583,7 @@ const ActivityItem = memo(
   }: {
     activity: Activity
     compact: boolean
-    t: TranslationKeys
+    t: ShellTranslationKeys
   }) => {
     const { locale, format } = useI18n()
     // 两列视口只展示首条变化，避免副行挤爆。

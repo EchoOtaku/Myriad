@@ -150,6 +150,7 @@ fn allowed_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
     let mut map: HashMap<&'static str, HashSet<&'static str>> = HashMap::new();
     map.insert("a", ["href", "title"].into_iter().collect());
     map.insert("img", ["src", "alt", "title"].into_iter().collect());
+    map.insert("ol", ["start"].into_iter().collect());
     // 任务列表渲染成 checkbox；只放行这三个属性，checked 由 Markdown 决定
     map.insert(
         "input",
@@ -1366,6 +1367,16 @@ mod tests {
                 "{html}"
             );
             assert_eq!(html.matches("<td>").count(), 2, "{html}");
+        }
+    }
+
+    #[test]
+    fn ordered_list_start_survives_preview_and_published_sanitization() {
+        for html in [
+            render_markdown("3. three\n4. four"),
+            render_markdown_preview("3. three\n4. four"),
+        ] {
+            assert!(html.contains("start=\"3\""), "{html}");
         }
     }
 

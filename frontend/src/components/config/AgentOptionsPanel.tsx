@@ -13,7 +13,7 @@ import type {
 import { FaSearch, LuBookOpen, LuClock, LuRefreshCw, LuSparkles } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'

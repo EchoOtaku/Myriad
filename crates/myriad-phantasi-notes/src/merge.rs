@@ -114,6 +114,12 @@ mod tests {
     }
 
     #[test]
+    fn insertion_before_replaced_line_survives() {
+        assert_eq!(merge_text("old", "insert\nold", "new"), "insert\nnew");
+        assert_eq!(merge_text("old", "new", "insert\nold"), "insert\nnew");
+    }
+
+    #[test]
     fn unchanged_side_takes_the_other() {
         assert_eq!(merge_text("a\nb", "a\nb", "a\nB"), "a\nB");
         assert_eq!(merge_text("a\nb", "A\nb", "a\nb"), "A\nb");

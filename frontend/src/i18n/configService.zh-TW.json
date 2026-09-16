@@ -1,0 +1,27 @@
+{
+  "moduleVisibilitySaveFailed": "頁面可見性設定沒能儲存。",
+  "reportSettingsSaveFailed": "報告頁設定沒能儲存。",
+  "loadConfigFailed": "載入配置失敗",
+  "permissionsSaveFailed": "儲存權限設定失敗",
+  "usersUpdateFailed": "使用者資料沒能更新。",
+  "usersLoadError": "載入使用者列表失敗",
+  "usersDeleteFailed": "使用者沒能刪除。",
+  "usersUnlinkFailed": "登入方式沒能解綁。",
+  "discordOAuthAppMissing": "請先在「OAuth 登入」中新增並啟用 Discord 應用。資料授權會複用同一 Application。",
+  "hitokotoSaveFailed": "一言設定沒能儲存。",
+  "hitokotoLoadFailed": "載入一言設定失敗",
+  "mcpSaveFailed": "儲存 MCP 配置失敗",
+  "mcpInvalidConfig": "MCP 配置格式無效，請檢查命令和參數。",
+  "mcpLoadFailed": "無法載入 MCP 配置",
+  "analytics": {
+    "exportFailed": "匯出統計失敗",
+    "loadFailed": "載入訪問統計失敗",
+    "aiUsageLoadFailed": "載入 AI 使用統計失敗"
+  },
+  "poweredBy": "技術支援",
+  "upyun": "又拍雲",
+  "cloudflare": "Cloudflare",
+  "edgeone": "EdgeOne",
+  "icpBadge": "備",
+  "gonganBadge": "公"
+}

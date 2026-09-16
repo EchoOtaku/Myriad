@@ -15,6 +15,10 @@ export type TranslationKeys = LocaleCore & {
   agentCaps: LocaleAgentCaps
 }
 
+export type ShellTranslationKeys = Omit<TranslationKeys, 'config'> & {
+  config: typeof import('./configService.en-US.json')
+}
+
 export function assembleLocale(
   core: LocaleCore,
   namespaces: {

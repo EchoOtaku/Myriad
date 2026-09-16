@@ -1079,6 +1079,7 @@ export async function syncReadingStates(
   states: PhantasiSyncStateItem[],
   attributionHeaders?: PhantasiAttributionHeaders,
 ): Promise<PhantasiSyncStatesResponse> {
+  const subject = phantasiSubject.capture()
   const ids = new Set<number>()
   for (const state of states) {
     if (!Number.isInteger(state.item_id) || state.item_id <= 0 || ids.has(state.item_id)) {
@@ -1095,14 +1096,19 @@ export async function syncReadingStates(
   // Keep transactions bounded; validate the entire input above before the first write.
   const merged: PhantasiSyncStatesResponse = { synced: 0, conflicts: [] }
   for (let offset = 0; offset < states.length; offset += 100) {
+    phantasiSubject.assert(subject)
     let result: PhantasiSyncStatesResponse
     try {
       result = await request<PhantasiSyncStatesResponse>('/sync-states', {
         method: 'POST',
+        signal: subject.signal,
         headers: { 'Content-Type': 'application/json', ...attributionHeaders },
         body: JSON.stringify({ states: states.slice(offset, offset + 100) }),
       })
+      phantasiSubject.assert(subject)
     } catch (error) {
+      phantasiSubject.assert(subject)
+      if (error instanceof Error && error.name === 'AbortError') throw error
       if (offset === 0) throw error
       // Earlier batches committed. Keep their confirmations and leave the rest retryable.
       merged.failed = [...(merged.failed ?? []), ...states.slice(offset).map(state => state.item_id)]
@@ -1114,6 +1120,7 @@ export async function syncReadingStates(
     if (result.failed) merged.failed = [...(merged.failed ?? []), ...result.failed]
     if (result.revisions) merged.revisions = { ...merged.revisions, ...result.revisions }
   }
+  phantasiSubject.assert(subject)
   return merged
 }
 
@@ -1219,13 +1226,17 @@ async function collectCommentPages<T extends CommentsResponse | RepliesResponse>
   headers?: PhantasiAttributionHeaders,
   signal?: AbortSignal,
 ): Promise<T> {
+  const subject = phantasiSubject.capture()
+  signal = signal ? AbortSignal.any([signal, subject.signal]) : subject.signal
   let cursor = 0
   let first: T | undefined
   const rows = new Map<number, CommentItem>()
   while (true) {
-    signal?.throwIfAborted()
+    phantasiSubject.assert(subject)
+    signal.throwIfAborted()
     const page = await request<T>(`${path}${cursor ? `?after_id=${cursor}` : ''}`, { headers, signal })
-    signal?.throwIfAborted()
+    phantasiSubject.assert(subject)
+    signal.throwIfAborted()
     first ??= page
     const items = key === 'comments' ? (page as CommentsResponse).comments : (page as RepliesResponse).replies
     for (const item of items) rows.set(item.id, item)
@@ -1235,6 +1246,8 @@ async function collectCommentPages<T extends CommentsResponse | RepliesResponse>
     }
     cursor = page.next_cursor
   }
+  phantasiSubject.assert(subject)
+  signal.throwIfAborted()
   return { ...first, [key]: [...rows.values()], next_cursor: null } as T
 }
 

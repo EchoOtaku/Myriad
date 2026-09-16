@@ -1,0 +1,27 @@
+{
+  "moduleVisibilitySaveFailed": "Seitensichtbarkeit konnte nicht gespeichert werden.",
+  "reportSettingsSaveFailed": "Berichtsseiteneinstellungen konnten nicht gespeichert werden.",
+  "loadConfigFailed": "Konfiguration konnte nicht geladen werden",
+  "permissionsSaveFailed": "Berechtigungseinstellungen konnten nicht gespeichert werden",
+  "usersUpdateFailed": "Dieser Nutzer konnte nicht aktualisiert werden.",
+  "usersLoadError": "Nutzer konnten nicht geladen werden",
+  "usersDeleteFailed": "Dieser Nutzer konnte nicht gelöscht werden.",
+  "usersUnlinkFailed": "Diese Anmeldemethode konnte nicht getrennt werden.",
+  "discordOAuthAppMissing": "Zuerst unter OAuth-Anmeldung eine Discord-App hinzufügen und aktivieren. Die Datenautorisierung nutzt dieselbe Anwendung.",
+  "hitokotoSaveFailed": "Zitateinstellungen konnten nicht gespeichert werden.",
+  "hitokotoLoadFailed": "Zitateinstellungen konnten nicht geladen werden",
+  "mcpSaveFailed": "MCP-Konfiguration konnte nicht gespeichert werden",
+  "mcpInvalidConfig": "Diese MCP-Konfiguration ist ungültig. Befehl und Argumente prüfen.",
+  "mcpLoadFailed": "MCP-Konfiguration konnte nicht geladen werden",
+  "analytics": {
+    "exportFailed": "Statistikexport fehlgeschlagen",
+    "loadFailed": "Statistik konnte nicht geladen werden",
+    "aiUsageLoadFailed": "KI-Nutzungsstatistik konnte nicht geladen werden"
+  },
+  "poweredBy": "Bereitgestellt von",
+  "upyun": "Upyun",
+  "cloudflare": "Cloudflare",
+  "edgeone": "EdgeOne",
+  "icpBadge": "ICP",
+  "gonganBadge": "GA"
+}

@@ -1,6 +1,6 @@
 import type { SettingGroupConfig } from './types'
 import React, { useEffect, useMemo } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { CollapseRegion } from './CollapseRegion'
 import { GUIDE_PATH_ATTR, guideAnchorId } from './guides/guideAnchor'
 import { ToggleSwitch } from './items/ToggleSwitch'

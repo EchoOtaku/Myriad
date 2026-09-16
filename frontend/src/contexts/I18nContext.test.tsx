@@ -4,19 +4,19 @@ import { PassThrough } from 'node:stream'
 import { it } from 'node:test'
 import React, { Suspense } from 'react'
 import { renderToPipeableStream } from 'react-dom/server'
-import { I18nProvider, useI18n } from './I18nContext'
+import { I18nProvider, useConfigI18n } from './I18nContext'
 
 it('starts the initial locale fetch before mounting the provider', () => {
   const source = readFileSync(new URL('./I18nContext.tsx', import.meta.url), 'utf8')
   const beforeProvider = source.slice(0, source.indexOf('export const I18nProvider'))
   assert.match(beforeProvider, /typeof window !== 'undefined'/)
-  assert.match(beforeProvider, /loadLocale\(getDefaultLocale\(\)\)/)
+  assert.match(beforeProvider, /loadShellLocale\(getDefaultLocale\(\)\)/)
 })
 
 it('renders a complete settings catalog in a detached React tree and provider', async () => {
   function SettingsLabel() {
-    const { t } = useI18n()
-    return <span>{t.config.poweredBy}</span>
+    const { t } = useConfigI18n()
+    return <span>{t.config.title}</span>
   }
   const output = new PassThrough()
   let html = ''
@@ -32,7 +32,7 @@ it('renders a complete settings catalog in a detached React tree and provider', 
       },
     )
   })
-  assert.match(html, /Powered by/)
+  assert.match(html, /System Configuration/)
 
   const providerOutput = new PassThrough()
   let providerHtml = ''
@@ -44,5 +44,5 @@ it('renders a complete settings catalog in a detached React tree and provider', 
       onError: reject,
     })
   })
-  assert.match(providerHtml, /Powered by/)
+  assert.match(providerHtml, /System Configuration/)
 })

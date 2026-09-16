@@ -6,7 +6,7 @@
  */
 
 import type { InputRule } from './noteInputRules'
-import { asDisplayMathBlock, mathIslandHtml, mathMarkdown, replaceMathMarkdown } from './noteMath'
+import type { MdFence, NoteWidgetConfig } from './noteLayout'
 import {
   decodeWidgetConfigAttr,
   eatMdFence,
@@ -17,14 +17,13 @@ import {
   layoutAttr,
   mdFenceClose,
   mdFenceOpen,
-  NOTE_MAX_COLUMNS,
   normalizeNoteWidgetSize,
+  NOTE_MAX_COLUMNS,
   parseNoteLayout,
   serializeColumns,
   serializeWidget,
-  type MdFence,
-  type NoteWidgetConfig,
 } from './noteLayout'
+import { asDisplayMathBlock, mathIslandHtml, mathMarkdown, replaceMathMarkdown } from './noteMath'
 
 function escapeHtml(value: string): string {
   return value
@@ -41,13 +40,13 @@ const ESC_MARK = '\uE000'
 function stashEscapes(text: string): string {
   return text.replaceAll(/\\([\\`*_{}[\]()#+\-.!~<>|$])/g, (_m, ch: string) => {
     const index = ESCAPABLE.indexOf(ch)
-    return `${ESC_MARK}${String.fromCharCode(0xe100 + index)}`
+    return `${ESC_MARK}${String.fromCharCode(0xE100 + index)}`
   })
 }
 
 function renderEscapes(html: string): string {
   return html.replaceAll(/\uE000([\uE100-\uE1FF])/g, (_m, code: string) => {
-    const ch = ESCAPABLE[code.charCodeAt(0) - 0xe100] ?? ''
+    const ch = ESCAPABLE[code.charCodeAt(0) - 0xE100] ?? ''
     return `<span data-esc="${escapeHtml(ch)}">${escapeHtml(ch)}</span>`
   })
 }
@@ -78,6 +77,8 @@ const IMAGE_RE = new RegExp(String.raw`!\[([^\]]*)\]${LINK_DEST}`, 'g')
 const LINK_RE = new RegExp(String.raw`(?<!!)\[([^\]]+)\]${LINK_DEST}`, 'g')
 /** `[label]: dest "title"`，label 不能是脚注的 `^id`。 */
 const LINK_DEF_RE =
+  // Keep distinct captures for angle-wrapped and bare destinations; parseLinkDef uses both.
+  // eslint-disable-next-line regexp/no-dupe-disjunctions
   /\[(?!\^)([^\]]+)\]:\s+(?:<([^>\s]+)>|(\S+))(?:\s+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?/
 const LINK_DEF_LINE = new RegExp(`^\\s*${LINK_DEF_RE.source}\\s*$`)
 const FN_DEF_START = /^\[\^([^\]\s]+)\]:\s*/
@@ -274,7 +275,7 @@ function inlineMarkdown(
       /\[([^\]]+)\]\[([^\]\s]*)\]/g,
       (match, label: string, id: string) => resolveDefinedLink(defs, label, id) ?? match,
     )
-    .replace(/\[(?!\^)([^\]\s]+)\](?!\(|\[|:)/g, (match, id: string) => {
+    .replace(/\[(?!\^)([^\]\s]+)\](?![([:])/g, (match, id: string) => {
       const def = defs.get(id.toLowerCase())
       if (!def) return match
       const title = def.title ? ` title="${escapeHtml(def.title)}"` : ''
@@ -683,7 +684,7 @@ function decode(value: string): string {
 }
 
 const MATH_HOST_OPEN =
-  /<(span|div)(?=[^>]*\b(?:note-math|note-math-edit|math-inline|math-display)\b)/i
+  /<(span|div)(?=[^>]+\b(?:note-math|note-math-edit|math-inline|math-display)\b)/i
 
 /** KaTeX 水合后岛里套着一层层 span，先收成空壳再交给下面的标签规则。 */
 function collapseMathHosts(html: string): string {
@@ -749,7 +750,7 @@ function inlineHtml(html: string): string {
   return decode(
     html
       .replace(
-        /<(span|div)([^>]*\b(?:note-math|note-math-edit|math-inline|math-display)\b[^>]*)>([\s\S]*?)<\/\1>/gi,
+        /<(span|div)([^>]+\b(?:note-math|note-math-edit|math-inline|math-display)\b[^>]*)>([\s\S]*?)<\/\1>/gi,
         (_m, tag: string, attrs: string, body: string) =>
           serializeMathIsland(attrs, body, tag === 'div'),
       )
@@ -1435,7 +1436,7 @@ export function inlineMarkdownTail(text: string): { length: number; html: string
 
 /** 粗看一眼像不像 Markdown：贴纯文本时决定要不要按 Markdown 解。 */
 export function looksLikeMarkdown(text: string): boolean {
-  return /!\[[^\]]*\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\[[^\]]*\]|(^|\n)(#{1,6} |[-*] |\d+\. |> |```|:::|\$\$|\[\^?[^\]\s]+\]:)|\*\*[^*\n]+\*\*|`[^`\n]+`|~~[^~\n]+~~|(?<!\$)\$[^$\n]+\$/.test(
+  return /!\[[^\]]*\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\[[^\]]*\]|(^|\n)(#{1,6} |[-*] |\d+\. |> |```|:::|\$\$|\[[^\]\s]+\]:)|\*\*[^*\n]+\*\*|`[^`\n]+`|~~[^~\n]+~~|(?<!\$)\$[^$\n]+\$/.test(
     text,
   )
 }

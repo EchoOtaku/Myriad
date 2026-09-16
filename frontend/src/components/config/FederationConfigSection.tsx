@@ -23,7 +23,7 @@ import {
   LuShieldCheck,
 } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { federationApi } from '../../services/federationApi'
 import { userFacingError } from '../../utils/userFacingError'
 import {

@@ -1,0 +1,27 @@
+{
+  "moduleVisibilitySaveFailed": "페이지 공개 범위 설정을 저장하지 못했습니다.",
+  "reportSettingsSaveFailed": "리포트 페이지 설정을 저장하지 못했습니다.",
+  "loadConfigFailed": "설정을 불러오지 못했습니다",
+  "permissionsSaveFailed": "권한 설정을 저장하지 못했습니다",
+  "usersUpdateFailed": "그 사용자를 업데이트하지 못했습니다.",
+  "usersLoadError": "사용자를 불러오지 못했습니다",
+  "usersDeleteFailed": "그 사용자를 삭제하지 못했습니다.",
+  "usersUnlinkFailed": "그 로그인 방법을 해제하지 못했습니다.",
+  "discordOAuthAppMissing": "먼저 외부 로그인에 Discord 앱을 추가하고 켜세요. 데이터 권한은 그 앱을 다시 씁니다.",
+  "hitokotoSaveFailed": "문장 설정을 저장하지 못했습니다.",
+  "hitokotoLoadFailed": "문장 설정을 불러오지 못했습니다",
+  "mcpSaveFailed": "MCP 설정을 저장하지 못했습니다",
+  "mcpInvalidConfig": "이 MCP 설정이 잘못되었습니다. 명령과 인수를 확인하세요.",
+  "mcpLoadFailed": "MCP 설정을 불러오지 못했습니다",
+  "analytics": {
+    "exportFailed": "통계 내보내기에 실패했습니다",
+    "loadFailed": "통계를 불러오지 못했습니다",
+    "aiUsageLoadFailed": "AI 사용 통계를 불러오지 못했습니다"
+  },
+  "poweredBy": "제공",
+  "upyun": "Upyun",
+  "cloudflare": "Cloudflare",
+  "edgeone": "EdgeOne",
+  "icpBadge": "ICP",
+  "gonganBadge": "공안"
+}

@@ -1,4 +1,4 @@
-import type { useI18n } from '../contexts/I18nContext'
+import type { TranslationKeys, useI18n } from '../contexts/I18nContext'
 import { userFacingError } from './userFacingError'
 
 type T = ReturnType<typeof useI18n>['t']
@@ -128,7 +128,7 @@ export function messageForLocalLoginError(
 
 export function messageForAdminUserError(
   err: unknown,
-  t: T,
+  t: TranslationKeys,
   fallback: string,
 ): string {
   const msg =

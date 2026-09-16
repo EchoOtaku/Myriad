@@ -10,7 +10,7 @@ import React, {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { useSettingsHelp } from './SettingsHelpContext'
 import {
   applyGuideDragDelta,

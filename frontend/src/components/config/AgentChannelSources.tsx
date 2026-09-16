@@ -19,7 +19,7 @@ import {
   SiTelegram,
 } from '@lib/icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { showStickyToast, showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'

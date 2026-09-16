@@ -1,7 +1,7 @@
 import type { GreetingIconName } from '../../utils/dynamicContent'
 import React, { useEffect, useId, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import {
   getGreeting,
 

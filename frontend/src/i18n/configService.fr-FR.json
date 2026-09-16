@@ -1,0 +1,27 @@
+{
+  "moduleVisibilitySaveFailed": "Impossible d'enregistrer la visibilité des pages.",
+  "reportSettingsSaveFailed": "Impossible d'enregistrer les réglages de la page rapports.",
+  "loadConfigFailed": "Impossible de charger la configuration",
+  "permissionsSaveFailed": "Échec de l'enregistrement des permissions",
+  "usersUpdateFailed": "Impossible de mettre à jour cet utilisateur.",
+  "usersLoadError": "Impossible de charger les utilisateurs",
+  "usersDeleteFailed": "Impossible de supprimer cet utilisateur.",
+  "usersUnlinkFailed": "Impossible de délier cette méthode de connexion.",
+  "discordOAuthAppMissing": "Ajoutez et activez d'abord une appli Discord sous Connexion tierce. L'autorisation données réutilise cette application.",
+  "hitokotoSaveFailed": "Impossible d'enregistrer les réglages de citation.",
+  "hitokotoLoadFailed": "Impossible de charger les réglages de citation",
+  "mcpSaveFailed": "Échec de l'enregistrement de la config MCP",
+  "mcpInvalidConfig": "Cette config MCP est invalide. Vérifiez la commande et les arguments.",
+  "mcpLoadFailed": "Impossible de charger la config MCP",
+  "analytics": {
+    "exportFailed": "Échec de l'export des statistiques",
+    "loadFailed": "Impossible de charger les statistiques",
+    "aiUsageLoadFailed": "Impossible de charger les stats d'usage IA"
+  },
+  "poweredBy": "Propulsé par",
+  "upyun": "Upyun",
+  "cloudflare": "Cloudflare",
+  "edgeone": "EdgeOne",
+  "icpBadge": "ICP",
+  "gonganBadge": "Sécu. pub."
+}

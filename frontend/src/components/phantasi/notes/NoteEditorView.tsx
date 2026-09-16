@@ -450,7 +450,7 @@ export function NoteEditorView({
               <Spinner size="lg" />
             </div>
           ) : (
-            <article className="phantasi-note__paper">
+            <article className="phantasi-note__paper" inert={saving || undefined}>
               <textarea
                 ref={titleInputRef}
                 onCompositionStart={compositionStart}
@@ -699,7 +699,7 @@ export function NoteEditorView({
                     const root = e.currentTarget as HTMLDivElement
                     // 敲完 `)` / `` ` `` / `*` / `~` / `$`：光标前刚好凑成 Markdown 记号就地渲染。
                     const typed = (e.nativeEvent as InputEvent).data ?? ''
-                    if (!e.nativeEvent.isComposing && /[)`*~$]/.test(typed)) {
+                    if (!(e.nativeEvent as InputEvent).isComposing && /[)`*~$]/.test(typed)) {
                       const converted = applyInlineMarkdownAtCaret(root)
                       if (converted != null) {
                         commitVisualMd(converted)

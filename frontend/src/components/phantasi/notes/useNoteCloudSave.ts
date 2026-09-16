@@ -10,6 +10,7 @@
 import type { MutableRefObject } from 'react'
 import type { PhantasiNoteDoc } from '../../../types/phantasi'
 import { useCallback, useEffect, useRef } from 'react'
+import { ApiError } from '../../../services/api'
 import * as phantasiApi from '../../../services/phantasiApi'
 import { userFacingError } from '../../../utils/userFacingError'
 import { mergeNoteField, mergeNoteText } from './noteMerge'
@@ -86,6 +87,7 @@ export interface NoteCloudSaveHandle {
   /** 所有 HTTP / WS / 重连快照走同一条版本与待保存确认路径。 */
   receiveRemote: (fields: NoteCloudFields, revision: number, requestId?: string | null) => boolean
   receiveDoc: (doc: PhantasiNoteDoc, requestId?: string | null) => void
+  writeDoc: (writer: (fields: NoteCloudFields, revision: number, requestId: string) => Promise<PhantasiNoteDoc>) => Promise<PhantasiNoteDoc>
   compositionStart: () => void
   compositionEnd: () => void
   /** 服务端已确认的合并基准。 */
@@ -111,6 +113,13 @@ export function useNoteCloudSave({
   const composingRef = useRef(false)
   const compositionEpochRef = useRef(0)
   const compositionQueueRef = useRef(new Map<number, { fields: NoteCloudFields; requestId?: string | null }>())
+  const uncertainRef = useRef(false)
+  const resumeRef = useRef<() => void>(() => {})
+  const manualWaitRef = useRef(0)
+  const idleWaitersRef = useRef<Array<() => void>>([])
+  const wakeWaiters = useCallback(() => {
+    for (const resolve of idleWaitersRef.current.splice(0)) resolve()
+  }, [])
   const inFlightRef = useRef(false)
   const pendingRef = useRef<{ requestId: string; fields: NoteCloudFields; confirmed: boolean } | null>(null)
   const deferredRef = useRef<{ fields: NoteCloudFields; revision: number; requestId?: string | null } | null>(null)
@@ -122,31 +131,38 @@ export function useNoteCloudSave({
 
   useEffect(() => {
     aliveRef.current = true
-    return () => { aliveRef.current = false }
-  }, [])
+    return () => { aliveRef.current = false; wakeWaiters() }
+  }, [wakeWaiters])
 
   const ack = useCallback((next: NoteCloudFields) => {
     ackedRef.current = next
     baseRef.current = next
   }, [])
 
-  const receiveRemote = useCallback((remote: NoteCloudFields, revision: number, requestId?: string | null) => {
+  const receiveRemote = useCallback((remote: NoteCloudFields, revision: number, requestId?: string | null): boolean => {
     if (revision <= revisionRef.current) return false
     if (composingRef.current) {
-      compositionQueueRef.current.set(revision, { fields: remote, requestId })
+      compositionQueueRef.current.set(revision, { fields: remote, requestId: requestId ?? compositionQueueRef.current.get(revision)?.requestId })
       return false
     }
     // A save receipt already contains the submitted edits. Rebase only typing after
     // that snapshot, regardless of whether the receipt arrives over WS or HTTP.
     const pending = pendingRef.current
+    if (uncertainRef.current && pending && sameCloudFields(remote, pending.fields)) requestId = pending.requestId
     if (pending && !pending.confirmed && requestId !== pending.requestId) {
       // A newer snapshot may already contain our in-flight save. Wait until its
       // outcome establishes the common ancestor; arrival order is not causality.
       if (!deferredRef.current || revision > deferredRef.current.revision) deferredRef.current = { fields: remote, revision, requestId }
+      if (uncertainRef.current) callbacks.current.onError(callbacks.current.labels.conflict)
       return false
     }
-    if (pending && requestId === pending.requestId) pending.confirmed = true
-    const base = requestId && pending?.requestId === requestId ? pending.fields : baseRef.current
+    const ownReceipt = pending && !pending.confirmed && requestId === pending.requestId
+    const base = ownReceipt ? pending.fields : baseRef.current
+    const resuming = uncertainRef.current && ownReceipt
+    if (ownReceipt) {
+      pending.confirmed = true
+      uncertainRef.current = false
+    }
     const result = mergeCloudFields(base, latestRef.current, remote)
     revisionRef.current = revision
     ack(remote)
@@ -156,6 +172,7 @@ export function useNoteCloudSave({
     const deferred = deferredRef.current
     deferredRef.current = null
     if (deferred) receiveRemote(deferred.fields, deferred.revision, deferred.requestId)
+    if (resuming) queueMicrotask(() => resumeRef.current())
     return true
   }, [ack, revisionRef])
 
@@ -164,8 +181,23 @@ export function useNoteCloudSave({
     if (doc.revision === revisionRef.current) callbacks.current.onServerDoc(doc)
   }, [receiveRemote])
 
-  const flush = useCallback(async (id: number) => {
-    if (composingRef.current || inFlightRef.current || activeIdRef.current !== id) return
+  const settleFailure = useCallback((error: unknown) => {
+    const pending = pendingRef.current
+    const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408
+    if (pending && !pending.confirmed && !rejected) {
+      // The server may have committed before the connection failed. Never retry
+      // or merge an unidentifiable newer snapshot as another author's edit.
+      uncertainRef.current = true
+      return
+    }
+    pendingRef.current = null
+    const deferred = deferredRef.current
+    deferredRef.current = null
+    if (deferred) receiveRemote(deferred.fields, deferred.revision, deferred.requestId)
+  }, [receiveRemote])
+
+  const flush = useCallback(async (id: number): Promise<void> => {
+    if (uncertainRef.current || manualWaitRef.current > 0 || composingRef.current || inFlightRef.current || activeIdRef.current !== id) return
     const sending = latestRef.current
     if (sameCloudFields(sending, ackedRef.current)) return
     inFlightRef.current = true
@@ -175,6 +207,7 @@ export function useNoteCloudSave({
     try {
       // The second attempt follows a revision conflict using the freshly merged state.
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (composingRef.current) return
         const snapshot = latestRef.current
         const requestId = crypto.randomUUID()
         pendingRef.current = { requestId, fields: snapshot, confirmed: false }
@@ -196,7 +229,7 @@ export function useNoteCloudSave({
         } catch (err) {
           if (!current()) return
           const message = userFacingError(err, text.saveFailed)
-          if (message !== text.conflict || attempt === 1) throw err
+          if ((!(err instanceof ApiError && err.status === 409) && message !== text.conflict) || attempt === 1) throw err
           // A rejected revision did not persist our snapshot. Buffered remote
           // commits therefore merge against the last confirmed server version.
           pendingRef.current = null
@@ -209,14 +242,54 @@ export function useNoteCloudSave({
         }
       }
     } catch (err) {
-      if (current()) callbacks.current.onError(userFacingError(err, text.saveFailed))
+      if (current()) {
+        settleFailure(err)
+        callbacks.current.onError(userFacingError(err, text.saveFailed))
+      }
     } finally {
-      if (!composingRef.current) pendingRef.current = null
+      if (!composingRef.current && !uncertainRef.current) pendingRef.current = null
       inFlightRef.current = false
+      wakeWaiters()
       // Do not depend on a render or a debounce firing while HTTP was pending.
       if (succeeded && current() && !sameCloudFields(latestRef.current, ackedRef.current)) void flush(id)
     }
-  }, [receiveDoc, receiveRemote, revisionRef])
+  }, [receiveDoc, receiveRemote, revisionRef, settleFailure, wakeWaiters])
+
+  const writeDoc = useCallback(async (writer: (fields: NoteCloudFields, revision: number, requestId: string) => Promise<PhantasiNoteDoc>) => {
+    const id = activeIdRef.current
+    manualWaitRef.current += 1
+    let acquired = false
+    try {
+      while (inFlightRef.current || composingRef.current) {
+        await new Promise<void>((resolve) => idleWaitersRef.current.push(resolve))
+        if (!aliveRef.current || activeIdRef.current !== id) throw new Error('Note editor closed')
+      }
+      if (id == null || !aliveRef.current) throw new Error('Note editor closed')
+      if (uncertainRef.current) throw new Error('Note draft was updated elsewhere')
+      acquired = true
+      inFlightRef.current = true
+      const requestId = crypto.randomUUID()
+      pendingRef.current = { requestId, fields: latestRef.current, confirmed: false }
+      const doc = await writer(latestRef.current, revisionRef.current, requestId)
+      if (aliveRef.current && activeIdRef.current === id) receiveDoc(doc, requestId)
+      return doc
+    } catch (err) {
+      if (acquired && aliveRef.current && activeIdRef.current === id) settleFailure(err)
+      throw err
+    } finally {
+      manualWaitRef.current -= 1
+      if (acquired) {
+        if (!composingRef.current && !uncertainRef.current) pendingRef.current = null
+        inFlightRef.current = false
+      }
+      wakeWaiters()
+      if (id != null && aliveRef.current && activeIdRef.current === id) void flush(id)
+    }
+  }, [flush, receiveDoc, revisionRef, settleFailure, wakeWaiters])
+
+  resumeRef.current = () => {
+    if (aliveRef.current && activeIdRef.current != null) void flush(activeIdRef.current)
+  }
 
   const compositionStart = useCallback(() => {
     compositionEpochRef.current += 1
@@ -231,10 +304,11 @@ export function useNoteCloudSave({
       const queued = [...compositionQueueRef.current.entries()].sort(([a], [b]) => a - b)
       compositionQueueRef.current.clear()
       for (const [revision, remote] of queued) receiveRemote(remote.fields, revision, remote.requestId)
-      if (!inFlightRef.current) pendingRef.current = null
+      if (!inFlightRef.current && !uncertainRef.current) pendingRef.current = null
+      wakeWaiters()
       if (activeIdRef.current != null) void flush(activeIdRef.current)
     }, 0)
-  }, [flush, receiveRemote])
+  }, [flush, receiveRemote, wakeWaiters])
 
   useEffect(() => {
     if (loading || cloudId == null) return
@@ -255,5 +329,5 @@ export function useNoteCloudSave({
     flush,
   ])
 
-  return { ack, baseRef, receiveRemote, receiveDoc, compositionStart, compositionEnd }
+  return { ack, baseRef, receiveRemote, receiveDoc, writeDoc, compositionStart, compositionEnd }
 }

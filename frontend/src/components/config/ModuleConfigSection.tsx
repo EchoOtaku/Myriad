@@ -19,7 +19,7 @@ import {
   SiQqmusic,
 } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import apiService from '../../services/api'
 import {
   ISLAND_CONTENT_KEYS,

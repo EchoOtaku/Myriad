@@ -1,0 +1,27 @@
+{
+  "moduleVisibilitySaveFailed": "页面可见性设置没能保存。",
+  "reportSettingsSaveFailed": "报告页设置没能保存。",
+  "loadConfigFailed": "加载配置失败",
+  "permissionsSaveFailed": "保存权限设置失败",
+  "usersUpdateFailed": "用户资料没能更新。",
+  "usersLoadError": "加载用户列表失败",
+  "usersDeleteFailed": "用户没能删除。",
+  "usersUnlinkFailed": "登录方式没能解绑。",
+  "discordOAuthAppMissing": "请先在「OAuth 登录」中添加并启用 Discord 应用。数据授权会复用同一 Application。",
+  "hitokotoSaveFailed": "一言设置没能保存。",
+  "hitokotoLoadFailed": "加载一言设置失败",
+  "mcpSaveFailed": "保存 MCP 配置失败",
+  "mcpInvalidConfig": "MCP 配置格式无效，请检查命令和参数。",
+  "mcpLoadFailed": "无法加载 MCP 配置",
+  "analytics": {
+    "exportFailed": "导出统计失败",
+    "loadFailed": "加载访问统计失败",
+    "aiUsageLoadFailed": "加载 AI 使用统计失败"
+  },
+  "poweredBy": "技术支持",
+  "upyun": "又拍云",
+  "cloudflare": "Cloudflare",
+  "edgeone": "EdgeOne",
+  "icpBadge": "备",
+  "gonganBadge": "公"
+}

@@ -79,6 +79,43 @@ describe('reconcilePresence', () => {
     )
   })
 
+  it('prepends older history before existing rows while retaining outgoing rows', () => {
+    const prev = reconcilePresence(
+      [],
+      [{ id: '40' }, { id: 'gone' }, { id: '41' }],
+      keyOf,
+      0,
+      0,
+    )
+    const next = reconcilePresence(
+      prev,
+      [{ id: '38' }, { id: '39' }, { id: '40' }, { id: '41' }],
+      keyOf,
+      100,
+      400,
+    )
+    assert.deepEqual(
+      next.map((entry) => [entry.key, entry.phase, entry.until]),
+      [
+        ['38', 'in', 0],
+        ['39', 'in', 0],
+        ['40', 'in', 0],
+        ['gone', 'out', 500],
+        ['41', 'in', 0],
+      ],
+    )
+    assert.deepEqual(
+      reconcilePresence(
+        next,
+        [{ id: '38' }, { id: '39' }, { id: '40' }, { id: '41' }],
+        keyOf,
+        500,
+        400,
+      ).map((entry) => entry.key),
+      ['38', '39', '40', '41'],
+    )
+  })
+
   it('updates the payload of a still-present key', () => {
     const first = { id: 'a', n: 1 }
     const second = { id: 'a', n: 2 }

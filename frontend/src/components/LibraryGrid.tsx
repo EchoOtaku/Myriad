@@ -176,6 +176,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const { highHardware } = usePerformanceProfile()
   const layoutMode = resolveLibraryLayoutMode(preferredLayout, highHardware)
   const [visibleCount, setVisibleCount] = useState(20)
+  const enteredListItems = useRef(new WeakSet<LibraryItem>())
   const [libraryHasMore, setLibraryHasMore] = useState(false)
   const nextLibraryOffsetRef = useRef<number | null>(null)
   const libraryPageLoadingRef = useRef(false)
@@ -1080,7 +1081,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                           height: `${layout.height}px`,
                           '--platform-color': platformColor,
                           ...(layoutMode === 'list'
-                            ? { animationDelay: `${listAnimationDelay}s` }
+                            ? {
+                                animation: enteredListItems.current.has(item) ? 'none' : undefined,
+                                animationDelay: `${listAnimationDelay}s`,
+                              }
                             : {}),
                           transformOrigin:
                             layoutMode === 'canvas'
@@ -1093,6 +1097,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                       }
                       onAnimationEnd={(e) => {
                         if (e.target === e.currentTarget) {
+                          if (layoutMode === 'list') enteredListItems.current.add(item)
                           ;(e.currentTarget as HTMLElement).style.animation =
                             'none'
                         }

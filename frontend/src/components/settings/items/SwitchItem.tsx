@@ -1,6 +1,6 @@
 import type { SwitchSettingConfig } from '../types'
 import React, { useCallback, useId } from 'react'
-import { useI18n } from '../../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../../contexts/I18nContext'
 import { guideDomProps } from '../guides/guideAnchor'
 import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
 import { useSettingsHelp } from '../SettingsHelpContext'

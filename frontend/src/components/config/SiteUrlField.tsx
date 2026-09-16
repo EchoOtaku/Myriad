@@ -3,7 +3,7 @@ import type {
   DomainChecklistItem,
 } from '../../services/siteDomainApi'
 import React, { useCallback, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import {
   changeSiteDomain,
   checklistItems,

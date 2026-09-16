@@ -4,6 +4,8 @@
 mod output;
 #[cfg(test)]
 mod recovery_tests;
+#[cfg(test)]
+mod acceptance_tests;
 mod state;
 mod store;
 #[cfg(test)]

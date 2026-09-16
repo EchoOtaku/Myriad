@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
+import { phantasiSubject } from '../utils/phantasiSubject'
 import { getCommentReplies, getComments, syncReadingStates } from './phantasiApi'
 
 it('chunks sync and merges all per-item outcomes without losing prior confirmations', async () => {
@@ -96,4 +97,53 @@ it('stops on repeated pagination cursors and on cancellation between pages', asy
     }
     await assert.rejects(getComments(1, undefined, { signal: controller.signal }), { name: 'AbortError' })
   } finally { globalThis.fetch = original }
+})
+
+it('rejects a subject switch during a later sync batch instead of returning partial success', async () => {
+  const original = globalThis.fetch
+  const storage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
+  const before = phantasiSubject.getSnapshot()
+  let calls = 0
+  globalThis.fetch = async (input, init) => {
+    if (String(input).includes('csrf-token')) return Response.json({ csrf_token: null })
+    calls++
+    if (calls === 2) phantasiSubject.change('user:other')
+    const { states } = JSON.parse(String(init?.body))
+    return Response.json({ synced: states.length, confirmed: states.map((s: { item_id: number }) => s.item_id), conflicts: [] })
+  }
+  try {
+    await assert.rejects(syncReadingStates(Array.from({ length: 205 }, (_, i) => ({ item_id: i + 1, updated_at: 0 }))), { name: 'AbortError' })
+    assert.equal(calls, 2)
+  } finally {
+    globalThis.fetch = original
+    if (storage) Object.defineProperty(globalThis, 'sessionStorage', storage)
+    else Reflect.deleteProperty(globalThis, 'sessionStorage')
+    phantasiSubject.change(before.key, before.active)
+  }
+})
+
+it('pins the subject across comment pages and never requests the next page after a switch', async () => {
+  const original = globalThis.fetch
+  const before = phantasiSubject.getSnapshot()
+  let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    const response = Response.json({})
+    response.json = async () => ({
+      success: true, comments: [{ id: 1 }],
+      get next_cursor() {
+        phantasiSubject.change('user:other')
+        return calls === 1 ? 1 : null
+      },
+    })
+    return response
+  }
+  try {
+    await assert.rejects(getComments(1), { name: 'AbortError' })
+    assert.equal(calls, 1)
+  } finally {
+    globalThis.fetch = original
+    phantasiSubject.change(before.key, before.active)
+  }
 })

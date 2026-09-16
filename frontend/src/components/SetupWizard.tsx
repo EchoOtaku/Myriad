@@ -17,7 +17,7 @@ import React, {
   useState,
 } from 'react'
 import { API_URL } from '../config'
-import { useI18n } from '../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../contexts/I18nContext'
 import { updateConfig } from '../lib/api'
 import { ApiError } from '../services/api'
 import { parseAuthMeResponse } from '../utils/authMe'

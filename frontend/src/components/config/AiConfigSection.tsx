@@ -13,7 +13,7 @@ import {
   SiOpenrouter,
 } from '@lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { showStickyToast, showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import {

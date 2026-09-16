@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react'
-import type { TranslationKeys } from '../../../i18n/assembleLocale'
+import type { ShellTranslationKeys } from '../../../i18n/assembleLocale'
 import type { WidgetType } from '../../widgetGridTypes'
 import type { InlineLink } from './noteDraft'
 import type { NoteInsertMenuState, TableAlign } from './NoteEditorChrome'
@@ -41,7 +41,7 @@ import { hydrateVisualMath } from './renderMath'
 type PaneRef = MutableRefObject<'write' | 'visual' | 'preview'>
 
 export function useNoteEditorFormat(host: {
-  t: TranslationKeys
+  t: ShellTranslationKeys
   visualRef: RefObject<HTMLDivElement | null>
   textareaRef: RefObject<HTMLTextAreaElement | null>
   scrollRef: RefObject<HTMLDivElement | null>

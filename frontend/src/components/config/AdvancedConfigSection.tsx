@@ -10,7 +10,7 @@ import {
   LuUpload,
 } from '@lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import {
   fetchSettingsBackup,
   previewSettingsBackup,

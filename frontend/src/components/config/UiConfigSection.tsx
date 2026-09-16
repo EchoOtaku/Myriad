@@ -12,7 +12,7 @@ import {
 } from '@lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
 import { API_URL } from '../../config'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { getCSRFToken } from '../../utils/csrf'
 import {
   emptyFooterCustomItem,

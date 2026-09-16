@@ -10,7 +10,7 @@ import type {
   ManagedListTone,
 } from '../settings/ManagedList'
 import React, { useCallback, useMemo, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { FaRedo, FaSearch, FaSyncAlt, FaTrash } from '../../lib/icons'
 import { federationApi } from '../../services/federationApi'
 import {

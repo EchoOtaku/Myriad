@@ -6,7 +6,7 @@ import type {
 } from './onboardingTypes'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
-import { useI18n } from '../../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 import {
   CHOICE_STEP,

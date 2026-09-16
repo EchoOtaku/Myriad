@@ -113,11 +113,24 @@ export function reconcilePresence<T>(
     const key = incomingKeys[i]
     if (placed.has(key)) continue
     let at = result.length
+    let hasPrevious = false
     for (let j = i - 1; j >= 0; j -= 1) {
       const idx = result.findIndex((entry) => entry.key === incomingKeys[j])
       if (idx >= 0) {
         at = idx + 1
+        hasPrevious = true
         break
+      }
+    }
+    // A prepended page has no earlier placed key; anchor it before the
+    // following live row instead of appending it after the conversation.
+    if (!hasPrevious) {
+      for (let j = i + 1; j < incomingKeys.length; j += 1) {
+        const idx = result.findIndex((entry) => entry.key === incomingKeys[j])
+        if (idx >= 0) {
+          at = idx
+          break
+        }
       }
     }
     const item = incoming.get(key)

@@ -23,7 +23,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
 import { getBuildInfo } from '../../utils/buildInfo'
 import { userFacingError } from '../../utils/userFacingError'

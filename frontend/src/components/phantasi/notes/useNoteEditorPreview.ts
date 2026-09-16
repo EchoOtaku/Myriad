@@ -5,7 +5,7 @@ import type {
   RefObject,
   SetStateAction,
 } from 'react'
-import type { TranslationKeys } from '../../../i18n/assembleLocale'
+import type { ShellTranslationKeys } from '../../../i18n/assembleLocale'
 import type { WidgetType } from '../../widgetGridTypes'
 import type { NoteEditorPane } from './NoteEditorChrome'
 import { useCallback, useEffect, useLayoutEffect } from 'react'
@@ -17,6 +17,7 @@ import { prepareNoteReaderHtml } from './noteImageUrl'
 import { noteWidgetTypesInMarkdown } from './noteLayout'
 import { blockSourceRange, previewClickToMarkdownIndex } from './notePreviewEdit'
 import { decorateNoteReadSurface } from './noteReadSurface'
+import { captureNoteSelection, restoreNoteSelection } from './noteRemoteSelection'
 import {
   blockIndexAt,
   expandJammedDefinitions,
@@ -36,7 +37,7 @@ interface Jump {
 }
 
 export function useNoteEditorPreview(host: {
-  t: TranslationKeys
+  t: ShellTranslationKeys
   pane: NoteEditorPane
   loading: boolean
   contentMd: string
@@ -142,10 +143,16 @@ export function useNoteEditorPreview(host: {
       return
     }
     if (el.dataset.noteVisual === contentMd) return
+    const selection = captureNoteSelection(el)
     replaceNoteHtml(el, markdownToVisualHtml(contentMd))
     hydrateVisualMath(el)
+    el.querySelectorAll<HTMLElement>('pre[data-raw-markdown]').forEach((block) => {
+      block.title = t.phantasi.noteEditInMarkdown
+      block.setAttribute('aria-label', t.phantasi.noteEditInMarkdown)
+    })
+    restoreNoteSelection(el, selection)
     el.dataset.noteVisual = contentMd
-  }, [contentMd, pane, visualEditing, visualRef])
+  }, [contentMd, pane, visualEditing, visualRef, t.phantasi.noteEditInMarkdown])
 
   useLayoutEffect(() => {
     if (pane !== 'preview') return

@@ -17,5 +17,11 @@
     "exportFailed": "Failed to export analytics",
     "loadFailed": "Failed to load analytics",
     "aiUsageLoadFailed": "Failed to load AI usage stats"
-  }
+  },
+  "poweredBy": "Powered by",
+  "upyun": "Upyun",
+  "cloudflare": "Cloudflare",
+  "edgeone": "EdgeOne",
+  "icpBadge": "ICP",
+  "gonganBadge": "PSB"
 }

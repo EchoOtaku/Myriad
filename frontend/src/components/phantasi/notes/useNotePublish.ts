@@ -1,6 +1,4 @@
-import type { MutableRefObject } from 'react'
-import type { PhantasiNoteDoc } from '../../../types/phantasi'
-import type { NoteCloudFields } from './useNoteCloudSave'
+import type { NoteCloudSaveHandle } from './useNoteCloudSave'
 import { useCallback } from 'react'
 import * as phantasiApi from '../../../services/phantasiApi'
 import { userFacingError } from '../../../utils/userFacingError'
@@ -18,7 +16,6 @@ import {
   toNoteWritePayload,
 } from './noteFields'
 import { expandJammedDefinitions } from './noteVisual'
-import { cloudFieldsOf } from './useNoteCloudSave'
 
 export function useNotePublish({
   title,
@@ -34,10 +31,7 @@ export function useNotePublish({
   saving,
   setSaving,
   setContentMd,
-  setPublishedAt,
-  revisionRef,
-  applyServerDoc,
-  ackCloud,
+  writeCloudDoc,
   onSaved,
   onDeleted,
   onClose,
@@ -57,10 +51,7 @@ export function useNotePublish({
   saving: boolean
   setSaving: (value: boolean) => void
   setContentMd: (value: string) => void
-  setPublishedAt: (value: number | null) => void
-  revisionRef: MutableRefObject<number>
-  applyServerDoc: (doc: PhantasiNoteDoc) => void
-  ackCloud: (fields: NoteCloudFields) => void
+  writeCloudDoc: NoteCloudSaveHandle['writeDoc']
   onSaved: (id: number) => void
   onDeleted?: (id: number) => void
   onClose: () => void
@@ -117,17 +108,22 @@ export function useNotePublish({
     const payload = toNoteWritePayload(title, body, topic, cover, publishedAt)
     try {
       if (cloudId != null) {
-        const result = await phantasiApi.publishNoteDoc(cloudId, {
-          title: payload.title,
-          content_md: payload.content_md,
-          topic: payload.topic,
-          image: payload.image ?? null,
-          published_at: payload.published_at,
-          revision: revisionRef.current,
+        let publishedId: number | undefined
+        await writeCloudDoc(async (fields, revision, requestId) => {
+          const latestBody = pruneOrphanFootnotes(expandJammedDefinitions(fields.contentMd))
+          const latest = toNoteWritePayload(fields.title, latestBody, fields.topic, fields.cover, fields.publishedAt)
+          const result = await phantasiApi.publishNoteDoc(cloudId, {
+            ...latest,
+            image: latest.image ?? null,
+            revision,
+            client_request_id: requestId,
+          })
+          publishedId = result.id
+          return result.doc
         })
         clearNoteDraft(draftKey)
         clearNoteDraft('new')
-        onSaved(result.id)
+        if (publishedId !== undefined) onSaved(publishedId)
         return
       }
       const result =
@@ -143,6 +139,7 @@ export function useNotePublish({
       setSaving(false)
     }
   }, [
+    writeCloudDoc,
     cloudId,
     contentMd,
     cover,
@@ -152,7 +149,6 @@ export function useNotePublish({
     noteId,
     onSaved,
     publishedAt,
-    revisionRef,
     saving,
     setContentMd,
     setSaving,
@@ -180,25 +176,22 @@ export function useNotePublish({
     if (when == null) return
     setSaving(true)
     try {
-      const doc = await phantasiApi.scheduleNoteDoc(cloudId, {
-        title,
-        content_md: contentMd,
-        topic,
-        image: cover,
+      await writeCloudDoc((fields, revision, requestId) => phantasiApi.scheduleNoteDoc(cloudId, {
+        title: fields.title,
+        content_md: fields.contentMd,
+        topic: fields.topic,
+        image: fields.cover,
         scheduled_at: when,
-        revision: revisionRef.current,
-      })
-      applyServerDoc(doc)
-      ackCloud(cloudFieldsOf(doc))
-      setPublishedAt(doc.published_at)
+        revision,
+        client_request_id: requestId,
+      }))
     } catch (err) {
       showNoteNotice(userFacingError(err, labels.saveFailed))
     } finally {
       setSaving(false)
     }
   }, [
-    ackCloud,
-    applyServerDoc,
+    writeCloudDoc,
     cloudId,
     contentMd,
     cover,
@@ -206,10 +199,8 @@ export function useNotePublish({
     labels.saveFailed,
     labels.scheduleNeedTime,
     labels.schedulePast,
-    revisionRef,
     saving,
     scheduledAt,
-    setPublishedAt,
     setSaving,
     title,
     topic,
@@ -219,16 +210,21 @@ export function useNotePublish({
     if (cloudId == null || saving) return
     setSaving(true)
     try {
-      const doc = await phantasiApi.unscheduleNoteDoc(cloudId, {
-        revision: revisionRef.current,
-      })
-      applyServerDoc(doc)
+      await writeCloudDoc((fields, revision, requestId) => phantasiApi.unscheduleNoteDoc(cloudId, {
+        title: fields.title,
+        content_md: fields.contentMd,
+        topic: fields.topic,
+        image: fields.cover,
+        published_at: fields.publishedAt,
+        revision,
+        client_request_id: requestId,
+      }))
     } catch (err) {
       showNoteNotice(userFacingError(err, labels.saveFailed))
     } finally {
       setSaving(false)
     }
-  }, [applyServerDoc, cloudId, labels.saveFailed, revisionRef, saving, setSaving])
+  }, [writeCloudDoc, cloudId, labels.saveFailed, saving, setSaving])
 
   const handleDelete = useCallback(async () => {
     if (saving) return

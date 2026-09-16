@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { BaseSettingItemConfig } from '../types'
 import React from 'react'
-import { useI18n } from '../../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../../contexts/I18nContext'
 import { guideDomProps } from '../guides/guideAnchor'
 import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
 import { SettingFieldErrorTag } from '../SettingFieldErrorTag'

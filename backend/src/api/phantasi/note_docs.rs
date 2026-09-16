@@ -569,21 +569,17 @@ pub(crate) async fn schedule_note_doc(
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
     active.last_error = Set(None);
-    let result = phantasi_note_docs::Entity::update_many()
+    let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
         .filter(phantasi_note_docs::Column::Revision.eq(expected))
-        .exec(&db)
+        .exec_with_returning(&db)
         .await
         .map_err(|e| phantasi_store_http("schedule note doc", e))?;
-    if result.rows_affected == 0 {
-        return Err(phantasi_http_err(
-            StatusCode::CONFLICT,
-            "Note draft was updated elsewhere",
-        ));
-    }
-    let saved = find_doc(&db, id).await?;
-    broadcast_saved_doc(&saved, user_id, None);
+    let saved = saved_rows.pop().ok_or_else(|| {
+        phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere")
+    })?;
+    broadcast_saved_doc(&saved, user_id, req.client_request_id);
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, saved, user_id).await?,
@@ -606,33 +602,50 @@ pub(crate) async fn unschedule_note_doc(
             "Note draft was updated elsewhere",
         ));
     }
-    if doc.status != NoteDocStatus::Scheduled.as_str() {
+    if doc.status != NoteDocStatus::Scheduled.as_str()
+        && req.title.is_none()
+        && req.content_md.is_none()
+        && req.topic.is_none()
+        && req.image.is_none()
+        && req.published_at.is_none()
+    {
         return Ok(Json(json!({
             "success": true,
             "doc": credit_and_respond(&db, doc, user_id).await?,
         })));
     }
     let mut active = <phantasi_note_docs::ActiveModel as std::default::Default>::default();
-    active.status = Set(NoteDocStatus::Draft.as_str().to_string());
+    if let Some(title) = req.title {
+        active.title = Set(title);
+    }
+    if let Some(content_md) = req.content_md {
+        active.content_md = Set(content_md);
+    }
+    active.topic = Set(patched_text(doc.topic, req.topic));
+    active.image = Set(patched_text(doc.image, req.image));
+    if let Some(published_at) = req.published_at.and_then(millis_to_datetime) {
+        active.published_at = Set(Some(published_at.into()));
+    }
+    active.status = Set(if doc.status == NoteDocStatus::Scheduled.as_str() {
+        NoteDocStatus::Draft.as_str().to_string()
+    } else {
+        doc.status
+    });
     active.scheduled_at = Set(None);
     active.last_error = Set(None);
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
-    let result = phantasi_note_docs::Entity::update_many()
+    let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
         .filter(phantasi_note_docs::Column::Revision.eq(expected))
-        .exec(&db)
+        .exec_with_returning(&db)
         .await
         .map_err(|e| phantasi_store_http("unschedule note doc", e))?;
-    if result.rows_affected == 0 {
-        return Err(phantasi_http_err(
-            StatusCode::CONFLICT,
-            "Note draft was updated elsewhere",
-        ));
-    }
-    let saved = find_doc(&db, id).await?;
-    broadcast_saved_doc(&saved, user_id, None);
+    let saved = saved_rows.pop().ok_or_else(|| {
+        phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere")
+    })?;
+    broadcast_saved_doc(&saved, user_id, req.client_request_id);
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, saved, user_id).await?,

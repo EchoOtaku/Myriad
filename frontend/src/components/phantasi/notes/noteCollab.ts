@@ -57,4 +57,3 @@ export function shouldApplyRemoteDoc(
   const revision = event.revision
   return revision != null && revision > currentRevision
 }
-

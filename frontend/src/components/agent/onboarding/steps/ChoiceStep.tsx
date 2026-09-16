@@ -2,7 +2,7 @@ import type { ComponentType, CSSProperties, SVGProps } from 'react'
 import type { OnboardingHeaderChrome } from '../onboardingTypes'
 import { LuArrowRight, LuSparkles, LuUpload } from '@lib/icons'
 import { useLayoutEffect } from 'react'
-import { useI18n } from '../../../../contexts/I18nContext'
+import { useConfigI18n as useI18n } from '../../../../contexts/I18nContext'
 import {
   CLOTHING_STYLE_OPTIONS,
   clothingStylePreview,

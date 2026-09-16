@@ -1,6 +1,7 @@
-import type { Locale, TranslationKeys } from '../i18n'
+import type { Locale, ShellTranslationKeys, TranslationKeys } from '../i18n'
 import React, {
   createContext,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -9,8 +10,12 @@ import React, {
 } from 'react'
 import { formatMessage, getDefaultLocale, htmlLang, saveLocale } from '../i18n'
 import {
-  getCachedLocale,
+  getCachedShellLocale,
   loadLocale,
+  loadShellLocale,
+  LocaleNamespaceError,
+  readConfigLocale,
+  readShellLocale,
 } from '../i18n/loadLocale'
 import { persistLocaleToAccount } from '../i18n/localeAccount'
 import { currentCopy } from '../i18n/localeCopy'
@@ -18,13 +23,13 @@ import { currentCopy } from '../i18n/localeCopy'
 // Begin the request while the rest of the app initializes, instead of waiting
 // for the provider's first effect. The provider handles failure and retries.
 if (typeof window !== 'undefined') {
-  void loadLocale(getDefaultLocale()).catch(() => {})
+  void loadShellLocale(getDefaultLocale()).catch(() => {})
 }
 
 interface I18nContextType {
   locale: Locale
   setLocale: (locale: Locale, options?: { persist?: boolean }) => void
-  t: TranslationKeys
+  t: ShellTranslationKeys
   format: (template: string, params: Record<string, string | number>) => string
 }
 
@@ -45,7 +50,57 @@ if (import.meta.hot) {
 
 interface LocaleBundle {
   locale: Locale
-  t: TranslationKeys
+  t: ShellTranslationKeys
+}
+
+interface NamespaceBoundaryProps {
+  locale: Locale
+  copy: ShellTranslationKeys
+  retry: () => Promise<unknown>
+  children: React.ReactNode
+}
+
+/** Catch only catalog imports; programming errors still reach the app's error handling. */
+export class LocaleNamespaceBoundary extends React.Component<NamespaceBoundaryProps, {
+  error: LocaleNamespaceError | null
+  retrying: boolean
+  locale: Locale
+}> {
+  state = { error: null as LocaleNamespaceError | null, retrying: false, locale: this.props.locale }
+
+  static getDerivedStateFromProps(props: NamespaceBoundaryProps, state: { locale: Locale }) {
+    return props.locale === state.locale ? null : { error: null, retrying: false, locale: props.locale }
+  }
+
+  static getDerivedStateFromError(error: unknown) {
+    if (!(error instanceof LocaleNamespaceError)) throw error
+    return { error, retrying: false }
+  }
+
+  retry = async () => {
+    const locale = this.props.locale
+    this.setState({ retrying: true })
+    try {
+      await this.props.retry()
+      if (this.props.locale !== locale) return
+      this.setState({ error: null, retrying: false })
+    } catch (error) {
+      if (this.props.locale !== locale) return
+      this.setState(LocaleNamespaceBoundary.getDerivedStateFromError(error))
+    }
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div role="alert" className="p-6 text-center">
+        <p>{this.props.copy.errors.localeLoadFailed}</p>
+        <button type="button" disabled={this.state.retrying} onClick={this.retry}>
+          {this.state.retrying ? this.props.copy.common.loading : this.props.copy.common.retry}
+        </button>
+      </div>
+    )
+  }
 }
 
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -55,7 +110,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   // Swap locale and t together so the UI never shows the wrong language.
   const [bundle, setBundle] = useState<LocaleBundle | null>(() => {
     const initial = getDefaultLocale()
-    const cached = getCachedLocale(initial)
+    const cached = getCachedShellLocale(initial)
     return cached ? { locale: initial, t: cached } : null
   })
 
@@ -64,7 +119,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (bundle?.locale === locale) return
 
-    loadLocale(locale)
+    loadShellLocale(locale)
       .then((t) => {
         if (cancelled) return
         setBundle({ locale, t })
@@ -75,7 +130,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
           void import('../utils/toastManager').then(({ showError }) => {
             showError(currentCopy().errors.localeLoadFailed)
           })
-          loadLocale('en-US').then((t) => {
+          loadShellLocale('en-US').then((t) => {
             if (cancelled) return
             setLocaleState('en-US')
             setBundle({ locale: 'en-US', t })
@@ -137,15 +192,22 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
     return null
   }
 
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
+  return (
+    <I18nContext.Provider value={value}>
+      <LocaleNamespaceBoundary locale={value.locale} copy={value.t} retry={() => loadLocale(value.locale)}>
+        <Suspense fallback={<div role="status">{value.t.common.loading}</div>}>
+          {children}
+        </Suspense>
+      </LocaleNamespaceBoundary>
+    </I18nContext.Provider>
+  )
 }
 
 function fallbackI18n(): I18nContextType {
   const locale = getDefaultLocale()
-  // A detached React tree still needs a complete catalog. Service fallback copy
-  // deliberately omits settings UI strings, so suspend until the real pack exists.
-  const t = getCachedLocale(locale)
-  if (!t) throw loadLocale(locale)
+  // Detached React trees suspend until their actual locale is ready too.
+  // Settings consumers opt into their additional namespace with useConfigI18n.
+  const t = readShellLocale(locale)
   return {
     locale,
     setLocale: (newLocale, options) => {
@@ -163,4 +225,11 @@ export function useI18n(): I18nContextType {
   return useContext(I18nContext) ?? fallbackI18n()
 }
 
-export type { Locale, TranslationKeys }
+/** Opt into the settings namespace before rendering settings UI or its callbacks. */
+export function useConfigI18n(): Omit<I18nContextType, 't'> & { t: TranslationKeys } {
+  const context = useI18n()
+  const t = readConfigLocale(context.locale)
+  return useMemo(() => ({ ...context, t }), [context, t])
+}
+
+export type { Locale, ShellTranslationKeys, TranslationKeys }
