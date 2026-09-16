@@ -3,13 +3,20 @@
 import type { ReactElement, ReactNode } from 'react'
 import type { SourceSortMode, WorkbenchPane } from '../logic/board'
 import { LuChevronLeft, LuPlus, LuRefreshCw, LuTag } from '@lib/icons'
-import { cloneElement, isValidElement, useEffect, useState } from 'react'
+import { cloneElement, isValidElement, useEffect, useRef, useState } from 'react'
+import { useAuth } from '../../../contexts/AuthContext'
 import { useI18n } from '../../../contexts/I18nContext'
+import {
+  dispatchModuleVisibilityPreferencesUpdated,
+  fetchModuleVisibilityPreferences,
+  updateModuleVisibilityPreferences,
+  useModuleVisibilityPreferences,
+} from '../../../utils/moduleVisibility'
+import { showToast } from '../../../utils/toastManager'
 import { InputItem, SegmentedControl } from '../../settings'
 import { SettingItemWrapper } from '../../settings/items/SettingItemWrapper'
 import { isFriendLinkCategory, isMineCategory } from '../constants'
 import { usePhantasiGuides } from '../guides/usePhantasiGuides'
-import { readSourceSortMode, writeSourceSortMode } from '../logic/sourceSort'
 import { topicDisplayName } from '../logic/topics'
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
@@ -50,7 +57,28 @@ export function WorkbenchFeedsPanes({
   const [sourceRefreshing, setSourceRefreshing] = useState(false)
   const [categoryQuery, setCategoryQuery] = useState('')
   const [opened, setOpened] = useState<string | null>(null)
-  const [sortMode, setSortMode] = useState<SourceSortMode>(readSourceSortMode)
+  const { isAdmin } = useAuth()
+  const { preferences, isLoading } = useModuleVisibilityPreferences()
+  const [savingSort, setSavingSort] = useState(false)
+  const savingSortRef = useRef(false)
+  const saveDefaultSort = async (mode: SourceSortMode) => {
+    if (!isAdmin || isLoading || savingSortRef.current) return
+    savingSortRef.current = true
+    setSavingSort(true)
+    try {
+      const current = await fetchModuleVisibilityPreferences()
+      const saved = await updateModuleVisibilityPreferences({
+        ...current,
+        journalSourceSort: mode,
+      })
+      dispatchModuleVisibilityPreferencesUpdated(saved)
+    } catch {
+      showToast({ message: t.config.moduleVisibilitySaveFailed, type: 'error' })
+    } finally {
+      savingSortRef.current = false
+      setSavingSort(false)
+    }
+  }
 
   useEffect(() => {
     if (pane !== 'sources') setSourceQuery('')
@@ -173,26 +201,26 @@ export function WorkbenchFeedsPanes({
             </>
           }
         >
-          <SettingItemWrapper
-            itemKey="workbench-sort"
-            label={phantasi.workbenchDefaultSort}
-            layout="horizontal"
-            {...bindGuide('workbench.defaultSort', g.defaultSort)}
-          >
-            <SegmentedControl
-              size="sm"
-              value={sortMode}
-              ariaLabel={phantasi.workbenchDefaultSort}
-              onChange={(mode) => {
-                writeSourceSortMode(mode)
-                setSortMode(mode)
-              }}
-              options={SORTS.map((item) => ({
-                value: item.id,
-                label: phantasi[item.label],
-              }))}
-            />
-          </SettingItemWrapper>
+          {isAdmin && (
+            <SettingItemWrapper
+              itemKey="workbench-sort"
+              label={phantasi.workbenchDefaultSort}
+              layout="horizontal"
+              {...bindGuide('workbench.defaultSort', g.defaultSort)}
+            >
+              <SegmentedControl
+                size="sm"
+                value={preferences.journalSourceSort}
+                disabled={isLoading || savingSort}
+                ariaLabel={phantasi.workbenchDefaultSort}
+                onChange={(mode) => { void saveDefaultSort(mode) }}
+                options={SORTS.map((item) => ({
+                  value: item.id,
+                  label: phantasi[item.label],
+                }))}
+              />
+            </SettingItemWrapper>
+          )}
           {boundAdmin}
         </WorkbenchPage>
       ) : null}

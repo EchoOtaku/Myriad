@@ -9,6 +9,7 @@ import type { PeekStoryPreview } from './ui/peekLane'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
+import { useModuleVisibilityPreferences } from '../../utils/moduleVisibility'
 import {
   filterItemsByQuery,
   filterSourcesByQuery,
@@ -18,7 +19,6 @@ import {
 } from './logic/board'
 import { shuffleBySeed, storiesFromSources } from './logic/feedStories'
 import { roleFromAuth } from './logic/score'
-import { readSourceSortMode, writeSourceSortMode } from './logic/sourceSort'
 import { PhantasiSourceTitleTags } from './manager/PhantasiSourceTitleTags'
 import { leftoverNoteSources, visibleCloudNoteDocs } from './notes/noteBoard'
 import { loadNoteDocs } from './pageData'
@@ -100,7 +100,9 @@ export default function PhantasiSourceGrid({
   const { t } = useI18n()
   const titleId = useId()
   const viewerRole = roleFromAuth(isAuthenticated, isAdmin)
-  const [sortMode, setSortMode] = useState<SourceSortMode>(readSourceSortMode)
+  const { preferences } = useModuleVisibilityPreferences()
+  const [sortOverride, setSortMode] = useState<SourceSortMode | null>(null)
+  const sortMode = sortOverride ?? preferences.journalSourceSort
   const [scoreNow, setScoreNow] = useState(() => Date.now())
   const { categories, filtered, sorted } = useBoardCatalog(
     sources,
@@ -187,7 +189,6 @@ export default function PhantasiSourceGrid({
   )
 
   const handleSortModeChange = useCallback((mode: SourceSortMode) => {
-    writeSourceSortMode(mode)
     setSortMode(mode)
     setScoreNow(Date.now())
   }, [])

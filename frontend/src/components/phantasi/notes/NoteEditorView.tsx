@@ -1,4 +1,3 @@
-import { NoteEditorSettings } from './NoteEditorSettings'
 import type {
   CSSProperties,
 } from 'react'
@@ -23,6 +22,7 @@ import {
   LuSigma as Sigma,
   LuSquareCode as SquareCode,
   LuStrikethrough as Strikethrough,
+  FaUndo as Undo,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import { createPortal } from 'react-dom'
@@ -30,6 +30,8 @@ import { getPhantasiTransition, phantasiAnimationPresets } from '../../../hooks/
 import { Spinner } from '../../Spinner'
 import { widgetDisplayLabel } from '../../widgetLibraryModel'
 import { WidgetInstanceSettings } from '../../widgets/shared/WidgetInstanceSettings'
+import { NoteAiPanel } from './NoteAiPanel'
+import { NoteButton } from './NoteControls'
 import {
   hardBreak,
   indentLines,
@@ -45,6 +47,7 @@ import {
   peerHue,
   splitNoteTools,
 } from './NoteEditorChrome'
+import { NoteEditorSettings } from './NoteEditorSettings'
 import { matchEnterRule, matchSpaceRule } from './noteInputRules'
 import { decodeWidgetConfigAttr } from './noteLayout'
 import { caretOffsetStyle } from './noteMerge'
@@ -96,6 +99,8 @@ import '../ui/phantasi.css'
 import './NoteEditor.css'
 
 export function NoteEditorView({
+  ai,
+  openAi,
   compositionStart,
   compositionEnd,
   t,
@@ -435,6 +440,19 @@ export function NoteEditorView({
     >
       <div className="phantasi-note__frame">
         <NoteTopBar
+          aiActions={<>
+            {ai.canUndo ? <NoteButton variant="quiet" icon={<Undo />} aria-label={t.phantasi.noteAiUndo} title={t.phantasi.noteAiUndo} onClick={ai.undo}>{t.phantasi.noteAiUndo}</NoteButton> : null}
+            <NoteButton
+              variant="quiet"
+              disabled={loading || saving || !contentMd.trim()}
+              active={ai.isOpen}
+              aria-expanded={ai.isOpen}
+              onMouseDown={event => event.preventDefault()}
+              onClick={ai.isOpen ? ai.close : openAi}
+            >
+              {t.phantasi.noteAiTitle}
+            </NoteButton>
+          </>}
           docStatus={docStatus}
           lastError={lastError}
           scheduledAt={scheduledAt}
@@ -452,6 +470,7 @@ export function NoteEditorView({
         />
 
         <div className="phantasi-note__scroll" ref={scrollRef}>
+          <NoteAiPanel ai={ai} previewClass={previewSurfaceClass} previewStyle={readerSurfaceStyle} />
           {loading ? (
             <div className="phantasi-note__center">
               <Spinner size="lg" />
@@ -871,7 +890,7 @@ export function NoteEditorView({
             onDefaultView={preference.changeDefaultView}
             onRestore={restoreHistory}
             busy={saving || loading}
-          /> : null}
+                                         /> : null}
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           docStatus={docStatus}

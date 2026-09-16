@@ -135,6 +135,7 @@ interface NoteTopBarProps {
   collabConnection: 'connecting' | 'connected' | 'reconnecting'
   saving: boolean
   loading: boolean
+  aiActions?: ReactNode
   onPublish: () => void
   settingsOpen: boolean
   onToggleSettings: () => void
@@ -151,6 +152,7 @@ export function NoteTopBar({
   saving,
   loading,
   onPublish,
+  aiActions,
   settingsOpen,
   onToggleSettings,
   onClose,
@@ -210,6 +212,7 @@ export function NoteTopBar({
           ) : null}
         </div>
         <div className="phantasi-note__top-right">
+          {aiActions}
           <NoteButton
             variant="solid"
             size="lg"

@@ -1144,6 +1144,7 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_kind
 
 /// Editor preferences and bounded document history, shared with greenfield DDL.
 pub(crate) async fn ensure_note_editor_history(db: &DatabaseConnection) -> Result<(), DbErr> {
-    db.execute_unprepared(include_str!("../../../migrations/note_editor.sql")).await?;
+    db.execute_unprepared(include_str!("../../../migrations/note_editor.sql"))
+        .await?;
     Ok(())
 }

@@ -375,6 +375,7 @@ export function usePhantasiWorkbench(
     removeMedia,
     reloadNotes: loadNotes,
     reloadMedia: loadMedia,
+    acceptMedia: (item: MediaAsset) => setMedia(prev => [item, ...prev.filter(row => row.id !== item.id)]),
     reloadComments: loadComments,
     reloadApplications: loadApplications,
   }

@@ -46,6 +46,7 @@ export function listNoteRecoveryCopies(scope: NoteRecoveryScope, now = Date.now(
 function samePending(a?: NotePendingWrite, b?: NotePendingWrite): boolean {
   if (!a || !b) return a === b
   return a.requestId === b.requestId && sameCloudFields(a.fields, b.fields)
+    && sameCloudFields(a.expectedFields ?? a.fields, b.expectedFields ?? b.fields)
 }
 
 let lastTimestamp = 0

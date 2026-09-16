@@ -6,11 +6,31 @@ pub(crate) fn tables() -> Vec<TableDef> {
         TableDef {
             name: "phantasi_note_history".into(),
             columns: vec![
-                ColumnDef { name: "doc_id".into(), data_type: "integer".into(), default_value: None },
-                ColumnDef { name: "revision".into(), data_type: "bigint".into(), default_value: None },
-                ColumnDef { name: "actor_id".into(), data_type: "integer".into(), default_value: None },
-                ColumnDef { name: "snapshot".into(), data_type: "jsonb".into(), default_value: None },
-                ColumnDef { name: "saved_at".into(), data_type: "timestamp with time zone".into(), default_value: None },
+                ColumnDef {
+                    name: "doc_id".into(),
+                    data_type: "integer".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "revision".into(),
+                    data_type: "bigint".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "actor_id".into(),
+                    data_type: "integer".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "snapshot".into(),
+                    data_type: "jsonb".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "saved_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    default_value: None,
+                },
             ],
         },
         TableDef {
@@ -614,7 +634,11 @@ pub(crate) fn tables() -> Vec<TableDef> {
         TableDef {
             name: "phantasi_note_docs".to_string(),
             columns: vec![
-                ColumnDef { name: "last_edited_by".into(), data_type: "integer".into(), default_value: None },
+                ColumnDef {
+                    name: "last_edited_by".into(),
+                    data_type: "integer".into(),
+                    default_value: None,
+                },
                 ColumnDef {
                     name: "id".into(),
                     data_type: "integer".into(),

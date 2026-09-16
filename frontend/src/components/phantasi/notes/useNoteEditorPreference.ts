@@ -6,7 +6,7 @@ export function useNoteEditorPreference(
   userId: number | null,
   onInitial: (view: NoteEditorDefaultView) => void,
   onError: () => void,
-  io = phantasiApi,
+  io: Pick<typeof phantasiApi, 'getNoteEditorPreference' | 'saveNoteEditorPreference'> = phantasiApi,
 ) {
   const [defaultView, setDefaultView] = useState<NoteEditorDefaultView>('visual')
   const [busy, setBusy] = useState(true)
@@ -28,7 +28,9 @@ export function useNoteEditorPreference(
       }).finally(() => {
         if (owner === generation.current) setBusy(false)
       })
-    } else setBusy(false)
+    } else {
+      setBusy(false)
+    }
     return () => { generation.current++; controller.abort() }
   }, [userId, io])
   const changeDefaultView = async (view: NoteEditorDefaultView) => {

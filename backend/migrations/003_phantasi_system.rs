@@ -953,12 +953,16 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_kind
             )
             .await?;
 
-        manager.get_connection().execute_unprepared(include_str!("note_editor.sql")).await?;
+        manager
+            .get_connection()
+            .execute_unprepared(include_str!("note_editor.sql"))
+            .await?;
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager.get_connection().execute_unprepared("DROP TABLE IF EXISTS phantasi_note_history; DROP FUNCTION IF EXISTS phantasi_capture_note_history() CASCADE;").await?;
         manager
             .get_connection()
             .execute_unprepared(

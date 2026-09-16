@@ -67,7 +67,7 @@ export function useNoteEditorOpen({
         setCloudId(doc.id)
         applyMergedFields(next)
         setSaved(server)
-        if (recovery?.pending && !sameCloudFields(recovery.pending.fields, server)) {
+        if (recovery?.pending && !sameCloudFields(recovery.pending.expectedFields ?? recovery.pending.fields, server)) {
           restorePending?.(recovery.pending, { fields: recovery.base, revision: recovery.revision }, doc)
         }
         if (doc.last_error) {

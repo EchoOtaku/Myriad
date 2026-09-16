@@ -13,9 +13,12 @@ import { useAuth } from '../../../contexts/AuthContext'
 import { useI18n } from '../../../contexts/I18nContext'
 import { usePhantasiAnimationConfig } from '../../../hooks/animation/pages/phantasi'
 import { isExlight } from '../../../hooks/useAnimationLevel'
+import { editNoteWithAi } from '../../../services/phantasiaiApi'
+import * as phantasiApi from '../../../services/phantasiApi'
 import { showNoteNotice } from '../phantasiNotice'
 import { getArticleProseClass } from '../reader/articleProseClass'
 import { useReaderSettings } from '../reader/hooks/useReaderSettings'
+import { captureNoteAiSelection } from './noteAiSelection'
 import {
   noteRecoveryKey,
   prefixLines, toggleWrap,
@@ -33,13 +36,13 @@ import { NOTE_WIDGET_SIZES, noteWidgetCanConfigure } from './noteLayout'
 import { applyNoteSourceEdit } from './noteSourceEdit'
 import { expandJammedDefinitions, setVisualImageResolver } from './noteVisual'
 import { useNoteWidgetCatalog } from './noteWidgetCatalog'
+import { useNoteAiEdit } from './useNoteAiEdit'
 import { useNoteCloudSave } from './useNoteCloudSave'
 import { useNoteCollab } from './useNoteCollab'
-import { useNoteEditorPreference } from './useNoteEditorPreference'
-import * as phantasiApi from '../../../services/phantasiApi'
 import { useNoteEditorAuthors } from './useNoteEditorAuthors'
 import { useNoteEditorFormat } from './useNoteEditorFormat'
 import { useNoteEditorOpen } from './useNoteEditorOpen'
+import { useNoteEditorPreference } from './useNoteEditorPreference'
 import { useNoteEditorPreview } from './useNoteEditorPreview'
 import { useNoteEditorSidecar } from './useNoteEditorSidecar'
 import { useNotePublish } from './useNotePublish'
@@ -82,7 +85,7 @@ export function useNoteEditorSession({
   onSaved,
   onDeleted,
 }: NoteEditorProps) {
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
   const { user } = useAuth()
   const {
     isDark,
@@ -307,13 +310,16 @@ export function useNoteEditorSession({
       uncertain: t.phantasi.noteSaveUnconfirmed,
     },
   })
-  const restoreHistory = async (version: number) => {
+  const restoreHistory = async (entry: phantasiApi.NoteHistoryEntry) => {
     if (cloudId == null || saving) return
     setSaving(true)
     try {
       await cloud.runWrite(async (fields, track) => {
-        const restore = track(fields)
-        const restored = await phantasiApi.restoreNoteHistory(cloudId, version, revisionRef.current, restore.requestId, {
+        const restore = track(fields, {
+          title: entry.snapshot.title, contentMd: entry.snapshot.content_md, topic: entry.snapshot.topic,
+          cover: entry.snapshot.image, publishedAt: entry.snapshot.published_at,
+        })
+        const restored = await phantasiApi.restoreNoteHistory(cloudId, entry.revision, revisionRef.current, restore.requestId, {
           title: fields.title, content_md: fields.contentMd, topic: fields.topic, image: fields.cover, published_at: fields.publishedAt,
         })
         await restore.receiveDoc(restored)
@@ -613,10 +619,37 @@ export function useNoteEditorSession({
     contentMd,
   })
 
+  const ai = useNoteAiEdit({
+    current: { identity: `${user?.id}:${user?.is_admin}:${docId}:${noteId}:${cloudId}`, title, topic, contentMd },
+    locale,
+    request: editNoteWithAi,
+    apply: (next) => {
+      if (paneRef.current === 'write' && textareaRef.current) {
+        applyNoteSourceEdit(textareaRef.current, { value: next, selectionStart: 0, selectionEnd: 0 }, setContentMd)
+      } else {
+        const history = historyRef.current
+        history.past.push(contentMdRef.current)
+        history.future = []
+        history.restoring = true
+        history.lastPush = 0
+        syncVisualFromMarkdown(next)
+      }
+      contentMdRef.current = next
+    },
+  })
+  function openAi() {
+    if (loading || saving) return
+    const captured = captureNoteAiSelection(contentMdRef.current, paneRef.current, textareaRef.current, visualRef.current)
+    closeOverlays()
+    ai.open(captured.selection, captured.unavailable)
+  }
+
   const canDelete =
     noteId !== undefined || (cloudId != null && docStatus !== 'published')
 
   return {
+    ai,
+    openAi,
     t,
     compositionStart: cloud.compositionStart,
     compositionEnd: cloud.compositionEnd,

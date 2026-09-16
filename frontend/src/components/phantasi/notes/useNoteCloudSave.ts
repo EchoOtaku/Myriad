@@ -53,13 +53,14 @@ export interface NoteCloudSaveHandle {
   /** Track the exact fields submitted by each actual request, after queue admission. */
   runWrite: <T>(operation: (
     fields: NoteCloudFields,
-    track: (submitted?: NoteCloudFields) => NoteWriteReceipt,
+    track: (submitted?: NoteCloudFields, expectedFields?: NoteCloudFields) => NoteWriteReceipt,
   ) => Promise<T>) => Promise<T>
 }
 interface PendingReceipt {
   requestId: string
   fields: NoteCloudFields
   confirmed: boolean
+  expectedFields?: NoteCloudFields
 }
 
 export function useNoteCloudSave({
@@ -109,7 +110,7 @@ export function useNoteCloudSave({
     if (!aliveRef.current || id == null || user == null || user !== recoveryOwner.current) return
     const pending = pendingRef.current
     recoveryWriter.current.write({ userId: user, docId: id }, latestRef.current, baseRef.current, revisionRef.current,
-      pending && !pending.confirmed ? { requestId: pending.requestId, fields: pending.fields } : undefined)
+      pending && !pending.confirmed ? { requestId: pending.requestId, fields: pending.fields, ...(pending.expectedFields ? { expectedFields: pending.expectedFields } : {}) } : undefined)
   }, [revisionRef])
 
   const receiveSnapshot = useCallback((snapshot: NoteRemoteSnapshot): boolean => {
@@ -121,7 +122,7 @@ export function useNoteCloudSave({
       return false
     }
     const pending = pendingRef.current
-    if (uncertainRef.current && pending && sameCloudFields(remote, pending.fields)) requestId = pending.requestId
+    if (uncertainRef.current && pending && sameCloudFields(remote, pending.expectedFields ?? pending.fields)) requestId = pending.requestId
     const receipt = requestId ? receiptsRef.current.get(requestId) : undefined
     // Arrival order does not establish whether another snapshot includes our write.
     if (pending && !pending.confirmed && requestId !== pending.requestId) {
@@ -203,7 +204,7 @@ export function useNoteCloudSave({
 
   const runWrite = useCallback(<T>(operation: (
     fields: NoteCloudFields,
-    track: (submitted?: NoteCloudFields) => NoteWriteReceipt,
+    track: (submitted?: NoteCloudFields, expectedFields?: NoteCloudFields) => NoteWriteReceipt,
   ) => Promise<T>, resumeAutosave = true): Promise<T> => {
     const ownerId = activeIdRef.current
     const ownerUser = activeUserRef.current
@@ -214,10 +215,10 @@ export function useNoteCloudSave({
       }
       if (!current()) throw new DOMException('Note editor closed', 'AbortError')
       if (uncertainRef.current) throw new Error(callbacks.current.labels.uncertain ?? callbacks.current.labels.conflict)
-      const track = (submitted?: NoteCloudFields): NoteWriteReceipt => {
+      const track = (submitted?: NoteCloudFields, expectedFields?: NoteCloudFields): NoteWriteReceipt => {
         if (!current()) throw new DOMException('Note editor closed', 'AbortError')
         finishPending()
-        const receipt: PendingReceipt = { requestId: crypto.randomUUID(), fields: submitted ?? baseRef.current, confirmed: false }
+        const receipt: PendingReceipt = { requestId: crypto.randomUUID(), fields: submitted ?? baseRef.current, expectedFields, confirmed: false }
         pendingRef.current = receipt
         receiptsRef.current.set(receipt.requestId, receipt)
         persistRecovery()

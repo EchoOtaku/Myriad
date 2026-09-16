@@ -9,7 +9,7 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
   defaultView: NoteEditorDefaultView
   preferenceBusy: boolean
   onDefaultView: (view: NoteEditorDefaultView) => Promise<void>
-  onRestore: (revision: number) => Promise<void>
+  onRestore: (entry: NoteHistoryEntry) => Promise<void>
   busy: boolean
 }) {
   const { t, locale, format } = useI18n()
@@ -38,7 +38,7 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
     setRestoring(true)
     setError(false)
     try {
-      await onRestore(selected.revision)
+      await onRestore(selected)
       setSelected(null)
       setRefresh((value) => value + 1)
     } catch { setError(true) }
@@ -49,6 +49,7 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
       <NoteSection title={t.phantasi.noteDefaultView} hint={t.phantasi.noteDefaultViewHint}>
         <NoteSelect
           id="note-default-view"
+          aria-label={t.phantasi.noteDefaultView}
           value={defaultView}
           disabled={preferenceBusy}
           options={[

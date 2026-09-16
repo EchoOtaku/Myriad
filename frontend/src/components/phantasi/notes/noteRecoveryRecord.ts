@@ -18,7 +18,7 @@ export interface NoteRecovery {
   pending?: NotePendingWrite
 }
 
-export interface NotePendingWrite { requestId: string; fields: NoteCloudFields }
+export interface NotePendingWrite { requestId: string; fields: NoteCloudFields; expectedFields?: NoteCloudFields }
 
 export function isCloudFields(value: unknown): value is NoteCloudFields {
   if (!value || typeof value !== 'object') return false
@@ -37,7 +37,7 @@ export function decodeNoteRecovery(raw: string, now = Date.now()): NoteRecovery 
     if (!entry || entry.version !== 2 || !isCloudFields(entry.fields) || !isCloudFields(entry.base)
       || !Number.isInteger(entry.revision) || entry.revision! < 1
       || typeof entry.savedAt !== 'number' || !Number.isFinite(entry.savedAt)
-      || (entry.pending !== undefined && (typeof entry.pending?.requestId !== 'string' || !isCloudFields(entry.pending.fields)))
+      || (entry.pending !== undefined && (typeof entry.pending?.requestId !== 'string' || !isCloudFields(entry.pending.fields) || (entry.pending.expectedFields !== undefined && !isCloudFields(entry.pending.expectedFields))))
       || now - entry.savedAt > NOTE_DRAFT_TTL_MS) {
       return null
     }

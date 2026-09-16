@@ -479,3 +479,24 @@ html.dark .phantasi-note-preview .link-definition:first-child {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.phantasi-note__peers {
+  min-width: 0;
+  gap: 0.75rem;
+  overflow-x: auto;
+}
+
+.phantasi-note__collaborator {
+  flex-shrink: 0;
+}
+
+.phantasi-note__collaborator .phantasi-note__peer {
+  flex-shrink: 0;
+  margin-inline-start: 0;
+}
+
+.phantasi-note__collab-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -138,3 +138,11 @@ test('rejecting a pending action never requires AI configuration', async () => {
   })
   assert.deepEqual(calls, [path])
 })
+
+test('note formatting requires the configured standard model before sending the draft', async () => {
+  const response = await fetchWithAiConfiguration('/api/phantasiai/notes/edit', { method: 'POST', body: '{"content_md":"private draft"}' }, async (input) => {
+    if (String(input).endsWith('/config/public')) return Response.json({ aiAvailability: { standard: false } })
+    return Response.json({ content_md: 'should not reach provider' })
+  })
+  assert.equal(response.status, 409)
+})

@@ -39,6 +39,7 @@ export function useNoteCollab({
       const ws = new WebSocket(liveRef.current.io.noteDocWsUrl(cloudId))
       wsRef.current = ws
       ws.onopen = () => {
+        if (stopped || wsRef.current !== ws) return
         setConnection('connected')
         ws.send(JSON.stringify({ type: 'presence' }))
         retryDelay = 1000

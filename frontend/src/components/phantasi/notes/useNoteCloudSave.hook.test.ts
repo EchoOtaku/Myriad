@@ -462,3 +462,22 @@ it('opening an unchanged second editor cannot erase the first editor recovery', 
     assert.deepEqual(readNoteRecovery({ userId: 1, docId: 1 }), before)
   } finally { await act(async () => second.unmount()) }
 })
+
+it('a lost history-restore receipt is confirmed by its expected result without replaying pre-restore text', async () => {
+  const h = await harness()
+  await h.edit('current draft')
+  let operation!: Promise<void>
+  await act(async () => {
+    operation = h.cloud.runWrite(async (fields, track) => {
+      track(fields, { ...empty, contentMd: 'historical draft' })
+      throw new Error('response lost after commit')
+    })
+    await assert.rejects(operation, /unconfirmed/)
+  })
+  const recovery = readNoteRecovery({ userId: 1, docId: 1 })!
+  assert.equal(recovery.pending?.expectedFields?.contentMd, 'historical draft')
+  await act(async () => h.cloud.receiveDoc(doc('historical draft', 3)))
+  assert.equal(h.fields.contentMd, 'historical draft')
+  await act(async () => h.writeDoc(async () => doc('historical draft', 4)))
+  assert.equal(h.revision, 4)
+})

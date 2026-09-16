@@ -57,7 +57,6 @@ export function useNoteAiEdit(host: {
     snapshotRef.current = null
     return () => { controller.current?.abort(); controller.current = null }
     // A different document/account invalidates all AI state, including late responses.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host.current.identity])
 
   const stale = snapshot !== null && !sameNoteAiDocument(snapshot.document, host.current)

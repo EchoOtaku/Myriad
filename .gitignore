@@ -196,3 +196,8 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/phantasiPeek.spec.ts
 !/frontend/tests/browser/fixture/phantasiPeek.html
 !/frontend/tests/browser/fixture/phantasiPeek.tsx
+
+# Note editor preferences, history and collaboration regressions
+!/frontend/tests/browser/noteEditorSettings.spec.ts
+!/frontend/tests/browser/fixture/noteEditorSettings.html
+!/frontend/tests/browser/fixture/noteEditorSettings.tsx

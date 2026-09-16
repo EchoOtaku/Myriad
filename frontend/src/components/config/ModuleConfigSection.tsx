@@ -571,6 +571,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
           },
           agentUsage: prev.agentUsage,
           journalBoards: prev.journalBoards,
+          journalSourceSort: prev.journalSourceSort,
         }),
       )
     },

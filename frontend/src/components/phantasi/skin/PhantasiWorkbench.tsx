@@ -174,6 +174,7 @@ export default function PhantasiWorkbench({
   onUnschedule,
   onUpload,
   onDeleteMedia,
+  onMediaSaved,
   onExportPack,
   onImportPack,
   notesBusy,
@@ -213,6 +214,7 @@ export default function PhantasiWorkbench({
   onUnschedule: (id: number, revision: number) => void
   onUpload: (file: File) => void
   onDeleteMedia: (id: number) => void
+  onMediaSaved?: (item: MediaAsset) => void
   onExportPack: () => void
   onImportPack: (file: File) => void
   notesBusy: boolean
@@ -437,6 +439,7 @@ export default function PhantasiWorkbench({
           {...bindGuide('workbench.media', g.media)}
           onUpload={onUpload}
           onDeleteMedia={onDeleteMedia}
+          onMediaSaved={onMediaSaved}
         />
 
         <WorkbenchFeedsPanes

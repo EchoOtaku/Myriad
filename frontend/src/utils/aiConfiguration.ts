@@ -20,6 +20,7 @@ function requiredCapability(url: string, init: RequestInit): Capability | undefi
     } catch { /* The endpoint owns request validation. */ }
     return 'standard'
   }
+  if (path === '/api/phantasiai/notes/edit') return 'standard'
   if (path === '/api/agent/persona/name') return 'personaName'
   if (path === '/api/agent/persona/visual-from-portrait') return 'pro'
   if (/^\/api\/agent\/persona\/(draft|import|visual-design)$/.test(path)) return 'persona'

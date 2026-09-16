@@ -26,6 +26,7 @@ import {
 import { noteScheduleLabel } from '../notes/noteBoard'
 import { displayImageUrl } from '../notes/noteImageUrl'
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
+import { MediaEditorDialog } from './MediaEditorDialog'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
 import { Thumb } from './PhantasiWorkbenchHome'
 
@@ -39,6 +40,7 @@ export function WorkbenchMediaPane({
   guidePath,
   onUpload,
   onDeleteMedia,
+  onMediaSaved,
 }: {
   active: boolean
   back: ReactNode
@@ -49,6 +51,7 @@ export function WorkbenchMediaPane({
   guidePath?: string
   onUpload: (file: File) => void
   onDeleteMedia: (id: number) => void
+  onMediaSaved?: (item: MediaAsset) => void
 }) {
   const { t, locale } = useI18n()
   const phantasi = t.phantasi
@@ -56,6 +59,7 @@ export function WorkbenchMediaPane({
   const [mediaKind, setMediaKind] = useState<WorkbenchMediaKindFilter>('all')
   const [mediaFormat, setMediaFormat] =
     useState<WorkbenchMediaFormatFilter>('all')
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [mediaQuery, setMediaQuery] = useState('')
   const [mediaLayout, setMediaLayout] = useState<'list' | 'grid'>('grid')
   const mediaFormats = useMemo(
@@ -125,6 +129,7 @@ export function WorkbenchMediaPane({
           ],
           className: 'phantasi-workbench__hover-actions phantasi-workbench__media',
           leading: <Thumb src={src} video={video} />,
+          renderHit: ({ leading, main }) => <button type="button" className="managed-list-row-hit" aria-label={item.name} onClick={() => setSelectedId(item.id)}>{leading}{main}</button>,
           actions: [
             {
               key: 'delete',
@@ -141,6 +146,8 @@ export function WorkbenchMediaPane({
     [phantasi, busy, locale, onDeleteMedia, visibleMedia],
   )
 
+  const selectedIndex = visibleMedia.findIndex(item => item.id === selectedId)
+  const selected = visibleMedia[selectedIndex]
   if (!active) return null
 
   return (
@@ -235,6 +242,14 @@ export function WorkbenchMediaPane({
         }
         maxHeight={null}
       />
+      {selected && <MediaEditorDialog
+        key={selected.id}
+        item={selected}
+        onClose={() => setSelectedId(null)}
+        onPrevious={selectedIndex > 0 ? () => setSelectedId(visibleMedia[selectedIndex - 1].id) : undefined}
+        onNext={selectedIndex + 1 < visibleMedia.length ? () => setSelectedId(visibleMedia[selectedIndex + 1].id) : undefined}
+        onSaved={item => onMediaSaved?.(item)}
+                   />}
       <input
         ref={fileRef}
         type="file"

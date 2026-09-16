@@ -92,3 +92,28 @@ it('failed saves leave the last confirmed visibility in place', async (t) => {
   })), /offline/)
   assert.deepEqual(getCachedModuleVisibilityPreferences()?.journalBoards, DEFAULT_MODULE_VISIBILITY_PREFERENCES.journalBoards)
 })
+
+it('roundtrips the global sort for a fresh visitor without losing sibling settings', async (t) => {
+  const saved = normalizeModuleVisibilityPreferences({
+    journalSourceSort: 'pinyin',
+    journalBoards: { feeds: 'admin', notes: 'authenticated', sites: 'all' },
+    modules: { ...DEFAULT_MODULE_VISIBILITY_PREFERENCES.modules, library: 'admin' },
+  })
+  let stored = DEFAULT_MODULE_VISIBILITY_PREFERENCES
+  t.mock.method(apiService, 'put', async (_url: string, payload: typeof saved) => {
+    stored = structuredClone(payload)
+    return { success: true, preferences: stored }
+  })
+  t.mock.method(apiService, 'get', async () => ({ success: true, preferences: structuredClone(stored) }))
+  await updateModuleVisibilityPreferences(saved)
+  dispatchModuleVisibilityPreferencesUpdated(DEFAULT_MODULE_VISIBILITY_PREFERENCES)
+  assert.deepEqual(await fetchModuleVisibilityPreferences(), saved)
+  assert.equal(areModuleVisibilityPreferencesEqual(saved, { ...saved, journalSourceSort: 'smart' }), false)
+})
+
+it('failed default-sort save retains the confirmed default', async (t) => {
+  dispatchModuleVisibilityPreferencesUpdated(normalizeModuleVisibilityPreferences({ journalSourceSort: 'update' }))
+  t.mock.method(apiService, 'put', async () => { throw new Error('offline') })
+  await assert.rejects(updateModuleVisibilityPreferences(normalizeModuleVisibilityPreferences({ journalSourceSort: 'pinyin' })), /offline/)
+  assert.equal(getCachedModuleVisibilityPreferences()?.journalSourceSort, 'update')
+})

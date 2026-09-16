@@ -1,4 +1,6 @@
+import type { SourceSortMode } from '../components/phantasi/logic/board'
 import { useCallback, useEffect, useState } from 'react'
+import { normalizeSourceSortMode } from '../components/phantasi/logic/sourceSort'
 import { currentCopy } from '../i18n/localeCopy'
 import apiService from '../services/api'
 import { dedupedFetch } from './requestDedup'
@@ -25,6 +27,7 @@ export type JournalBoardVisibility = Record<'feeds' | 'notes' | 'sites', ModuleV
 export interface ModuleVisibilityPreferences {
   modules: Record<ModuleVisibilityKey, ModuleVisibilityLevel>
   agentUsage: AgentUsagePreferences
+  journalSourceSort: SourceSortMode
   journalBoards: JournalBoardVisibility
 }
 
@@ -71,6 +74,7 @@ export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences 
       agent: 'all',
     },
     agentUsage: { ...DEFAULT_AGENT_USAGE_PREFERENCES },
+    journalSourceSort: 'smart',
     journalBoards: { feeds: 'all', notes: 'all', sites: 'all' },
   }
 
@@ -110,6 +114,7 @@ export function normalizeModuleVisibilityPreferences(
       },
       {} as Record<ModuleVisibilityKey, ModuleVisibilityLevel>,
     ),
+    journalSourceSort: normalizeSourceSortMode(preferences?.journalSourceSort),
     journalBoards: {
       feeds: isVisibilityLevel(preferences?.journalBoards?.feeds) ? preferences.journalBoards.feeds : 'all',
       notes: isVisibilityLevel(preferences?.journalBoards?.notes) ? preferences.journalBoards.notes : 'all',
@@ -135,6 +140,7 @@ export function areModuleVisibilityPreferencesEqual(
   )
   return (
     modulesEqual &&
+    left.journalSourceSort === right.journalSourceSort &&
     left.journalBoards.feeds === right.journalBoards.feeds &&
     left.journalBoards.notes === right.journalBoards.notes &&
     left.journalBoards.sites === right.journalBoards.sites &&

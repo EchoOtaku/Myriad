@@ -171,7 +171,7 @@ export function writeNoteRecovery(
 export function recoverNoteFields(recovery: NoteRecovery | null, remote: NoteCloudFields): NoteCloudFields {
   if (!recovery) return remote
   if (recovery.pending) {
-    if (!sameCloudFields(recovery.pending.fields, remote)) return recovery.fields
+    if (!sameCloudFields(recovery.pending.expectedFields ?? recovery.pending.fields, remote)) return recovery.fields
     return mergeCloudFields(recovery.pending.fields, recovery.fields, remote)
   }
   return mergeCloudFields(recovery.base, recovery.fields, remote)

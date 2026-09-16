@@ -1,30 +1,16 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import {
-  isSourceSortMode,
-  readSourceSortMode,
-  writeSourceSortMode,
-} from './sourceSort.ts'
-
-/** node:test 没有 localStorage。 */
-function installStorage(): Map<string, string> {
-  const store = new Map<string, string>()
-  ;(globalThis as { localStorage?: unknown }).localStorage = {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-  }
-  return store
-}
+import { isSourceSortMode, normalizeSourceSortMode } from './sourceSort.ts'
 
 describe('sourceSort', () => {
-  it('只认四种排序，写盘后再读回来', () => {
-    installStorage()
-    assert.equal(isSourceSortMode('smart'), true)
-    assert.equal(isSourceSortMode('settings'), false)
-    writeSourceSortMode('pinyin')
-    assert.equal(readSourceSortMode(), 'pinyin')
-    writeSourceSortMode('smart')
-    assert.equal(readSourceSortMode(), 'smart')
+  it('accepts all configured modes and defaults invalid or legacy missing values to smart', () => {
+    for (const mode of ['smart', 'update', 'category', 'pinyin']) {
+      assert.equal(isSourceSortMode(mode), true)
+      assert.equal(normalizeSourceSortMode(mode), mode)
+    }
+    for (const value of [undefined, null, 1, 'settings']) {
+      assert.equal(isSourceSortMode(value), false)
+      assert.equal(normalizeSourceSortMode(value), 'smart')
+    }
   })
 })

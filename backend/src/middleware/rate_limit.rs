@@ -371,6 +371,7 @@ fn is_compute_intensive(path: &str) -> bool {
         || p == "/api/home/stickers/generate"
         || p == "/api/home/stickers/upload"
         || p == "/api/media"
+        || p.starts_with("/api/media/")
         || p == "/api/home/widget-fonts"
         || p == "/api/seo/generate-copy"
         || p == "/api/profile/refresh"

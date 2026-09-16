@@ -105,3 +105,12 @@ it('opening legacy records never assigns them to an account or destroys them', (
     assert.equal(localStorage.getItem(key), before)
   }
 })
+
+it('reopening after a lost restore acknowledgement recognizes the restored version', () => {
+  const current = { ...base, contentMd: 'current draft' }
+  const target = { ...base, contentMd: 'historical draft' }
+  drafts.writeNoteRecovery({ userId: 1, docId: 7 }, current, base, 1, Date.now(), {
+    requestId: 'restore', fields: current, expectedFields: target,
+  })
+  assert.deepEqual(drafts.recoverNoteFields(drafts.readNoteRecovery({ userId: 1, docId: 7 }), target), target)
+})

@@ -138,6 +138,7 @@ export default function PhantasiWorkbenchLane({
       }}
       onUnschedule={workbench.unschedule}
       onUpload={workbench.upload}
+      onMediaSaved={workbench.acceptMedia}
       onDeleteMedia={workbench.removeMedia}
       onExportPack={() => void pack.exportPack()}
       onImportPack={(file) => void pack.importFromFile(file)}
