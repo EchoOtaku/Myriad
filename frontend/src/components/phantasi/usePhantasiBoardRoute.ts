@@ -173,16 +173,10 @@ export function usePhantasiBoardRoute(
 
   useEffect(() => {
     if (isAdmin) return
-    setViewMode((current) => (current === 'starred' ? 'sources' : current))
-    if (activeId !== 'starred') return
-    prevActiveIdRef.current = 'feeds'
-    setActiveId('feeds')
-  }, [isAdmin, activeId, setActiveId])
-
-  useEffect(() => {
-    if (isAdmin) return
-    setViewMode((current) => (current === 'workbench' ? 'sources' : current))
-    if (activeId !== 'workbench') return
+    setViewMode((current) =>
+      current === 'starred' || current === 'workbench' ? 'sources' : current,
+    )
+    if (activeId !== 'starred' && activeId !== 'workbench') return
     prevActiveIdRef.current = 'feeds'
     setActiveId('feeds')
   }, [isAdmin, activeId, setActiveId])

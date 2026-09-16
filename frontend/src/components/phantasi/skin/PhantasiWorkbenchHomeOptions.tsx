@@ -1,10 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   LuEye,
   LuInbox,
   LuLink,
   LuNotebookPen,
-  LuStar,
 } from '@lib/icons'
 import { useI18n } from '../../../contexts/I18nContext'
 import {
@@ -15,8 +14,10 @@ import { SegmentedControl, SettingGroup, SettingGroupGrid } from '../../settings
 import {
   JOURNAL_BOARD_NAV_OPTIONS,
   type JournalBoardNavPane,
+  boardNavAllowsLevel,
   boardNavLevelsForPane,
   effectiveBoardNavLevel,
+  ensureBoardNavFloor,
   readBoardNavVisibility,
   setBoardNavPane,
   writeBoardNavVisibility,
@@ -24,7 +25,6 @@ import {
 
 const PANE_ICONS: Record<(typeof JOURNAL_BOARD_NAV_OPTIONS)[number], typeof LuInbox> = {
   feeds: LuInbox,
-  starred: LuStar,
   notes: LuNotebookPen,
   sites: LuLink,
 }
@@ -34,11 +34,24 @@ export function WorkbenchHomeOptions() {
   const phantasi = t.phantasi
   const { preferences } = useModuleVisibilityPreferences()
   const parent = preferences.modules.phantasi
-  const moduleOpen = parent === 'all'
-  const [visibility, setVisibility] = useState(readBoardNavVisibility)
+  const moduleOpen = parent !== 'admin'
+  const [visibility, setVisibility] = useState(() =>
+    ensureBoardNavFloor(readBoardNavVisibility(), parent),
+  )
+  useEffect(() => {
+    const raw = readBoardNavVisibility()
+    const next = ensureBoardNavFloor(raw, parent)
+    setVisibility(next)
+    if (
+      next.feeds !== raw.feeds ||
+      next.notes !== raw.notes ||
+      next.sites !== raw.sites
+    ) {
+      writeBoardNavVisibility(next)
+    }
+  }, [parent])
   const labels: Record<(typeof JOURNAL_BOARD_NAV_OPTIONS)[number], string> = {
     feeds: phantasi.boardFeeds,
-    starred: phantasi.starred,
     notes: phantasi.boardNotes,
     sites: phantasi.boardSites,
   }
@@ -57,9 +70,8 @@ export function WorkbenchHomeOptions() {
   return (
     <section
       className="phantasi-workbench__home-options"
-      aria-label={phantasi.workbenchHomeOptions}
+      aria-label={phantasi.workbenchBoardNavTitle}
     >
-      <h3>{phantasi.workbenchHomeOptions}</h3>
       <SettingGroup
         toc={false}
         title={phantasi.workbenchBoardNavTitle}
@@ -77,7 +89,7 @@ export function WorkbenchHomeOptions() {
           {JOURNAL_BOARD_NAV_OPTIONS.map((pane) => {
             const Icon = PANE_ICONS[pane]
             const selected = effectiveBoardNavLevel(visibility, pane, parent)
-            const levels = boardNavLevelsForPane(pane)
+            const levels = boardNavLevelsForPane(pane, parent)
             return (
               <SettingGroup
                 key={pane}
@@ -93,6 +105,12 @@ export function WorkbenchHomeOptions() {
                   options={levels.map((level) => ({
                     value: level,
                     label: visibilityLabels[level],
+                    disabled: !boardNavAllowsLevel(
+                      visibility,
+                      pane,
+                      level,
+                      parent,
+                    ),
                   }))}
                   onChange={(level) => onChange(pane, level)}
                   ariaLabel={labels[pane]}

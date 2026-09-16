@@ -177,140 +177,16 @@ export function WorkbenchHome({
   onOpenNote: (open: ReturnType<typeof workbenchNoteOpen>) => void
   onOpen: (pane: WorkbenchPane) => void
 }) {
+  const hasLists =
+    pendingReviews.length > 0 ||
+    drafts.length > 0 ||
+    upcoming.length > 0 ||
+    recent.length > 0 ||
+    quiet.notes.length > 0 ||
+    quiet.sources.length > 0
+
   return (
     <div className="phantasi-workbench__home">
-      {empty ? (
-        <p className="phantasi-workbench__home-empty">{copy.workbenchHomeEmpty}</p>
-      ) : null}
-      {empty ? null : (
-        <>
-      {pendingReviews.length > 0 ? (
-        <HomeBlock title={copy.workbenchHomeReviews}>
-          {pendingReviews.map((row) => (
-            <HomeRow
-              key={`review-${row.id}`}
-              title={row.site_name}
-              meta={row.site_url}
-              onPick={() => onOpen('reviews')}
-            />
-          ))}
-        </HomeBlock>
-      ) : null}
-      {drafts.length > 0 ? (
-        <HomeBlock title={copy.workbenchHomeContinue}>
-          {drafts.map((doc) => {
-            const src = homeFaceSrc(workbenchNoteCover(doc))
-            return (
-              <HomeRow
-                key={`draft-${doc.id}`}
-                title={doc.title.trim() || copy.workbenchNoteUntitled}
-                excerpt={src ? workbenchNoteListExcerpt(doc) || undefined : undefined}
-                src={src}
-                meta={noteScheduleLabel(doc.updated_at, locale) || undefined}
-                onPick={() => onOpenNote(workbenchNoteOpen(doc))}
-              />
-            )
-          })}
-        </HomeBlock>
-      ) : null}
-      {upcoming.length > 0 ? (
-        <HomeBlock title={copy.workbenchHomeUpcoming}>
-          {upcoming.map((doc) => {
-            const kind = workbenchHomeScheduleKind(doc.scheduled_at)
-            const when = noteScheduleLabel(doc.scheduled_at, locale)
-            const meta =
-              kind === 'missing'
-                ? copy.workbenchHomeScheduleMissing
-                : kind === 'overdue' && when
-                  ? `${when} · ${copy.workbenchHomeScheduleOverdue}`
-                  : kind === 'overdue'
-                    ? copy.workbenchHomeScheduleOverdue
-                    : when || undefined
-            const src = homeFaceSrc(workbenchNoteCover(doc))
-            return (
-              <HomeRow
-                key={`soon-${doc.id}`}
-                title={doc.title.trim() || copy.workbenchNoteUntitled}
-                excerpt={src ? workbenchNoteListExcerpt(doc) || undefined : undefined}
-                src={src}
-                meta={meta}
-                onPick={() => onOpenNote(workbenchNoteOpen(doc))}
-              />
-            )
-          })}
-        </HomeBlock>
-      ) : null}
-      {recent.length > 0 ? (
-        <HomeBlock title={copy.workbenchHomeRecent}>
-          {recent.map((item) => {
-            if (item.kind === 'note') {
-              const doc = docs.find((row) => row.id === item.id)
-              if (!doc) return null
-              const when = noteScheduleLabel(doc.updated_at, locale)
-              const src = homeFaceSrc(workbenchNoteCover(doc))
-              return (
-                <HomeRow
-                  key={`recent-note-${doc.id}`}
-                  title={doc.title.trim() || copy.workbenchNoteUntitled}
-                  excerpt={src ? workbenchNoteListExcerpt(doc) || undefined : undefined}
-                  src={src}
-                  meta={[copy.workbenchHomeRecentNote, when].filter(Boolean).join(' · ')}
-                  onPick={() => onOpenNote(workbenchNoteOpen(doc))}
-                />
-              )
-            }
-            if (item.kind === 'source') {
-              const source = sources.find((row) => row.id === item.id)
-              if (!source) return null
-              const when = noteScheduleLabel(source.created_at, locale)
-              return (
-                <HomeRow
-                  key={`recent-source-${source.id}`}
-                  title={source.name}
-                  meta={[copy.workbenchHomeRecentSource, when].filter(Boolean).join(' · ')}
-                  onPick={() => onOpen('sources')}
-                />
-              )
-            }
-            const asset = media.find((row) => row.id === item.id)
-            if (!asset) return null
-            const when = noteScheduleLabel(asset.created_at, locale)
-            const face = workbenchHomeMediaFace(asset)
-            return (
-              <HomeRow
-                key={`recent-media-${asset.id}`}
-                title={asset.name}
-                src={homeFaceSrc(face?.src)}
-                video={face?.video}
-                meta={[copy.workbenchHomeRecentMedia, when].filter(Boolean).join(' · ')}
-                onPick={() => onOpen('media')}
-              />
-            )
-          })}
-        </HomeBlock>
-      ) : null}
-      {quiet.notes.length > 0 || quiet.sources.length > 0 ? (
-        <div className="phantasi-workbench__home-quiet">
-          {quiet.notes.map((doc) => (
-            <HomeRow
-              key={`fail-note-${doc.id}`}
-              quiet
-              title={doc.title.trim() || copy.workbenchNoteUntitled}
-              meta={copy.workbenchHomeNoteFailed}
-              onPick={() => onOpenNote(workbenchNoteOpen(doc))}
-            />
-          ))}
-          {quiet.sources.map((source) => (
-            <HomeRow
-              key={`fail-source-${source.id}`}
-              quiet
-              title={source.name}
-              meta={copy.workbenchHomeSourceFailed}
-              onPick={() => onOpen('sources')}
-            />
-          ))}
-        </div>
-      ) : null}
       <section className="phantasi-workbench__kpis" aria-label={copy.workbenchOverview}>
         <Kpi value={docs.length} label={copy.workbenchNotes} onPick={() => onOpen('notes')} />
         <Kpi value={comments.length} label={copy.workbenchComments} onPick={() => onOpen('comments')} />
@@ -323,9 +199,144 @@ export function WorkbenchHome({
         <Kpi value={media.length} label={copy.workbenchMedia} onPick={() => onOpen('media')} />
         <Kpi value={feedCount} label={copy.workbenchSources} onPick={() => onOpen('sources')} />
       </section>
-        </>
-      )}
-      <WorkbenchHomeOptions />
+      <div className="phantasi-workbench__home-body">
+        <div className="phantasi-workbench__home-data">
+          {hasLists ? (
+            <>
+              {pendingReviews.length > 0 ? (
+                <HomeBlock title={copy.workbenchHomeReviews}>
+                  {pendingReviews.map((row) => (
+                    <HomeRow
+                      key={`review-${row.id}`}
+                      title={row.site_name}
+                      meta={row.site_url}
+                      onPick={() => onOpen('reviews')}
+                    />
+                  ))}
+                </HomeBlock>
+              ) : null}
+              {drafts.length > 0 ? (
+                <HomeBlock title={copy.workbenchHomeContinue}>
+                  {drafts.map((doc) => {
+                    const src = homeFaceSrc(workbenchNoteCover(doc))
+                    return (
+                      <HomeRow
+                        key={`draft-${doc.id}`}
+                        title={doc.title.trim() || copy.workbenchNoteUntitled}
+                        excerpt={src ? workbenchNoteListExcerpt(doc) || undefined : undefined}
+                        src={src}
+                        meta={noteScheduleLabel(doc.updated_at, locale) || undefined}
+                        onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                      />
+                    )
+                  })}
+                </HomeBlock>
+              ) : null}
+              {upcoming.length > 0 ? (
+                <HomeBlock title={copy.workbenchHomeUpcoming}>
+                  {upcoming.map((doc) => {
+                    const kind = workbenchHomeScheduleKind(doc.scheduled_at)
+                    const when = noteScheduleLabel(doc.scheduled_at, locale)
+                    const meta =
+                      kind === 'missing'
+                        ? copy.workbenchHomeScheduleMissing
+                        : kind === 'overdue' && when
+                          ? `${when} · ${copy.workbenchHomeScheduleOverdue}`
+                          : kind === 'overdue'
+                            ? copy.workbenchHomeScheduleOverdue
+                            : when || undefined
+                    const src = homeFaceSrc(workbenchNoteCover(doc))
+                    return (
+                      <HomeRow
+                        key={`soon-${doc.id}`}
+                        title={doc.title.trim() || copy.workbenchNoteUntitled}
+                        excerpt={src ? workbenchNoteListExcerpt(doc) || undefined : undefined}
+                        src={src}
+                        meta={meta}
+                        onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                      />
+                    )
+                  })}
+                </HomeBlock>
+              ) : null}
+              {recent.length > 0 ? (
+                <HomeBlock title={copy.workbenchHomeRecent}>
+                  {recent.map((item) => {
+                    if (item.kind === 'note') {
+                      const doc = docs.find((row) => row.id === item.id)
+                      if (!doc) return null
+                      const when = noteScheduleLabel(doc.updated_at, locale)
+                      const src = homeFaceSrc(workbenchNoteCover(doc))
+                      return (
+                        <HomeRow
+                          key={`recent-note-${doc.id}`}
+                          title={doc.title.trim() || copy.workbenchNoteUntitled}
+                          excerpt={src ? workbenchNoteListExcerpt(doc) || undefined : undefined}
+                          src={src}
+                          meta={[copy.workbenchHomeRecentNote, when].filter(Boolean).join(' · ')}
+                          onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                        />
+                      )
+                    }
+                    if (item.kind === 'source') {
+                      const source = sources.find((row) => row.id === item.id)
+                      if (!source) return null
+                      const when = noteScheduleLabel(source.created_at, locale)
+                      return (
+                        <HomeRow
+                          key={`recent-source-${source.id}`}
+                          title={source.name}
+                          meta={[copy.workbenchHomeRecentSource, when].filter(Boolean).join(' · ')}
+                          onPick={() => onOpen('sources')}
+                        />
+                      )
+                    }
+                    const asset = media.find((row) => row.id === item.id)
+                    if (!asset) return null
+                    const when = noteScheduleLabel(asset.created_at, locale)
+                    const face = workbenchHomeMediaFace(asset)
+                    return (
+                      <HomeRow
+                        key={`recent-media-${asset.id}`}
+                        title={asset.name}
+                        src={homeFaceSrc(face?.src)}
+                        video={face?.video}
+                        meta={[copy.workbenchHomeRecentMedia, when].filter(Boolean).join(' · ')}
+                        onPick={() => onOpen('media')}
+                      />
+                    )
+                  })}
+                </HomeBlock>
+              ) : null}
+              {quiet.notes.length > 0 || quiet.sources.length > 0 ? (
+                <div className="phantasi-workbench__home-quiet">
+                  {quiet.notes.map((doc) => (
+                    <HomeRow
+                      key={`fail-note-${doc.id}`}
+                      quiet
+                      title={doc.title.trim() || copy.workbenchNoteUntitled}
+                      meta={copy.workbenchHomeNoteFailed}
+                      onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                    />
+                  ))}
+                  {quiet.sources.map((source) => (
+                    <HomeRow
+                      key={`fail-source-${source.id}`}
+                      quiet
+                      title={source.name}
+                      meta={copy.workbenchHomeSourceFailed}
+                      onPick={() => onOpen('sources')}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : empty ? (
+            <p className="phantasi-workbench__home-empty">{copy.workbenchHomeEmpty}</p>
+          ) : null}
+        </div>
+        <WorkbenchHomeOptions />
+      </div>
     </div>
   )
 }

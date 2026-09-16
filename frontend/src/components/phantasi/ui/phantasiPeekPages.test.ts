@@ -18,6 +18,7 @@ const list = readFileSync(join(skin, 'PhantasiList.tsx'), 'utf8')
 const filter = readFileSync(join(dir, '../PhantasiFilterLane.tsx'), 'utf8')
 const chip = readFileSync(join(dir, 'Chip.tsx'), 'utf8')
 const lane = readFileSync(join(dir, 'peekLane.ts'), 'utf8')
+const air = readFileSync(join(dir, 'PhantasiPeekAir.tsx'), 'utf8')
 
 describe('期刊各子页 peek', () => {
   it('订阅、笔记、友链、收藏都走同一条委托轨，工作台不挂 peek', () => {
@@ -60,6 +61,8 @@ describe('期刊各子页 peek', () => {
     assert.match(lane, /peekLaneIsSwapping/)
     assert.match(lane, /peekGoesToNav/)
     assert.match(page, /settlePeekSession/)
-    assert.match(page, /peekPointerWantsAir/)
+    assert.match(page, /decidePeekSettle/)
+    assert.match(lane, /peekHitKeepsAir/)
+    assert.match(air, /applyPeekFace/)
   })
 })

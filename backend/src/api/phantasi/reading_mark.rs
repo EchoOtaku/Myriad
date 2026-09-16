@@ -74,6 +74,9 @@ pub(crate) async fn update_item_state(
     let user_id = get_user_id_from_headers(headers, db).await?;
 
     let (_, is_admin) = get_user_and_admin_status(headers, db).await;
+    if is_starred.is_some() && !is_admin {
+        return Err(phantasi_http_err(StatusCode::FORBIDDEN, "Forbidden"));
+    }
     let visible_sources = visible_state_sources(is_admin).into_query();
 
     let now = Utc::now();
@@ -367,6 +370,10 @@ mod journal_audit_contracts {
         assert!(
             !body.contains("unread_count"),
             "HTTP mark must not write site-wide source unread_count"
+        );
+        assert!(
+            body.contains("is_starred.is_some() && !is_admin"),
+            "star writes are admin-only host identity, not TAPP grants"
         );
     }
 }

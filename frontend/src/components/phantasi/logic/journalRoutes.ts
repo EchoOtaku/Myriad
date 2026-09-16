@@ -150,7 +150,7 @@ export function parseJournalPath(pathname: string): JournalLocation | null {
 
 export function navIdForJournalLocation(
   loc: JournalLocation,
-  isAuthenticated: boolean,
+  _isAuthenticated: boolean,
   isAdmin: boolean,
 ): string {
   if (loc.kind === 'workbench') return isAdmin ? 'workbench' : 'feeds'

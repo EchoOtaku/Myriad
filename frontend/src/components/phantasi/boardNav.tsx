@@ -1,4 +1,4 @@
-/** 收藏在二级导航，仍是订阅上的筛选，不是第四板块。 */
+/** 收藏在二级导航只给管理员，仍是订阅上的筛选，不是第四板块。 */
 
 import type { SecondaryNavItem } from '../../contexts/NavigationContext'
 import { journalPathForNavId } from './logic/journalRoutes'

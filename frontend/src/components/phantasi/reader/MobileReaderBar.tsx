@@ -256,7 +256,7 @@ export const MobileReaderBar = memo(
                               </button>
                             )}
 
-                            {isAuthenticated && (
+                            {isAuthenticated && isAdmin && (
                               <button
                                 onClick={onToggleStar}
                                 className={`phantasi-reader__btn${item.is_starred ? ' is-star' : ''}`}

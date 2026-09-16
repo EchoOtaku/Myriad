@@ -8,8 +8,10 @@ import {
   DEFAULT_BOARD_NAV_VISIBILITY,
   JOURNAL_BOARD_NAV_PANES,
   boardNavAllowsLevel,
+  boardNavAudienceFloor,
   boardNavLevelsForPane,
   effectiveBoardNavLevel,
+  ensureBoardNavFloor,
   filterBoardNavItems,
   normalizeBoardNavVisibility,
   readBoardNavVisibility,
@@ -46,7 +48,7 @@ describe('boardNavVisibility', () => {
       sites: 'admin',
     })
     assert.equal(migrated.feeds, 'all')
-    assert.equal(migrated.starred, 'authenticated')
+    assert.equal(migrated.starred, 'admin')
     assert.equal(migrated.notes, 'authenticated')
     assert.equal(migrated.sites, 'admin')
     assert.equal(migrated.workbench, 'admin')
@@ -77,30 +79,33 @@ describe('boardNavVisibility', () => {
       'utf8',
     )
     assert.match(options, /JOURNAL_BOARD_NAV_OPTIONS/)
+    assert.match(options, /boardNavAllowsLevel/)
+    assert.match(options, /parent !== 'admin'/)
     assert.doesNotMatch(options, /boardWorkbench/)
+    assert.doesNotMatch(options, /phantasi\.starred/)
   })
 
-  it('收藏没有全体，最开是登录用户', () => {
-    assert.deepEqual(boardNavLevelsForPane('starred'), [
-      'authenticated',
-      'admin',
-    ])
+  it('收藏只有管理员，全体和登录无效', () => {
+    assert.deepEqual(boardNavLevelsForPane('starred'), ['admin'])
     assert.equal(
       normalizeBoardNavVisibility({ starred: 'all' }).starred,
-      'authenticated',
+      'admin',
     )
     assert.equal(
       setBoardNavPane(DEFAULT_BOARD_NAV_VISIBILITY, 'starred', 'all', 'all')
         .starred,
-      'authenticated',
+      'admin',
     )
     assert.equal(
       effectiveBoardNavLevel(DEFAULT_BOARD_NAV_VISIBILITY, 'starred', 'all'),
-      'authenticated',
+      'admin',
     )
   })
 
-  it('各子页互不卡住；模块未全开不能改', () => {
+  it('各子页互不卡住；开口层至少留一页', () => {
+    assert.equal(boardNavAudienceFloor('all'), 'all')
+    assert.equal(boardNavAudienceFloor('authenticated'), 'authenticated')
+    assert.equal(boardNavAudienceFloor('admin'), null)
     const closed = setBoardNavPane(
       setBoardNavPane(DEFAULT_BOARD_NAV_VISIBILITY, 'feeds', 'admin'),
       'notes',
@@ -109,11 +114,54 @@ describe('boardNavVisibility', () => {
     assert.equal(closed.feeds, 'admin')
     assert.equal(closed.notes, 'admin')
     assert.equal(closed.sites, 'all')
-    assert.equal(boardNavAllowsLevel(closed, 'sites', 'admin', 'all'), true)
-    const tighter = setBoardNavPane(closed, 'sites', 'admin')
-    assert.equal(tighter.sites, 'admin')
-    assert.equal(boardNavAllowsLevel(tighter, 'sites', 'all', 'admin'), false)
-    assert.equal(setBoardNavPane(tighter, 'sites', 'all', 'admin').sites, 'admin')
+    assert.equal(boardNavAllowsLevel(closed, 'sites', 'admin', 'all'), false)
+    assert.equal(setBoardNavPane(closed, 'sites', 'admin', 'all').sites, 'all')
+    assert.equal(boardNavAllowsLevel(closed, 'notes', 'all', 'all'), true)
+    assert.equal(setBoardNavPane(closed, 'notes', 'all', 'all').notes, 'all')
+    const locked = normalizeBoardNavVisibility({
+      feeds: 'admin',
+      notes: 'admin',
+      sites: 'admin',
+    })
+    assert.equal(boardNavAllowsLevel(locked, 'sites', 'all', 'admin'), false)
+    assert.equal(setBoardNavPane(locked, 'sites', 'all', 'admin').sites, 'admin')
+    const emptied = normalizeBoardNavVisibility({
+      feeds: 'admin',
+      notes: 'admin',
+      sites: 'admin',
+    })
+    assert.equal(ensureBoardNavFloor(emptied, 'all').feeds, 'all')
+    assert.equal(
+      ensureBoardNavFloor(emptied, 'authenticated').feeds,
+      'authenticated',
+    )
+    assert.equal(effectiveBoardNavLevel(emptied, 'feeds', 'all'), 'all')
+    const login = setBoardNavPane(
+      setBoardNavPane(
+        DEFAULT_BOARD_NAV_VISIBILITY,
+        'feeds',
+        'admin',
+        'authenticated',
+      ),
+      'notes',
+      'admin',
+      'authenticated',
+    )
+    assert.equal(login.feeds, 'admin')
+    assert.equal(login.notes, 'admin')
+    assert.equal(login.sites, 'all')
+    assert.equal(
+      boardNavAllowsLevel(login, 'sites', 'admin', 'authenticated'),
+      false,
+    )
+    assert.equal(
+      setBoardNavPane(login, 'sites', 'admin', 'authenticated').sites,
+      'all',
+    )
+    assert.deepEqual(boardNavLevelsForPane('feeds', 'authenticated'), [
+      'authenticated',
+      'admin',
+    ])
   })
 
   it('按模块+自定义裁二级菜单', () => {

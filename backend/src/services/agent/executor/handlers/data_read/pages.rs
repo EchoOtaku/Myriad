@@ -113,7 +113,11 @@ pub(super) async fn execute_phantasi_page_content(
                 "navigation": {
                     "currentFilter": filter,
                     "category": category_filter,
-                    "availableFilters": ["all", "unread", "starred", "today"],
+                    "availableFilters": if is_admin {
+                        json!(["all", "unread", "starred", "today"])
+                    } else {
+                        json!(["all", "unread", "today"])
+                    },
                     "canGoBack": false,
                     "parentPath": "/"
                 }
@@ -136,6 +140,9 @@ pub(super) async fn execute_phantasi_page_content(
                     .filter(phantasi_items::Column::SourceId.eq(source.id)),
             )
             .order_by_desc(phantasi_items::Column::PublishedAt);
+            if filter == "starred" && !is_admin {
+                return Err("Forbidden".to_string());
+            }
             match filter {
                 "unread" => {
                     let read_subquery = phantasi_user_states::Entity::find()
@@ -262,11 +269,15 @@ pub(super) async fn execute_phantasi_page_content(
                 "stats": {
                     "totalItems": total_items,
                     "unreadCount": unread_count,
-                    "starredCount": starred_count
+                    "starredCount": if is_admin { starred_count } else { 0 }
                 },
                 "navigation": {
                     "currentFilter": filter,
-                    "availableFilters": ["all", "unread", "starred"],
+                    "availableFilters": if is_admin {
+                        json!(["all", "unread", "starred"])
+                    } else {
+                        json!(["all", "unread"])
+                    },
                     "canGoBack": true,
                     "parentPath": format!("/journal/feeds/{}", source.id)
                 }
@@ -396,6 +407,7 @@ mod tests {
         assert!(items.contains("is_starred"));
         assert!(!items.contains("\"isRead\": false"));
         assert!(!items.contains("unreadCount\": items.len()"));
+        assert!(items.contains("filter == \"starred\" && !is_admin"));
         assert!(items.contains("preview_query"));
         assert!(items.contains(".limit("));
         assert!(

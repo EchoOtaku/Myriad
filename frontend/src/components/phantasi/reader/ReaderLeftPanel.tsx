@@ -262,7 +262,7 @@ export default memo(
                 </button>
               )}
 
-              {isAuthenticated && (
+              {isAuthenticated && isAdmin && (
                 <button
                   onClick={onToggleStar}
                   className={`${sideButtonClass}${item.is_starred ? ' is-star' : ''}`}

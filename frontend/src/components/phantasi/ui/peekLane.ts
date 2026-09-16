@@ -24,6 +24,11 @@ export function resetPeekPointer(): void {
   peekMovedAt = 0
 }
 
+/** 指针还在原处，但已经停住。 */
+export function restPeekPointer(): void {
+  peekMovedAt = 0
+}
+
 export function peekGoesToNav(to: EventTarget | null): boolean {
   if (!to || typeof (to as Element).closest !== 'function') return false
   return !!(to as Element).closest(PHANTASI_PEEK_NAV)
@@ -91,11 +96,34 @@ export function peekHitFromPoint(): Element | null {
   return document.elementFromPoint(peekPointerX, peekPointerY)
 }
 
+/** 活着的期刊板、导航、文章卡都还在 peek 面上。板外空白才算离开。 */
+export function peekHitKeepsAir(hit: EventTarget | null): boolean {
+  if (peekGoesToNav(hit)) return true
+  if (peekStoryNode(hit)) return true
+  if (!hit || typeof (hit as Element).closest !== 'function') return false
+  const lane = (hit as Element).closest('.phantasi-view-lane')
+  return peekLaneIsLive(lane)
+}
+
 export function peekPointerWantsAir(): boolean {
   if (peekLaneIsSwapping()) return true
   if (hoveredPhantasiStory()) return true
-  if (peekGoesToNav(peekHitFromPoint())) return true
+  if (peekHitKeepsAir(peekHitFromPoint())) return true
   return peekPointerMoving()
+}
+
+export type PeekSettleDecision = 'drop' | 'resume' | 'wait' | 'hold'
+
+/** 只有命中板外空白才退。命不中、还在走、换树，都不清。 */
+export function decidePeekSettle(): PeekSettleDecision {
+  if (peekLaneIsSwapping() || peekPointerMoving()) {
+    return peekNodeFromPoint() && !peekLaneIsSwapping() ? 'resume' : 'wait'
+  }
+  if (peekNodeFromPoint()) return 'resume'
+  if (!peekPointerOn) return 'hold'
+  const hit = peekHitFromPoint()
+  if (!hit || peekHitKeepsAir(hit)) return 'hold'
+  return 'drop'
 }
 
 export function peekNodeFromPoint(): HTMLElement | null {

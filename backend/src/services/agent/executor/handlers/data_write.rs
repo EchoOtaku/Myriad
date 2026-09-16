@@ -579,6 +579,9 @@ async fn execute_phantasi_mark(
     if source.admin_only && !is_admin {
         return Err("This article cannot be changed".to_string());
     }
+    if matches!(action, "star" | "unstar" | "later") && !is_admin {
+        return Err("Forbidden".to_string());
+    }
 
     // 查找或创建用户状态
     let existing = phantasi_user_states::Entity::find()
@@ -839,6 +842,10 @@ mod phantasi_mark_visibility_tests {
         let mark = &body[..end];
         assert!(mark.contains("user_is_current_admin"));
         assert!(mark.contains("source.admin_only"));
+        assert!(
+            mark.contains("\"star\" | \"unstar\" | \"later\"") && mark.contains("!is_admin"),
+            "star writes are admin-only host identity"
+        );
         assert!(
             !mark.contains("source.user_id") && !mark.contains("phantasi_sources::Column::UserId"),
             "shared catalog marks visible sources, not the creator"

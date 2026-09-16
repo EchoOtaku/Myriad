@@ -88,6 +88,13 @@ export function writePeekFace(next: PhantasiPeekFace | null): void {
   for (const fn of sessionListeners) fn()
 }
 
+/** 没封面不把现有壁纸写成空。只有 drop 才清。 */
+export function applyPeekFace(next: PhantasiPeekFace | null): boolean {
+  if (!next) return false
+  writePeekFace(next)
+  return true
+}
+
 function sameFace(layer: Layer, face: PhantasiPeekFace): boolean {
   return samePeekFace(layer.face, face)
 }

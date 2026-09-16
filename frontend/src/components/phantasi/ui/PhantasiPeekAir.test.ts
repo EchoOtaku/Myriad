@@ -82,15 +82,15 @@ describe('PhantasiPeekAir', () => {
     assert.match(air, /PHANTASI_PEEK_HANDOFF_MS/)
     assert.match(tokens, /scale\(1\.03\)/)
     assert.match(tokens, /\.phantasi-peek-air\.is-swap/)
-    assert.match(page, /writePeekFace\(toPhantasiPeekFace/)
+    assert.match(page, /applyPeekFace\(toPhantasiPeekFace/)
     assert.match(page, /subscribePeekFace/)
+    assert.match(air, /applyPeekFace/)
     assert.match(air, /writePeekFace/)
     assert.match(page, /dropPeekSession/)
     assert.match(page, /schedulePhantasiPeekResume/)
     assert.match(page, /onDisplayed=\{resumePeekAfterLane\}/)
-    assert.match(page, /peekLaneIsSwapping/)
+    assert.match(page, /decidePeekSettle/)
     assert.match(page, /settlePeekSession/)
-    assert.match(page, /peekPointerWantsAir/)
     assert.match(storyCard, /peekGoesToNav/)
     assert.doesNotMatch(page, /holdPhantasiPeekSwap/)
     assert.doesNotMatch(page, /phantasiPeekHeldForSwap/)
@@ -152,5 +152,22 @@ describe('PhantasiPeekAir', () => {
     assert.doesNotMatch(storyCard, /onPointerLeave=/)
     assert.match(list, /data-phantasi-peek-lane/)
     assert.match(page, /clearPhantasiStoryPeeks/)
+  })
+})
+
+describe('applyPeekFace', () => {
+  it('没封面不把现有壁纸写成空', async () => {
+    const air = await import('./PhantasiPeekAir.tsx')
+    const face = {
+      src: '/cover.jpg',
+      title: 'Rust 周报',
+      source: '源站',
+      sourceIcon: null,
+    }
+    air.writePeekFace(face)
+    assert.equal(air.applyPeekFace(null), false)
+    assert.deepEqual(air.readPeekFace(), face)
+    air.writePeekFace(null)
+    assert.equal(air.readPeekFace(), null)
   })
 })

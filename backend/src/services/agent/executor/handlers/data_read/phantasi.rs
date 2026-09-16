@@ -1158,7 +1158,7 @@ pub(super) async fn execute_phantasi_stats(
         "totalSources": total_sources,
         "totalItems": total_items,
         "unreadCount": unread_count,
-        "starredCount": starred_count,
+        "starredCount": if is_admin { starred_count } else { 0 },
         "userId": if user_id > 0 { Value::from(user_id) } else { Value::Null },
     }))
 }

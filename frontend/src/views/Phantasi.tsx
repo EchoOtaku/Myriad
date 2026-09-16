@@ -33,17 +33,15 @@ import { storySourceFace } from '../components/phantasi/notes/noteSiteSource'
 import {
   PHANTASI_PEEK_HANDOFF_MS,
   PhantasiPeekAir,
+  applyPeekFace,
   readPeekFace,
   subscribePeekFace,
   toPhantasiPeekFace,
   writePeekFace,
 } from '../components/phantasi/ui/PhantasiPeekAir'
 import {
+  decidePeekSettle,
   notePeekPointer,
-  peekLaneIsSwapping,
-  peekNodeFromPoint,
-  peekPointerMoving,
-  peekPointerWantsAir,
 } from '../components/phantasi/ui/peekLane'
 import {
   onPhantasiMotion,
@@ -421,7 +419,7 @@ function PhantasiSubjectPage() {
     enabled: true,
     onSelectItem: handleKeyboardSelect,
     onToggleRead: actions.toggleRead,
-    onToggleStar: actions.toggleStar,
+    onToggleStar: isAdmin ? actions.toggleStar : undefined,
     onRefresh: () => {},
     onAddSource: () => {},
     onMarkAllRead: actions.markAllRead,
@@ -472,7 +470,7 @@ function PhantasiSubjectPage() {
       window.clearTimeout(peekEndTimer.current)
       peekEndTimer.current = 0
       cancelIdleTask('phantasi-peek-warm')
-      writePeekFace(toPhantasiPeekFace(item, storySourceFace(item)))
+      applyPeekFace(toPhantasiPeekFace(item, storySourceFace(item)))
       const id = item.id
       scheduleIdleTask(
         'phantasi-peek-warm',
@@ -494,16 +492,16 @@ function PhantasiSubjectPage() {
         dropPeekSession()
         return
       }
-      if (peekPointerWantsAir()) {
-        if (peekNodeFromPoint()) {
-          resumePhantasiStoryPeek(handlePeekItem)
-          return
-        }
-        if (peekPointerMoving() || peekLaneIsSwapping()) {
-          settlePeekSession()
-        }
+      const decision = decidePeekSettle()
+      if (decision === 'resume') {
+        resumePhantasiStoryPeek(handlePeekItem)
         return
       }
+      if (decision === 'wait') {
+        settlePeekSession()
+        return
+      }
+      if (decision === 'hold') return
       dropPeekSession()
     }, PHANTASI_PEEK_HANDOFF_MS)
   }, [dropPeekSession, handlePeekItem, item.selectedItem, notes.noteEditor])
@@ -612,7 +610,7 @@ function PhantasiSubjectPage() {
             onOpenItem={actions.openPreview}
             onPeekItem={handlePeekItem}
             onPeekEnd={handlePeekEnd}
-            onToggleStar={handleCardStar}
+            onToggleStar={isAdmin ? handleCardStar : undefined}
             onMarkAllRead={isAuthenticated ? actions.markAllRead : undefined}
             onWriteNote={isAdmin ? notes.write : undefined}
             onOpenDoc={isAdmin ? notes.editDoc : undefined}
@@ -637,7 +635,7 @@ function PhantasiSubjectPage() {
             total={list.total}
             onItemSelect={actions.select}
             onLoadMore={list.loadMore}
-            onToggleStar={actions.toggleStar}
+            onToggleStar={isAdmin ? actions.toggleStar : undefined}
             onItemSelectToggle={starred.toggle}
             onPeekItem={handlePeekItem}
             onPeekEnd={handlePeekEnd}

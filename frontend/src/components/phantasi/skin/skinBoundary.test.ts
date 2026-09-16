@@ -64,7 +64,18 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /filterWorkbenchComments/)
     assert.match(src, /filterWorkbenchReviews/)
     assert.match(src, /phantasi-workbench__kpis/)
-    assert.match(src, /workbenchHomeOptions/)
+    assert.match(src, /phantasi-workbench__home-data/)
+    assert.match(src, /phantasi-workbench__home-body/)
+    const home = readFileSync(join(dir, 'PhantasiWorkbenchHome.tsx'), 'utf8')
+    const homeView = home.slice(home.indexOf('export function WorkbenchHome'))
+    assert.ok(
+      homeView.indexOf('phantasi-workbench__kpis') <
+        homeView.indexOf('phantasi-workbench__home-data'),
+    )
+    assert.ok(
+      homeView.indexOf('phantasi-workbench__home-data') <
+        homeView.indexOf('<WorkbenchHomeOptions'),
+    )
     assert.match(src, /workbenchBoardNavTitle/)
     assert.match(src, /SettingGroupGrid/)
     assert.match(src, /moduleVisibilityAll/)

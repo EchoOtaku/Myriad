@@ -307,7 +307,7 @@ export function resolveBoardParam(value: string): PhantasiBoardEntry | null {
 /** 二级导航高亮：收藏和工作台只给管理员。 */
 export function navIdForBoardEntry(
   entry: PhantasiBoardEntry,
-  isAuthenticated: boolean,
+  _isAuthenticated: boolean,
   isAdmin = false,
 ): string {
   if (entry.view === 'workbench') return isAdmin ? 'workbench' : 'feeds'
@@ -318,7 +318,7 @@ export function navIdForBoardEntry(
 /** 非管理员没有收藏页和工作台。 */
 export function viewForBoardEntry(
   entry: PhantasiBoardEntry,
-  isAuthenticated: boolean,
+  _isAuthenticated: boolean,
   isAdmin = false,
 ): PhantasiViewMode {
   if (entry.view === 'workbench') return isAdmin ? 'workbench' : 'sources'

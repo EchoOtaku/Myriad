@@ -32,6 +32,10 @@ describe('decidePathSync', () => {
       to: '/journal',
     })
     assert.deepEqual(decidePathSync('/journal/starred', true, false), {
+      action: 'bounce',
+      to: '/journal',
+    })
+    assert.deepEqual(decidePathSync('/journal/starred', true, true), {
       action: 'apply',
       navId: 'starred',
     })

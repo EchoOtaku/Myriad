@@ -159,6 +159,14 @@ describe('nav helpers', () => {
       navIdForJournalLocation({ kind: 'starred' }, false, false),
       'feeds',
     )
+    assert.equal(
+      navIdForJournalLocation({ kind: 'starred' }, true, false),
+      'feeds',
+    )
+    assert.equal(
+      navIdForJournalLocation({ kind: 'starred' }, true, true),
+      'starred',
+    )
     assert.equal(seoListNoindex('workbench'), true)
     assert.equal(seoListNoindex('starred'), true)
     assert.equal(seoListNoindex('topic-feed'), true)

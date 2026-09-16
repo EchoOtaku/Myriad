@@ -220,12 +220,15 @@ pub(crate) async fn list_items(
         },
     };
     let filter_type = query.filter.as_deref().unwrap_or("all");
+    if filter_type == "starred" {
+        get_admin_user_id_from_headers(&headers, &db).await?;
+    }
 
     // 构建查询
     let mut items_query = phantasi_items::Entity::find()
         .filter(phantasi_items::Column::SourceId.in_subquery(visible_source_ids));
 
-    // 只有登录用户才应用 starred/unread 过滤
+    // 未读给登录用户；收藏筛选只给管理员。
     if user_id.is_some() {
         match filter_type {
             "starred" => {
@@ -448,5 +451,21 @@ mod tests {
             .expect("put_feed_topic_cards");
         assert!(put.contains("get_admin_user_id_from_headers"));
         assert!(put.contains("sanitize_feed_topic_cards"));
+    }
+
+    #[test]
+    fn starred_filter_is_admin_only() {
+        let src = include_str!("feeds_list.rs");
+        let start = src
+            .find("pub(crate) async fn list_items")
+            .expect("list_items");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\n#[cfg(test)]")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let list = &body[..end];
+        assert!(list.contains("filter_type == \"starred\""));
+        assert!(list.contains("get_admin_user_id_from_headers"));
     }
 }

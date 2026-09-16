@@ -10,8 +10,10 @@ import {
   phantasiMotionReset,
 } from '../../../hooks/animation/pages/phantasiMotion.ts'
 import {
+  decidePeekSettle,
   notePeekPointer,
   peekGoesToNav,
+  peekHitKeepsAir,
   peekLaneIsLive,
   peekLaneKeepsAir,
   peekLaneIsSwapping,
@@ -20,6 +22,7 @@ import {
   peekPreviewFromStory,
   peekSwapHoldsAir,
   resetPeekPointer,
+  restPeekPointer,
 } from './peekLane.ts'
 
 const require = createRequire(import.meta.url)
@@ -165,6 +168,79 @@ describe('peekSwapHoldsAir', () => {
     resetPeekPointer()
     assert.equal(peekPointerMoving(), false)
     assert.equal(peekPointerWantsAir(), false)
+    assert.equal(decidePeekSettle(), 'hold')
+  })
+
+  it('活板、导航、换树按住；板外空白才退', () => {
+    resetPeekPointer()
+    phantasiMotionReset()
+    const dead = new JSDOM(
+      `<div class="phantasi-view-lane" data-chip-phase="exit" inert id="old">
+         <button class="phantasi-story" id="old-s">旧卡</button>
+       </div>`,
+    ).window.document
+    assert.equal(peekHitKeepsAir(dead.getElementById('old')), false)
+
+    const dom = new JSDOM(
+      `<div class="nav-container"><button class="nav-item" id="notes">笔记</button></div>
+       <div id="search">搜索</div>
+       <div class="phantasi-view-lane" data-chip-phase="enter" id="board">
+         <div class="phantasi-rail-title" id="title">笔记</div>
+         <div data-phantasi-peek-lane>
+           <button class="phantasi-story" id="s">卡</button>
+         </div>
+       </div>`,
+      { url: 'https://example.test/' },
+    )
+    const page = dom.window.document
+    const previous = globalThis.document
+    globalThis.document = page
+    const board = page.getElementById('board')
+    const title = page.getElementById('title')
+    const story = page.getElementById('s')
+    const nav = page.getElementById('notes')
+    const search = page.getElementById('search')
+    assert.equal(peekHitKeepsAir(title), true)
+    assert.equal(peekHitKeepsAir(story), true)
+    assert.equal(peekHitKeepsAir(nav), true)
+    assert.equal(peekHitKeepsAir(search), false)
+
+    const hit = (el: Element | null) => {
+      page.elementFromPoint = () => el
+    }
+
+    try {
+      notePeekPointer({ clientX: 4, clientY: 4 })
+      restPeekPointer()
+      hit(title)
+      assert.equal(peekPointerWantsAir(), true)
+      assert.equal(decidePeekSettle(), 'hold')
+
+      hit(nav)
+      assert.equal(decidePeekSettle(), 'hold')
+
+      hit(story)
+      assert.equal(decidePeekSettle(), 'resume')
+
+      hit(search)
+      assert.equal(peekPointerWantsAir(), false)
+      assert.equal(decidePeekSettle(), 'drop')
+
+      hit(null)
+      assert.equal(decidePeekSettle(), 'hold')
+
+      hit(board)
+      assert.equal(decidePeekSettle(), 'hold')
+
+      const token = phantasiMotionClaim('lane')
+      hit(search)
+      assert.equal(decidePeekSettle(), 'wait')
+      phantasiMotionRelease(token)
+    } finally {
+      resetPeekPointer()
+      phantasiMotionReset()
+      globalThis.document = previous
+    }
   })
 })
 

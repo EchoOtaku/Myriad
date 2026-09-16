@@ -16,6 +16,11 @@ describe('phantasiBoardNavItems', () => {
     assert.doesNotMatch(src, /id: 'settings'/)
   })
 
+  it('收藏只在管理员选项里出现，id 是 starred', () => {
+    assert.match(src, /includeStarred/)
+    assert.match(src, /id: 'starred'/)
+  })
+
   it('图标按板块含义：信箱、收藏、笔记、朋友、工作台', () => {
     assert.match(src, /LuInbox/)
     assert.match(src, /LuStar/)
@@ -42,6 +47,9 @@ describe('board nav visibility wiring', () => {
     )
     assert.match(page, /filterBoardNavItems/)
     assert.match(page, /phantasiBoardNavItems/)
+    assert.match(page, /includeStarred: isAdmin/)
+    assert.match(page, /includeWorkbench: isAdmin/)
+    assert.match(page, /onToggleStar=\{isAdmin \? handleCardStar/)
     assert.match(page, /BOARD_NAV_VISIBILITY_CHANGED/)
   })
 })

@@ -48,6 +48,7 @@ fn apply_sync_fields(
     mut active: phantasi_user_states::ActiveModel,
     state_item: &phantasi_user_states::SyncStateItem,
     now: chrono::DateTime<Utc>,
+    allow_starred: bool,
 ) -> phantasi_user_states::ActiveModel {
     if let Some(is_read) = state_item.is_read {
         active.is_read = Set(is_read);
@@ -55,10 +56,12 @@ fn apply_sync_fields(
             active.read_at = Set(Some(now.into()));
         }
     }
-    if let Some(is_starred) = state_item.is_starred {
-        active.is_starred = Set(is_starred);
-        if is_starred {
-            active.starred_at = Set(Some(now.into()));
+    if allow_starred {
+        if let Some(is_starred) = state_item.is_starred {
+            active.is_starred = Set(is_starred);
+            if is_starred {
+                active.starred_at = Set(Some(now.into()));
+            }
         }
     }
     if let Some(progress) = phantasi_user_states::normalize_read_progress(state_item.read_progress)
@@ -119,7 +122,7 @@ async fn apply_synced_state(
         let state_id = server_state.id;
         let previous_revision = server_state.revision;
         let was_read = server_state.is_read;
-        let active = apply_sync_fields(server_state.into(), state_item, now);
+        let active = apply_sync_fields(server_state.into(), state_item, now, is_admin);
         let updated = phantasi_user_states::Entity::update_many()
             .set(active)
             .filter(phantasi_user_states::Column::Id.eq(state_id))
@@ -166,12 +169,12 @@ async fn apply_synced_state(
             user_id: Set(user_id),
             item_id: Set(state_item.item_id),
             is_read: Set(is_read),
-            is_starred: Set(state_item.is_starred.unwrap_or(false)),
+            is_starred: Set(is_admin && state_item.is_starred.unwrap_or(false)),
             read_progress: Set(phantasi_user_states::normalize_read_progress(
                 state_item.read_progress,
             )),
             read_at: Set(if is_read { Some(now.into()) } else { None }),
-            starred_at: Set(if state_item.is_starred == Some(true) {
+            starred_at: Set(if is_admin && state_item.is_starred == Some(true) {
                 Some(now.into())
             } else {
                 None
@@ -384,6 +387,24 @@ mod journal_audit_contracts {
 mod sync_transaction_tests {
     use super::*;
     use sea_orm::{DatabaseBackend, DatabaseConnection, Statement};
+
+    #[test]
+    fn member_sync_cannot_write_starred() {
+        let src = include_str!("reading_sync.rs");
+        let start = src.find("fn apply_sync_fields").expect("apply_sync_fields");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\nasync fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let apply = &body[..end];
+        assert!(apply.contains("allow_starred"));
+        let insert = src
+            .split("let new_state = phantasi_user_states::ActiveModel")
+            .nth(1)
+            .expect("insert state");
+        assert!(insert.contains("is_admin && state_item.is_starred"));
+    }
 
     #[test]
     fn unread_delta_only_changes_when_read_flag_flips() {

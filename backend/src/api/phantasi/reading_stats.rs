@@ -71,11 +71,7 @@ pub(crate) async fn get_stats(
                      INNER JOIN phantasi_items i ON i.id = s.item_id \
                      WHERE s.user_id = $1 AND s.is_starred = TRUE"
                 } else {
-                    "SELECT COUNT(*)::int AS starred_count \
-                     FROM phantasi_user_states s \
-                     INNER JOIN phantasi_items i ON i.id = s.item_id \
-                     INNER JOIN phantasi_sources src ON src.id = i.source_id AND src.admin_only = FALSE \
-                     WHERE s.user_id = $1 AND s.is_starred = TRUE"
+                    "SELECT 0::int AS starred_count"
                 },
                 [uid.into()],
             )),
@@ -136,7 +132,11 @@ mod journal_audit_contracts {
         );
         assert!(
             stats.contains("src.admin_only = FALSE"),
-            "starred count must join visible sources"
+            "unread count must join visible sources"
+        );
+        assert!(
+            stats.contains("SELECT 0::int AS starred_count"),
+            "non-admin stats must not expose leftover starred counts"
         );
         assert!(
             stats.contains("phantasi_store_http(\"count sources\""),

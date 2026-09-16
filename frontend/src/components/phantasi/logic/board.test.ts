@@ -188,10 +188,11 @@ describe('resolveBoardParam', () => {
     })
   })
 
-  it('登录后二级导航高亮收藏，游客落到订阅', () => {
+  it('管理员二级导航高亮收藏，登录用户和游客落到订阅', () => {
     const entry = resolveBoardParam('starred')!
-    assert.equal(navIdForBoardEntry(entry, true), 'starred')
-    assert.equal(navIdForBoardEntry(entry, false), 'feeds')
+    assert.equal(navIdForBoardEntry(entry, true, true), 'starred')
+    assert.equal(navIdForBoardEntry(entry, true, false), 'feeds')
+    assert.equal(navIdForBoardEntry(entry, false, false), 'feeds')
     assert.equal(
       navIdForBoardEntry({ view: 'sources', board: 'notes' }, true),
       'notes',
@@ -215,13 +216,17 @@ describe('resolveBoardParam', () => {
 })
 
 describe('viewForBoardEntry / filterLaneItems', () => {
-  it('游客收藏深链降到源墙', () => {
+  it('非管理员收藏深链降到源墙', () => {
     assert.equal(
-      viewForBoardEntry({ view: 'starred', board: 'feeds' }, false),
+      viewForBoardEntry({ view: 'starred', board: 'feeds' }, false, false),
       'sources',
     )
     assert.equal(
-      viewForBoardEntry({ view: 'starred', board: 'feeds' }, true),
+      viewForBoardEntry({ view: 'starred', board: 'feeds' }, true, false),
+      'sources',
+    )
+    assert.equal(
+      viewForBoardEntry({ view: 'starred', board: 'feeds' }, true, true),
       'starred',
     )
     assert.deepEqual(filterLaneItems('sources', [1], []), [])
