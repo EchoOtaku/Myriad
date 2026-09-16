@@ -6,6 +6,8 @@ use axum::http::Uri;
 use bytes::Bytes;
 use serde_json::{Value, json};
 
+use crate::docker::network_allowlist::{EXTERNAL_DATABASE_NETWORK, service_network_allowed};
+
 use super::{
     GuardConfig, GuardState, SELF_UPDATE_EXHAUSTED_NAME, SELF_UPDATE_HELPER_NAME,
     SELF_UPDATE_RECOVERY_NAME, TRUSTED_UPDATER_REPOSITORY, validate_identifier,
@@ -22,6 +24,7 @@ pub(crate) fn validate_container_create_name(uri: &Uri) -> std::result::Result<(
         SELF_UPDATE_HELPER_NAME
             | SELF_UPDATE_RECOVERY_NAME
             | SELF_UPDATE_EXHAUSTED_NAME
+            | super::STARTUP_RECONCILE_NAME
             | "myriad-docker-guard"
             | "myriad-updater"
             | "myriad-updater-gateway"
@@ -185,22 +188,22 @@ pub(crate) fn validate_container_create(
         }
     }
     if let Some(mode) = host.get("NetworkMode").and_then(Value::as_str)
-        && !mode.is_empty() && !matches!(mode, "default" | "bridge" | "none") {
-            if mode != state.config.compose_network
-                && mode != state.config.admin_network
-                && mode != state.config.guard_network
-            {
-                return Err("host or foreign network mode is not allowed".into());
-            }
-            authorize_guard_network_attachment(service, mode, &state.config)?;
+        && !mode.is_empty()
+        && !matches!(mode, "default" | "bridge" | "none")
+    {
+        if !is_allowlisted_network_name(mode, &state.config) {
+            return Err("host or foreign network mode is not allowed".into());
         }
+        authorize_guard_network_attachment(service, mode, &state.config)?;
+    }
     if let Some(options) = host.get("SecurityOpt").and_then(Value::as_array)
         && options.iter().any(|v| {
             !v.as_str()
                 .is_some_and(|s| s == "no-new-privileges" || s == "no-new-privileges:true")
-        }) {
-            return Err("only no-new-privileges SecurityOpt is allowed".into());
-        }
+        })
+    {
+        return Err("only no-new-privileges SecurityOpt is allowed".into());
+    }
 
     for bind in host
         .get("Binds")
@@ -369,10 +372,13 @@ fn is_narrow_backend_volume_init(value: &Value, host: &Value, service: &str) -> 
 
 fn is_allowlisted_network_name(name: &str, config: &GuardConfig) -> bool {
     // Keep in sync with `crate::docker::network_allowlist::NetworkAllowlist::contains`
-    // (same three env-backed names). Preflight rejects updates before stop/snapshot when
+    // (three env-backed names plus the fixed external DB network). Preflight rejects updates before stop/snapshot when
     // compose would attach managed services outside this set.
     let name = name.trim_start_matches('/');
-    name == config.compose_network || name == config.admin_network || name == config.guard_network
+    name == config.compose_network
+        || name == config.admin_network
+        || name == config.guard_network
+        || name == EXTERNAL_DATABASE_NETWORK
 }
 
 /// Exact service-to-network topology. In particular, a compromised updater may
@@ -382,17 +388,13 @@ pub(crate) fn authorize_guard_network_attachment(
     network_name: &str,
     config: &GuardConfig,
 ) -> std::result::Result<(), String> {
-    let allowed = match service {
-        "postgres" | "frontend" | "federation-worker" | "persona-worker" => {
-            network_name == config.compose_network
-        }
-        "backend" | "proxy" => {
-            network_name == config.compose_network || network_name == config.admin_network
-        }
-        "updater" => network_name == config.admin_network || network_name == config.guard_network,
-        "backend-volume-init" => false,
-        _ => false,
-    };
+    let allowed = service_network_allowed(
+        service,
+        network_name,
+        &config.compose_network,
+        &config.admin_network,
+        &config.guard_network,
+    );
     if !allowed {
         if network_name == config.guard_network && service != "updater" {
             return Err("only the updater service may attach to the docker-guard network".into());
@@ -656,9 +658,10 @@ fn validate_mount(
         && let Some(propagation) = mount
             .pointer("/BindOptions/Propagation")
             .and_then(Value::as_str)
-            && !matches!(propagation, "" | "private" | "rprivate") {
-                return Err("bind mount propagation is not allowed".into());
-            }
+        && !matches!(propagation, "" | "private" | "rprivate")
+    {
+        return Err("bind mount propagation is not allowed".into());
+    }
     if kind == "volume" && nonempty(mount.pointer("/VolumeOptions/DriverConfig")) {
         return Err("volume driver configuration is not allowed".into());
     }

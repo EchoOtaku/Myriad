@@ -4,6 +4,10 @@ Current port ownership after the proxy + updater migration.
 
 ## Production
 
+The table describes bundled PostgreSQL. The [external DB example](./EXTERNAL_POSTGRES.md)
+removes `postgres` and also attaches backend and both workers to `myriad-backend-ext`.
+Ports are unchanged; workers stay off the admin network.
+
 | Service | Container port | Host exposure | Notes |
 | --- | --- | --- | --- |
 | proxy | `80` | `${HTTP_PORT:-80}` | The only public Docker Compose port. Routes SPA to frontend; web / federation / persona paths below; optional rescue `/_updater/*`. |

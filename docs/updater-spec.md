@@ -405,6 +405,8 @@ docker named volume、rootless Docker、Podman 仍会启动时报错。
 
 ### 9.1.1 外部 Postgres（`MYRIAD_DB_MODE`）
 
+数据库模式与网络授权独立：预检和 Guard 额外允许 backend 与两个 worker 接入固定的 `myriad-backend-ext`；其他服务不能接入，worker 仍不能接入管理网或 Guard 网。旧版 updater/Guard 须一起升级到包含此支持的构建。三个进程分别配置连接同一库/schema 的 URL，详见[外部 PostgreSQL 部署](deployment/EXTERNAL_POSTGRES.md)。以下模式行为以通过网络预检为前提。
+
 当数据库不在 compose 内、也没有宿主侧 `./pgdata` 可快照时，在 `.env`（或进程环境）设置：
 
 ```bash
@@ -667,10 +669,19 @@ Compose 服务集合。`POST /admin/self-update` 保留一键体验；Updater �
 拒绝额外 repo、digest、command。Guard network 隔离是第一层边界，capability 用于避免
 错误接入 guard-net 的其他容器直接触发 TCB 操作；它不用于防御本就有权读该值的 updater。
 
-生产 Guard 镜像必须来自 `./guard-policy/docker-guard.env`（首次由 Guard 从 `.env` 写入），且形式严格为
-`docker.io/somekawahitomi/myriad-updater@sha256:<64 hex>`。Guard 启动时通过原始 socket
-inspect 自身容器，要求实际 `Config.Image` 与 `DOCKER_GUARD_EXPECTED_IMAGE` 完全一致。
-`.env`、Updater 提供的仓库/digest 或 updater 状态均不是该身份的权威来源。
+生产 Guard 的持久化镜像身份使用
+`docker.io/somekawahitomi/myriad-updater@sha256:<64 hex>`。启动时通过原始 socket
+inspect 自身容器和实际 image ID，核验 Compose 项目、服务、官方仓库摘要及镜像内置版本；
+宿主手动部署可使用官方版本 tag，旧 `DOCKER_GUARD_EXPECTED_IMAGE` 不再阻止新镜像启动。
+`.env`、容器覆盖的版本环境变量、Updater 提供的仓库/digest 或 updater 状态均不是身份权威。
+
+Guard 开始提供健康检查后，启动核验等待 Guard、updater、gateway 全部健康且运行相同
+image ID、摘要和内置版本，再同步 `.env` 的 `UPDATER_TAG`、`UPDATER_IMAGE_REF`、
+`DOCKER_GUARD_IMAGE` 和 `guard-policy/docker-guard.env` 的 `DOCKER_GUARD_IMAGE`。
+回写由实际镜像中的固定维护入口执行，不拉取镜像、不重建容器；`.env` 原位写入以保留
+运行中 updater 的文件绑定挂载。两份文件不是跨文件事务，中断后再次启动核验可收敛。
+正在进行的升级/回滚优先；组件混版、不健康或无法验证时不覆盖固定值，并记录原因。
+只改 tag 而没有真正换镜像不会被视为已升级，配置会同步为实际运行版本。
 
 当前私有仓库阶段的自动交接流程（#265 的显式 `dockerhub_tag` 路径）：
 
@@ -752,7 +763,7 @@ docker compose --env-file .env --env-file ./guard-policy/docker-guard.env up -d 
   frontend / postgres / federation-worker / persona-worker 不得 dual-home 到 guard 网，避免在 updater 被攻破后把业务容器拉进
   未鉴权的 Docker API（`:2375`）。
 - **允许的网络名**（create/connect）：业务 `myriad-net`、管理平面 `myriad-admin-net`
-  （`MYRIAD_ADMIN_NETWORK`）、guard-net。其它网络名拒绝。
+  （`MYRIAD_ADMIN_NETWORK`）、guard-net，以及固定 `myriad-backend-ext`（仅 backend / federation-worker / persona-worker）。其它网络名拒绝。
 - **更新 preflight**（不改编排，仅只读探测，失败则**不停服**）：
   1. **本地环境**：`.env` 仍含 `MYRIAD_TAG` / `PROXY_TAG` / `UPDATER_TAG`；compose 仍引用
      `${MYRIAD_TAG}`；`state/`（及 bundled 下 `state/snapshots/`）与 `.env` 可写；经
@@ -765,7 +776,7 @@ docker compose --env-file .env --env-file ./guard-policy/docker-guard.env up -d 
      `PROXY_FEDERATION_UPSTREAM` / `PROXY_PERSONA_UPSTREAM` 与对应 capability label；
      bundled 下 postgres 的 pgdata 须为 **bind**；运行中容器 project 标签一致
      （external 不 inspect 残留 `myriad-postgres`）。
-  3. **网络 allowlist**：三网 allowlist + 已存在 + 运行中容器不得挂外来网。
+  3. **网络 allowlist**：原有三网与限定服务的 `myriad-backend-ext` + 已存在；Compose 与运行中容器均按服务校验，禁止越权挂网。
   4. **release 无 manifest**：GitHub `release.json` 不可用时 **允许** 回退 Docker Hub
      `vX.Y.Z` 镜像（开发频道 / 无私有 GitHub 常态）；该路径无 digest/cosign/min_from。
      cosign **硬失败** 仍不 fallback。

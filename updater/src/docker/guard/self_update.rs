@@ -1232,7 +1232,91 @@ async fn launch_trusted_handoff(
     target_tag: &str,
     recovery_only: bool,
 ) -> Result<String> {
-    let helper_name = if recovery_only {
+    launch_trusted_helper(
+        state,
+        previous_image,
+        target_image,
+        previous_tag,
+        target_tag,
+        recovery_only,
+        false,
+    )
+    .await
+}
+
+pub(crate) async fn wait_for_stopped_helper(state: &GuardState, name: &str) -> Result<()> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
+    loop {
+        if !helper_container_running(&state.config.socket_path, name).await? {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            let host = format!("unix://{}", state.config.socket_path.display());
+            if stop_helper(&host, name).await
+                && !helper_container_running(&state.config.socket_path, name).await?
+            {
+                return Ok(());
+            }
+            return Err(anyhow!("could not stop previous startup/recovery helper"));
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+pub(crate) async fn reconcile_runtime_policy(
+    state: &GuardState,
+    identity: &super::startup::RuntimeIdentity,
+) -> Result<()> {
+    let name = super::STARTUP_RECONCILE_NAME;
+    let host = format!("unix://{}", state.config.socket_path.display());
+    if helper_container_exists(&state.config.socket_path, name).await? {
+        // An interrupted reconciliation only writes verified identity; never
+        // remove it while it is still executing.
+        wait_for_stopped_helper(state, name).await?;
+        if !cleanup_helper(&host, name).await {
+            return Err(anyhow!("could not remove completed reconciliation helper"));
+        }
+    }
+    launch_trusted_helper(
+        state,
+        &identity.image,
+        &identity.image,
+        &identity.version,
+        &identity.version,
+        false,
+        true,
+    )
+    .await?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
+    loop {
+        if let Some(code) = helper_container_exit_code(&state.config.socket_path, name).await? {
+            let _ = cleanup_helper(&host, name).await;
+            if code != 0 {
+                return Err(anyhow!("startup reconciliation helper exited with {code}"));
+            }
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            let _ = stop_helper(&host, name).await;
+            return Err(anyhow!("startup reconciliation helper timed out"));
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn launch_trusted_helper(
+    state: &GuardState,
+    previous_image: &str,
+    target_image: &str,
+    previous_tag: &str,
+    target_tag: &str,
+    recovery_only: bool,
+    reconcile_only: bool,
+) -> Result<String> {
+    let helper_name = if reconcile_only {
+        super::STARTUP_RECONCILE_NAME
+    } else if recovery_only {
         SELF_UPDATE_RECOVERY_NAME
     } else {
         SELF_UPDATE_HELPER_NAME
@@ -1354,6 +1438,12 @@ async fn launch_trusted_handoff(
         command.arg("-e").arg(format!(
             "{}=1",
             crate::docker::self_update_helper::ENV_RECOVERY_ONLY
+        ));
+    }
+    if reconcile_only {
+        command.arg("-e").arg(format!(
+            "{}=1",
+            crate::docker::self_update_helper::ENV_RECONCILE_ONLY
         ));
     }
     command.arg(target_image);

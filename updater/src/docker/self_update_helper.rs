@@ -33,6 +33,7 @@ pub const ENV_STATUS_FILE: &str = "MYRIAD_SELF_UPDATE_STATUS_FILE";
 pub const ENV_COMPOSE_NETWORK: &str = "MYRIAD_SELF_UPDATE_COMPOSE_NETWORK";
 pub const ENV_ADMIN_NETWORK: &str = "MYRIAD_SELF_UPDATE_ADMIN_NETWORK";
 pub const ENV_GUARD_NETWORK: &str = "MYRIAD_SELF_UPDATE_GUARD_NETWORK";
+pub const ENV_RECONCILE_ONLY: &str = "MYRIAD_SELF_UPDATE_RECONCILE_ONLY";
 pub const ENV_RECOVERY_ONLY: &str = "MYRIAD_SELF_UPDATE_RECOVERY_ONLY";
 
 const TRUSTED_UPDATER_REPOSITORY: &str = "docker.io/somekawahitomi/myriad-updater";
@@ -196,6 +197,15 @@ impl HelperConfig {
 
 pub fn main_from_env() -> Result<()> {
     let cfg = HelperConfig::from_env()?;
+    match std::env::var(ENV_RECONCILE_ONLY).as_deref() {
+        Ok("1") => return reconcile_running_policy(&cfg),
+        Ok("") | Err(std::env::VarError::NotPresent) => (),
+        _ => {
+            return Err(UpdaterError::Precondition(
+                "invalid reconciliation mode".into(),
+            ));
+        }
+    }
     // Let Guard finish the HTTP 202 response before Compose replaces it.
     std::thread::sleep(std::time::Duration::from_secs(2));
     ensure_status_writable(&cfg.status_file)?;
@@ -405,15 +415,115 @@ fn rollback_previous(cfg: &HelperConfig) -> Result<()> {
     ))
 }
 
+/// A host already replaced the stack. Verify again in the only process with
+/// a writable deployment mount, then update metadata without recreating anything.
+fn reconcile_running_policy(cfg: &HelperConfig) -> Result<()> {
+    use crate::docker::guard::startup::{runtime_identity, validate_image_id};
+    if cfg.recovery_only
+        || cfg.previous_image != cfg.target_image
+        || cfg.previous_tag != cfg.target_tag
+    {
+        return Err(UpdaterError::Precondition(
+            "reconciliation cannot perform an upgrade or recovery".into(),
+        ));
+    }
+    // Serialize retries after Guard restarts, including partial two-file writes.
+    let lock_path = cfg
+        .app_env_file
+        .parent()
+        .unwrap()
+        .join("state/startup-reconcile.lock");
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(lock_path)?;
+    fs2::FileExt::try_lock_exclusive(&lock)?;
+    let mut identities = Vec::new();
+    for service in SERVICES {
+        let container = docker_inspect_json("container", &format!("myriad-{service}"))?;
+        let id = container
+            .get("Image")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        validate_image_id(id).map_err(|e| UpdaterError::Precondition(e.to_string()))?;
+        let image = docker_inspect_json("image", id)?;
+        identities.push(
+            runtime_identity(&container, &image, &cfg.project, service, true)
+                .map_err(|e| UpdaterError::Precondition(e.to_string()))?,
+        );
+    }
+    persist_reconciled_policy(cfg, &identities)
+}
+
+fn docker_inspect_json(kind: &str, name: &str) -> Result<Value> {
+    let mut command = Command::new("docker");
+    command.args([kind, "inspect", name]);
+    let output = command_output_with_timeout(
+        &mut command,
+        DOCKER_INSPECT_TIMEOUT,
+        "inspect startup runtime",
+    )?;
+    if !output.status.success() {
+        return Err(UpdaterError::Precondition(
+            "cannot inspect startup runtime".into(),
+        ));
+    }
+    let values: Vec<Value> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| UpdaterError::Precondition(format!("invalid runtime inspection: {e}")))?;
+    values
+        .into_iter()
+        .next()
+        .ok_or_else(|| UpdaterError::Precondition("empty runtime inspection".into()))
+}
+
+fn persist_reconciled_policy(
+    cfg: &HelperConfig,
+    identities: &[crate::docker::guard::startup::RuntimeIdentity],
+) -> Result<()> {
+    let Some(actual) = identities.first() else {
+        return Err(UpdaterError::Precondition(
+            "missing running stack identity".into(),
+        ));
+    };
+    if identities.len() != SERVICES.len()
+        || identities.iter().any(|identity| identity != actual)
+        || actual.image != cfg.target_image
+        || actual.version != cfg.target_tag
+    {
+        return Err(UpdaterError::Precondition(
+            "running stack changed or has inconsistent identities".into(),
+        ));
+    }
+    // Parse both before writing either; retries converge if a later write fails.
+    EnvFile::load(&cfg.app_env_file)?;
+    EnvFile::load(&cfg.guard_env_file)?;
+    write_policy_files(cfg, &actual.image, &actual.version, true)
+}
+
 fn update_policy_files(cfg: &HelperConfig, exact_image: &str, tag: &str) -> Result<()> {
+    write_policy_files(cfg, exact_image, tag, false)
+}
+
+fn write_policy_files(
+    cfg: &HelperConfig,
+    exact_image: &str,
+    tag: &str,
+    preserve_inode: bool,
+) -> Result<()> {
     let mut app = EnvFile::load(&cfg.app_env_file)?;
     app.set("UPDATER_TAG", tag)?;
     app.set("UPDATER_IMAGE_REF", exact_image)?;
-    app.save()?;
+    app.set("DOCKER_GUARD_IMAGE", exact_image)?;
 
     let mut guard = EnvFile::load(&cfg.guard_env_file)?;
     guard.set("DOCKER_GUARD_IMAGE", exact_image)?;
     guard.set("MYRIAD_GUARD_ENV_FILE", "guard-policy/docker-guard.env")?;
+    if preserve_inode {
+        app.save_preserving_inode()?;
+    } else {
+        app.save()?;
+    }
     guard.save()
 }
 
@@ -934,9 +1044,10 @@ fn normalize_image_repository(repo: &str) -> String {
         .trim_start_matches("index.docker.io/")
         .trim_start_matches("registry-1.docker.io/");
     if let Some((name, maybe_tag)) = repo.rsplit_once(':')
-        && !maybe_tag.contains('/') {
-            return name.to_string();
-        }
+        && !maybe_tag.contains('/')
+    {
+        return name.to_string();
+    }
     repo.to_string()
 }
 
@@ -1111,6 +1222,115 @@ mod tests {
             "set -eu\nif [ ! -f /guard-policy/docker-guard.env ]; then umask 077; fi\nexec /usr/bin/tini -- /usr/local/bin/myriad-docker-guard\n"
         ]);
         model
+    }
+
+    #[test]
+    fn reconciliation_preserves_files_when_stack_is_mixed_or_changed() {
+        use crate::docker::guard::startup::RuntimeIdentity;
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = config();
+        cfg.app_env_file = dir.path().join(".env");
+        cfg.guard_env_file = dir.path().join("guard.env");
+        let original = "UPDATER_TAG=v0.4.6\nDOCKER_GUARD_IMAGE=old\n";
+        std::fs::write(&cfg.app_env_file, original).unwrap();
+        std::fs::write(&cfg.guard_env_file, original).unwrap();
+        let identity = RuntimeIdentity {
+            image: exact_image(),
+            image_id: format!("sha256:{}", "b".repeat(64)),
+            version: cfg.target_tag.clone(),
+        };
+        for field in ["image", "version", "image_id"] {
+            let mut identities = vec![identity.clone(); 3];
+            match field {
+                "image" => {
+                    identities[1].image =
+                        format!("{TRUSTED_UPDATER_REPOSITORY}@sha256:{}", "c".repeat(64))
+                }
+                "version" => identities[1].version = "v0.4.6".into(),
+                _ => identities[1].image_id = format!("sha256:{}", "d".repeat(64)),
+            }
+            assert!(persist_reconciled_policy(&cfg, &identities).is_err());
+            assert_eq!(
+                std::fs::read_to_string(&cfg.app_env_file).unwrap(),
+                original
+            );
+            assert_eq!(
+                std::fs::read_to_string(&cfg.guard_env_file).unwrap(),
+                original
+            );
+        }
+        let mut changed = identity.clone();
+        changed.version = "v0.4.6".into();
+        assert!(persist_reconciled_policy(&cfg, &vec![changed; 3]).is_err());
+        assert!(persist_reconciled_policy(&cfg, &[identity.clone()]).is_err());
+        let mut live_updater_view = std::fs::File::open(&cfg.app_env_file).unwrap();
+        persist_reconciled_policy(&cfg, &vec![identity; 3]).unwrap();
+        let mut live_text = String::new();
+        live_updater_view.read_to_string(&mut live_text).unwrap();
+        assert!(
+            live_text.contains("UPDATER_TAG=v1.2.3"),
+            "live file bind must observe the synchronized version"
+        );
+        let app = EnvFile::load(&cfg.app_env_file).unwrap();
+        assert_eq!(app.get("UPDATER_TAG"), Some(cfg.target_tag.as_str()));
+        assert_eq!(app.get("UPDATER_IMAGE_REF"), Some(exact_image().as_str()));
+        assert_eq!(app.get("DOCKER_GUARD_IMAGE"), Some(exact_image().as_str()));
+    }
+
+    #[test]
+    fn reconciliation_validates_both_files_before_any_write() {
+        use crate::docker::guard::startup::RuntimeIdentity;
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = config();
+        cfg.app_env_file = dir.path().join(".env");
+        cfg.guard_env_file = dir.path().join("guard.env");
+        let original = "UPDATER_TAG=v0.4.6\n";
+        std::fs::write(&cfg.app_env_file, original).unwrap();
+        std::fs::write(
+            &cfg.guard_env_file,
+            "DOCKER_GUARD_IMAGE=old\nDOCKER_GUARD_IMAGE=duplicate\n",
+        )
+        .unwrap();
+        let identity = RuntimeIdentity {
+            image: exact_image(),
+            image_id: "sha256:unused".into(),
+            version: cfg.target_tag.clone(),
+        };
+        assert!(persist_reconciled_policy(&cfg, &vec![identity; 3]).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&cfg.app_env_file).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn policy_sync_updates_both_pins_and_preserves_unrelated_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = config();
+        cfg.app_env_file = dir.path().join(".env");
+        cfg.guard_env_file = dir.path().join("guard.env");
+        std::fs::write(&cfg.app_env_file,
+            "# host settings\nUPDATER_TAG=v0.4.6\nUPDATER_IMAGE_REF=old\nDOCKER_GUARD_IMAGE=old\nUPDATE_TOKEN=keep-app-token\n").unwrap();
+        std::fs::write(
+            &cfg.guard_env_file,
+            "DOCKER_GUARD_IMAGE=old\nGUARD_SELF_UPDATE_TOKEN=keep-host-token\n",
+        )
+        .unwrap();
+        update_policy_files(&cfg, &exact_image(), "v0.4.13").unwrap();
+        let app = EnvFile::load(&cfg.app_env_file).unwrap();
+        let guard = EnvFile::load(&cfg.guard_env_file).unwrap();
+        assert_eq!(app.get("UPDATER_TAG"), Some("v0.4.13"));
+        assert_eq!(app.get("UPDATER_IMAGE_REF"), Some(exact_image().as_str()));
+        assert_eq!(app.get("DOCKER_GUARD_IMAGE"), Some(exact_image().as_str()));
+        assert_eq!(
+            guard.get("DOCKER_GUARD_IMAGE"),
+            Some(exact_image().as_str())
+        );
+        assert_eq!(app.get("UPDATE_TOKEN"), Some("keep-app-token"));
+        assert_eq!(
+            guard.get("GUARD_SELF_UPDATE_TOKEN"),
+            Some("keep-host-token")
+        );
     }
 
     #[test]

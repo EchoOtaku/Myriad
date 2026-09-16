@@ -28,9 +28,9 @@ docs/
 | 文档 | 说明 |
 | --- | --- |
 | [QUICKSTART.md](QUICKSTART.md) | 生产与开发快速开始 |
-| [DOCKER_DEPLOYMENT.md](deployment/DOCKER_DEPLOYMENT.md) | 三网拓扑、web/worker 分流、env、健康检查 |
+| [DOCKER_DEPLOYMENT.md](deployment/DOCKER_DEPLOYMENT.md) | 默认三网与外部 DB 网络、web/worker 分流、env、健康检查 |
 | [NATIVE_DEPLOYMENT.md](deployment/NATIVE_DEPLOYMENT.md) | 无 Docker 生产部署 |
-| [EXTERNAL_POSTGRES.md](deployment/EXTERNAL_POSTGRES.md) | 外部数据库 |
+| [EXTERNAL_POSTGRES.md](deployment/EXTERNAL_POSTGRES.md) | 外部数据库、三个进程的网络接入、旧版更新器升级 |
 | [PORTS.md](deployment/PORTS.md) | 端口与代理路径（含 web / federation / persona 分流） |
 | [RUNTIME_ISOLATION.md](deployment/RUNTIME_ISOLATION.md) | web / federation-worker / persona-worker 边界与升级 |
 | [WORKER_DATABASE.md](deployment/WORKER_DATABASE.md) | worker 独立数据库登录与限额 |

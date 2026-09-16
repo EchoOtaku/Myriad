@@ -3,7 +3,7 @@
 # =============================================================================
 # 运维说明：
 #   - 完整文档：../EXTERNAL_POSTGRES.md
-#   - 与仓库根 docker-compose.yml 相同的三网 + proxy + web/federation/persona workers + updater
+#   - 仓库根 docker-compose.yml 的三网 + 外部数据库网络 + proxy + web/federation/persona workers + updater
 #   - 差异：无 postgres 服务；web 用 DATABASE_URL；worker 用独立 URL；
 #           MYRIAD_DB_MODE=external → updater 跳过 pgdata 快照/恢复
 #   - 数据库备份由运维自管（pg_dump / 云备份 / 1Panel），updater 不替代
@@ -23,7 +23,11 @@
 # Guard 首次启动写入 ./guard-policy/docker-guard.env。
 #
 # 可选：
-#   extra_hosts on backend for host.docker.internal:host-gateway
+#   extra_hosts on backend AND both workers for host.docker.internal:host-gateway
+#   For host/cloud DB, remove myriad-backend-ext from all three services and the
+#   top-level declaration if no shared Docker DB network is needed.
+#   Upgrade updater and Guard before online updates: only backend and both
+#   workers may attach to the fixed, existing myriad-backend-ext network.
 #   BASE_URL / FRONTEND_URL / HTTP_PORT / CHANNEL / COSIGN_* 等同默认部署
 #
 # 不需要：
@@ -102,7 +106,7 @@ services:
     volumes:
       - backend_cache:/app/cache
       - backend_data:/app/data
-    networks: [myriad-net, myriad-admin-net]
+    networks: [myriad-net, myriad-admin-net, myriad-backend-ext]
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
     read_only: false
@@ -138,6 +142,9 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       backend: { condition: service_healthy }
+    # Host PostgreSQL needs the same mapping as backend:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "/usr/bin/wget", "--spider", "-q", "http://localhost:1103/health"]
       interval: 15s
@@ -158,7 +165,7 @@ services:
         source: backend_cache
         target: /tmp/cache/images
         volume: { subpath: images, nocopy: true }
-    networks: [myriad-net]
+    networks: [myriad-net, myriad-backend-ext]
     # Geographic disablement exits 0; do not loop an idle worker.
     restart: on-failure
     security_opt: [no-new-privileges:true]
@@ -199,6 +206,9 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       backend: { condition: service_healthy }
+    # Host PostgreSQL needs the same mapping as backend:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "/usr/bin/wget", "--spider", "-q", "http://localhost:1103/health"]
       interval: 15s
@@ -208,7 +218,7 @@ services:
     volumes:
       - backend_data:/app/data
       - backend_cache:/app/cache
-    networks: [myriad-net]
+    networks: [myriad-net, myriad-backend-ext]
     stop_grace_period: 45s
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
@@ -407,6 +417,10 @@ volumes:
   backend_data: { driver: local }
 
 networks:
+  # Existing shared network; the external PostgreSQL container must also join it.
+  myriad-backend-ext:
+    name: myriad-backend-ext
+    external: true
   myriad-net:
     name: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
     driver: bridge

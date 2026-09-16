@@ -130,6 +130,13 @@ impl EnvFile {
         persist_env_bytes(&self.path, self.render().as_bytes())
     }
 
+    /// Preserve live Docker file bind mounts when synchronizing metadata without
+    /// recreating their containers. Keep a backup before changing the inode.
+    pub(crate) fn save_preserving_inode(&self) -> Result<()> {
+        snapshot_before_save(&self.path)?;
+        write_existing_file_in_place(&self.path, self.render().as_bytes())
+    }
+
     fn render(&self) -> String {
         let mut s = String::new();
         for l in &self.lines {

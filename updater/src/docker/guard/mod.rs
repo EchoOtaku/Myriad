@@ -8,6 +8,7 @@ mod classify;
 mod config;
 mod forward;
 mod self_update;
+pub(crate) mod startup;
 mod validate;
 
 #[cfg(test)]
@@ -33,14 +34,15 @@ use config::{digest_reference_matches, ensure_host_policy_file, validate_guard_i
 use forward::{daemon_json, discover_host_compose_root, handle};
 use self_update::{
     cleanup_helper, fail_exhausted_pending_handoff, failed_status_matches_attempt,
-    finalize_or_fail_orphaned_pending_handoff, helper_container_exists, helper_container_exit_code,
-    helper_container_running, inspect_handoff_attempt, mark_recovery_exhausted, monitor_handoff,
+    helper_container_exists, helper_container_exit_code, helper_container_running,
+    inspect_handoff_attempt, mark_recovery_exhausted, monitor_handoff,
     recovery_attempt_from_status, recovery_is_durably_exhausted, restart_helper,
     resume_staged_recovery, stop_helper, wait_for_helper_absence,
 };
 
 pub(crate) const TRUSTED_GUARD_REPOSITORY: &str = "docker.io/somekawahitomi/myriad-updater";
 pub(crate) const TRUSTED_UPDATER_REPOSITORY: &str = TRUSTED_GUARD_REPOSITORY;
+pub(crate) const STARTUP_RECONCILE_NAME: &str = "myriad-tcb-reconcile";
 pub(crate) const SELF_UPDATE_HELPER_NAME: &str = "myriad-tcb-self-update";
 pub(crate) const SELF_UPDATE_RECOVERY_NAME: &str = "myriad-tcb-self-update-recovery";
 pub(crate) const SELF_UPDATE_EXHAUSTED_NAME: &str = "myriad-tcb-self-update-recovery-exhausted";
@@ -55,15 +57,22 @@ pub(crate) struct GuardState {
     mutation_gate: Arc<AtomicUsize>,
 }
 
-pub async fn run(config: GuardConfig) -> Result<()> {
+pub async fn run(mut config: GuardConfig) -> Result<()> {
     let hostname = current_container_id()?;
-    verify_running_guard_image(
-        &config.socket_path,
-        &hostname,
-        &config.expected_guard_image,
-        config.allow_unpinned_dev,
-    )
-    .await?;
+    if config.allow_unpinned_dev {
+        verify_running_guard_image(
+            &config.socket_path,
+            &hostname,
+            &config.expected_guard_image,
+            true,
+        )
+        .await?;
+    } else {
+        // Host-managed Compose changes supersede stale pins, but only the
+        // daemon's actual official image identity is accepted (never .env's tag).
+        let actual = startup::inspect_identity(&config, &hostname, "docker-guard", false).await?;
+        config.expected_guard_image = actual.image;
+    }
     let host_compose_root = match std::env::var("DOCKER_GUARD_HOST_COMPOSE_ROOT") {
         Ok(root) if !root.trim().is_empty() => PathBuf::from(root),
         _ => discover_host_compose_root(&config.socket_path, &hostname).await?,
@@ -95,6 +104,7 @@ pub async fn run(config: GuardConfig) -> Result<()> {
             "previous-digest recovery retries are exhausted; host recovery is required"
         );
         fail_exhausted_pending_handoff(&state);
+        startup::schedule_reconciliation(state.clone(), true);
     } else if let Some((helper_name, recovery_only)) = residual_helper {
         state
             .mutation_gate
@@ -210,12 +220,15 @@ pub async fn run(config: GuardConfig) -> Result<()> {
                 recovery_only,
                 recovered_retries,
             );
-        } else if !durable_exhausted
-            && let Some(attempt) = attempt {
-                resume_staged_recovery(state.clone(), attempt, recovered_retries);
-            }
+        } else if !durable_exhausted && let Some(attempt) = attempt {
+            resume_staged_recovery(state.clone(), attempt, recovered_retries);
+        }
     } else {
-        let _ = finalize_or_fail_orphaned_pending_handoff(&state).await;
+        if state.config.allow_unpinned_dev {
+            let _ = self_update::finalize_or_fail_orphaned_pending_handoff(&state).await;
+        } else {
+            startup::schedule_reconciliation(state.clone(), false);
+        }
     }
 
     info!(

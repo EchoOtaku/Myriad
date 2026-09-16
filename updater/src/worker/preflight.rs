@@ -979,7 +979,9 @@ async fn check_running_container_networks(worker: &Worker, allow: &NetworkAllowl
             continue;
         };
         for net_name in networks.keys() {
-            if !allow.contains(net_name) {
+            // Names were checked against the fixed Compose identities above.
+            let service = name.strip_prefix("myriad-").unwrap_or(name);
+            if !allow.allows_service(service, net_name) {
                 bad.push(format!("{name}→{net_name}"));
             }
         }

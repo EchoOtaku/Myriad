@@ -74,7 +74,7 @@ impl GuardConfig {
                 "DOCKER_GUARD_ALLOW_UNPINNED_DEV is forbidden in release builds"
             ));
         }
-        validate_guard_image_ref(&expected_guard_image, allow_unpinned_dev)?;
+        super::startup::validate_startup_reference(&expected_guard_image, allow_unpinned_dev)?;
         // This policy is compiled into the Guard TCB. It must never come from
         // updater-writable `.env` or runtime configuration.
         let service_images = [

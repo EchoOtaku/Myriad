@@ -24,6 +24,12 @@ It is an alias in new images and absent from old images. Older backend images mu
 never be launched as workers just by changing an environment variable: they do not
 understand the role and would start the entire application.
 
+For external PostgreSQL in another container, backend and both workers retain
+`myriad-net` and join `myriad-backend-ext` with the database. Network membership is
+per container. Updater/Guard permit this fixed network only for these three services;
+upgrade both from older builds before online updates. Workers still cannot join
+admin or Guard networks. See [external PostgreSQL](EXTERNAL_POSTGRES.md).
+
 ## Federation worker boundary
 
 The official worker has a read-only root filesystem, UID/GID 1000, all capabilities

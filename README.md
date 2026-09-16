@@ -438,6 +438,12 @@ host HTTP_PORT
        (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
 
+The diagram shows bundled PostgreSQL; both workers also connect directly to it.
+For an external DB container, backend and both workers share `myriad-backend-ext`
+with it. Updater/Guard permit this fixed network only for those three services;
+upgrade both before using online updates with this topology. See
+[external PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md).
+
 </details>
 
 Crawler / in-app-share user-agents receive an SEO HTML shell for Home, Library, Phantasi, Reports, and Tapp; browsers receive the SPA. [Architecture](docs/development/ARCHITECTURE.md).

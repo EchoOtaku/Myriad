@@ -9,6 +9,30 @@ use std::path::Path;
 
 use crate::env_file::EnvFile;
 
+/// Existing operator-owned network shared with an external PostgreSQL container.
+/// Fixed name: this is not a general-purpose additional-network allowlist.
+pub const EXTERNAL_DATABASE_NETWORK: &str = "myriad-backend-ext";
+
+/// Shared by preflight and Guard create/connect/disconnect authorization.
+pub(crate) fn service_network_allowed(
+    service: &str,
+    network: &str,
+    business: &str,
+    admin: &str,
+    guard: &str,
+) -> bool {
+    let network = network.trim_start_matches('/');
+    if network == EXTERNAL_DATABASE_NETWORK {
+        return matches!(service, "backend" | "federation-worker" | "persona-worker");
+    }
+    match service {
+        "postgres" | "frontend" | "federation-worker" | "persona-worker" => network == business,
+        "backend" | "proxy" => network == business || network == admin,
+        "updater" => network == admin || network == guard,
+        _ => false,
+    }
+}
+
 /// Allowlisted Docker network **names** (the `Name` field / compose `networks.*.name`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkAllowlist {
@@ -33,13 +57,26 @@ impl NetworkAllowlist {
 
     pub fn contains(&self, name: &str) -> bool {
         let name = name.trim_start_matches('/');
-        name == self.compose_network || name == self.admin_network || name == self.guard_network
+        name == self.compose_network
+            || name == self.admin_network
+            || name == self.guard_network
+            || name == EXTERNAL_DATABASE_NETWORK
+    }
+
+    pub fn allows_service(&self, service: &str, name: &str) -> bool {
+        service_network_allowed(
+            service,
+            name,
+            &self.compose_network,
+            &self.admin_network,
+            &self.guard_network,
+        )
     }
 
     pub fn describe(&self) -> String {
         format!(
-            "{}, {}, {}",
-            self.compose_network, self.admin_network, self.guard_network
+            "{}, {}, {}, {} (backend/federation-worker/persona-worker only)",
+            self.compose_network, self.admin_network, self.guard_network, EXTERNAL_DATABASE_NETWORK
         )
     }
 }
@@ -53,12 +90,13 @@ fn resolve_name(key: &str, default: &str, env_file: Option<&Path>) -> String {
     }
     if let Some(path) = env_file
         && let Ok(env) = EnvFile::load(path)
-            && let Some(raw) = env.get(key) {
-                let trimmed = raw.trim();
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
-                }
-            }
+        && let Some(raw) = env.get(key)
+    {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
     default.to_string()
 }
 
@@ -128,13 +166,7 @@ pub fn find_disallowed_attachments(
 ) -> Vec<(String, String)> {
     attachments
         .iter()
-        .filter(|(service, name)| {
-            !allow.contains(name)
-                || (matches!(
-                    service.as_str(),
-                    "persona-worker" | "federation-worker" | "frontend" | "postgres"
-                ) && name.trim_start_matches('/') != allow.compose_network)
-        })
+        .filter(|(service, name)| !allow.allows_service(service, name))
         .cloned()
         .collect()
 }
@@ -158,6 +190,47 @@ mod tests {
         assert!(a.contains("myriad-net"));
         assert!(a.contains("/myriad-net"));
         assert!(!a.contains("other"));
+    }
+
+    #[test]
+    fn external_database_network_accepts_all_three_database_clients() {
+        let cfg = json!({
+            "services": {
+                "backend": {"networks": ["business", "db"]},
+                "federation-worker": {"networks": ["business", "db"]},
+                "persona-worker": {"networks": ["business", "db"]}
+            },
+            "networks": {
+                "business": {"name": "myriad-net"},
+                "db": {"name": "myriad-backend-ext", "external": true}
+            }
+        });
+        let attachments = networks_for_services(&cfg, "myriad", UPDATE_RECREATE_SERVICES);
+        assert!(find_disallowed_attachments(&allow(), &attachments).is_empty());
+        assert!(allow().contains("myriad-backend-ext"));
+    }
+
+    #[test]
+    fn external_database_network_rejects_non_database_services_and_other_networks() {
+        let entries: Vec<_> = [
+            "frontend",
+            "proxy",
+            "postgres",
+            "updater",
+            "updater-gateway",
+            "docker-guard",
+            "backend-volume-init",
+            "unknown",
+        ]
+        .into_iter()
+        .map(|service| (service.to_string(), "myriad-backend-ext".to_string()))
+        .chain(
+            ["backend", "federation-worker", "persona-worker"]
+                .into_iter()
+                .map(|service| (service.to_string(), "foreign-db-net".to_string())),
+        )
+        .collect();
+        assert_eq!(find_disallowed_attachments(&allow(), &entries), entries);
     }
 
     #[test]

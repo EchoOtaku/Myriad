@@ -550,6 +550,7 @@ fn generic_create_cannot_reserve_control_plane_container_names() {
         "myriad-tcb-self-update",
         "myriad-tcb-self-update-recovery",
         "myriad-tcb-self-update-recovery-exhausted",
+        "myriad-tcb-reconcile",
         "myriad-docker-guard",
         "myriad-updater",
         "myriad-updater-gateway",
@@ -893,6 +894,43 @@ fn create_with_networking(service: &str, image: &str, host: Value, endpoints: Va
 }
 
 #[test]
+fn external_database_network_create_and_connect_are_service_scoped() {
+    let s = state();
+    let inspected = json!({"Name": "myriad-backend-ext"});
+    let network = allowlisted_network_name(&inspected, &s.config).unwrap();
+    for service in ["backend", "federation-worker", "persona-worker"] {
+        assert!(authorize_guard_network_attachment(service, &network, &s.config).is_ok());
+        assert!(authorize_guard_network_attachment(service, "foreign-db-net", &s.config).is_err());
+    }
+    for service in [
+        "frontend",
+        "proxy",
+        "postgres",
+        "updater",
+        "updater-gateway",
+        "docker-guard",
+        "backend-volume-init",
+        "unknown",
+    ] {
+        assert!(authorize_guard_network_attachment(service, &network, &s.config).is_err());
+    }
+    let backend = create_with_networking(
+        "backend",
+        "docker.io/example/backend:v1.2.3",
+        json!({"NetworkMode": "myriad-backend-ext"}),
+        json!({"myriad-net": {}, "myriad-backend-ext": {}}),
+    );
+    assert!(validate_container_create(&s, &backend).is_ok());
+    let frontend = create_with_networking(
+        "frontend",
+        "docker.io/example/frontend:v1.2.3",
+        json!({"NetworkMode": "myriad-net"}),
+        json!({"myriad-net": {}, "myriad-backend-ext": {}}),
+    );
+    assert!(validate_container_create(&s, &frontend).is_err());
+}
+
+#[test]
 fn generic_api_cannot_create_any_guard_network_client() {
     let s = state();
     let backend = create_with_networking(
@@ -1208,6 +1246,17 @@ fn federation_worker_has_fixed_role_and_resource_boundary() {
         validate_container_create(&state, &Bytes::from(serde_json::to_vec(value).unwrap()))
     };
     assert!(validate(&request).is_ok());
+    for mode in ["myriad-net", "myriad-backend-ext"] {
+        let mut external = request.clone();
+        external["HostConfig"]["NetworkMode"] = json!(mode);
+        external["NetworkingConfig"] = json!({"EndpointsConfig": {
+            "myriad-net": {}, "myriad-backend-ext": {}
+        }});
+        assert!(
+            validate(&external).is_ok(),
+            "external DB rejected with mode {mode}"
+        );
+    }
     // Writable access is restricted to exact volume/subpath/destination tuples.
     for (source, subpath, target) in [
         ("myriad_backend_data", "federation", "/app/data/federation"),
@@ -1300,6 +1349,18 @@ fn persona_worker_has_fixed_command_resources_and_first_party_mounts() {
     let validate =
         |v: &Value| validate_container_create(&state, &Bytes::from(serde_json::to_vec(v).unwrap()));
     assert!(validate(&request).is_ok());
+    for mode in ["myriad-net", "myriad-backend-ext"] {
+        let mut external = request.clone();
+        external["HostConfig"]["NetworkMode"] = json!(mode);
+        external["NetworkingConfig"] = json!({"EndpointsConfig": {
+            "myriad-net": {}, "myriad-backend-ext": {}
+        }});
+        assert!(
+            validate(&external).is_ok(),
+            "external DB rejected with mode {mode}"
+        );
+    }
+
     for (path, value) in [
         ("/Cmd", json!(["/app/myriad-backend"])),
         ("/User", json!("0:0")),
@@ -1323,4 +1384,48 @@ fn persona_worker_has_fixed_command_resources_and_first_party_mounts() {
         *invalid.pointer_mut(path).unwrap() = value;
         assert!(validate(&invalid).is_err(), "accepted {path}");
     }
+}
+
+#[tokio::test]
+async fn startup_waits_for_interrupted_reconciliation_to_finish() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let dir = tempfile::Builder::new()
+        .prefix("myriad-startup-")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let socket = dir.path().join("docker.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let daemon = tokio::spawn(async move {
+        for running in [true, false] {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let read = stream.read(&mut buf).await.unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buf[..read]);
+            }
+            assert!(
+                String::from_utf8_lossy(&request)
+                    .starts_with("GET /containers/myriad-tcb-reconcile/json ")
+            );
+            let body = json!({"State": {"Running": running}}).to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        }
+    });
+    let mut state = state();
+    Arc::make_mut(&mut state.config).socket_path = socket;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        super::self_update::wait_for_stopped_helper(&state, super::STARTUP_RECONCILE_NAME),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    daemon.await.unwrap();
 }

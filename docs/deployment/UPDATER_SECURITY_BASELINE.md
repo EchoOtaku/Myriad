@@ -120,6 +120,18 @@ services from the host first; only then remove that sentinel and restart Guard.
 
 ---
 
+## External database network policy
+
+Preflight and Guard share the service attachment policy: backend and both workers
+may additionally join the fixed, existing `myriad-backend-ext` network. Frontend,
+proxy, postgres, updater and other services cannot join it through Guard. Workers
+still cannot join admin/Guard networks; arbitrary extra network names are rejected.
+Network creation remains a host operation. Older updater/Guard builds must both be
+upgraded before online updates of this topology. External DB mode changes pgdata
+handling, not general network authorization. See [external PostgreSQL](EXTERNAL_POSTGRES.md),
+[preflight](../../updater/src/docker/network_allowlist.rs), and
+[Guard](../../updater/src/docker/guard/validate.rs).
+
 ## Out of scope (unless a new threat appears)
 
 Not planned as follow-up work without a concrete new threat model:

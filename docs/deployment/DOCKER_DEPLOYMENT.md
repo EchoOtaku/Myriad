@@ -28,13 +28,19 @@ restart independently but are not separate release artifacts. See
 [RUNTIME_ISOLATION.md](./RUNTIME_ISOLATION.md) and
 [WORKER_DATABASE.md](./WORKER_DATABASE.md).
 
-Networks:
+Networks (bundled PostgreSQL):
 
 | Network | Members | Notes |
 | --- | --- | --- |
 | `myriad-net` | proxy, frontend, backend, federation-worker, persona-worker, postgres | Business L2. **Not** updater. |
 | `myriad-admin-net` | backend, updater, updater-gateway, proxy | Token hop + rescue DNS. Workers stay off this net. |
 | `myriad-docker-guard-net` (internal) | updater, docker-guard | Only updater may join (guard policy). |
+
+The [external DB example](./examples/docker-compose.external-db.example.yml) removes
+`postgres` and attaches backend and both workers to the existing `myriad-backend-ext`
+network shared with the DB container, retaining their original networks. Updater/Guard
+allow this fixed network only for those three services. Older updater/Guard builds
+must be upgraded first; see [external DB setup](./EXTERNAL_POSTGRES.md).
 
 - Only `proxy` publishes a host port.
 - **Proxy routing**: SPA/static via frontend; persona prefixes via
@@ -64,7 +70,7 @@ Networks:
 - Browser update requests go through backend admin routes:
   `/api/admin/updater/*`. The browser never receives `UPDATE_TOKEN`.
 - **External PostgreSQL** (no in-stack `postgres`, `MYRIAD_DB_MODE=external`,
-  `DATABASE_URL` as source of truth): see
+  separate web/persona/federation database URLs): see
   [EXTERNAL_POSTGRES.md](./EXTERNAL_POSTGRES.md) and
   [examples/docker-compose.external-db.example.yml](./examples/docker-compose.external-db.example.yml).
 
@@ -79,7 +85,7 @@ Networks:
 | `scripts/extra/deploy.sh` | Bootstrap and stack management (WSL / Git Bash on Windows) |
 | `docs/deployment/PORTS.md` | Development and production port map |
 | `docs/deployment/EXTERNAL_POSTGRES.md` | External / 1Panel Postgres: `MYRIAD_DB_MODE=external`, no local pgdata |
-| `docs/deployment/examples/docker-compose.external-db.example.yml` | Compose without `postgres`; external `DATABASE_URL` |
+| `docs/deployment/examples/docker-compose.external-db.example.yml` | Compose without `postgres`; three DB URLs and a shared external DB network |
 | `docs/deployment/UPDATER_SECURITY_BASELINE.md` | Done-state security baseline + operator red lines |
 | `docs/deployment/SETUP_BOOTSTRAP.md` | 安装暗号：编排预置库时，安装写操作必须对上 |
 | `docs/deployment/UPDATER_QUICKSTART.md` | Operator guide for update, rollback, rescue |
@@ -263,10 +269,14 @@ backend back to FULL MODE. Full runbook: [SETUP_BOOTSTRAP.md](./SETUP_BOOTSTRAP.
 When PostgreSQL is **outside** this compose project (cloud RDS, 1Panel Postgres,
 host install, separate DB stack):
 
-1. Set `MYRIAD_DB_MODE=external` and a full `DATABASE_URL` in `.env`.
+1. Set `MYRIAD_DB_MODE=external`, `DATABASE_URL`, `PERSONA_DATABASE_URL`, and
+   `FEDERATION_DATABASE_URL` in `.env`. Use separate bounded worker logins for the same database/schema.
 2. Do **not** run a `postgres` service or mount `./pgdata` for Myriad.
-3. Updater still manages image tags and maintenance; **you** own DB backups
-   (`pg_dump` / cloud / panel).
+3. For a separate DB container, attach it, backend, and both workers to the existing
+   `myriad-backend-ext` network. Verify all three services.
+4. Upgrade updater and Guard to builds supporting this fixed network before online
+   updates/rollback. Other services and arbitrary additional networks remain denied.
+5. **You** own DB backups (`pg_dump` / cloud / panel).
 
 Full runbook and example compose:
 [EXTERNAL_POSTGRES.md](./EXTERNAL_POSTGRES.md).

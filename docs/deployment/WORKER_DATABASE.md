@@ -48,6 +48,18 @@ point to the same Myriad database/schema. Route them through the provider's stab
 writer/failover endpoint; database read replicas cannot serve worker writes or
 arbitrary TAPP storage requests.
 
+For a separate DB container, backend and **both** workers must share
+`myriad-backend-ext` with it, while retaining `myriad-net`. The external example
+declares this as an existing external network. Workers do not inherit backend
+network attachments or host mappings. Apply any required `extra_hosts` to all
+three services for host PostgreSQL; ensure routed/cloud addresses are reachable
+from all three. Verify each worker, not only web. See [network setup and checks](EXTERNAL_POSTGRES.md).
+
+Updater/Guard allow this fixed network only for backend and both workers. Upgrade
+both before online updates; older builds reject it. Arbitrary extra networks and
+worker access to admin/Guard networks remain denied. `MYRIAD_DB_MODE=external`
+changes pgdata handling, not general network authorization.
+
 If the migration login has role-administration rights, the two worker password
 variables can provision the reserved roles as in the bundled deployment. Otherwise
 ask the database administrator to provision distinct worker accounts with the
