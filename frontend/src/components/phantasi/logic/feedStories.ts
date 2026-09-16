@@ -1,6 +1,7 @@
 /** 不调 phantasiApi。 */
 
 import type { PhantasiItem, PhantasiItemPreview } from '../../../types/phantasi'
+import { normalizeTopicName } from './topics'
 
 export const FEEDS_ARTICLE_MAX = 20
 export const FRIENDS_STORY_MAX = 12
@@ -34,6 +35,24 @@ export function isLatestFeedId(
   return Number(id) === LATEST_FEED_ID
 }
 
+/** 工作台勾上的主题卡。-2 起，跟 cards 数组下标对齐。 */
+export function topicFeedId(index: number): number {
+  return -2 - Math.max(0, Math.floor(index))
+}
+
+export function isTopicFeedId(
+  id: number | string | null | undefined,
+): boolean {
+  const n = Number(id)
+  return Number.isFinite(n) && n <= -2
+}
+
+export function isAggregateFeedId(
+  id: number | string | null | undefined,
+): boolean {
+  return isLatestFeedId(id) || isTopicFeedId(id)
+}
+
 export function storyRailGroup(
   story: Pick<FeedStory, 'source_id' | 'rail_group'>,
 ): number {
@@ -45,6 +64,18 @@ export function firstStoryForRailGroup(
   groupId: number,
 ): FeedStory | undefined {
   return stories.find((story) => storyRailGroup(story) === groupId)
+}
+
+export function railGroupSourceCount(
+  stories: readonly Pick<FeedStory, 'source_id' | 'rail_group'>[],
+  groupId: number,
+): number {
+  const ids = new Set<number>()
+  for (const story of stories) {
+    if (storyRailGroup(story) !== groupId || story.source_id == null) continue
+    ids.add(story.source_id)
+  }
+  return ids.size
 }
 
 export function stackFaceWindow<T>(
@@ -74,10 +105,12 @@ export function latestFeedStackFaces(
     Pick<FeedStory, 'source_id' | 'source_icon' | 'source_name' | 'rail_group'>
   >,
   limit = LATEST_FEED_STACK_POOL,
+  groupId = LATEST_FEED_ID,
 ): LatestFeedStackFace[] {
   const byId = new Map(sources.map((source) => [source.id, source]))
-  const mix = stories.filter((story) => story.rail_group === LATEST_FEED_ID)
-  const ordered = mix.length > 0 ? mix : stories
+  const mix = stories.filter((story) => story.rail_group === groupId)
+  const ordered =
+    mix.length > 0 ? mix : groupId === LATEST_FEED_ID ? stories : []
   const seen = new Set<number>()
   const faces: LatestFeedStackFace[] = []
 
@@ -159,9 +192,16 @@ export function toFeedStory(
   }
 }
 
-function storyRank(id: number, seed: number): number {
+export function seedRank(id: number, seed: number): number {
   const value = Math.sin(id * 12.9898 + seed * 78.233) * 43758.5453
   return value - Math.floor(value)
+}
+
+export function shuffleBySeed<T extends { id: number }>(
+  items: readonly T[],
+  seed: number,
+): T[] {
+  return items.toSorted((a, b) => seedRank(a.id, seed) - seedRank(b.id, seed))
 }
 
 export function storiesFromSources(
@@ -190,9 +230,7 @@ export function storiesFromSources(
       })
     }
   }
-  return stories
-    .toSorted((a, b) => storyRank(a.id, seed) - storyRank(b.id, seed))
-    .slice(0, limit)
+  return shuffleBySeed(stories, seed).slice(0, limit)
 }
 
 export interface FeedStorySpan {
@@ -716,6 +754,45 @@ export function latestFeedStories(
       if (seen.has(item.id)) continue
       seen.add(item.id)
       stories.push({ ...item, rail_group: LATEST_FEED_ID })
+    }
+  }
+  return stories
+    .toSorted((a, b) => {
+      const byTime = (b.published_at ?? 0) - (a.published_at ?? 0)
+      return byTime !== 0 ? byTime : b.id - a.id
+    })
+    .slice(0, limit)
+}
+
+export function topicFeedStories(
+  sources: ReadonlyArray<{
+    id: number
+    name: string
+    icon: string | null
+    source_type?: string
+    recent_items?: readonly PhantasiItemPreview[] | null
+  }>,
+  fetched: ReadonlyMap<number, FeedStory[]>,
+  topic: string,
+  groupId: number,
+  limit = FEEDS_ARTICLE_MAX,
+): FeedStory[] {
+  const key = normalizeTopicName(topic)
+  if (!key) return []
+  const seen = new Set<number>()
+  const stories: FeedStory[] = []
+  for (const source of sources) {
+    if (!isInboxFeedSource(source)) continue
+    const items = fetched.get(source.id)
+    const group = storiesForSource(
+      items && items.length > 0 ? { id: source.id, items } : null,
+      source,
+    )
+    for (const item of group) {
+      if (normalizeTopicName(item.topic) !== key) continue
+      if (seen.has(item.id)) continue
+      seen.add(item.id)
+      stories.push({ ...item, rail_group: groupId })
     }
   }
   return stories

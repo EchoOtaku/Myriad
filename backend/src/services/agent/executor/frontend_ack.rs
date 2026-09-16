@@ -138,6 +138,24 @@ pub async fn publish_and_await_snapshots(
     context: &mut ExecutionContext,
     send_visible: bool,
 ) -> Value {
+    // MCP fields are remote data, not platform-issued browser commands. This
+    // boundary is shared by Work and saved Recipes, including their resumes.
+    if capability_id.starts_with("mcp.") {
+        if send_visible {
+            emitter
+                .step_succeeded(
+                    step_id,
+                    step_index,
+                    duration_ms,
+                    super::summarize_output(&output),
+                    None,
+                    vec![],
+                )
+                .await;
+        }
+        context.add_output(step_id, output.clone());
+        return output;
+    }
     let pending = if emitter.is_live() {
         begin_if_needed(task_id, step_id, &output)
     } else {

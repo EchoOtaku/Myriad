@@ -17,6 +17,12 @@
     "frontend": "Seul le lecteur de notes montre les commentaires. Pas les articles abonnés.",
     "notes": "Écrire demande une connexion. Les invités lisent seulement."
   },
+  "reviews": {
+    "what": "Demandes de lien ami et de flux. L’acceptation écrit une source classée « 友情链接 ».",
+    "chain": "① Relisez le site et le RSS optionnel.\n② Accepter : une URL de flux devient une source à récupérer, sinon une entrée.\n③ Refuser ou supprimer le bruit.",
+    "frontend": "« Demander un lien ami » sur Amis arrive ici. Les sites acceptés vont à Amis ; un flux va aussi au mur.",
+    "notes": "Ce n’est pas l’état « jamais récupéré ». Les demandes ont leur propre table."
+  },
   "media": {
     "what": "Images et vidéos envoyées, plus les fichiers générés.",
     "chain": "① Envoyez dans la bibliothèque.\n② Filtrez par format, source ou usage.\n③ Ne supprimez que les fichiers inutilisés.",
@@ -46,6 +52,12 @@
     "chain": "① Créez ou renommez.\n② Supprimer n’enlève que cette partie.\n③ Les préréglages ne se changent ni ne se suppriment.",
     "frontend": "La catégorie « liens amis » va à la page amis. Les RSS restent aussi sur le mur.",
     "notes": "Deux catégories par abonnement."
+  },
+  "topics": {
+    "what": "Agrégats de sujets. Activez un sujet existant pour afficher une carte mixte sur les flux.",
+    "chain": "① Cherchez un sujet existant.\n② Activez l’interrupteur pour afficher la carte.\n③ Désactivez-le pour la cacher. Un sujet vide peut aussi être affiché.",
+    "frontend": "Les cartes mixtes fonctionnent comme Récents. Les tuiles se groupent encore par nombre d’articles.",
+    "notes": "Un sujet n’est ni une catégorie de source, ni une catégorie de note. La liste est commune au site."
   },
   "rsshub": {
     "what": "Instances RSSHub utilisées pour s’abonner à une route.",

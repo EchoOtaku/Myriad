@@ -48,6 +48,7 @@ fn test_recent_month_features_in_expected_schema() {
         // 003
         "phantasi_note_docs",
         "phantasi_note_authors",
+        "phantasi_source_applications",
         "media_assets",
     ] {
         assert!(

@@ -119,6 +119,42 @@ export function collectWorkbenchNoteAuthors(
     .toSorted((a, b) => a.label.localeCompare(b.label, 'zh'))
 }
 
+export function filterWorkbenchReviews<
+  T extends {
+    site_name: string
+    site_url: string
+    feed_url?: string | null
+    description?: string | null
+    message?: string | null
+    applicant_name?: string | null
+    applicant_email?: string | null
+    status: string
+  },
+>(
+  rows: readonly T[],
+  query: string,
+  status: 'all' | 'pending' | 'approved' | 'rejected' = 'all',
+): T[] {
+  const needle = query.trim().toLowerCase()
+  return rows.filter((row) => {
+    if (status !== 'all' && row.status !== status) return false
+    if (!needle) return true
+    const hay = [
+      row.site_name,
+      row.site_url,
+      row.feed_url,
+      row.description,
+      row.message,
+      row.applicant_name,
+      row.applicant_email,
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .toLowerCase()
+    return hay.includes(needle)
+  })
+}
+
 export function filterWorkbenchComments<
   T extends {
     comment: string

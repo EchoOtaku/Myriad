@@ -546,6 +546,55 @@ html.dark .phantasi-workbench__kpi.is-danger .phantasi-workbench__kpi-value {
   color: #fca5a5;
 }
 
+.phantasi-workbench__topic-grid {
+  --sg-grid-gap: 0.7rem;
+  --sg-grid-min: 11rem;
+}
+
+.phantasi-workbench__topic-hit {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.phantasi-workbench__topic-hit > .setting-group {
+  flex: 1 1 auto;
+}
+
+.phantasi-workbench__topic-hit:focus-visible {
+  outline: 2px solid var(--cfg-focus-ring, Highlight);
+  outline-offset: 2px;
+  border-radius: 0.75rem;
+}
+
+.phantasi-workbench__topic-hit .setting-group-content:empty {
+  display: none;
+}
+
+.phantasi-workbench__topic-preview {
+  margin: 0;
+  padding: 0.4rem 0 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.phantasi-workbench__topic-hit > .setting-group.is-switch-off .phantasi-workbench__topic-preview {
+  opacity: 0.52;
+}
+
+.phantasi-workbench__topic-preview li {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cfg-label-2);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .phantasi-workbench__io-grid {
   --sg-grid-gap: 0.7rem;
   --sg-grid-min: 16rem;

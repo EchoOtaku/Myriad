@@ -52,7 +52,7 @@ export interface PhantasiRailCard {
 export interface PhantasiRailApi {
   align: (id: number, immediate?: boolean) => void
   /** 按列对齐。聚合卡和分源卡会共用同一篇 id，不能只靠 data-rail-id。 */
-  alignColumn: (col: number, immediate?: boolean) => void
+  alignColumn: (col: number, immediate?: boolean, cruise?: boolean) => void
   /** 轨上卡片变了：重测；前面插入时把滚动补回去，视觉不动。 */
   relayout: () => void
   /** 只换实装窗口：重挂卡，不挪滚动。 */
@@ -61,6 +61,8 @@ export interface PhantasiRailApi {
   seek: (scroll: number) => void
   /** 前面插入列时把滚动补上，不重测。 */
   nudge: (delta: number) => void
+  /** 当前位移、可滚上限、循环圈长、列宽。圈长为 0 则不循环。 */
+  range: () => { scroll: number; max: number; loop: number; colW: number }
   cards: (fresh?: boolean) => PhantasiRailCard[]
 }
 
@@ -84,6 +86,7 @@ export function usePhantasiRailPan(
   onScroll?: (state: { scroll: number; viewW: number; colW: number }) => void,
   onGrab?: () => void,
   onIdle?: () => void,
+  loopCols = 0,
 ): void {
   const onLeadChangeRef = useRef(onLeadChange)
   onLeadChangeRef.current = onLeadChange
@@ -105,6 +108,7 @@ export function usePhantasiRailPan(
     let target = 0
     let dragging = false
     let seating = false
+    let cruiseSeat = false
     let pointerId = -1
     let pointerArmed = false
     let touchX = 0
@@ -532,7 +536,7 @@ export function usePhantasiRailPan(
                 current,
                 target,
                 dt,
-                railSettleTau(target - current, seating),
+                railSettleTau(target - current, seating, cruiseSeat),
               )
         }
       }
@@ -548,6 +552,7 @@ export function usePhantasiRailPan(
       }
       current = target
       seating = false
+      cruiseSeat = false
       write(true)
       stop(fromPointer ? 0 : RAIL_WHEEL_SETTLE_MS)
     }
@@ -557,17 +562,19 @@ export function usePhantasiRailPan(
       if (!frame) frame = requestAnimationFrame(tick)
     }
 
-    const snapTo = (scroll: number) => {
+    const snapTo = (scroll: number, cruise = false) => {
       clearSettleTimer()
       clearIdleTimer()
       coastVel = 0
       seating = true
+      cruiseSeat = cruise
       target = clampConversationScroll(scroll, maxScroll())
       home = target
       notifyLeadAt(target)
       if (reduce) {
         current = target
         seating = false
+        cruiseSeat = false
         write(true)
         return
       }
@@ -611,7 +618,7 @@ export function usePhantasiRailPan(
       snapTo(x)
     }
 
-    const alignColumn = (col: number, immediate = false) => {
+    const alignColumn = (col: number, immediate = false, cruise = false) => {
       if (colW <= 1 || viewW < 32) {
         recache()
         measure()
@@ -627,12 +634,13 @@ export function usePhantasiRailPan(
         home = x
         coastVel = 0
         seating = false
+        cruiseSeat = false
         writeTransform()
         persistScroll()
         writeExit()
         return
       }
-      snapTo(x)
+      snapTo(x, cruise)
     }
 
     const relayout = () => {
@@ -707,6 +715,12 @@ export function usePhantasiRailPan(
         refresh,
         seek,
         nudge,
+        range: () => ({
+          scroll: current,
+          max: maxScroll(),
+          loop: loopCols > 0 && colW > 1 ? loopCols * colW : 0,
+          colW,
+        }),
         cards: (fresh = false) => {
           if (fresh || !cards.length) recache()
           if (!cardList) {
@@ -1004,5 +1018,5 @@ export function usePhantasiRailPan(
       clearExit()
       if (apiRef) apiRef.current = null
     }
-  }, [apiRef, cardSelector, enabled, overflowLeft, resetKey, trackRef, viewportRef])
+  }, [apiRef, cardSelector, enabled, loopCols, overflowLeft, resetKey, trackRef, viewportRef])
 }

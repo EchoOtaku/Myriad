@@ -3,7 +3,12 @@
 //! Path constants and the one-shot brew→phantasi rename catalog.
 //! No database, HTTP, or Axum.
 
+pub mod feed_topic_cards;
 pub mod legacy;
+
+pub use feed_topic_cards::{
+    FEED_TOPIC_CARDS_KEY, feed_topic_cards_from_value, sanitize_feed_topic_cards,
+};
 
 /// User-visible SPA prefix. Internal module key stays `phantasi`.
 pub const SPA_PREFIX: &str = "/journal";
@@ -38,5 +43,7 @@ mod tests {
         assert_eq!(SPA_PREFIX, "/journal");
         assert_eq!(NOTES_RSS_PATH, "/journal/notes.xml");
         assert_eq!(ARTICLE_OBJECT_PREFIX, "/phantasi");
+        assert_eq!(FEED_TOPIC_CARDS_KEY, "phantasi_feed_topic_cards");
+        assert!(!FEED_TOPIC_CARDS_KEY.contains("brew"));
     }
 }

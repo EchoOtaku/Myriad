@@ -255,8 +255,16 @@ _Avoid_: LaTeX 文档、把公式写成 ```latex 代码块当渲染
 
 **工作台（workbench）**：
 手帐里管理员专属的后台，不是板块。地址是 `/journal/workbench/…`。
-管笔记、评论、媒体、订阅、分类、导入导出。皮在 `PhantasiWorkbench`，逻辑在 manager。
+管笔记、评论、媒体、订阅、分类、导入导出、友联/订阅审核。皮在 `PhantasiWorkbench`，逻辑在 manager。
 _Avoid_: 管理台（那是 `/config`）、后台、CMS、把工作台当成第四个板块
+
+**友联申请（friend-link application）**：
+朋友们上的公开表单。访客提交站点与可选 RSS，进工作台订阅审核，不直接写源。
+_Avoid_: 把申请当成已经上墙的友情链接
+
+**订阅审核（subscription review）**：
+工作台队列，地址 `/journal/workbench/reviews`。通过后写入 `phantasi_sources`，分类「友情链接」。有 RSS 就建可抓的订阅，没有就建入口型。
+_Avoid_: 和工作台「还没抓过」的 pending 混为一谈
 
 **评论（comment）**：
 阅读器里对选中笔记正文的批注，存在 `phantasi_comments`。只挂在笔记上，
@@ -268,6 +276,7 @@ _Avoid_: 批注（那是 phantasiai 的 annotations）、留言板、讨论区�
 站长或 Lite 给订阅文章起的聚类名。存在 `phantasi_items.topic`。用户可自填，
 入库时用 Lite 按正文快速归类，优先沿用已有名字。没有「其他」桶，空主题留在源里。
 不是笔记分类，也不是源上的「我 / 友情链接」。旧的 10 个英文 key 只是历史数据。
+工作台「主题聚合」勾选哪些名字在订阅墙出混排卡（和「最新」一样），名单全站共用。
 _Avoid_: 分类、标签、风格标签（那是源上的 `ai_style_tags`）
 
 **笔记分类（note category）**：

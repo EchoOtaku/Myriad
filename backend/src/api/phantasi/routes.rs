@@ -10,8 +10,8 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use crate::services::data_paths::paths;
 
 use super::{
-    comments, feeds_list, feeds_opml, feeds_sources, note_docs, notes, reading_item, reading_mark,
-    reading_stats, reading_sync, reading_sync_ws,
+    applications, comments, feeds_list, feeds_opml, feeds_sources, note_docs, notes, reading_item,
+    reading_mark, reading_stats, reading_sync, reading_sync_ws,
 };
 
 /// 创建 Phantasi API 路由
@@ -42,6 +42,7 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
             put(feeds_sources::update_category).delete(feeds_sources::delete_category),
         )
         .route("/topics", get(feeds_list::list_subscription_topics))
+        .route("/topics/cards", put(feeds_list::put_feed_topic_cards))
         // 笔记（站长自写内容；写路径一律管理员）
         .route("/notes.xml", get(super::notes_rss::notes_rss))
         .route(
@@ -120,6 +121,22 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
             get(comments::list_comments).post(comments::create_comment),
         )
         .route("/comments", get(comments::list_admin_comments))
+        .route(
+            "/applications",
+            get(applications::list_applications).post(applications::create_application),
+        )
+        .route(
+            "/applications/{id}/approve",
+            post(applications::approve_application),
+        )
+        .route(
+            "/applications/{id}/reject",
+            post(applications::reject_application),
+        )
+        .route(
+            "/applications/{id}",
+            delete(applications::delete_application),
+        )
         .route(
             "/comments/{id}",
             put(comments::update_comment).delete(comments::delete_comment),

@@ -187,6 +187,15 @@ impl McpServer {
             return Err(format!("MCP tool failed: {keep}"));
         }
 
+        // The structured result is authoritative; text may be only a summary.
+        // Keep the existing actor's string transport; the manager decodes JSON.
+        if let Some(structured) = call_result.structured_content {
+            if !structured.is_object() {
+                return Err("MCP structured result must be an object".into());
+            }
+            return Ok(structured.to_string());
+        }
+
         // 提取文本内容
         let text = call_result
             .content

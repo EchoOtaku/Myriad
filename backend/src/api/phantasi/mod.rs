@@ -2,6 +2,7 @@
 //!
 //! Real submodules with shared [`helpers`] (auth + OPML).
 
+mod applications;
 mod comments;
 mod feeds_list;
 mod feeds_opml;
@@ -138,6 +139,44 @@ mod integration_tests {
             .await
             .expect("query information_schema")
             .expect("phantasi_note_docs.status 必须存在");
+        let data_type: String = col.try_get("", "data_type").expect("data_type");
+        assert!(
+            data_type.contains("char"),
+            "status should be a varchar-like type, got {data_type}"
+        );
+    }
+
+    /// DB-gated: 友联申请表必须存在，审核队列才有地方落。
+    #[tokio::test]
+    async fn phantasi_source_applications_table_when_db_provided() {
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+        let database_url = std::env::var("PHANTASI_TEST_DATABASE_URL")
+            .or_else(|_| std::env::var("NOTIFICATION_TEST_DATABASE_URL"))
+            .or_else(|_| std::env::var("MYRIAD_SCHEMA_DRIFT_DB"));
+        let Ok(database_url) = database_url else {
+            return;
+        };
+        let db = Database::connect(&database_url)
+            .await
+            .expect("connect test db");
+        migration::Migrator::up(&db, None)
+            .await
+            .expect("migrator up");
+        crate::db::schema_check::ensure_schema(&db)
+            .await
+            .expect("schema heal");
+        let col = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT data_type FROM information_schema.columns \
+                 WHERE table_schema = 'public' AND table_name = 'phantasi_source_applications' \
+                 AND column_name = 'status'"
+                    .to_string(),
+            ))
+            .await
+            .expect("query information_schema")
+            .expect("phantasi_source_applications.status 必须存在");
         let data_type: String = col.try_get("", "data_type").expect("data_type");
         assert!(
             data_type.contains("char"),

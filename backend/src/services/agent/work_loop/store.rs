@@ -34,11 +34,27 @@ pub(super) async fn load(
     if state.user_id != user_id || state.version != 1 {
         return Err("Unsupported Work checkpoint".into());
     }
-    match owner.status.as_str() {
-        "cancelled" => state.task.status = TaskStatus::Cancelled,
-        "failed" => state.task.status = TaskStatus::Failed,
-        "completed" => state.task.status = TaskStatus::Completed,
-        _ => {}
+    let terminal = match owner.status.as_str() {
+        "cancelled" => Some(TaskStatus::Cancelled),
+        "failed" => Some(TaskStatus::Failed),
+        "completed" => Some(TaskStatus::Completed),
+        _ => None,
+    };
+    if let Some(status) = terminal {
+        // Cancellation can be committed by another process without rewriting
+        // the private checkpoint. Project the authoritative terminal row.
+        if state.task.status != status || state.final_text.is_empty() {
+            state.final_text = owner.error.clone().unwrap_or_else(|| match status {
+                TaskStatus::Cancelled => "Task cancelled".into(),
+                TaskStatus::Failed => "Task failed".into(),
+                _ => state.final_text.clone(),
+            });
+        }
+        state.task.status = status;
+        state.task.error = owner.error;
+        state.task.completed_at = owner.completed_at.map(|at| at.with_timezone(&chrono::Utc));
+        state.task.pending_question = None;
+        state.wait = None;
     }
     Ok(state)
 }

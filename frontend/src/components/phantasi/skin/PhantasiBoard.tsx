@@ -44,6 +44,7 @@ interface PhantasiBoardViewProps {
   onRailFocus?: (sourceId: number | null) => void
   sourceTags?: ReactNode
   noteCategory?: string | null
+  topicCards?: string[]
 }
 
 export default function PhantasiBoardView({
@@ -74,6 +75,7 @@ export default function PhantasiBoardView({
   onRailFocus,
   sourceTags,
   noteCategory = null,
+  topicCards = [],
 }: PhantasiBoardViewProps) {
   const { t } = useI18n()
 
@@ -84,6 +86,7 @@ export default function PhantasiBoardView({
       : sources.length === 0
 
   if (empty && board !== 'feeds') {
+    if (vacant) return vacant
     return (
       <PhantasiVacant
         layout={board === 'sites' ? 'friends' : 'articles'}
@@ -126,6 +129,7 @@ export default function PhantasiBoardView({
         railEpoch={railEpoch}
         onReadySource={onReadySource}
         sourceTags={sourceTags}
+        topicCards={topicCards}
       />
     )
   }

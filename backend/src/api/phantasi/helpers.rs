@@ -318,6 +318,47 @@ const RSS_DISCOVERY_SUFFIXES: &[&str] = &[
     "index.xml",
 ];
 
+pub(crate) fn normalize_http_url(raw: &str) -> Result<Url, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("URL is required".to_string());
+    }
+
+    let normalized = if Url::parse(trimmed).is_ok() {
+        trimmed.to_string()
+    } else if !trimmed.contains("://") {
+        format!("https://{trimmed}")
+    } else {
+        return Err("Invalid URL".to_string());
+    };
+
+    let parsed = Url::parse(&normalized).map_err(|_| "Invalid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only HTTP and HTTPS URLs are supported".to_string());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("URL must not include credentials".to_string());
+    }
+    let mut parsed = parsed;
+    parsed.set_fragment(None);
+    Ok(parsed)
+}
+
+pub(crate) fn url_match_key(url: &str) -> String {
+    let Ok(mut parsed) = Url::parse(url) else {
+        return url.trim_end_matches('/').to_ascii_lowercase();
+    };
+    if let Some(host) = parsed.host_str().map(|host| host.to_ascii_lowercase()) {
+        let _ = parsed.set_host(Some(&host));
+    }
+    parsed.set_fragment(None);
+    let mut key = parsed.to_string();
+    while key.ends_with('/') {
+        key.pop();
+    }
+    key
+}
+
 pub(crate) fn build_feed_discovery_candidates(raw_url: &str) -> Result<Vec<String>, String> {
     let trimmed = raw_url.trim();
     if trimmed.is_empty() {
@@ -372,6 +413,25 @@ pub(crate) fn build_feed_discovery_candidates(raw_url: &str) -> Result<Vec<Strin
 mod tests {
     use super::*;
     use chrono::Utc;
+
+    #[test]
+    fn normalize_http_url_fills_https_and_strips_fragment() {
+        let url = normalize_http_url("Example.COM/blog#top").expect("url");
+        assert_eq!(url.host_str(), Some("example.com"));
+        assert_eq!(url.path(), "/blog");
+        assert_eq!(url.scheme(), "https");
+        assert!(url.fragment().is_none());
+        assert!(normalize_http_url("javascript:alert(1)").is_err());
+        assert!(normalize_http_url("https://user:pass@example.com").is_err());
+        assert_eq!(
+            url_match_key("https://Example.COM/blog/"),
+            "https://example.com/blog"
+        );
+        assert_eq!(
+            url_match_key("https://example.com"),
+            url_match_key("https://example.com/")
+        );
+    }
 
     fn sample_source(
         name: &str,

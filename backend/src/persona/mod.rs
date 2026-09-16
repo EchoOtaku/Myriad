@@ -66,13 +66,22 @@ pub async fn start(db: DatabaseConnection) -> anyhow::Result<()> {
         Duration::ZERO,
         move || api::agent::tick_autonomy_work(work_db.clone()),
     );
-    // Work leases can expire after the initial boot scan. Reattach their newly
-    // recovered questions; existing local wait loops are left in place.
+    // Own recovery admission and shutdown alongside the other persona drivers.
+    // Reattach questions only after the lease scan has committed recovery.
+    let recovery_db = db.clone();
     drivers.periodic(
-        "Work wait recovery",
+        "Work recovery",
         Duration::from_secs(30),
         Duration::from_secs(30),
-        api::agent::restore_waiting_runs_after_boot,
+        move || {
+            let db = recovery_db.clone();
+            async move {
+                if let Err(error) = agent::work_loop::recover(&db).await {
+                    tracing::warn!(%error, "Work recovery scan failed");
+                }
+                api::agent::restore_waiting_runs_after_boot().await;
+            }
+        },
     );
     let speak_db = db.clone();
     drivers.periodic(

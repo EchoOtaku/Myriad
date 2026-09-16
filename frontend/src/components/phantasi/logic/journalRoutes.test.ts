@@ -49,6 +49,10 @@ describe('parseJournalPath', () => {
       kind: 'workbench',
       pane: 'notes',
     })
+    assert.deepEqual(parseJournalPath('/journal/workbench/reviews'), {
+      kind: 'workbench',
+      pane: 'reviews',
+    })
     assert.deepEqual(parseJournalPath('/journal/workbench/notes/import'), {
       kind: 'workbench',
       pane: 'notesIo',
@@ -64,6 +68,10 @@ describe('parseJournalPath', () => {
     assert.deepEqual(parseJournalPath('/journal/workbench/feeds/add'), {
       kind: 'workbench',
       pane: 'add',
+    })
+    assert.deepEqual(parseJournalPath('/journal/workbench/feeds/topics'), {
+      kind: 'workbench',
+      pane: 'topics',
     })
     assert.deepEqual(parseJournalPath('/journal/workbench/feeds/import'), {
       kind: 'workbench',
@@ -119,6 +127,14 @@ describe('journalListPath', () => {
         workbenchPane: 'comments',
       }),
       '/journal/workbench/comments',
+    )
+    assert.equal(
+      journalListPath({
+        viewMode: 'workbench',
+        board: 'feeds',
+        workbenchPane: 'reviews',
+      }),
+      '/journal/workbench/reviews',
     )
     assert.equal(journalItemPath(8), '/journal/articles/8')
     assert.equal(journalPathForNavId('sites'), '/journal/friends')

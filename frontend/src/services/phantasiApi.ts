@@ -12,6 +12,8 @@ import type {
   PhantasiNoteDocInput,
   PhantasiNoteInput,
   PhantasiSource,
+  PhantasiSourceApplication,
+  ApplySourceApplicationInput,
   PhantasiSourcesResponse,
   PhantasiStats,
   PhantasiStatsResponse,
@@ -21,6 +23,7 @@ import type {
   UpdateRsshubInstanceRequest,
   UpdateSourceRequest,
 } from '../types/phantasi'
+import { parseFeedTopicCards } from '../components/phantasi/logic/feedTopicCards'
 import { API_URL } from '../config'
 
 export type { CommentItem }
@@ -546,18 +549,59 @@ export async function getItem(
   return requestCache.fetch(`phantasi:item:${id}`, fetchItem, CACHE_TTL.ITEM)
 }
 
+const TOPIC_CATALOG_CACHE_KEY = 'phantasi:topic-catalog'
+
+export type SubscriptionTopicCatalog = {
+  topics: string[]
+  cards: string[]
+}
+
+export async function listSubscriptionTopicCatalog(
+  attributionHeaders?: PhantasiAttributionHeaders,
+  options?: { signal?: AbortSignal },
+): Promise<SubscriptionTopicCatalog> {
+  const fetchCatalog = async () => {
+    const data = await request<{
+      success: boolean
+      topics?: unknown
+      cards?: unknown
+    }>('/topics', {
+      headers: attributionHeaders,
+      signal: options?.signal,
+    })
+    return {
+      topics: parseFeedTopicCards(data.topics),
+      cards: parseFeedTopicCards(data.cards),
+    }
+  }
+  if (attributionHeaders || options?.signal) return fetchCatalog()
+  return requestCache.fetch(
+    TOPIC_CATALOG_CACHE_KEY,
+    fetchCatalog,
+    CACHE_TTL.CATEGORIES,
+  )
+}
+
 export async function listSubscriptionTopics(
   attributionHeaders?: PhantasiAttributionHeaders,
 ): Promise<string[]> {
-  const data = await request<{ success: boolean; topics: string[] }>(
-    '/topics',
-    { headers: attributionHeaders },
+  return (await listSubscriptionTopicCatalog(attributionHeaders)).topics
+}
+
+export async function setFeedTopicCards(
+  cards: string[],
+): Promise<string[]> {
+  const data = await request<{ success: boolean; cards?: unknown }>(
+    '/topics/cards',
+    { method: 'PUT', body: JSON.stringify({ cards }) },
   )
-  return data.topics ?? []
+  requestCache.delete(TOPIC_CATALOG_CACHE_KEY)
+  return parseFeedTopicCards(data.cards)
 }
 
 function rememberItemTopic(id: number, topic: string | null): string | null {
   requestCache.delete(`phantasi:item:${id}`)
+  requestCache.delete(TOPIC_CATALOG_CACHE_KEY)
   invalidateSourcesCache()
   invalidateBoardPageCache()
   return topic
@@ -1203,3 +1247,55 @@ export async function createReply(
 }
 
 export { generateStyleTags } from './phantasiaiApi'
+
+export async function applySourceApplication(
+  req: ApplySourceApplicationInput,
+): Promise<{ success: boolean; application: { id: number; status: string } }> {
+  return request('/applications', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function listSourceApplications(opts?: {
+  q?: string
+  status?: string
+  signal?: AbortSignal
+}): Promise<{ success: boolean; applications: PhantasiSourceApplication[] }> {
+  const query = new URLSearchParams()
+  const q = opts?.q?.trim()
+  if (q) query.set('q', q)
+  if (opts?.status?.trim()) query.set('status', opts.status.trim())
+  const suffix = query.size > 0 ? `?${query}` : ''
+  return request(`/applications${suffix}`, { signal: opts?.signal })
+}
+
+export async function approveSourceApplication(
+  id: number,
+  req?: { review_note?: string },
+): Promise<{
+  success: boolean
+  application: PhantasiSourceApplication
+  source?: PhantasiSource
+}> {
+  return request(`/applications/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(req ?? {}),
+  })
+}
+
+export async function rejectSourceApplication(
+  id: number,
+  req?: { review_note?: string },
+): Promise<{ success: boolean; application: PhantasiSourceApplication }> {
+  return request(`/applications/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(req ?? {}),
+  })
+}
+
+export async function deleteSourceApplication(
+  id: number,
+): Promise<{ success: boolean }> {
+  return request(`/applications/${id}`, { method: 'DELETE' })
+}

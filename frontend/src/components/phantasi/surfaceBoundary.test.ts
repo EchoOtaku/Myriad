@@ -23,10 +23,23 @@ describe('phantasi 舞台契约', () => {
     assert.match(filter, /<PhantasiRailTitle/)
     assert.match(board, /<PhantasiVacant/)
     assert.match(list, /<PhantasiVacant/)
+    const feeds = read('skin/PhantasiFeeds.tsx')
+    assert.match(feeds, /layout="friends"/)
+    assert.match(feeds, /emptyNoSources/)
+    assert.match(grid, /layout=\{board === 'notes' \? 'articles' : 'friends'\}/)
     assert.doesNotMatch(grid, /onBoardSurface/)
     assert.doesNotMatch(grid, /stage=\{/)
     assert.doesNotMatch(filter, /PhantasiControls/)
     assert.doesNotMatch(filter, /PhantasiManagement/)
+    assert.doesNotMatch(grid, /PhantasiControls/)
+    const page = read('../../views/Phantasi.tsx')
+    assert.match(page, /phantasi-search-bar/)
+    assert.match(page, /route\.viewMode !== 'workbench'/)
+    assert.match(page, /<PhantasiSearch/)
+    const top = read('ui/css/top-options.css')
+    assert.match(top, /\.phantasi-search-bar,/)
+    assert.match(top, /position: fixed/)
+    assert.match(top, /top: 1rem/)
   })
 
   it('笔记文章卡走 StoryCard，不再用 salon 大方卡', () => {
@@ -65,9 +78,45 @@ describe('phantasi 舞台契约', () => {
     assert.doesNotMatch(stage, /data-stage/)
     assert.doesNotMatch(grid, /stage='friends'/)
     assert.doesNotMatch(css, /phantasi-friends-span/)
+    assert.match(grid, /showApply=\{board === 'sites'\}/)
     assert.match(friends, /visitFriendHref/)
     assert.doesNotMatch(friends, /onSourceClick/)
     assert.doesNotMatch(friends, /onOpenLatest/)
+    assert.doesNotMatch(grid, /onOpenLatest/)
+    assert.doesNotMatch(read('skin/PhantasiFeeds.tsx'), /onOpenLatest/)
+    assert.doesNotMatch(read('skin/PhantasiFeedsSites.tsx'), /onOpenLatest/)
+    assert.doesNotMatch(read('ui/SiteCard.tsx'), /onOpenLatest/)
+    assert.match(read('ui/SiteCard.tsx'), /className="phantasi-site__article"/)
+    assert.doesNotMatch(read('ui/SiteCard.tsx'), /<button[^>]*phantasi-site__article/)
+    assert.match(read('ui/SiteCard.tsx'), /listedStyleTags\(styleTags\)/)
+    assert.match(read('ui/SiteCard.tsx'), /tags\.length > 0/)
+    assert.match(read('skin/PhantasiFeedsSites.tsx'), /styleTags=\{source\.ai_style_tags\}/)
+    assert.match(read('skin/PhantasiFriends.tsx'), /styleTags=\{source\.ai_style_tags\}/)
+    assert.match(
+      read('skin/PhantasiFriends.tsx'),
+      /emptyLabel=\{isSiteSource\(source\) \? undefined : t\.phantasi\.noArticles\}/,
+    )
+    assert.match(
+      read('skin/PhantasiFeedsSites.tsx'),
+      /emptyLabel=\{isSiteSource\(source\) \? undefined : emptyLabel\}/,
+    )
+    assert.match(read('ui/SiteCard.tsx'), /emptyLabel \? \(/)
+    assert.match(grid, /shuffleBySeed\(sourcesForBoard\(sources, 'sites'\), friendSeed/)
+    assert.match(grid, /board === 'sites' \? friendSources : board === 'notes' \? notesSources : sorted/)
+    assert.match(friends, /usePhantasiRailCruise/)
+    assert.match(friends, /friendsSiteAutoOn\(sources.length\)/)
+    assert.match(friends, /friendsStoryAutoOn\(stories.length\)/)
+    assert.match(friends, /siteCruise\.onGrab/)
+    assert.match(friends, /storyCruise\.onGrab/)
+    const cruise = read('skin/usePhantasiRailCruise.ts')
+    assert.match(cruise, /alignColumn\(next\.align, false, true\)/)
+    assert.doesNotMatch(cruise, /api\.seek/)
+    assert.match(cruise, /railCruiseNextCol/)
+    assert.match(friends, /loopOn \? loopCols \* 2 : loopCols/)
+    assert.match(friends, /storyLoopOn \? storyLoopCols \* 2/)
+    assert.match(friends, /copy: 1/)
+    assert.match(friends, /loopOn \? loopCols : 0/)
+    assert.match(friends, /storyLoopOn \? storyLoopCols : 0/)
   })
 
   it('文章区不走网站卡的卡槽轨', () => {
@@ -109,7 +158,7 @@ describe('phantasi 舞台契约', () => {
     assert.doesNotMatch(vacant, /compact/)
     const friends = read('skin/PhantasiFriends.tsx')
     assert.match(friends, /usePhantasiRailPan\(/)
-    assert.match(friends, /undefined,\n {4}undefined,\n {4}true/)
+    assert.match(friends, /storyCruise\.onIdle/)
     assert.match(friends, /data-phantasi-rail-track="sites"/)
     assert.match(friends, /stories\.length/)
     assert.doesNotMatch(friends, /stories\.length \/ 2/)
@@ -131,6 +180,10 @@ describe('phantasi 舞台契约', () => {
     assert.match(css, /\.phantasi-friends__items-track \{[\s\S]*?padding: 0\.35rem 0/)
     assert.match(css, /\.phantasi-friends > \.phantasi-rail-title \{[\s\S]*?margin-top: 0\.75rem/)
     assert.match(
+      css,
+      /\.phantasi-friends \.phantasi-site,\n\.phantasi-friends \.phantasi-site:hover \{\n  opacity: 1;/,
+    )
+    assert.match(
       empty,
       /\.phantasi-vacant__sites \{[\s\S]*?padding: 0\.28rem 0 0\.35rem/,
     )
@@ -150,6 +203,9 @@ describe('phantasi 舞台契约', () => {
     const story = read('ui/StoryCard.tsx')
     const vacant = read('ui/Empty.tsx')
     const friends = read('skin/PhantasiFriends.tsx')
+    const feedsSites = read('skin/PhantasiFeedsSites.tsx')
+    const feedsStory = read('skin/PhantasiStory.tsx')
+    const feeds = read('skin/PhantasiFeeds.tsx')
     assert.match(title, /data-phantasi-surface=\{entering \? 'title'/)
     assert.match(title, /is-arrive/)
     assert.match(title, /phantasi-rail-title__actions/)
@@ -159,7 +215,10 @@ describe('phantasi 舞台契约', () => {
     assert.match(site, /arrive != null && 'is-arrive'/)
     assert.match(story, /data-phantasi-surface="story"/)
     assert.match(vacant, /data-phantasi-surface="vacant"/)
-    assert.match(friends, /arrive=\{index < 8 \? index : undefined\}/)
+    assert.match(friends, /arrive=\{copy === 0 && index < 8 \? index : undefined\}/)
+    assert.match(feedsSites, /arrive=\{arrive < 8 \? arrive : undefined\}/)
+    assert.match(feedsStory, /arrive=\{arrive < 8 \? arrive : undefined\}/)
+    assert.doesNotMatch(feeds, /arrive=\{false\}/)
   })
 
   it('换页播 surface 退场，CSS 进出含标题和网站卡', () => {
@@ -182,12 +241,13 @@ describe('phantasi 舞台契约', () => {
   })
 
   it('控制栏不再挂管理岛', () => {
-    const controls = read('manager/PhantasiControls.tsx')
+    const page = read('../../views/Phantasi.tsx')
     const search = read('ui/PhantasiSearch.tsx')
-    assert.match(controls, /<PhantasiSearch/)
-    assert.doesNotMatch(controls, /PhantasiManagement/)
-    assert.doesNotMatch(controls, /useBarWave/)
-    assert.doesNotMatch(controls, /PhantasiBarTags/)
+    assert.match(page, /<PhantasiSearch/)
+    assert.doesNotMatch(page, /PhantasiControls/)
+    assert.doesNotMatch(page, /PhantasiManagement/)
+    assert.doesNotMatch(page, /useBarWave/)
+    assert.doesNotMatch(page, /PhantasiBarTags/)
     assert.doesNotMatch(search, /useManagementAccessory/)
     assert.doesNotMatch(search, /createPortal/)
   })

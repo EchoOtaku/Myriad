@@ -505,6 +505,75 @@ html.dark .phantasi-add-form .field-input.field-input--image:focus-within {
   gap: 0.75rem;
 }
 
+.phantasi-feeds__add-guide:has(.phantasi-add-form--apply) {
+  max-height: min(86vh, 46rem);
+}
+
+.phantasi-add-form--apply .phantasi-add-form__block-hint {
+  margin: 0 0 0.1rem;
+}
+
+.phantasi-add-form__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.phantasi-add-form--apply .resizable-textarea {
+  min-height: 3.5rem;
+  resize: vertical;
+}
+
+.phantasi-add-form--apply .setting-title-tag {
+  white-space: normal;
+  height: auto;
+  align-items: flex-start;
+  border-radius: 0.55rem;
+}
+
+.phantasi-add-form--apply .setting-title-tag-label {
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+}
+
+.phantasi-add-form--apply.is-done {
+  gap: 0.75rem;
+}
+
+.phantasi-add-form__done-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--cfg-accent-line);
+  border-radius: 0.7rem;
+  background: var(--cfg-accent-fill);
+  color: var(--cfg-text-1);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.phantasi-add-form__done-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 0.12rem;
+  color: var(--cfg-accent-ink);
+}
+
+.phantasi-add-form__done-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+@media (width < 360px) {
+  .phantasi-add-form__pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .phantasi-add-form .settings-btn.settings-btn--sm {
   min-height: 2.5rem;
   border-radius: 0.65rem;

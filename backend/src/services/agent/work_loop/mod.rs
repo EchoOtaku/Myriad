@@ -1,10 +1,14 @@
 //! Work is an observation-driven tool loop. Fixed Recipes retain their executor.
 //! Model messages are server-only; public task state is a projection, not the
 //! continuation. Waiting, effects and model boundaries are durable checkpoints.
+mod output;
+#[cfg(test)]
+mod recovery_tests;
 mod state;
 mod store;
 #[cfg(test)]
 mod tests;
+mod tool_schema;
 mod tools;
 
 use super::{Agent, capability, executor, types::*};
@@ -223,17 +227,7 @@ impl Agent {
             }
         }
         let actions = if tx.is_none() {
-            let new_outputs = state
-                .task
-                .recipe
-                .as_ref()
-                .into_iter()
-                .flat_map(|r| &r.steps)
-                .filter(|step| !previous_results.contains(&step.id))
-                .filter_map(|step| state.task.step_results.get(&step.id))
-                .filter(|r| r.success)
-                .filter_map(|r| r.output.as_ref());
-            Some(super::collect_step_frontend_actions(new_outputs))
+            Some(output::new_frontend_actions(&state.task, &previous_results))
         } else {
             None
         };
@@ -352,14 +346,13 @@ impl Agent {
                 let deadline = tokio::time::sleep(std::time::Duration::from_millis(remaining));
                 tokio::pin!(deadline);
                 let mut tick = tokio::time::interval(std::time::Duration::from_millis(500));
-                let turn = loop {
+                loop {
                     tokio::select! {
                         result = &mut inference => break result,
                         _ = &mut deadline => return Err("The task reached its active-time limit".into()),
                         _ = tick.tick() => if executor::is_cancelled(&state.task.task_id).await { return Err("Task cancelled".into()); },
                     }
-                };
-                turn
+                }
             };
             state.active_ms = state
                 .active_ms
@@ -475,14 +468,23 @@ impl Agent {
             serde_json::from_value(params.clone()).unwrap();
         let permission =
             super::tool_permissions::capability_allowed_for_grants(id, &params_map, &granted).await;
-        let validation = myriad_json_schema::validate_inline_json_value(
-            &tools::schema(&capability.input_schema),
-            &params,
-        );
+        let validation = tool_schema::prepare(&capability.input_schema)
+            .and_then(|schema| schema.validate(&params));
         if let Err(error) = permission.and(validation) {
             finish_call(state, &pending, Err(error), 0);
             return Ok(false);
         }
+        let mcp_output_schema = if id.starts_with("mcp.") && capability.output_schema != json!({}) {
+            match tool_schema::prepare(&capability.output_schema) {
+                Ok(schema) => Some(schema),
+                Err(error) => {
+                    finish_call(state, &pending, Err(error), 0);
+                    return Ok(false);
+                }
+            }
+        } else {
+            None
+        };
         let mut context = state.context();
         if context.autonomy_permission_cap.is_some() {
             let grant = super::consciousness::AutonomyGrantStore::new(self.db.clone())
@@ -611,20 +613,17 @@ impl Agent {
         let duration = started.elapsed().as_millis() as u64;
         let output = match output {
             Ok(output) => {
-                let output = executor::frontend_ack::publish_and_await_snapshots(
+                output::publish(
                     emitter,
                     &state.task.task_id,
-                    &call.id,
-                    id,
-                    state.calls as u32,
+                    &step,
+                    &capability,
+                    mcp_output_schema.as_deref(),
                     duration,
                     output,
                     &mut context,
-                    true,
                 )
-                .await;
-                executor::Executor::apply_output_contract(&step, &capability, &output)
-                    .map(|_| output)
+                .await
             }
             Err(error) => Err(error),
         };
@@ -637,9 +636,7 @@ impl Agent {
                 .as_mut()
                 .unwrap()
                 .add_output(&call.id, output.clone());
-            if let Some(question) =
-                executor::executor_footer::tapp_interaction_wait_question(output)
-            {
+            if let Some(question) = output::interaction_question(id, output) {
                 state.task.step_results.insert(
                     call.id.clone(),
                     StepResult {
@@ -765,8 +762,7 @@ fn apply_answer(state: &mut Checkpoint, answer: &UserAnswer) -> Result<(), Strin
         }
         Wait::Recovery => {
             if let Some(id) = state.inflight.take() {
-                if state.pending.front().is_some_and(|p| p.call.id == id) {
-                    let pending = state.pending.pop_front().unwrap();
+                if let Some(pending) = state.pending.pop_front_if(|p| p.call.id == id) {
                     state.calls += 1;
                     state.tool_result(pending.call,&json!({"error":"Tool outcome unknown after interruption. Do not repeat the action; inspect its target first.","user_observation":answer.answer}));
                 }
@@ -802,11 +798,24 @@ fn checkpoint_response(state: Checkpoint) -> AgentResponse {
         .as_ref()
         .into_iter()
         .flat_map(|r| &r.steps)
-        .filter_map(|step| state.task.step_results.get(&step.id))
-        .filter(|result| result.success)
-        .filter_map(|result| result.output.as_ref())
+        .filter_map(|step| {
+            let result = state.task.step_results.get(&step.id)?;
+            result
+                .success
+                .then_some(result.output.as_ref()?)
+                .map(|output| (step, output))
+        })
         .collect();
-    let mut data = outputs.last().map(|v| (*v).clone()).unwrap_or(json!({}));
+    let mut data = outputs
+        .last()
+        .map(|(step, output)| {
+            if step.capability_id.starts_with("mcp.") {
+                json!({"result":output})
+            } else {
+                (*output).clone()
+            }
+        })
+        .unwrap_or(json!({}));
     if !data.is_object() {
         data = json!({"result":data});
     }

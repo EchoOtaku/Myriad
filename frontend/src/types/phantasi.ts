@@ -392,3 +392,37 @@ export interface PipackSource {
   enabled: boolean
   sort_order: number | null
 }
+
+export type PhantasiApplicationStatus = 'pending' | 'approved' | 'rejected'
+
+export interface PhantasiSourceApplication {
+  id: number
+  kind: string
+  status: PhantasiApplicationStatus | string
+  site_name: string
+  site_url: string
+  feed_url?: string | null
+  description?: string | null
+  message?: string | null
+  applicant_name?: string | null
+  applicant_email?: string | null
+  applicant_user_id?: number | null
+  applicant_ip?: string | null
+  result_source_id?: number | null
+  review_note?: string | null
+  reviewed_by?: number | null
+  reviewed_at?: number | null
+  created_at: number
+  updated_at: number
+  has_feed: boolean
+}
+
+export interface ApplySourceApplicationInput {
+  site_name: string
+  site_url: string
+  feed_url?: string
+  description?: string
+  message?: string
+  applicant_name?: string
+  applicant_email?: string
+}

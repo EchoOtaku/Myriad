@@ -1,6 +1,8 @@
 /** 不碰 DOM。 */
 
 import type { AddSourceInput, FeedType, SourceType } from '../../../../types/phantasi'
+import { haystackMatchesQuery } from '../../logic/board'
+import { normalizeTopicName } from '../../logic/topics'
 
 export type AddSourceKind = Extract<
   SourceType,
@@ -109,6 +111,28 @@ export function addSubmitLabelKey(
   if (sourceType === 'phantasiai') return 'addPhantasiai'
   if (sourceType === 'rsshub') return 'addRsshub'
   return 'addSubscription'
+}
+
+export function filterTopicNames(
+  names: readonly string[],
+  query: string,
+): string[] {
+  if (!query.trim()) return Iterator.from(names).toArray()
+  return names.filter((name) => haystackMatchesQuery(query, name))
+}
+
+/** 先命中已有主题；只有一个匹配就用它。 */
+export function resolveOpenTopic(
+  query: string,
+  names: readonly string[],
+): string | null {
+  const filtered = filterTopicNames(names, query)
+  if (filtered.length === 1) return filtered[0] ?? null
+  const name = normalizeTopicName(query)
+  if (!name) return null
+  return (
+    names.find((item) => item.toLowerCase() === name.toLowerCase()) ?? name
+  )
 }
 
 export function isOpmlFilename(name: string): boolean {

@@ -6,9 +6,12 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
+use myriad_phantasi::{
+    FEED_TOPIC_CARDS_KEY, feed_topic_cards_from_value, sanitize_feed_topic_cards,
+};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
-    QueryTrait,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QuerySelect, QueryTrait, Statement,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -18,8 +21,8 @@ use crate::models::entities::{
     phantasi_annotations, phantasi_items, phantasi_podcasts, phantasi_sources, phantasi_user_states,
 };
 use crate::services::phantasi_topics::{
-    TopicSuggestError, TopicWriteError, list_subscription_topic_names, set_subscription_item_topic,
-    suggest_subscription_item_topic,
+    TopicSuggestError, TopicWriteError, list_subscription_topic_names, normalize_topic_name,
+    set_subscription_item_topic, suggest_subscription_item_topic,
 };
 
 use super::helpers::{
@@ -32,6 +35,35 @@ use super::helpers::{
 #[derive(Deserialize)]
 pub(crate) struct UpdateItemTopicRequest {
     topic: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct UpdateTopicCardsRequest {
+    cards: Vec<String>,
+}
+
+async fn load_feed_topic_cards(db: &impl ConnectionTrait) -> Vec<String> {
+    let result = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT value FROM configurations WHERE key = $1",
+            vec![FEED_TOPIC_CARDS_KEY.into()],
+        ))
+        .await;
+    match result {
+        Ok(Some(row)) => match row.try_get::<serde_json::Value>("", "value") {
+            Ok(value) => feed_topic_cards_from_value(&value),
+            Err(error) => {
+                tracing::warn!(%error, "failed to read feed topic cards");
+                Vec::new()
+            }
+        },
+        Ok(None) => Vec::new(),
+        Err(error) => {
+            tracing::warn!(%error, "failed to load feed topic cards");
+            Vec::new()
+        }
+    }
 }
 
 fn topic_write_http(err: TopicWriteError) -> HttpError {
@@ -76,7 +108,42 @@ pub(crate) async fn list_subscription_topics(
     let topics = list_subscription_topic_names(&db, is_admin)
         .await
         .map_err(|e| phantasi_store_http("list topics", e))?;
-    Ok(Json(json!({ "success": true, "topics": topics })))
+    let cards = sanitize_feed_topic_cards(&load_feed_topic_cards(&db).await, &topics);
+    Ok(Json(json!({
+        "success": true,
+        "topics": topics,
+        "cards": cards,
+    })))
+}
+
+/// 站长勾选哪些已有主题在订阅墙出混排卡。访客只读 GET `/topics` 里的 `cards`。
+pub(crate) async fn put_feed_topic_cards(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<UpdateTopicCardsRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let topics = list_subscription_topic_names(&db, true)
+        .await
+        .map_err(|e| phantasi_store_http("list topics", e))?;
+    let requested: Vec<String> = body
+        .cards
+        .iter()
+        .filter_map(|name| normalize_topic_name(name))
+        .collect();
+    let cards = sanitize_feed_topic_cards(&requested, &topics);
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    if let Err(error) = config_service
+        .update_config(FEED_TOPIC_CARDS_KEY, json!(cards))
+        .await
+    {
+        tracing::error!(%error, "failed to save feed topic cards");
+        return Err(phantasi_http_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to save topic cards",
+        ));
+    }
+    Ok(Json(json!({ "success": true, "cards": cards })))
 }
 
 /// 站长手填订阅文章主题。笔记走编辑器，不走这条。
@@ -365,5 +432,21 @@ pub(crate) async fn list_items(
             })))
         }
         Err(e) => Err(phantasi_store_http("list articles", e)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn topic_catalog_exposes_enabled_cards() {
+        let src = include_str!("feeds_list.rs");
+        assert!(src.contains("FEED_TOPIC_CARDS_KEY"));
+        assert!(src.contains("\"cards\": cards"));
+        let put = src
+            .split("pub(crate) async fn put_feed_topic_cards")
+            .nth(1)
+            .expect("put_feed_topic_cards");
+        assert!(put.contains("get_admin_user_id_from_headers"));
+        assert!(put.contains("sanitize_feed_topic_cards"));
     }
 }

@@ -14,9 +14,23 @@ impl Agent {
             .step_results
             .values()
             .filter(|r| r.success)
+            .map(|result| {
+                let mut result = result.clone();
+                let remote = task_state.recipe.as_ref().is_some_and(|recipe| {
+                    recipe.steps.iter().any(|step| {
+                        step.id == result.step_id && step.capability_id.starts_with("mcp.")
+                    })
+                });
+                if remote {
+                    // Keep remote JSON intact while separating it from response
+                    // fields interpreted as browser commands by API clients.
+                    result.output = result.output.map(|output| json!({"result":output}));
+                }
+                result
+            })
             .collect();
 
-        results.sort_by_key(|r| &r.step_id);
+        results.sort_by(|a, b| a.step_id.cmp(&b.step_id));
 
         // 如果没有成功的步骤，返回失败信息
         if results.is_empty() {

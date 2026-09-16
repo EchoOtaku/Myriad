@@ -51,6 +51,9 @@ export default function PhantasiWorkbenchLane({
       mediaUploadFailed: t.errors.mediaUploadFailed,
       mediaDeleteFailed: t.errors.mediaDeleteFailed,
       commentDeleteFailed: t.phantasi.workbenchCommentDeleteFailed,
+      reviewApproveFailed: t.phantasi.workbenchReviewApproveFailed,
+      reviewRejectFailed: t.phantasi.workbenchReviewRejectFailed,
+      reviewDeleteFailed: t.phantasi.workbenchReviewDeleteFailed,
     },
     setError,
   )
@@ -92,9 +95,11 @@ export default function PhantasiWorkbenchLane({
       docs={workbench.docs}
       media={workbench.media}
       comments={workbench.comments}
+      applications={workbench.applications}
       notesLoading={workbench.notesLoading}
       mediaLoading={workbench.mediaLoading}
       commentsLoading={workbench.commentsLoading}
+      applicationsLoading={workbench.applicationsLoading}
       busy={workbench.busy}
       sourceCount={sources.sources.length}
       sources={sources.sources}
@@ -125,6 +130,17 @@ export default function PhantasiWorkbenchLane({
         void openArticle((signal) =>
           phantasiApi.getItem(id, undefined, { signal }),
         )
+      }}
+      onApproveApplication={async (id) => {
+        const ok = await workbench.approveApplication(id)
+        if (ok) sources.reloadBoard()
+        return ok
+      }}
+      onRejectApplication={(id) => {
+        void workbench.rejectApplication(id)
+      }}
+      onDeleteApplications={(ids) => {
+        void workbench.removeApplications(ids)
       }}
       onUnschedule={workbench.unschedule}
       onUpload={workbench.upload}
@@ -169,8 +185,14 @@ export default function PhantasiWorkbenchLane({
                 ? categories.noteRows
                 : categories.sourceRows
             }
+            sources={sources.sources}
+            notes={workbench.docs}
             loading={categories.loading}
             busy={categories.busy}
+            onOpenNote={(open) => {
+              if (open.kind === 'item') notes.edit(open.id)
+              else notes.editDoc(open.id)
+            }}
             onCreate={categories.create}
             onRename={(from, to) =>
               categories.rename(
@@ -188,6 +210,7 @@ export default function PhantasiWorkbenchLane({
           />
         ) : pane === 'sources' ||
           pane === 'add' ||
+          pane === 'topics' ||
           pane === 'rsshub' ||
           pane === 'feedsIo' ? (
           <PhantasiWorkbenchAdmin
@@ -205,6 +228,11 @@ export default function PhantasiWorkbenchLane({
             onRemoveSources={sources.removeSources}
             onRefreshSource={sources.refreshSource}
             onGenerateStyleTags={sources.generateStyleTags}
+            onOpenItem={(id) => {
+              void openArticle((signal) =>
+                phantasiApi.getItem(id, undefined, { signal }),
+              )
+            }}
           />
         ) : null
       }

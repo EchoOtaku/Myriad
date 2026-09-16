@@ -10,12 +10,17 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
 import { loadNoteDocs } from './pageData'
-import { refreshableSourceCount } from './logic/board'
-import { storiesFromSources } from './logic/feedStories'
-import { visibleCloudNoteDocs } from './notes/noteBoard'
+import {
+  filterItemsByQuery,
+  filterSourcesByQuery,
+  haystackMatchesQuery,
+  refreshableSourceCount,
+  sourcesForBoard,
+} from './logic/board'
+import { shuffleBySeed, storiesFromSources } from './logic/feedStories'
+import { leftoverNoteSources, visibleCloudNoteDocs } from './notes/noteBoard'
 import { roleFromAuth } from './logic/score'
 import { readSourceSortMode, writeSourceSortMode } from './logic/sourceSort'
-import PhantasiControls from './manager/PhantasiControls'
 import { PhantasiSourceTitleTags } from './manager/PhantasiSourceTitleTags'
 import PhantasiBoardView from './skin/PhantasiBoard'
 import {
@@ -69,6 +74,8 @@ interface PhantasiSourceGridProps {
   docsEpoch?: number
   isAuthenticated?: boolean
   isAdmin?: boolean
+  searchQuery?: string
+  onSearchHits?: (count: number) => void
 }
 
 export default function PhantasiSourceGrid({
@@ -92,11 +99,12 @@ export default function PhantasiSourceGrid({
   docsEpoch = 0,
   isAuthenticated = false,
   isAdmin = false,
+  searchQuery = '',
+  onSearchHits,
 }: PhantasiSourceGridProps) {
   const { t } = useI18n()
   const titleId = useId()
   const viewerRole = roleFromAuth(isAuthenticated, isAdmin)
-  const [searchQuery, setSearchQuery] = useState('')
   const [sortMode, setSortMode] = useState<SourceSortMode>(readSourceSortMode)
   const [scoreNow, setScoreNow] = useState(() => Date.now())
   const { categories, filtered, sorted } = useBoardCatalog(
@@ -134,20 +142,48 @@ export default function PhantasiSourceGrid({
     board === 'notes' ? cloudDocs : [],
     board === 'notes' ? sorted : [],
   )
-  const { stories, onStar, expand, jump, holdStories, releaseStories, railEpoch } =
-    useFeedStories(board, sorted, onToggleStar)
+  const {
+    stories,
+    onStar,
+    expand,
+    jump,
+    holdStories,
+    releaseStories,
+    railEpoch,
+    topicCards,
+  } = useFeedStories(board, sorted, onToggleStar)
   const flags = useArticleFlags()
   const flagsRevision = flags.getSnapshot()
   const friendSeed = useRef(Math.random())
+  const friendPool = useMemo(
+    () =>
+      board === 'sites'
+        ? shuffleBySeed(sourcesForBoard(sources, 'sites'), friendSeed.current)
+        : [],
+    [board, sources],
+  )
+  const friendStoriesAll = useMemo(
+    () =>
+      (board === 'sites'
+        ? storiesFromSources(friendPool, friendSeed.current)
+        : []
+      ).map((story) => flags.project(story)),
+    [board, flags, flagsRevision, friendPool],
+  )
   const friendStories = useMemo(
     () =>
-      (board === 'sites' ? storiesFromSources(sorted, friendSeed.current) : []).map(
-        (story) => flags.project(story),
-      ),
-    [board, flags, flagsRevision, sorted],
+      board === 'sites' ? filterItemsByQuery(friendStoriesAll, searchQuery) : [],
+    [board, friendStoriesAll, searchQuery],
   )
+  const friendSources = useMemo(() => {
+    if (board !== 'sites') return []
+    if (!searchQuery.trim()) return friendPool
+    const keep = new Set(friendStories.map((story) => story.source_id))
+    const named = new Set(filterSourcesByQuery(friendPool, searchQuery).map((source) => source.id))
+    return friendPool.filter((source) => named.has(source.id) || keep.has(source.id))
+  }, [board, friendPool, friendStories, searchQuery])
   const edit = useBoardEdit(
-    filtered,
+    board === 'sites' ? friendSources : filtered,
     onRemoveSources,
     onRefreshSource,
     t.errors.phantasiSourceDeleteFailed,
@@ -159,25 +195,39 @@ export default function PhantasiSourceGrid({
     setSortMode(mode)
     setScoreNow(Date.now())
   }, [])
-  const bar = useMemo(
-    () =>
-      board === 'feeds' ? (
-        <PhantasiControls
-          sources={sources}
-          filteredSources={sorted}
-          categories={categories}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          isAdmin={isAdmin}
-        />
-      ) : null,
-    [board, sources, sorted, categories, searchQuery, isAdmin],
+  const searchedNotes = useMemo(
+    () => (board === 'notes' ? filterItemsByQuery(notes, searchQuery) : notes),
+    [board, notes, searchQuery],
   )
+  const searchedDocs = useMemo(
+    () =>
+      board === 'notes'
+        ? cloudDocs.filter((doc) =>
+            haystackMatchesQuery(searchQuery, doc.title, doc.excerpt),
+          )
+        : [],
+    [board, cloudDocs, searchQuery],
+  )
+  const noteHits = useMemo(() => {
+    if (board !== 'notes') return 0
+    return (
+      searchedNotes.length +
+      searchedDocs.length +
+      leftoverNoteSources(sorted, searchedNotes).length
+    )
+  }, [board, searchedDocs.length, searchedNotes, sorted])
+  useEffect(() => {
+    if (!onSearchHits) return
+    if (board === 'notes') onSearchHits(noteHits)
+    else if (board === 'sites') onSearchHits(friendSources.length)
+    else onSearchHits(sorted.length)
+  }, [board, friendSources.length, noteHits, onSearchHits, sorted.length])
 
   const sourceTags = useMemo(
     () => (
       <PhantasiSourceTitleTags
         kind={board === 'feeds' ? 'feeds' : 'salon'}
+        showApply={board === 'sites'}
         sortMode={sortMode}
         onSortModeChange={handleSortModeChange}
         isAdmin={isAdmin}
@@ -185,9 +235,11 @@ export default function PhantasiSourceGrid({
         canEdit
         editing={edit.isEditMode}
         selectedIds={edit.selectedIds}
-        sources={sorted}
+        sources={board === 'sites' ? friendSources : sorted}
         categories={categories}
-        refreshableCount={refreshableSourceCount(sorted)}
+        refreshableCount={refreshableSourceCount(
+          board === 'sites' ? friendSources : sorted,
+        )}
         isDeleting={edit.isDeleting}
         isRefreshing={edit.isRefreshing}
         onEnterEdit={undefined}
@@ -210,6 +262,7 @@ export default function PhantasiSourceGrid({
       isAuthenticated,
       edit.isEditMode,
       edit.selectedIds,
+      friendSources,
       sorted,
       categories,
       edit.isDeleting,
@@ -227,21 +280,53 @@ export default function PhantasiSourceGrid({
     ],
   )
 
-  const searchMiss = filtered.length === 0 && !!searchQuery.trim()
+  const searchMiss =
+    !!searchQuery.trim() &&
+    (board === 'notes'
+      ? noteHits === 0
+      : board === 'sites'
+        ? friendSources.length === 0 && friendStories.length === 0
+        : filtered.length === 0)
+  const notesSources = useMemo(() => {
+    if (board !== 'notes') return sorted
+    const have = new Set(sorted.map((source) => source.id))
+    const extra = sources.filter(
+      (source) =>
+        !have.has(source.id) &&
+        searchedNotes.some((note) => note.source_id === source.id),
+    )
+    return extra.length > 0 ? [...sorted, ...extra] : sorted
+  }, [board, searchedNotes, sorted, sources])
   const miss = useMemo(
     () => (
       <PhantasiVacant
+        layout={board === 'notes' ? 'articles' : 'friends'}
         title={t.phantasi.noMatchingSources}
         hint={t.phantasi.tryOtherKeywords}
+        articleTitle={
+          board === 'feeds'
+            ? t.phantasi.latestArticles
+            : board === 'sites'
+              ? t.phantasi.friendArticles
+              : undefined
+        }
       />
     ),
-    [t.phantasi.noMatchingSources, t.phantasi.tryOtherKeywords],
+    [
+      board,
+      t.phantasi.friendArticles,
+      t.phantasi.latestArticles,
+      t.phantasi.noMatchingSources,
+      t.phantasi.tryOtherKeywords,
+    ],
   )
 
   const boardView = (
     <PhantasiBoardView
       board={board}
-      sources={sorted}
+      sources={
+        board === 'sites' ? friendSources : board === 'notes' ? notesSources : sorted
+      }
       focusSourceId={board === 'feeds' ? focusSourceId : undefined}
       isEditMode={edit.boardEdit}
       selectedIds={edit.selectedIds}
@@ -252,8 +337,7 @@ export default function PhantasiSourceGrid({
       onPeekEnd={onPeekEnd}
       onToggleStar={board === 'feeds' ? onStar : onToggleStar}
       onEditSource={undefined}
-      toolbar={bar}
-      vacant={board === 'feeds' && searchMiss ? miss : null}
+      vacant={searchMiss ? miss : null}
       stories={
         board === 'feeds' ? stories : board === 'sites' ? friendStories : undefined
       }
@@ -264,8 +348,9 @@ export default function PhantasiSourceGrid({
       onReleaseStories={board === 'feeds' ? releaseStories : undefined}
       railEpoch={board === 'feeds' ? railEpoch : 0}
       sourceTags={board === 'feeds' ? sourceTags : undefined}
-      notes={notes}
-      docs={docs}
+      topicCards={board === 'feeds' ? topicCards : undefined}
+      notes={searchedNotes}
+      docs={board === 'notes' ? searchedDocs : docs}
       noteCategory={board === 'notes' ? noteCats.filter : null}
       onOpenDoc={onOpenDoc}
     />

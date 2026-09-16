@@ -46,26 +46,6 @@
   padding: 0 var(--phantasi-rail-pad-x);
 }
 
-.phantasi-feeds.is-sites-flipping .phantasi-feeds__sites,
-.phantasi-feeds.is-sites-flipping .phantasi-feeds__sites-track,
-.phantasi-feeds.is-sites-flipping .phantasi-feeds__items {
-  overflow: visible;
-  touch-action: none;
-}
-
-.phantasi-feeds.is-sites-flipping .phantasi-feeds__stage {
-  transition: none !important;
-}
-
-.phantasi-feeds.is-sites-flipping .phantasi-feeds__sites-track,
-.phantasi-feeds.is-sites-flipping .phantasi-feeds__items-track,
-.phantasi-feeds.is-sites-flipping .phantasi-site,
-.phantasi-feeds.is-sites-flipping .phantasi-story {
-  contain: none;
-}
-
-.phantasi-feeds.is-sites-flipping .phantasi-site,
-.phantasi-feeds.is-sites-flipping .phantasi-story,
 .phantasi-feeds [data-phantasi-ghost] {
   pointer-events: none;
   will-change: transform, opacity;
@@ -75,16 +55,6 @@
 .phantasi-feeds .is-ghosted {
   visibility: hidden !important;
   opacity: 0 !important;
-}
-
-.phantasi-feeds:not(.is-sites-booted) .phantasi-site:not([data-phantasi-ghost]),
-.phantasi-feeds:not(.is-stories-booted) .phantasi-story:not([data-phantasi-ghost]) {
-  opacity: 0;
-}
-
-.phantasi-feeds.is-sites-flipping .phantasi-story:hover,
-.phantasi-feeds.is-sites-flipping .phantasi-story:active {
-  transform: none;
 }
 
 .phantasi-feeds.is-rail-grabbing .phantasi-story,

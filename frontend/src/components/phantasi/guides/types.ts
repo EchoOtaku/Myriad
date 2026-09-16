@@ -6,9 +6,11 @@ export interface PhantasiGuidesCatalog {
   overview: SettingGuideEntry
   notes: SettingGuideEntry
   comments: SettingGuideEntry
+  reviews: SettingGuideEntry
   media: SettingGuideEntry
   sources: SettingGuideEntry
   add: SettingGuideEntry
+  topics: SettingGuideEntry
   noteCategories: SettingGuideEntry
   sourceCategories: SettingGuideEntry
   rsshub: SettingGuideEntry

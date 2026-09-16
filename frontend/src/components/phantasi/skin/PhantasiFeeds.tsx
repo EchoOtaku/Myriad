@@ -9,9 +9,13 @@ import { useI18n } from '../../../contexts/I18nContext'
 import { getIconUrl, normalizeThemeColor } from '../constants'
 import {
   firstStoryForRailGroup,
+  isAggregateFeedId,
   isLatestFeedId,
   LATEST_FEED_ID,
+  LATEST_FEED_STACK_POOL,
   latestFeedStackFaces,
+  railGroupSourceCount,
+  topicFeedId,
   sourceColumnStarts,
   sourceScrollStarts,
   storyColumnLeads,
@@ -23,17 +27,9 @@ import {
 } from '../logic/feedStories'
 import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
 import { clearPhantasiStoryPeeks } from '../ui/StoryCard'
+import { topicDisplayName } from '../logic/topics'
 import { PhantasiVacant } from '../ui/Empty'
 import { PhantasiFeedsSites, paintSiteInk, paintSiteOn } from './PhantasiFeedsSites'
-import {
-  phantasiFlipQuiet,
-  clearRailExits,
-  enterSites,
-  enterStories,
-  FLIP_INTRO_STORY_MS,
-  seatSiteTrack,
-  waitFlip,
-} from './flipCards'
 import {
   dropStoryDomShells,
   eagerStoryCovers,
@@ -89,6 +85,7 @@ interface PhantasiFeedsProps {
   onReadySource?: (id: number | null) => void
   onRailFocus?: (sourceId: number | null) => void
   sourceTags?: ReactNode
+  topicCards?: string[]
 }
 
 function PhantasiFeeds({
@@ -114,6 +111,7 @@ function PhantasiFeeds({
   onReadySource,
   onRailFocus,
   sourceTags,
+  topicCards = [],
 }: PhantasiFeedsProps) {
   const { t, locale, format } = useI18n()
   const sitesTitleId = useId()
@@ -153,13 +151,6 @@ function PhantasiFeeds({
   const storyWarmRef = useRef<() => void>(() => {})
   const pendingFlushRef = useRef(false)
   const grabbingRef = useRef(false)
-  const [flipping, setFlipping] = useState(false)
-  const [sitesBooted, setSitesBooted] = useState(() => phantasiFlipQuiet())
-  const [storiesBooted, setStoriesBooted] = useState(() => phantasiFlipQuiet())
-  const flipLock = useRef(false)
-  const motionHolds = useRef(0)
-  const introSites = useRef(false)
-  const introStories = useRef(false)
   const appliedFocus = useRef<number | null>(null)
   const seatSitesRef = useRef<number | null>(null)
   const phantasiLabels = t.phantasi
@@ -213,7 +204,9 @@ function PhantasiFeeds({
     }
     if (
       focusId == null ||
-      (!isLatestFeedId(focusId) && !sources.some((s) => s.id === focusId))
+      (!isLatestFeedId(focusId) &&
+        !topicCards.some((_, index) => topicFeedId(index) === focusId) &&
+        !sources.some((s) => s.id === focusId))
     ) {
       lastSourceRef.current = LATEST_FEED_ID
       paintedOnRef.current = LATEST_FEED_ID
@@ -221,7 +214,7 @@ function PhantasiFeeds({
       setFocusId(LATEST_FEED_ID)
       setReadyId(LATEST_FEED_ID)
     }
-  }, [sources, focusId, focusSourceId, onJumpSource])
+  }, [sources, focusId, focusSourceId, onJumpSource, topicCards])
 
   useLayoutEffect(() => {
     const id = seatSitesRef.current
@@ -243,9 +236,9 @@ function PhantasiFeeds({
   const siteKey = useMemo(
     () =>
       sources.length > 0
-        ? `${LATEST_FEED_ID},${sources.map((source) => source.id).join(',')}`
+        ? `${LATEST_FEED_ID},${topicCards.join('|')},${sources.map((source) => source.id).join(',')}`
         : '',
-    [sources],
+    [sources, topicCards],
   )
   const inboxLead = useMemo(
     () => firstStoryForRailGroup(stories, LATEST_FEED_ID),
@@ -268,6 +261,36 @@ function PhantasiFeeds({
       })),
     }
   }, [phantasiLabels, format, inboxLead, locale, sources, stories, times])
+
+  const topicMixes = useMemo(() => {
+    if (sources.length === 0) return []
+    return topicCards.map((name, index) => {
+      const id = topicFeedId(index)
+      const lead = firstStoryForRailGroup(stories, id)
+      return {
+        id,
+        name: topicDisplayName({ key: name }, phantasiLabels),
+        description: format(phantasiLabels.topicSourceCount, {
+          count: railGroupSourceCount(stories, id),
+        }),
+        latestTitle: lead?.title,
+        latestWhen: lead
+          ? phantasiRelativeTime(lead.published_at, times, locale)
+          : '',
+        stack: latestFeedStackFaces(
+          sources,
+          stories,
+          LATEST_FEED_STACK_POOL,
+          id,
+        ).map((face) => ({
+          key: face.key,
+          src: getIconUrl(face.src),
+          mark: face.mark,
+          ink: normalizeThemeColor(face.ink),
+        })),
+      }
+    })
+  }, [format, locale, phantasiLabels, sources, stories, times, topicCards])
 
   const onLeadChange = useCallback((id: number) => {
     lastSourceRef.current = id
@@ -301,17 +324,6 @@ function PhantasiFeeds({
   onEditSourceRef.current = onEditSource
   const onActivateSite = useCallback((id: number | string) => {
     activateSiteRef.current(Number(id))
-  }, [])
-  const onOpenLatestSite = useCallback((id: number | string) => {
-    const n = Number(id)
-    if (isLatestFeedId(n)) {
-      const latest = firstStoryForRailGroup(storiesRef.current, LATEST_FEED_ID)
-      if (latest) openArticleRef.current(latest)
-      return
-    }
-    const source = sourcesRef.current.find((entry) => entry.id === n)
-    const latest = source?.recent_items?.[0]
-    if (source && latest) openArticleRef.current(latest, source)
   }, [])
   const onEditSite = useCallback((id: number | string) => {
     const source = sourcesRef.current.find((entry) => entry.id === Number(id))
@@ -925,14 +937,10 @@ function PhantasiFeeds({
     flushGrabFill()
   }, [])
 
-  const railsReady =
-    phantasiFlipQuiet() ||
-    (introSites.current && (stories.length === 0 || introStories.current))
-
   usePhantasiRailPan(
     sitesViewRef,
     sitesTrackRef,
-    !flipping && railsReady && sources.length > 0,
+    sources.length > 0,
     siteKey,
     '.phantasi-site',
     onLeadChange,
@@ -946,7 +954,7 @@ function PhantasiFeeds({
   usePhantasiRailPan(
     itemsViewRef,
     itemsTrackRef,
-    !flipping && railsReady && stories.length > 0,
+    stories.length > 0,
     railEpoch,
     '.phantasi-story',
     undefined,
@@ -1023,104 +1031,12 @@ function PhantasiFeeds({
     alignStoryGroup(focusId)
   }, [focusId])
 
-  const holdMotion = () => {
-    motionHolds.current += 1
-    flipLock.current = true
-    setFlipping(true)
-  }
-
-  const releaseMotion = () => {
-    motionHolds.current = Math.max(0, motionHolds.current - 1)
-    if (motionHolds.current > 0) return
-    flipLock.current = false
-    setFlipping(false)
-  }
-
-  const cancelOwn = (anims: readonly Animation[]) => {
-    for (const anim of anims) {
-      try {
-        anim.cancel()
-      } catch {
-      }
-    }
-  }
-
-  useLayoutEffect(() => {
-    if (phantasiFlipQuiet()) {
-      introSites.current = true
-      setSitesBooted(true)
-      return
-    }
-    if (flipLock.current || introSites.current || sources.length === 0) return
-    const root = feedsRef.current
-    const track = sitesTrackRef.current
-    if (!root) return
-    introSites.current = true
-    holdMotion()
-    setSitesBooted(true)
-    const lead = focusId != null ? String(focusId) : null
-    if (track && focusId != null) seatSiteTrack(track, focusId)
-    clearRailExits(root, '.phantasi-site')
-    const anims = enterSites(root, 0, lead)
-    let alive = true
-    let released = false
-    const finish = () => {
-      if (released) return
-      released = true
-      cancelOwn(anims)
-      releaseMotion()
-    }
-    void waitFlip(anims).then(() => {
-      if (!alive) return
-      finish()
-    })
-    return () => {
-      alive = false
-      finish()
-    }
-  }, [sources.length])
-
-  useLayoutEffect(() => {
-    if (phantasiFlipQuiet()) {
-      introStories.current = true
-      setStoriesBooted(true)
-      return
-    }
-    if (introStories.current || stories.length === 0) return
-    if (sources.length > 0 && !introSites.current) return
-    if (flipLock.current && !introSites.current) return
-    const root = feedsRef.current
-    if (!root) return
-    introStories.current = true
-    holdMotion()
-    setStoriesBooted(true)
-    clearRailExits(root, '.phantasi-story')
-    const extra = motionHolds.current > 1 ? FLIP_INTRO_STORY_MS : 0
-    const anims = enterStories(root, '.phantasi-story:not(.phantasi-story--slot)', extra)
-    let alive = true
-    let released = false
-    const finish = () => {
-      if (released) return
-      released = true
-      cancelOwn(anims)
-      releaseMotion()
-    }
-    void waitFlip(anims).then(() => {
-      if (!alive) return
-      finish()
-    })
-    return () => {
-      alive = false
-      finish()
-    }
-  }, [stories.length, sources.length])
-
   const activateSite = (id: number) => {
-    if (!isLatestFeedId(id) && isEditMode) {
+    if (!isAggregateFeedId(id) && isEditMode) {
       onToggleSelect?.(id)
       return
     }
-    if (isLatestFeedId(id) && isEditMode) return
+    if (isAggregateFeedId(id) && isEditMode) return
     railDriverRef.current = 'sites'
     lastSourceRef.current = id
     paintedOnRef.current = id
@@ -1134,7 +1050,7 @@ function PhantasiFeeds({
     setFocusId(id)
     setReadyId(id)
     onJumpSource?.(id)
-    onRailFocus?.(isLatestFeedId(id) ? null : id)
+    onRailFocus?.(isAggregateFeedId(id) ? null : id)
     releaseStoriesRef.current?.()
     sitesApiRef.current?.align(id, true)
     alignStoryGroup(id)
@@ -1170,11 +1086,11 @@ function PhantasiFeeds({
   return (
     <div
       ref={feedsRef}
-      className={`phantasi-skin phantasi-feeds${flipping ? ' is-sites-flipping' : ''}${sitesBooted ? ' is-sites-booted' : ''}${storiesBooted ? ' is-stories-booted' : ''}`}
+      className="phantasi-skin phantasi-feeds"
     >
       <div className="phantasi-feeds__air" aria-hidden />
       <div className="phantasi-feeds__stage">
-        <div className="phantasi-feeds__bar">{toolbar}</div>
+        {toolbar ? <div className="phantasi-feeds__bar">{toolbar}</div> : null}
         <section
           className="phantasi-feeds__sites"
           ref={sitesViewRef}
@@ -1189,16 +1105,24 @@ function PhantasiFeeds({
             {t.phantasi.sources}
           </PhantasiRailTitle>
           </div>
-          {vacant || null}
+          {vacant
+            ?? (sources.length === 0 ? (
+              <PhantasiVacant
+                layout="friends"
+                title={t.phantasi.emptyNoSources}
+                articleTitle={t.phantasi.latestArticles}
+              />
+            ) : null)}
           <div
             className="phantasi-feeds__sites-track"
             ref={sitesTrackRef}
             data-phantasi-rail-track="sites"
-            hidden={!!vacant}
+            hidden={!!vacant || sources.length === 0}
           >
           <PhantasiFeedsSites
             sources={sources}
             inbox={inbox}
+            mixes={topicMixes}
             onId={lastSourceRef.current ?? focusId}
             times={times}
             locale={locale}
@@ -1208,7 +1132,6 @@ function PhantasiFeeds({
             editLabel={t.phantasi.editSource}
             canEdit={!!onEditSource}
             onActivate={onActivateSite}
-            onOpenLatest={onOpenLatestSite}
             onEdit={onEditSite}
             onIconLoad={onIconLoadSite}
           />
@@ -1218,7 +1141,7 @@ function PhantasiFeeds({
         <section
           className="phantasi-feeds__items"
           ref={itemsViewRef}
-          hidden={!!vacant}
+          hidden={!!vacant || sources.length === 0}
           aria-labelledby={itemsTitleId}
         >
           <PhantasiRailTitle id={itemsTitleId}>

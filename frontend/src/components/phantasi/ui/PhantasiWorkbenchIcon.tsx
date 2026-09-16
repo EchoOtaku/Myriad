@@ -2,11 +2,13 @@ export type PhantasiWorkbenchIconKind =
   | 'studio'
   | 'overview'
   | 'notes'
+  | 'comments'
   | 'media'
   | 'notes-transfer'
   | 'sources'
   | 'rsshub'
   | 'feeds-transfer'
+  | 'reviews'
 
 export function PhantasiWorkbenchIcon({ kind }: { kind: PhantasiWorkbenchIconKind }) {
   return (

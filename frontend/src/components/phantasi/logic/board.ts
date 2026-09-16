@@ -23,11 +23,13 @@ export type WorkbenchPane =
   | 'media'
   | 'sources'
   | 'add'
+  | 'topics'
   | 'rsshub'
   | 'notesIo'
   | 'feedsIo'
   | 'noteCategories'
   | 'sourceCategories'
+  | 'reviews'
 
 export const NOTE_TRANSFER_KINDS = [
   'wordpress',
@@ -167,17 +169,35 @@ export function sourceMatchesCategory(
   return parts.includes(category)
 }
 
+export function haystackMatchesQuery(
+  query: string,
+  ...parts: Array<string | null | undefined>
+): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return parts.some((part) => !!part && part.toLowerCase().includes(needle))
+}
+
 export function filterSourcesByQuery(
   sources: readonly PhantasiSource[],
   query: string,
 ): PhantasiSource[] {
-  const needle = query.trim().toLowerCase()
-  if (!needle) return Iterator.from(sources).toArray()
-  return sources.filter(
-    (source) =>
-      source.name.toLowerCase().includes(needle) ||
-      source.url.toLowerCase().includes(needle) ||
-      (source.description?.toLowerCase().includes(needle) ?? false),
+  if (!query.trim()) return Iterator.from(sources).toArray()
+  return sources.filter((source) =>
+    haystackMatchesQuery(query, source.name, source.url, source.description),
+  )
+}
+
+export function filterItemsByQuery<
+  T extends {
+    title?: string | null
+    source_name?: string | null
+    author?: string | null
+  },
+>(items: readonly T[], query: string): T[] {
+  if (!query.trim()) return Iterator.from(items).toArray()
+  return items.filter((item) =>
+    haystackMatchesQuery(query, item.title, item.source_name, item.author),
   )
 }
 
@@ -232,11 +252,13 @@ export const WORKBENCH_PANES = [
   'media',
   'sources',
   'add',
+  'topics',
   'rsshub',
   'notesIo',
   'feedsIo',
   'noteCategories',
   'sourceCategories',
+  'reviews',
 ] as const satisfies readonly WorkbenchPane[]
 
 /** 旧深链 pane=list 并进订阅页；pane=add 进添加订阅。导入导出旧名并进两页。 */

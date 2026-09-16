@@ -22,6 +22,10 @@ const RAIL_SNAP_FAR_TAU = 0.046
 const RAIL_SNAP_MID_TAU = 0.06
 const RAIL_SNAP_NEAR_TAU = 0.072
 
+const RAIL_CRUISE_SNAP_FAR_TAU = 0.14
+const RAIL_CRUISE_SNAP_MID_TAU = 0.18
+const RAIL_CRUISE_SNAP_NEAR_TAU = 0.22
+
 /** 坐进槽位时提前咬死，去掉指数衰减的长尾巴。 */
 export const RAIL_SEAT_PX = 2.6
 
@@ -1209,9 +1213,18 @@ export function settleRailSlot(
   return points[i] ?? curr
 }
 
-export function railSettleTau(distance: number, seating: boolean): number {
+export function railSettleTau(
+  distance: number,
+  seating: boolean,
+  cruise = false,
+): number {
   if (!seating) return RAIL_FOLLOW_TAU
   const abs = Math.abs(distance)
+  if (cruise) {
+    if (abs > 160) return RAIL_CRUISE_SNAP_FAR_TAU
+    if (abs > 56) return RAIL_CRUISE_SNAP_MID_TAU
+    return RAIL_CRUISE_SNAP_NEAR_TAU
+  }
   if (abs > 160) return RAIL_SNAP_FAR_TAU
   if (abs > 56) return RAIL_SNAP_MID_TAU
   return RAIL_SNAP_NEAR_TAU

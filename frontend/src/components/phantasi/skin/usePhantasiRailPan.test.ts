@@ -788,6 +788,7 @@ describe('railSettleTau / isDiscreteWheel', () => {
   it('坐槽时近处更慢', () => {
     assert.ok(railSettleTau(24, true) > railSettleTau(200, true))
     assert.ok(railSettleTau(80, false) < railSettleTau(24, true))
+    assert.ok(railSettleTau(200, true, true) > railSettleTau(200, true))
   })
 
   it('只有刻度滚轮当行距，触控板跟像素', () => {

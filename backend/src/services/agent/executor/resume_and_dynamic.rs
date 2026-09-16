@@ -442,7 +442,8 @@ impl Executor {
                 if let Some(ref mut dag) = dag_scheduler {
                     dag.mark_completed(&step.id);
                 }
-                if let Some(question) = tapp_interaction_wait_question(&output) {
+                if let Some(question) = tapp_interaction_wait_question(&step.capability_id, &output)
+                {
                     emitter
                         .waiting_for_input(&task_state.task_id, &question)
                         .await;

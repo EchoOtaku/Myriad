@@ -2,13 +2,17 @@
 
 import type { ReactNode } from 'react'
 import type { MediaAsset } from '../../../services/mediaApi'
-import type { CommentItem, PhantasiNoteDoc, PhantasiSource } from '../../../types/phantasi'
+import type {
+  CommentItem,
+  PhantasiNoteDoc,
+  PhantasiSource,
+  PhantasiSourceApplication,
+} from '../../../types/phantasi'
 import type { NoteTransferKind, WorkbenchPane } from '../logic/board'
 import type { workbenchNoteOpen } from '../logic/workbench'
 import {
   LuChevronLeft,
   LuChevronRight,
-  LuMessageSquare,
   LuNotebookPen,
   LuPlus,
 } from '@lib/icons'
@@ -22,10 +26,12 @@ import {
   workbenchHomeQuietFails,
   workbenchHomeRecent,
   workbenchHomeUpcoming,
+  workbenchPendingReviews,
 } from '../logic/workbenchHome'
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
 import { WorkbenchCommentsPane } from './PhantasiWorkbenchComments'
+import { WorkbenchReviewsPane } from './PhantasiWorkbenchReviews'
 import { WorkbenchFeedsPanes } from './PhantasiWorkbenchFeeds'
 import { WorkbenchHome } from './PhantasiWorkbenchHome'
 import { WorkbenchIoPane } from './PhantasiWorkbenchIo'
@@ -40,6 +46,7 @@ const RAIL: Array<{
     | 'workbenchOverview'
     | 'workbenchNotes'
     | 'workbenchComments'
+    | 'workbenchReviews'
     | 'workbenchMedia'
     | 'workbenchSources'
     | 'workbenchRsshub'
@@ -62,7 +69,7 @@ const RAIL: Array<{
   {
     pane: 'comments',
     label: 'workbenchComments',
-    icon: <LuMessageSquare />,
+    icon: <PhantasiWorkbenchIcon kind="comments" />,
     pack: 'content',
   },
   {
@@ -81,6 +88,12 @@ const RAIL: Array<{
     pane: 'sources',
     label: 'workbenchSources',
     icon: <PhantasiWorkbenchIcon kind="sources" />,
+    pack: 'feeds',
+  },
+  {
+    pane: 'reviews',
+    label: 'workbenchReviews',
+    icon: <PhantasiWorkbenchIcon kind="reviews" />,
     pack: 'feeds',
   },
   {
@@ -140,9 +153,11 @@ export default function PhantasiWorkbench({
   docs,
   media,
   comments = [],
+  applications = [],
   notesLoading,
   mediaLoading,
   commentsLoading = false,
+  applicationsLoading = false,
   busy,
   sourceCount,
   sources = [],
@@ -153,6 +168,9 @@ export default function PhantasiWorkbench({
   onDeleteNotes,
   onDeleteComments,
   onOpenCommentItem,
+  onApproveApplication,
+  onRejectApplication,
+  onDeleteApplications,
   onUnschedule,
   onUpload,
   onDeleteMedia,
@@ -174,9 +192,11 @@ export default function PhantasiWorkbench({
   docs: PhantasiNoteDoc[]
   media: MediaAsset[]
   comments?: CommentItem[]
+  applications?: PhantasiSourceApplication[]
   notesLoading: boolean
   mediaLoading: boolean
   commentsLoading?: boolean
+  applicationsLoading?: boolean
   busy: boolean
   sourceCount: number
   sources?: readonly PhantasiSource[]
@@ -187,6 +207,9 @@ export default function PhantasiWorkbench({
   onDeleteNotes: (docs: PhantasiNoteDoc[]) => void | Promise<boolean>
   onDeleteComments?: (ids: number[]) => void
   onOpenCommentItem?: (itemId: number) => void
+  onApproveApplication?: (id: number) => void | Promise<boolean>
+  onRejectApplication?: (id: number) => void
+  onDeleteApplications?: (ids: number[]) => void
   onUnschedule: (id: number, revision: number) => void
   onUpload: (file: File) => void
   onDeleteMedia: (id: number) => void
@@ -208,7 +231,16 @@ export default function PhantasiWorkbench({
   const { catalog: g, bindGuide } = usePhantasiGuides()
   const [mobilePane, setMobilePane] = useState<'nav' | 'section'>('section')
   const feedCount = workbenchFeedSourceCount(sources)
-  const homeEmpty = workbenchHomeIsEmpty(docs.length, feedCount, media.length)
+  const pendingReviews = useMemo(
+    () => workbenchPendingReviews(applications),
+    [applications],
+  )
+  const homeEmpty = workbenchHomeIsEmpty(
+    docs.length,
+    feedCount,
+    media.length,
+    pendingReviews.length,
+  )
   const homeDrafts = useMemo(() => workbenchHomeDrafts(docs), [docs])
   const homeUpcoming = useMemo(() => workbenchHomeUpcoming(docs), [docs])
   const homeQuiet = useMemo(
@@ -300,6 +332,7 @@ export default function PhantasiWorkbench({
                   current={
                     pane === item.pane ||
                     (pane === 'add' && item.pane === 'sources') ||
+                    (pane === 'topics' && item.pane === 'sources') ||
                     (pane === 'noteCategories' && item.pane === 'notes') ||
                     (pane === 'sourceCategories' && item.pane === 'sources')
                   }
@@ -346,6 +379,7 @@ export default function PhantasiWorkbench({
               media={media}
               sources={sources}
               comments={comments}
+              pendingReviews={pendingReviews}
               feedCount={feedCount}
               locale={locale}
               copy={phantasi}
@@ -380,6 +414,18 @@ export default function PhantasiWorkbench({
           {...bindGuide('workbench.comments', g.comments)}
           onDeleteComments={onDeleteComments}
           onOpenCommentItem={onOpenCommentItem}
+        />
+
+        <WorkbenchReviewsPane
+          active={pane === 'reviews'}
+          back={back}
+          applications={applications}
+          applicationsLoading={applicationsLoading}
+          busy={busy}
+          {...bindGuide('workbench.reviews', g.reviews)}
+          onApprove={onApproveApplication}
+          onReject={onRejectApplication}
+          onDelete={onDeleteApplications}
         />
 
         <WorkbenchMediaPane

@@ -10,6 +10,7 @@ import {
   LuDownload as Download,
   LuEdit3 as Edit3,
   LuMinusSquare as MinusSquare,
+  LuLink as Link,
   LuNotebookPen as NotebookPen,
   LuRefreshCw as RefreshCw,
   LuSquare as Square,
@@ -23,6 +24,7 @@ import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import { Spinner } from '../../Spinner'
 import { PhantasiBarMenu, PhantasiBarMenuItem, PhantasiBarWrap, PhantasiMark } from '../ui/Bar'
+import { ApplyFriendMode } from './modes/ApplyFriendMode'
 import { EditSourceMode } from './modes/EditSourceMode'
 import { buildPhantasiSortOptions } from './modes/sortOptions'
 
@@ -30,6 +32,7 @@ const TAG = 'phantasi-feeds__title-tag'
 
 export function PhantasiSourceTitleTags({
   kind = 'feeds',
+  showApply = false,
   sortMode,
   onSortModeChange,
   isAdmin = false,
@@ -60,6 +63,7 @@ export function PhantasiSourceTitleTags({
   phantasiExportInputRef,
 }: {
   kind?: 'feeds' | 'salon'
+  showApply?: boolean
   sortMode: SortMode
   onSortModeChange?: (mode: SortMode) => void
   isAdmin?: boolean
@@ -322,6 +326,26 @@ export function PhantasiSourceTitleTags({
             </PhantasiBarMenu>
           ) : null}
         </PhantasiBarWrap>
+      ) : null}
+      {showApply ? (
+        <SettingTitleGuideEntry
+          title={phantasi.applyFriendLink}
+          requireShowDetails={false}
+          panelClassName="phantasi-feeds__add-guide"
+          keepMounted
+          guide={<ApplyFriendMode />}
+          renderTrigger={(api) => (
+            <SettingTitleTag
+              className={TAG}
+              variant={api.open ? 'default' : 'muted'}
+              icon={<Link />}
+              title={phantasi.applyFriendLink}
+              onClick={() => api.toggle()}
+            >
+              {phantasi.applyFriendLink}
+            </SettingTitleTag>
+          )}
+        />
       ) : null}
       {onWriteNote ? (
         <SettingTitleTag

@@ -17,6 +17,12 @@
     "frontend": "Only the note reader shows comments. Feed articles do not.",
     "notes": "Writing still needs a login. Guests can only read."
   },
+  "reviews": {
+    "what": "Friend-link and feed applications. Approving writes a source with the Friends category.",
+    "chain": "① Review the site and optional RSS.\n② Approve: a feed URL becomes a fetchable source, otherwise a link entry.\n③ Reject or delete junk.",
+    "frontend": "Friends “Apply for a friend link” lands here. Approved sites appear on Friends; feeds also hit the feed wall.",
+    "notes": "This is not the “never fetched” source status. Applications live in their own table."
+  },
   "media": {
     "what": "Uploaded images and video, plus generated files.",
     "chain": "① Upload into the library.\n② Filter by format, source, or use.\n③ Delete only unused files.",
@@ -37,15 +43,21 @@
   },
   "noteCategories": {
     "what": "Note category names. Filters and batch-add use these.",
-    "chain": "① Create or rename.\n② Deleting a name strips that part only.\n③ Friend Links / Me are not on this page.",
-    "frontend": "The note wall and this list filter by these names.",
+    "chain": "① Open a category to see its notes.\n② Create or rename.\n③ Deleting a name strips that part only. Friend Links / Me are not on this page.",
+    "frontend": "Opening a category lists the notes in it. The note wall and this list filter by these names.",
     "notes": "Two categories per note."
   },
   "sourceCategories": {
     "what": "Feed category names, including presets Friend Links and Me.",
-    "chain": "① Create or rename.\n② Deleting a name strips that part only.\n③ Presets cannot be changed or deleted.",
-    "frontend": "Friend Links sources appear on friends. RSS also stays on the feed wall.",
+    "chain": "① Open a category to see its feeds.\n② Create or rename.\n③ Deleting a name strips that part only. Presets cannot be changed or deleted.",
+    "frontend": "Opening a category lists the feeds in it. Friend Links also appear on friends.",
     "notes": "Two categories per feed."
+  },
+  "topics": {
+    "what": "Subscription topic aggregates. At most three cards per row. Turn a topic on to show a mix card on Feeds.",
+    "chain": "① Search existing topics.\n② Open a card to see that topic’s articles.\n③ Turn the switch on to show a mix card on Feeds.",
+    "frontend": "Workbench opens the topic’s articles. Mix cards on Feeds work like Latest.",
+    "notes": "A topic is not a source category or a note category. The list is site-wide."
   },
   "rsshub": {
     "what": "RSSHub instances used when you subscribe to a route.",

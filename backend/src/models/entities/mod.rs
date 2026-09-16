@@ -28,6 +28,7 @@ pub mod phantasi_comments;
 pub mod phantasi_items;
 pub mod phantasi_note_docs;
 pub mod phantasi_podcasts;
+pub mod phantasi_source_applications;
 pub mod phantasi_sources;
 pub mod phantasi_user_states;
 pub mod rsshub_instances;

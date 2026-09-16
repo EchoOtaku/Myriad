@@ -17,15 +17,18 @@ import {
 import {
   coverFeedIndices,
   expandFeedCover,
-  isLatestFeedId,
+  isAggregateFeedId,
   latestFeedStories,
   reuseFeedStories,
   stitchStoriesBySources,
+  topicFeedId,
+  topicFeedStories,
 } from './logic/feedStories'
 import { noteSourceKey, noteSourceStamp } from './logic/homeBoard'
 import {
   loadBoardNotes,
   loadFeedStories,
+  loadTopicCatalog,
   peekFeedStories,
   peekFeedStoriesLoose,
 } from './pageData'
@@ -108,9 +111,26 @@ export function useFeedStories(
   holdStories: () => void
   releaseStories: () => void
   railEpoch: string
+  topicCards: string[]
 } {
   const flags = useArticleFlags()
   const flagsRevision = flags.getSnapshot()
+  const [topicCards, setTopicCards] = useState<string[]>([])
+  useEffect(() => {
+    if (board !== 'feeds') {
+      setTopicCards([])
+      return
+    }
+    const controller = new AbortController()
+    void loadTopicCatalog(controller.signal)
+      .then((catalog) => {
+        if (!controller.signal.aborted) setTopicCards(catalog.cards)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTopicCards([])
+      })
+    return () => controller.abort()
+  }, [board])
   const idKey = useMemo(
     () => sources.map((source) => source.id).join(','),
     [sources],
@@ -179,7 +199,7 @@ export function useFeedStories(
 
   const jump = useCallback((sourceId: number) => {
     const list = sourcesRef.current
-    if (isLatestFeedId(sourceId)) {
+    if (isAggregateFeedId(sourceId)) {
       setCover((current) => coverFeedIndices(current, 0, list.length - 1, 3))
       return
     }
@@ -247,13 +267,16 @@ export function useFeedStories(
       board === 'feeds'
         ? [
             ...latestFeedStories(sources, fetched),
+            ...topicCards.flatMap((name, index) =>
+              topicFeedStories(sources, fetched, name, topicFeedId(index)),
+            ),
             ...stitchStoriesBySources(sources, fetched, 0, lastIndex),
           ].map((story) => flags.project(story))
         : []
     const reused = reuseFeedStories(prevStoriesRef.current, next)
     prevStoriesRef.current = reused
     return reused
-  }, [board, fetched, flags, flagsRevision, lastIndex, sources])
+  }, [board, fetched, flags, flagsRevision, lastIndex, sources, topicCards])
 
   const onStar = useCallback(
     (item: PhantasiItemPreview) => onToggleStar?.(flags.project(item)),
@@ -268,5 +291,6 @@ export function useFeedStories(
     holdStories,
     releaseStories,
     railEpoch: idKey,
+    topicCards,
   }
 }

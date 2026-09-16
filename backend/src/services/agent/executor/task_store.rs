@@ -262,20 +262,6 @@ pub async fn init_task_store_db(db: DatabaseConnection) {
     if let Err(e) = load_pending_tasks_from_db(&db).await {
         tracing::warn!("加载待处理任务失败: {}", e);
     }
-    static RECOVERY_STARTED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
-    if !RECOVERY_STARTED.swap(true, std::sync::atomic::Ordering::AcqRel) {
-        tokio::spawn(async {
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                if let Some(db) = DB_FOR_TASKS.read().await.clone() {
-                    if let Err(error) = crate::services::agent::work_loop::recover(&db).await {
-                        tracing::warn!(%error,"Work recovery scan failed");
-                    }
-                }
-            }
-        });
-    }
 }
 
 /// Boot：pending/running 在库中原子标 cancelled；只把 waiting_for_input 载入内存。
@@ -773,11 +759,6 @@ pub async fn maybe_cleanup_tasks() {
     use std::sync::atomic::{AtomicU32, Ordering};
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    if let Some(db) = DB_FOR_TASKS.read().await.clone() {
-        if let Err(error) = crate::services::agent::work_loop::recover(&db).await {
-            tracing::warn!(%error, "Unable to recover interrupted Work tasks");
-        }
-    }
     // 每 20 次请求清理一次过期任务
     if n.is_multiple_of(20) {
         let mut store = TASK_STORE.write().await;

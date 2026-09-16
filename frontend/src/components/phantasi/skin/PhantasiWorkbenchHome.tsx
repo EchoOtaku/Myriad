@@ -1,6 +1,11 @@
 import type { ReactNode } from 'react'
 import type { MediaAsset } from '../../../services/mediaApi'
-import type { CommentItem, PhantasiNoteDoc, PhantasiSource } from '../../../types/phantasi'
+import type {
+  CommentItem,
+  PhantasiNoteDoc,
+  PhantasiSource,
+  PhantasiSourceApplication,
+} from '../../../types/phantasi'
 import type { WorkbenchPane } from '../logic/board'
 import { getImageUrl } from '../constants'
 import {
@@ -128,6 +133,7 @@ export function WorkbenchHome({
   media,
   sources,
   comments,
+  pendingReviews = [],
   feedCount,
   locale,
   copy,
@@ -143,6 +149,7 @@ export function WorkbenchHome({
   media: readonly MediaAsset[]
   sources: readonly PhantasiSource[]
   comments: readonly CommentItem[]
+  pendingReviews?: readonly PhantasiSourceApplication[]
   feedCount: number
   locale: string
   copy: {
@@ -160,6 +167,8 @@ export function WorkbenchHome({
     workbenchNoteUntitled: string
     workbenchNotes: string
     workbenchComments: string
+    workbenchReviews: string
+    workbenchHomeReviews: string
     workbenchMedia: string
     workbenchSources: string
     workbenchOverview: string
@@ -172,6 +181,18 @@ export function WorkbenchHome({
   }
   return (
     <div className="phantasi-workbench__home">
+      {pendingReviews.length > 0 ? (
+        <HomeBlock title={copy.workbenchHomeReviews}>
+          {pendingReviews.map((row) => (
+            <HomeRow
+              key={`review-${row.id}`}
+              title={row.site_name}
+              meta={row.site_url}
+              onPick={() => onOpen('reviews')}
+            />
+          ))}
+        </HomeBlock>
+      ) : null}
       {drafts.length > 0 ? (
         <HomeBlock title={copy.workbenchHomeContinue}>
           {drafts.map((doc) => {
@@ -290,6 +311,12 @@ export function WorkbenchHome({
       <section className="phantasi-workbench__kpis" aria-label={copy.workbenchOverview}>
         <Kpi value={docs.length} label={copy.workbenchNotes} onPick={() => onOpen('notes')} />
         <Kpi value={comments.length} label={copy.workbenchComments} onPick={() => onOpen('comments')} />
+        <Kpi
+          value={pendingReviews.length}
+          label={copy.workbenchReviews}
+          tone={pendingReviews.length > 0 ? 'warn' : undefined}
+          onPick={() => onOpen('reviews')}
+        />
         <Kpi value={media.length} label={copy.workbenchMedia} onPick={() => onOpen('media')} />
         <Kpi value={feedCount} label={copy.workbenchSources} onPick={() => onOpen('sources')} />
       </section>

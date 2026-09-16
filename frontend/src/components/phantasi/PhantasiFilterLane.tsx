@@ -27,6 +27,7 @@ interface PhantasiFilterLaneProps {
   onItemSelectToggle?: (id: number) => void
   onPeekItem?: (item: PhantasiItem) => void
   onPeekEnd?: () => void
+  searchMiss?: boolean
 }
 
 export default function PhantasiFilterLane({
@@ -43,6 +44,7 @@ export default function PhantasiFilterLane({
   onItemSelectToggle,
   onPeekItem,
   onPeekEnd,
+  searchMiss = false,
 }: PhantasiFilterLaneProps) {
   const { t } = useI18n()
   const titleId = useId()
@@ -78,7 +80,13 @@ export default function PhantasiFilterLane({
         onToggleStar={onToggleStar}
         onPeekItem={starredMode?.isEditMode ? undefined : onPeekItem}
         onPeekEnd={starredMode?.isEditMode ? undefined : onPeekEnd}
-        emptyText={starredMode ? t.phantasi.starredEmpty : undefined}
+        emptyText={
+          searchMiss
+            ? t.phantasi.noMatchingSources
+            : starredMode
+              ? t.phantasi.starredEmpty
+              : undefined
+        }
         editMode={starredMode?.isEditMode}
         selectedIds={starredMode?.selectedIds}
         onItemSelectToggle={onItemSelectToggle}

@@ -5,6 +5,7 @@ import {
   canUseCategoryName,
   categoryMatchesPage,
   categoryUsedOnOtherPage,
+  noteMatchesCategory,
   collectWorkbenchCategoryPageRows,
   collectWorkbenchCategoryRows,
   formatCategoryFullNotice,
@@ -139,6 +140,14 @@ describe('categoryMatchesPage / canUseCategoryName', () => {
     assert.equal(canUseCategoryName('新分类', ['旅行']), true)
     assert.equal(canUseCategoryName('友情链接', []), false)
     assert.equal(canUseCategoryName('我', []), false)
+  })
+})
+
+describe('noteMatchesCategory', () => {
+  it('按段认分类名', () => {
+    assert.equal(noteMatchesCategory({ topic: '工程, 旅行' }, '工程'), true)
+    assert.equal(noteMatchesCategory({ topic: '工程' }, '旅行'), false)
+    assert.equal(noteMatchesCategory({ topic: null }, '工程'), false)
   })
 })
 

@@ -42,6 +42,7 @@ describe('phantasi/skin 边界', () => {
       'PhantasiWorkbenchHome.tsx',
       'PhantasiWorkbenchNotes.tsx',
       'PhantasiWorkbenchComments.tsx',
+      'PhantasiWorkbenchReviews.tsx',
       'PhantasiWorkbenchMedia.tsx',
       'PhantasiWorkbenchIo.tsx',
       'PhantasiWorkbenchFeeds.tsx',
@@ -55,9 +56,12 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /onPane/)
     assert.match(src, /pane === 'notes'/)
     assert.match(src, /pane === 'comments'/)
+    assert.match(src, /pane === 'reviews'/)
     assert.match(src, /pane === 'media'/)
     assert.match(src, /workbenchComments/)
+    assert.match(src, /workbenchReviews/)
     assert.match(src, /filterWorkbenchComments/)
+    assert.match(src, /filterWorkbenchReviews/)
     assert.match(src, /phantasi-workbench__kpis/)
     assert.match(src, /workbenchHomeContinue/)
     assert.match(src, /workbenchHomeUpcoming/)
@@ -133,6 +137,10 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /pane === 'feedsIo'/)
     assert.match(src, /pane === 'add'/)
     assert.match(src, /open\('add'\)/)
+    assert.match(src, /pane === 'topics'/)
+    assert.match(src, /onPane\('topics'\)/)
+    assert.doesNotMatch(src, /pane: 'topics'/)
+    assert.match(src, /workbench\.topics/)
     assert.doesNotMatch(src, /sourceFormOpen/)
     assert.doesNotMatch(src, /pane === 'wordpress'/)
     assert.doesNotMatch(src, /pane === 'pipack'/)

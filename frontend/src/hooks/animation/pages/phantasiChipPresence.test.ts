@@ -105,6 +105,27 @@ describe('collectPhantasiSurfaceNodes', () => {
       ['title', 'vacant', 'site', 'story'],
     )
   })
+
+  it('订阅页标题和卡片同一套进出', () => {
+    const { JSDOM } = require(
+      require.resolve('jsdom', {
+        paths: [require.resolve('isomorphic-dompurify')],
+      }),
+    ) as { JSDOM: new (html?: string) => { window: { document: Document } } }
+    const dom = new JSDOM('<!doctype html><html><body></body></html>')
+    const root = dom.window.document.createElement('div')
+    root.innerHTML = `
+      <section class="phantasi-feeds__items">
+        <div class="phantasi-rail-title" data-phantasi-surface="title"></div>
+        <div class="phantasi-story" data-phantasi-surface="story"></div>
+      </section>
+    `
+    const nodes = collectPhantasiSurfaceNodes(root)
+    assert.deepEqual(
+      nodes.map((el) => el.dataset.phantasiSurface),
+      ['title', 'story'],
+    )
+  })
 })
 
 describe('phantasiSurfaceSwapWait', () => {

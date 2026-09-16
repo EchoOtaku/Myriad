@@ -9,7 +9,9 @@ import {
   sourceMatchesKind,
   workbenchSourceKind,
   eatSearchKeys,
+  filterItemsByQuery,
   filterLaneItems,
+  haystackMatchesQuery,
   filterSourcesByQuery,
   isPhantasiBoard,
   isFriendSource,
@@ -355,6 +357,22 @@ describe('filterSourcesByQuery', () => {
     assert.equal(filterSourcesByQuery(sources, '星辰')[0]?.name, '星辰博客')
     assert.equal(filterSourcesByQuery(sources, 'B.COM')[0]?.name, '其他')
     assert.equal(filterSourcesByQuery(sources, 'hello')[0]?.name, '其他')
+  })
+})
+
+describe('filterItemsByQuery', () => {
+  it('空词原样拷贝；按标题 / 源名 / 作者收', () => {
+    assert.equal(haystackMatchesQuery('  ', '星辰'), true)
+    const items = [
+      { title: '星辰夜话', source_name: '博客', author: null },
+      { title: '别的', source_name: '日报', author: 'Ada' },
+    ]
+    const next = filterItemsByQuery(items, '  ')
+    assert.deepEqual(next, items)
+    assert.notEqual(next, items)
+    assert.equal(filterItemsByQuery(items, '夜话')[0]?.title, '星辰夜话')
+    assert.equal(filterItemsByQuery(items, '日报')[0]?.title, '别的')
+    assert.equal(filterItemsByQuery(items, 'ada')[0]?.title, '别的')
   })
 })
 

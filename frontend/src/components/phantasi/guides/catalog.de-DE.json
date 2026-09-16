@@ -17,6 +17,12 @@
     "frontend": "Nur der Notizleser zeigt Kommentare. Abonnierte Artikel nicht.",
     "notes": "Schreiben braucht Login. Gäste lesen nur."
   },
+  "reviews": {
+    "what": "Anträge auf Freundeslink und Feed. Annahme schreibt eine Quelle mit der Kategorie «友情链接».",
+    "chain": "① Seite und optionalen RSS prüfen.\n② Annehmen: eine Feed-URL wird holbar, sonst nur ein Einstieg.\n③ Ablehnen oder Müll löschen.",
+    "frontend": "„Freundeslink beantragen“ auf Freunde landet hier. Angenommene Seiten erscheinen bei Freunden; Feeds auch an der Wand.",
+    "notes": "Das ist nicht der Status „noch nie geholt“. Anträge liegen in einer eigenen Tabelle."
+  },
   "media": {
     "what": "Hochgeladene Bilder und Videos plus erzeugte Dateien.",
     "chain": "① In die Bibliothek laden.\n② Nach Format, Herkunft oder Nutzung filtern.\n③ Nur ungenutzte Dateien löschen.",
@@ -46,6 +52,12 @@
     "chain": "① Anlegen oder umbenennen.\n② Löschen entfernt nur diesen Teil.\n③ Vorgaben lassen sich nicht ändern oder löschen.",
     "frontend": "Friend-Link-Kategorie erscheint bei Freunde. RSS bleibt auch auf der Abo-Wand.",
     "notes": "Zwei Kategorien pro Abo."
+  },
+  "topics": {
+    "what": "Abo-Themenbündel. Vorhandene Themen einschalten, damit Mix-Karten auf der Abo-Seite erscheinen.",
+    "chain": "① Vorhandene Themen suchen.\n② Schalter an: Karte sichtbar.\n③ Schalter aus: Karte weg. Leere Themen dürfen auch an sein.",
+    "frontend": "Mix-Karten funktionieren wie Aktuell. Kacheln bündeln weiter nach Artikelzahl.",
+    "notes": "Ein Thema ist keine Quellen- und keine Notizkategorie. Die Liste gilt für die ganze Site."
   },
   "rsshub": {
     "what": "RSSHub-Instanzen für das Abonnieren einer Route.",

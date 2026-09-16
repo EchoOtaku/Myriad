@@ -204,8 +204,8 @@ impl Executor {
     /// Breach (wrong JSON type / missing required) fails the step.
     /// `ContractViolation::Drift` 只 `tracing::warn` 后 `Ok(())`。
     ///
-    /// MCP tools synthesize a local `{"type": "string"}` placeholder and stay
-    /// exempt.
+    /// MCP output schemas use the Work loop's JSON Schema validator; this
+    /// builtin contract checker does not interpret their dynamic schemas.
     pub(crate) fn apply_output_contract(
         step: &RecipeStep,
         capability: &Capability,

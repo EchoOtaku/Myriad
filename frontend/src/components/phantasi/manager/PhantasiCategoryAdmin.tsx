@@ -1,38 +1,59 @@
 /** 工作台分类管理。皮不进口这一层。笔记页和订阅页各管各的。 */
 
+import type { ReactNode } from 'react'
+import type { PhantasiNoteDoc, PhantasiSource } from '../../../types/phantasi'
 import type { ManagedListItem } from '../../settings/ManagedList'
 import type {
   WorkbenchCategoryPage,
   WorkbenchCategoryRow,
 } from '../logic/categories'
+import type { WorkbenchNoteOpen } from '../logic/workbench'
 import { LuPlus } from '@lib/icons'
 import { useCallback, useMemo, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { InputItem, ManagedList, SettingsButton } from '../../settings'
-import { isFriendLinkCategory, isMineCategory } from '../constants'
+import { getIconUrl, getImageUrl, isFriendLinkCategory, isMineCategory } from '../constants'
+import { sourceMatchesCategory } from '../logic/board'
 import {
   canUseCategoryName,
+  noteMatchesCategory,
   normalizeWorkbenchCategoryName,
 } from '../logic/categories'
+import {
+  workbenchNoteCover,
+  workbenchNoteListExcerpt,
+  workbenchNoteOpen,
+  workbenchNoteStatusKey,
+} from '../logic/workbench'
 
 export function PhantasiCategoryAdmin({
   page,
   query: queryProp,
   rows,
+  sources = [],
+  notes = [],
+  openName = null,
   loading,
   busy,
   onCreate,
   onRename,
   onDelete,
+  onOpen,
+  onOpenNote,
 }: {
   page: WorkbenchCategoryPage
   query?: string
   rows: WorkbenchCategoryRow[]
+  sources?: readonly PhantasiSource[]
+  notes?: readonly PhantasiNoteDoc[]
+  openName?: string | null
   loading: boolean
   busy: boolean
   onCreate: (name: string) => Promise<boolean>
   onRename: (from: string, to: string) => Promise<boolean>
   onDelete: (name: string) => Promise<boolean>
+  onOpen?: (name: string | null) => void
+  onOpenNote?: (open: WorkbenchNoteOpen) => void
 }) {
   const { t, format } = useI18n()
   const phantasi = t.phantasi
@@ -81,7 +102,23 @@ export function PhantasiCategoryAdmin({
     })
   }, [canCreate, nextName, onCreate])
 
-  const items = useMemo<ManagedListItem[]>(
+  const openRow = visible.find((row) => row.name === openName) ?? null
+  const sourceMembers = useMemo(
+    () =>
+      page === 'sources' && openName
+        ? sources.filter((source) => sourceMatchesCategory(source, openName))
+        : [],
+    [openName, page, sources],
+  )
+  const noteMembers = useMemo(
+    () =>
+      page === 'notes' && openName
+        ? notes.filter((note) => noteMatchesCategory(note, openName))
+        : [],
+    [notes, openName, page],
+  )
+
+  const categoryItems = useMemo<ManagedListItem[]>(
     () => [
       {
         id: '__new__',
@@ -123,7 +160,6 @@ export function PhantasiCategoryAdmin({
       },
       ...visible.map((row) => {
         const label = displayName(row.name)
-        const open = editing === row.name
         return {
           id: row.name,
           title: label,
@@ -138,45 +174,17 @@ export function PhantasiCategoryAdmin({
           badge: row.locked
             ? { label: phantasi.workbenchCategoryLocked, tone: 'muted' as const }
             : undefined,
-          expanded: open,
-          onToggleExpand: row.locked
-            ? undefined
-            : () => {
-                setEditing((current) => {
-                  if (current === row.name) return null
-                  setRenameDraft(row.name)
-                  return row.name
-                })
-              },
-          expandContent:
-            open && !row.locked ? (
-              <div className="phantasi-add-form">
-                <InputItem
-                  itemKey={`category-rename-${row.name}`}
-                  label={phantasi.workbenchCategoryRename}
-                  value={renameDraft}
-                  onChange={setRenameDraft}
-                  size="sm"
-                  layout="vertical"
-                  autoComplete="off"
-                  disabled={busy}
-                />
-                <SettingsButton
-                  variant="primary"
-                  size="sm"
-                  disabled={!canRename || busy}
-                  loading={busy}
-                  onClick={() => {
-                    if (!renameName) return
-                    void onRename(row.name, renameName).then((ok) => {
-                      if (ok) setEditing(null)
-                    })
-                  }}
-                >
-                  {phantasi.save}
-                </SettingsButton>
-              </div>
-            ) : null,
+          renderHit: ({ leading, main }: { leading: ReactNode; main: ReactNode }) => (
+            <button
+              type="button"
+              className="managed-list-row-hit"
+              disabled={busy}
+              onClick={() => onOpen?.(row.name)}
+            >
+              {leading}
+              {main}
+            </button>
+          ),
           busy,
           actions: row.locked
             ? []
@@ -210,6 +218,7 @@ export function PhantasiCategoryAdmin({
                         setEditing((current) =>
                           current === row.name ? null : current,
                         )
+                        if (openName === row.name) onOpen?.(null)
                       }
                     })
                   },
@@ -219,22 +228,75 @@ export function PhantasiCategoryAdmin({
       }),
     ],
     [
-      phantasi,
       busy,
       canCreate,
-      canRename,
       draft,
-      editing,
       format,
       onDelete,
-      onRename,
+      onOpen,
+      openName,
       page,
-      renameDraft,
-      renameName,
+      phantasi,
       submitCreate,
       visible,
     ],
   )
+
+  const memberItems = useMemo<ManagedListItem[]>(() => {
+    if (page === 'notes') {
+      return noteMembers.map((doc) => {
+        const excerpt = workbenchNoteListExcerpt(doc)
+        const cover = getImageUrl(workbenchNoteCover(doc))
+        return {
+          id: doc.id,
+          title: doc.title.trim() || phantasi.workbenchNoteUntitled,
+          subtitle: excerpt || undefined,
+          badge: {
+            label: phantasi[workbenchNoteStatusKey(doc)],
+            tone: 'muted' as const,
+          },
+          leading: cover ? (
+            <img className="phantasi-workbench__thumb" src={cover} alt="" />
+          ) : undefined,
+          renderHit: ({
+            leading,
+            main,
+          }: {
+            leading: ReactNode
+            main: ReactNode
+          }) => (
+            <button
+              type="button"
+              className="managed-list-row-hit"
+              disabled={busy}
+              onClick={() => onOpenNote?.(workbenchNoteOpen(doc))}
+            >
+              {leading}
+              {main}
+            </button>
+          ),
+        }
+      })
+    }
+    return sourceMembers.map((source) => {
+      const icon = getIconUrl(source.icon)
+      return {
+        id: source.id,
+        title: source.name,
+        subtitle: source.url,
+        leading: icon ? (
+          <img className="phantasi-workbench__thumb" src={icon} alt="" />
+        ) : undefined,
+      }
+    })
+  }, [
+    busy,
+    noteMembers,
+    onOpenNote,
+    page,
+    phantasi,
+    sourceMembers,
+  ])
 
   return (
     <div
@@ -244,19 +306,61 @@ export function PhantasiCategoryAdmin({
           : 'workbench-source-categories'
       }
     >
-      <ManagedList
-        queryCollapsible={false}
-        queryChrome="plain"
-        loading={loading && visible.length === 0}
-        working={busy}
-        items={items}
-        emptyText={
-          visible.length === 0 && !query.trim()
-            ? phantasi.workbenchCategoryEmpty
-            : phantasi.workbenchCategoryKindEmpty
-        }
-        maxHeight={null}
-      />
+      {openRow ? (
+        <ManagedList
+          queryCollapsible={false}
+          queryChrome="plain"
+          loading={false}
+          working={busy}
+          items={memberItems}
+          emptyText={phantasi.noContent}
+          maxHeight={null}
+        />
+      ) : (
+        <>
+          {editing && !visible.find((row) => row.name === editing)?.locked ? (
+            <div className="phantasi-add-form">
+              <InputItem
+                itemKey={`category-rename-${editing}`}
+                label={phantasi.workbenchCategoryRename}
+                value={renameDraft}
+                onChange={setRenameDraft}
+                size="sm"
+                layout="vertical"
+                autoComplete="off"
+                disabled={busy}
+              />
+              <SettingsButton
+                variant="primary"
+                size="sm"
+                disabled={!canRename || busy}
+                loading={busy}
+                onClick={() => {
+                  if (!renameName || !editing) return
+                  void onRename(editing, renameName).then((ok) => {
+                    if (ok) setEditing(null)
+                  })
+                }}
+              >
+                {phantasi.save}
+              </SettingsButton>
+            </div>
+          ) : null}
+          <ManagedList
+            queryCollapsible={false}
+            queryChrome="plain"
+            loading={loading && visible.length === 0}
+            working={busy}
+            items={categoryItems}
+            emptyText={
+              visible.length === 0 && !query.trim()
+                ? phantasi.workbenchCategoryEmpty
+                : phantasi.workbenchCategoryKindEmpty
+            }
+            maxHeight={null}
+          />
+        </>
+      )}
     </div>
   )
 }

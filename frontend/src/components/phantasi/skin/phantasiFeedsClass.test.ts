@@ -22,12 +22,22 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.doesNotMatch(src, /foldSites/)
     assert.doesNotMatch(src, /is-sites-open/)
     assert.doesNotMatch(src, /is-sites-morphing/)
+    assert.doesNotMatch(src, /enterSites/)
+    assert.doesNotMatch(src, /enterStories/)
+    assert.doesNotMatch(src, /is-sites-flipping/)
+    assert.doesNotMatch(src, /is-sites-booted/)
+    assert.doesNotMatch(src, /is-stories-booted/)
+    assert.doesNotMatch(src, /arrive=\{false\}/)
+    assert.match(src, /arrive=\{arrive < 8 \? arrive : undefined\}/)
     const css = readFileSync(join(dir, '../ui/css/cards.css'), 'utf8')
     const feedsCss = readFileSync(join(dir, '../ui/css/feeds.css'), 'utf8')
     const motionCss = readFileSync(join(dir, '../ui/css/motion.css'), 'utf8')
     assert.doesNotMatch(css, /is-sites-open/)
     assert.doesNotMatch(feedsCss, /is-sites-open/)
     assert.doesNotMatch(feedsCss, /is-sites-morphing/)
+    assert.doesNotMatch(feedsCss, /is-sites-flipping/)
+    assert.doesNotMatch(feedsCss, /is-sites-booted/)
+    assert.doesNotMatch(feedsCss, /is-stories-booted/)
     assert.doesNotMatch(motionCss, /is-sites-open/)
   })
 
@@ -119,7 +129,7 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.doesNotMatch(src, /if \(pendingFlushRef\.current\) flushStorySettle/)
     assert.match(src, /id !== focusIdRef\.current/)
     assert.doesNotMatch(
-      src.slice(src.indexOf('const onStoryIdle'), src.indexOf('const railsReady')),
+      src.slice(src.indexOf('const onStoryIdle'), src.indexOf('const alignStoryGroup')),
       /flushStorySettle|releaseStories|storyWarmRef/,
     )
     assert.match(src, /settleId/)
@@ -227,6 +237,9 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(src, /sites\.cards\(viewChanged\)/)
     assert.match(src, /const PhantasiFeedsSites = memo\(/)
     assert.match(src, /const PhantasiFeedsStories = memo\(/)
+    assert.match(src, /topicMixes/)
+    assert.match(src, /isAggregateFeedId/)
+    assert.match(src, /mixes=\{topicMixes\}/)
     assert.match(src, /storySetMountRef/)
     assert.match(src, /slotCacheRef/)
     assert.match(src, /colCacheRef/)

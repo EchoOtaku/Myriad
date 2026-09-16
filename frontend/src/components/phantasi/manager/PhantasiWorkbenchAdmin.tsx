@@ -37,6 +37,7 @@ import { noteScheduleLabel } from '../notes/noteBoard'
 import { listSelectChrome, useListSelection } from '../useListSelection'
 import { AddMode } from './modes'
 import { toAddSourceInput } from './modes/addSource'
+import { TopicAggregateField } from './modes/TopicAggregateField'
 import { EditSourceMode } from './modes/EditSourceMode'
 import RSSHubConfigComponent from './RSSHubConfig'
 import { RSSHubInstances } from './RSSHubInstances'
@@ -104,13 +105,22 @@ export function PhantasiWorkbenchAdmin({
   onGenerateStyleTags,
   extraCategories = [],
   onAssignSources,
+  openName = null,
+  onOpen,
+  onOpenItem,
 }: {
-  pane: Extract<WorkbenchPane, 'sources' | 'add' | 'rsshub' | 'feedsIo'>
+  pane: Extract<
+    WorkbenchPane,
+    'sources' | 'add' | 'topics' | 'rsshub' | 'feedsIo'
+  >
   query?: string
   refreshingAll?: boolean
   onAdded?: () => void
   extraCategories?: readonly string[]
   onAssignSources?: (ids: number[], category: string) => void
+  openName?: string | null
+  onOpen?: (name: string | null) => void
+  onOpenItem?: (id: number) => void
   sources: PhantasiSource[]
   onAddSource: (input: AddSourceInput) => Promise<void>
   onDiscover: (
@@ -505,6 +515,17 @@ export function PhantasiWorkbenchAdmin({
             onSubmit={handleAddSubmit}
             onDiscover={onDiscover}
             RSSHubConfigComponent={RSSHubConfigComponent}
+          />
+        </div>
+      ) : null}
+
+      {pane === 'topics' ? (
+        <div id="workbench-topics">
+          <TopicAggregateField
+            sources={sources}
+            openName={openName}
+            onOpen={onOpen}
+            onOpenItem={onOpenItem}
           />
         </div>
       ) : null}

@@ -306,7 +306,8 @@ pub async fn get_capability_by_id(id: &str) -> Option<Capability> {
         .list_tools()
         .await
         .into_iter()
-        .find(|(server_id, tool)| id == format!("mcp.{}.{}", server_id, tool.name))?;
+        .filter(|(server_id, tool)| id == format!("mcp.{}.{}", server_id, tool.name))
+        .max_by_key(|(server_id, _)| server_id.len())?;
     let trusted = manager.server_trusts_annotations(&server_id).await;
     Some(mcp_capability(&server_id, &tool, trusted))
 }
@@ -375,7 +376,7 @@ fn mcp_capability(
         category: CapabilityCategory::ExternalIntegration,
         supported_actions: vec![],
         input_schema: tool.input_schema.clone(),
-        output_schema: json!({ "type": "string" }),
+        output_schema: tool.output_schema.clone().unwrap_or_else(|| json!({})),
         required_permissions: vec!["mcp:execute".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(30_000),
@@ -557,6 +558,7 @@ mod tests {
             name: "lookup".to_string(),
             description: "Look up external data".to_string(),
             input_schema: json!({"type": "object"}),
+            output_schema: None,
             annotations,
         }
     }
@@ -578,11 +580,28 @@ mod tests {
                 "properties": { "query": { "type": "string" } },
                 "required": ["query"]
             }),
+            output_schema: None,
             annotations: None,
         };
         let entry = mcp_compact_entry("docs", &tool);
         assert_eq!(entry["id"], "mcp.docs.lookup");
         assert_eq!(entry["p"], json!(["query"]));
+    }
+
+    #[test]
+    fn mcp_output_schema_is_preserved_without_inventing_a_text_contract() {
+        let mut tool = mcp_tool(None);
+        assert_eq!(
+            mcp_capability("docs", &tool, false).output_schema,
+            json!({})
+        );
+        tool.output_schema = Some(
+            json!({"type":"object","required":["rows"],"properties":{"rows":{"type":"array"}}}),
+        );
+        assert_eq!(
+            mcp_capability("docs", &tool, false).output_schema,
+            tool.output_schema.unwrap()
+        );
     }
 
     #[test]

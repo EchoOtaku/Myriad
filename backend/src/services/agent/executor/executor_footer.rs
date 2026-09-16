@@ -14,7 +14,13 @@ use super::task_store;
 #[cfg(test)]
 use serde_json::json;
 
-pub(crate) fn tapp_interaction_wait_question(output: &Value) -> Option<UserQuestion> {
+pub(crate) fn tapp_interaction_wait_question(
+    capability_id: &str,
+    output: &Value,
+) -> Option<UserQuestion> {
+    if capability_id != "tapp.interact" {
+        return None;
+    }
     let interaction = output.get("interaction")?;
     let interaction_id = interaction
         .get("interactionId")

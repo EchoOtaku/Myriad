@@ -134,6 +134,7 @@ describe('workbenchHomeIsEmpty', () => {
   it('笔记和订阅都空才算空站', () => {
     assert.equal(workbenchHomeIsEmpty(0, 0), true)
     assert.equal(workbenchHomeIsEmpty(0, 0, 1), false)
+    assert.equal(workbenchHomeIsEmpty(0, 0, 0, 1), false)
     assert.equal(workbenchHomeIsEmpty(1, 0), false)
     assert.equal(
       workbenchFeedSourceCount([

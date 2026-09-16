@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import type { PhantasiItemPreview, PhantasiSource } from '../../../types/phantasi'
 import type { FeedStory } from '../logic/feedStories'
+import type { PhantasiRailApi } from './usePhantasiRailPan'
 
 import { useId, useMemo, useRef } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
@@ -10,11 +11,13 @@ import {
   getIconUrl,
   normalizeThemeColor,
 } from '../constants'
-import { visitFriendHref } from '../logic/board'
+import { isSiteSource, visitFriendHref } from '../logic/board'
 import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
 import { SiteCard } from '../ui/SiteCard'
 import { PhantasiStory } from './PhantasiStory'
+import { friendsSiteAutoOn, friendsStoryAutoOn } from './railCruise'
 import { phantasiRelativeTime, usePhantasiTimes } from './time'
+import { usePhantasiRailCruise } from './usePhantasiRailCruise'
 import { usePhantasiRailPan } from './usePhantasiRailPan'
 
 function visitFriend(source: PhantasiSource) {
@@ -51,8 +54,10 @@ export default function PhantasiFriends({
   const times = usePhantasiTimes()
   const sitesViewRef = useRef<HTMLDivElement>(null)
   const sitesTrackRef = useRef<HTMLDivElement>(null)
+  const sitesApiRef = useRef<PhantasiRailApi | null>(null)
   const itemsViewRef = useRef<HTMLDivElement>(null)
   const itemsTrackRef = useRef<HTMLDivElement>(null)
+  const itemsApiRef = useRef<PhantasiRailApi | null>(null)
   const siteKey = useMemo(
     () => sources.map((source) => source.id).join(','),
     [sources],
@@ -61,28 +66,89 @@ export default function PhantasiFriends({
     () => stories.map((item) => item.id).join(','),
     [stories],
   )
-  const siteCols = Math.max(1, Math.ceil(sources.length / 2))
+  const loopCols = Math.max(1, Math.ceil(sources.length / 2))
+  const loopOn = friendsSiteAutoOn(sources.length) && !isEditMode
+  const siteCols = loopOn ? loopCols * 2 : loopCols
+  const storyLoopCols = stories.length
+  const storyLoopOn = friendsStoryAutoOn(stories.length) && !isEditMode
+  const storyCols = storyLoopOn ? storyLoopCols * 2 : Math.max(1, storyLoopCols)
   const byId = new Map(sources.map((source) => [source.id, source]))
+  const painted = useMemo(() => {
+    const one = sources.map((source, index) => ({
+      source,
+      copy: 0,
+      index,
+      railCol: Math.floor(index / 2) + 1,
+    }))
+    if (!loopOn) return one
+    return [
+      ...one,
+      ...sources.map((source, index) => ({
+        source,
+        copy: 1,
+        index,
+        railCol: loopCols + Math.floor(index / 2) + 1,
+      })),
+    ]
+  }, [loopCols, loopOn, sources])
+  const paintedStories = useMemo(() => {
+    const one = stories.map((item, index) => ({
+      item,
+      copy: 0,
+      index,
+      railCol: index + 1,
+    }))
+    if (!storyLoopOn) return one
+    return [
+      ...one,
+      ...stories.map((item, index) => ({
+        item,
+        copy: 1,
+        index,
+        railCol: storyLoopCols + index + 1,
+      })),
+    ]
+  }, [stories, storyLoopCols, storyLoopOn])
+  const siteCruise = usePhantasiRailCruise(
+    sitesApiRef,
+    sitesViewRef,
+    loopOn,
+    loopCols,
+  )
+  const storyCruise = usePhantasiRailCruise(
+    itemsApiRef,
+    itemsViewRef,
+    storyLoopOn,
+    storyLoopCols,
+  )
 
   usePhantasiRailPan(
     sitesViewRef,
     sitesTrackRef,
     sources.length > 0,
-    siteKey,
+    `${siteKey}:${loopOn ? 'loop' : 'once'}`,
     '.phantasi-site',
     undefined,
-    undefined,
+    sitesApiRef,
     true,
+    undefined,
+    siteCruise.onGrab,
+    siteCruise.onIdle,
+    loopOn ? loopCols : 0,
   )
   usePhantasiRailPan(
     itemsViewRef,
     itemsTrackRef,
     stories.length > 0,
-    itemKey,
+    `${itemKey}:${storyLoopOn ? 'loop' : 'once'}`,
     '.phantasi-story',
     undefined,
-    undefined,
+    itemsApiRef,
     true,
+    undefined,
+    storyCruise.onGrab,
+    storyCruise.onIdle,
+    storyLoopOn ? storyLoopCols : 0,
   )
 
   const activate = (source: PhantasiSource) => {
@@ -116,14 +182,14 @@ export default function PhantasiFriends({
             } as CSSProperties
           }
         >
-        {sources.map((source, index) => {
+        {painted.map(({ source, copy, index, railCol }) => {
           const latest = source.recent_items?.[0] ?? null
           return (
             <SiteCard
-              key={source.id}
+              key={`${source.id}:${copy}`}
               id={source.id}
-              railCol={Math.floor(index / 2) + 1}
-              arrive={index < 8 ? index : undefined}
+              railCol={railCol}
+              arrive={copy === 0 && index < 8 ? index : undefined}
               name={source.name}
               description={source.description?.trim() || ''}
               icon={getIconUrl(source.icon)}
@@ -134,10 +200,11 @@ export default function PhantasiFriends({
                   ? phantasiRelativeTime(latest.published_at, times, locale)
                   : ''
               }
+              styleTags={source.ai_style_tags}
               editing={isEditMode}
               picked={selectedIds?.has(source.id)}
               ink={normalizeThemeColor(source.theme_color)}
-              emptyLabel={t.phantasi.noArticles}
+              emptyLabel={isSiteSource(source) ? undefined : t.phantasi.noArticles}
               editLabel={t.phantasi.editSource}
               onActivate={() => activate(source)}
               onEdit={
@@ -162,19 +229,19 @@ export default function PhantasiFriends({
               data-phantasi-rail-track="items"
               style={
                 {
-                  '--phantasi-story-cols': Math.max(1, stories.length),
+                  '--phantasi-story-cols': storyCols,
                 } as CSSProperties
               }
             >
-              {stories.map((item, index) => (
+              {paintedStories.map(({ item, copy, index, railCol }) => (
                 <PhantasiStory
-                  key={item.id}
+                  key={`${item.id}:${copy}`}
                   item={item}
                   times={times}
                   locale={locale}
                   labels={t.phantasi}
-                  railCol={index + 1}
-                  arrive={index < 8 ? index : undefined}
+                  railCol={railCol}
+                  arrive={copy === 0 && index < 8 ? index : undefined}
                   onOpen={() => openArticle(item)}
                   onPeek={() => onPeekItem?.(item)}
                   onPeekEnd={onPeekEnd}

@@ -109,6 +109,7 @@
 }
 
 .phantasi-site.is-mix .phantasi-site__article,
+.phantasi-site.is-mix .phantasi-site__tags,
 .phantasi-site.is-mix .phantasi-site__none {
   max-width: 56%;
 }
@@ -383,7 +384,7 @@ html.dark .phantasi-site__unread {
   color: color-mix(in srgb, var(--site-ink, var(--phantasi-fg-soft)) 62%, white);
 }
 
-.phantasi-site button.phantasi-site__article,
+.phantasi-site__article,
 .phantasi-site__none {
   display: flex;
   position: relative;
@@ -402,11 +403,6 @@ html.dark .phantasi-site__unread {
   font-weight: 450;
   line-height: 1.3;
   text-align: left;
-  cursor: pointer;
-}
-
-.phantasi-site__none {
-  cursor: default;
 }
 
 .phantasi-site__article-title {
@@ -428,8 +424,35 @@ html.dark .phantasi-site__unread {
   white-space: nowrap;
 }
 
-.phantasi-site button.phantasi-site__article:hover {
-  color: var(--phantasi-fg-soft);
+.phantasi-site__tags {
+  display: flex;
+  position: relative;
+  z-index: 1;
+  align-items: center;
+  gap: 0.28rem;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+}
+
+.phantasi-site__tag {
+  flex: 0 1 auto;
+  overflow: hidden;
+  max-width: 36%;
+  min-width: 0;
+  padding: 0.08rem 0.34rem 0.06rem;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--site-ink, var(--phantasi-fg-soft)) 14%,
+    transparent
+  );
+  color: var(--site-ink, var(--phantasi-fg-dim));
+  font-size: 0.625rem;
+  font-weight: 550;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .phantasi-feeds__items,
@@ -937,6 +960,12 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* 朋友们没有轨上选中，不要套订阅墙未聚焦的默认灰。 */
+.phantasi-friends .phantasi-site,
+.phantasi-friends .phantasi-site:hover {
+  opacity: 1;
 }
 
 .phantasi-friends__sites {

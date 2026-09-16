@@ -26,8 +26,17 @@ export function workbenchHomeIsEmpty(
   noteCount: number,
   feedCount: number,
   mediaCount = 0,
+  reviewCount = 0,
 ): boolean {
-  return noteCount === 0 && feedCount === 0 && mediaCount === 0
+  return (
+    noteCount === 0 && feedCount === 0 && mediaCount === 0 && reviewCount === 0
+  )
+}
+
+export function workbenchPendingReviews<T extends { status: string }>(
+  rows: readonly T[],
+): T[] {
+  return rows.filter((row) => row.status === 'pending')
 }
 
 export function workbenchHomeDrafts<

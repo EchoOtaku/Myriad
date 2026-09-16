@@ -66,8 +66,8 @@ jobs:
       # need a database — they were simply never wired into CI, so ~900 of them
       # had never run here.
       #
-      # The one `#[ignore]`d test is a manual asset-reprocessing utility driven
-      # by env vars; leaving it ignored is correct.
+      # Opt-in database scenarios run in the schema-drift job below. Live-model
+      # probes and manual asset reprocessing remain excluded from this suite.
       - name: Workspace tests
         run: cargo test --workspace --all-targets --locked
       - name: Clippy
@@ -215,6 +215,7 @@ jobs:
         run: |
           createdb myriad_work_loop_test
           cargo test -p myriad-backend --locked postgres_fencing_recovery_and_observation_driven_execution -- --ignored --nocapture
+          cargo test -p myriad-backend --locked postgres_work_process_recovery_and_competing_resumes -- --ignored --nocapture
 
   dependency-audit:
     name: Dependency vulnerability scan

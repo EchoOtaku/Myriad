@@ -108,8 +108,6 @@ export function playPhantasiSurfaceExit(root: HTMLElement | null): {
 export function playPhantasiSurfaceEnter(root: HTMLElement | null): void {
   const nodes = collectPhantasiSurfaceNodes(root)
   for (const [index, el] of nodes.entries()) {
-    // 订阅轨的卡片已由 FLIP 接管；舞台只负责标题等外围元素。
-    if (el.matches('.phantasi-site, .phantasi-story') && el.closest('.phantasi-feeds.is-sites-flipping')) continue
     for (const animation of el.getAnimations()) animation.cancel()
     const { opacity, transform, visibility, display } = getComputedStyle(el)
     if (visibility === 'hidden' || display === 'none' || Number(opacity) === 0 || el.getClientRects().length === 0) continue
@@ -123,7 +121,6 @@ export function playPhantasiSurfaceEnter(root: HTMLElement | null): void {
       easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
       fill: 'both',
     })
-    // 交还 hover / FLIP 对 transform 的控制权。
     void animation.finished.then(() => animation.cancel(), () => {})
   }
 }

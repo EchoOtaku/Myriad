@@ -6,6 +6,7 @@ import {
   collectWorkbenchNoteAuthors,
   collectWorkbenchNoteTopics,
   filterWorkbenchComments,
+  filterWorkbenchReviews,
   filterWorkbenchMedia,
   filterWorkbenchNotes,
   formatWorkbenchBytes,
@@ -19,6 +20,36 @@ import {
   workbenchNoteStatusKey,
   workbenchNoteWhen,
 } from './workbench.ts'
+
+describe('filterWorkbenchReviews', () => {
+  it('按状态、站名和申请人筛', () => {
+    const rows = [
+      {
+        site_name: '甲站',
+        site_url: 'https://a.example',
+        feed_url: 'https://a.example/rss',
+        applicant_name: 'Ada',
+        status: 'pending',
+      },
+      {
+        site_name: '乙站',
+        site_url: 'https://b.example',
+        message: '请收录',
+        applicant_email: 'bob@example.com',
+        status: 'approved',
+      },
+    ]
+    assert.equal(filterWorkbenchReviews(rows, '', 'pending').length, 1)
+    assert.deepEqual(
+      filterWorkbenchReviews(rows, '甲', 'all').map((row) => row.site_name),
+      ['甲站'],
+    )
+    assert.deepEqual(
+      filterWorkbenchReviews(rows, 'bob', 'all').map((row) => row.site_name),
+      ['乙站'],
+    )
+  })
+})
 
 describe('filterWorkbenchComments', () => {
   it('按正文、摘录、文章和作者筛', () => {
@@ -442,6 +473,7 @@ describe('resolveWorkbenchPane', () => {
     assert.equal(resolveWorkbenchPane('media'), 'media')
     assert.equal(resolveWorkbenchPane('sources'), 'sources')
     assert.equal(resolveWorkbenchPane('add'), 'add')
+    assert.equal(resolveWorkbenchPane('topics'), 'topics')
     assert.equal(resolveWorkbenchPane('rsshub'), 'rsshub')
     assert.equal(resolveWorkbenchPane('notesIo'), 'notesIo')
     assert.equal(resolveWorkbenchPane('feedsIo'), 'feedsIo')
@@ -454,6 +486,7 @@ describe('resolveWorkbenchPane', () => {
     assert.equal(resolveWorkbenchPane('list'), 'sources')
     assert.equal(resolveWorkbenchPane('notes'), 'notes')
     assert.equal(resolveWorkbenchPane('comments'), 'comments')
+    assert.equal(resolveWorkbenchPane('reviews'), 'reviews')
     assert.equal(resolveWorkbenchPane('noteCategories'), 'noteCategories')
     assert.equal(resolveWorkbenchPane('sourceCategories'), 'sourceCategories')
     assert.equal(resolveWorkbenchPane('categories'), 'noteCategories')

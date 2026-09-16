@@ -35,6 +35,18 @@ function turnStackSlot(slot: StackSlot): StackSlot {
   return 'front'
 }
 
+function listedStyleTags(tags?: readonly string[] | null): string[] {
+  if (!tags?.length) return []
+  const listed: string[] = []
+  for (const raw of tags) {
+    const tag = raw.trim()
+    if (!tag) continue
+    listed.push(tag)
+    if (listed.length >= 3) break
+  }
+  return listed
+}
+
 function padStackFaces(faces: readonly SiteStackFace[]): SiteStackFace[] {
   const shown = faces.slice(0, STACK_SIZE)
   while (shown.length < STACK_SIZE) {
@@ -166,6 +178,7 @@ function SiteCardInner({
   unread,
   latestTitle,
   latestWhen,
+  styleTags,
   on,
   cover,
   editing,
@@ -174,7 +187,6 @@ function SiteCardInner({
   emptyLabel,
   editLabel,
   onActivate,
-  onOpenLatest,
   onEdit,
   onIconLoad,
   arrive,
@@ -189,15 +201,15 @@ function SiteCardInner({
   unread?: number
   latestTitle?: string
   latestWhen?: string
+  styleTags?: readonly string[] | null
   on?: boolean
   cover?: string | null
   editing?: boolean
   picked?: boolean
   ink?: string | null
-  emptyLabel: string
+  emptyLabel?: string
   editLabel?: string
   onActivate: (id: number | string) => void
-  onOpenLatest?: (id: number | string) => void
   onEdit?: (id: number | string) => void
   onIconLoad?: (img: HTMLImageElement) => void
   arrive?: number
@@ -205,6 +217,7 @@ function SiteCardInner({
   tone?: 'mix'
   stack?: readonly SiteStackFace[]
 }) {
+  const tags = listedStyleTags(styleTags)
   return (
     <div
       data-rail-id={id}
@@ -281,24 +294,24 @@ function SiteCardInner({
           <span className="phantasi-site__dek">{description}</span>
         ) : null}
       </button>
-      {cover ? null : latestTitle ? (
-        <button
-          type="button"
-          className="phantasi-site__article"
-          onClick={(event) => {
-            event.stopPropagation()
-            if (onOpenLatest) onOpenLatest(id)
-            else onActivate(id)
-          }}
-        >
+      {cover ? null : tags.length > 0 ? (
+        <span className="phantasi-site__tags">
+          {tags.map((tag) => (
+            <span key={tag} className="phantasi-site__tag">
+              {tag}
+            </span>
+          ))}
+        </span>
+      ) : latestTitle ? (
+        <span className="phantasi-site__article">
           <span className="phantasi-site__article-title">{latestTitle}</span>
           {latestWhen ? (
             <span className="phantasi-site__when">{latestWhen}</span>
           ) : null}
-        </button>
-      ) : (
+        </span>
+      ) : emptyLabel ? (
         <span className="phantasi-site__none">{emptyLabel}</span>
-      )}
+      ) : null}
     </div>
   )
 }

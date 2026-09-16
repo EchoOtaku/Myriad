@@ -483,7 +483,10 @@ mod tests {
                 let id = if mode == "wrong_id" && method == "tools/call" { json!("other") } else { message["id"].clone() };
                 let result = match method {
                     "initialize" => json!({"protocolVersion":PROTOCOL_VERSION,"capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1"}}),
+                    "tools/list" if mode.starts_with("structured") => json!({"tools":[{"name":"echo","inputSchema":{"type":"object"},"outputSchema":{"type":"object","required":["rows"],"properties":{"rows":{"type":"array"}}}}]}),
                     "tools/list" => json!({"tools":[{"name":"echo","inputSchema":{"type":"object"}}]}),
+                    _ if mode == "structured" => json!({"content":[{"type":"text","text":"human summary"}],"structuredContent":{"rows":[{"id":7}],"nextCursor":"page-2"}}),
+                    _ if mode == "structured-error" => json!({"content":[{"type":"text","text":"failed"}],"structuredContent":{"rows":[]},"isError":true}),
                     _ => json!({"content":[{"type":"text","text":"ok"}]}),
                 };
                 let encoded = json!({"jsonrpc":"2.0", "id":id,"result":result}).to_string();
@@ -534,6 +537,44 @@ mod tests {
                 assert_eq!(session, "fixture-session");
             }
             assert_eq!(seen.last().unwrap().0, "DELETE");
+        }
+    }
+
+    #[tokio::test]
+    async fn structured_tool_results_survive_transport_and_errors_stay_errors() {
+        for mode in ["structured", "structured-error"] {
+            let fixture = fixture(mode).await;
+            let config = crate::config::validate_config(
+                serde_json::from_value(
+                    json!({"servers":[{"id":"gateway","transport":"gateway","enabled":true}]}),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .servers
+            .remove(0);
+            let mut server = crate::server::McpServer::new(
+                config,
+                crate::connection::RuntimeOptions {
+                    allow_stdio: false,
+                    gateway: Some(fixture.connection.clone()),
+                },
+            );
+            server.start().await.unwrap();
+            assert_eq!(
+                server.tools()[0].output_schema.as_ref().unwrap()["required"],
+                json!(["rows"])
+            );
+            let result = server.call_tool("echo", json!({})).await;
+            if mode == "structured" {
+                assert_eq!(
+                    serde_json::from_str::<Value>(&result.unwrap()).unwrap(),
+                    json!({"rows":[{"id":7}],"nextCursor":"page-2"})
+                );
+            } else {
+                assert!(result.is_err());
+            }
+            server.terminate().await;
         }
     }
 

@@ -9,13 +9,18 @@ import {
   extendPaintedSlots,
   FEEDS_ARTICLE_MAX,
   FRIENDS_STORY_MAX,
+  isAggregateFeedId,
   isInboxFeedSource,
   isLatestFeedId,
+  isTopicFeedId,
   jumpFeedSpan,
   LATEST_FEED_ID,
   LATEST_FEED_STACK,
   latestFeedStackFaces,
   latestFeedStories,
+  railGroupSourceCount,
+  topicFeedId,
+  topicFeedStories,
   stackFaceWindow,
   latestStoryPreview,
   storyRailGroup,
@@ -28,6 +33,7 @@ import {
   stitchStoriesBySources,
   storiesAreFresh,
   storiesForSource,
+  shuffleBySeed,
   storiesFromSources,
   storyColumnLeads,
   storyColumnShift,
@@ -73,6 +79,12 @@ describe('toFeedStory', () => {
     assert.equal(isLatestFeedId(-1), true)
     assert.equal(isLatestFeedId('-1'), true)
     assert.equal(isLatestFeedId(8), false)
+    assert.equal(topicFeedId(0), -2)
+    assert.equal(topicFeedId(1), -3)
+    assert.equal(isTopicFeedId(-2), true)
+    assert.equal(isTopicFeedId(-1), false)
+    assert.equal(isAggregateFeedId(-3), true)
+    assert.equal(isAggregateFeedId(8), false)
     assert.equal(isInboxFeedSource({ source_type: 'rss' }), true)
     assert.equal(isInboxFeedSource({ source_type: 'note' }), false)
     assert.equal(isInboxFeedSource({ source_type: 'link' }), false)
@@ -183,6 +195,91 @@ describe('latestFeedStories', () => {
   })
 })
 
+describe('topicFeedStories', () => {
+  it('只收该主题，rail_group 标成主题卡，空主题不出卡列', () => {
+    const rustId = topicFeedId(0)
+    const sources = [
+      makeSource({
+        id: 8,
+        name: '甲',
+        recent_items: [
+          makePreview({
+            id: 1,
+            title: '旧 Rust',
+            published_at: 10,
+            topic: 'Rust',
+          }),
+          makePreview({
+            id: 4,
+            title: 'AI 文',
+            published_at: 40,
+            topic: 'AI',
+          }),
+        ],
+      }),
+      makeSource({
+        id: 9,
+        name: '乙',
+        recent_items: [
+          makePreview({
+            id: 2,
+            title: '新 Rust',
+            published_at: 20,
+            topic: 'Rust',
+          }),
+        ],
+      }),
+      makeSource({
+        id: 3,
+        name: '笔记',
+        source_type: 'note',
+        recent_items: [
+          makePreview({
+            id: 9,
+            title: '笔记 Rust',
+            published_at: 90,
+            topic: 'Rust',
+          }),
+        ],
+      }),
+    ]
+    const stories = topicFeedStories(sources, new Map(), 'Rust', rustId)
+    assert.deepEqual(
+      stories.map((story) => ({
+        id: story.id,
+        title: story.title,
+        source_id: story.source_id,
+        rail_group: story.rail_group,
+      })),
+      [
+        {
+          id: 2,
+          title: '新 Rust',
+          source_id: 9,
+          rail_group: rustId,
+        },
+        {
+          id: 1,
+          title: '旧 Rust',
+          source_id: 8,
+          rail_group: rustId,
+        },
+      ],
+    )
+    assert.equal(railGroupSourceCount(stories, rustId), 2)
+    assert.deepEqual(topicFeedStories(sources, new Map(), '  ', rustId), [])
+    const mix = latestFeedStories(sources, new Map())
+    const rest = stitchStoriesBySources(sources, new Map(), 0, 1)
+    const slots = storyRailSlots([...mix, ...stories, ...rest])
+    assert.deepEqual(sourceColumnStarts(slots).map((block) => block.id), [
+      LATEST_FEED_ID,
+      rustId,
+      8,
+      9,
+    ])
+  })
+})
+
 describe('latestFeedStackFaces', () => {
   it('混排先露的源在前，笔记和入口型不进，窗口按偏移轮', () => {
     const sources = [
@@ -282,6 +379,26 @@ describe('storiesFromSources', () => {
     assert.deepEqual(
       storiesFromSources(pool, 0.3).map((story) => story.id),
       storiesFromSources(pool, 0.3).map((story) => story.id),
+    )
+  })
+})
+
+describe('shuffleBySeed', () => {
+  const items = [1, 2, 3, 4, 5].map((id) => ({ id }))
+
+  it('同一颗种子顺序稳定，集合不变', () => {
+    const once = shuffleBySeed(items, 0.42).map((item) => item.id)
+    assert.deepEqual(
+      shuffleBySeed(items, 0.42).map((item) => item.id),
+      once,
+    )
+    assert.deepEqual([...once].toSorted((a, b) => a - b), [1, 2, 3, 4, 5])
+  })
+
+  it('换种子会换顺序', () => {
+    assert.notDeepEqual(
+      shuffleBySeed(items, 0.42).map((item) => item.id),
+      shuffleBySeed(items, 0.91).map((item) => item.id),
     )
   })
 })

@@ -1,7 +1,7 @@
 use super::*;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Schema, Statement};
 
-fn checkpoint() -> Checkpoint {
+pub(super) fn checkpoint() -> Checkpoint {
     let request = UserRequest {
         raw_input: "Compare the time in Tokyo and UTC".into(),
         timestamp: chrono::Utc::now(),
@@ -164,10 +164,8 @@ async fn failed_discovery_does_not_partially_expand_the_tool_catalog() {
     assert!(state.selected.is_empty());
 }
 
-/// Uses an isolated PostgreSQL database; never falls back to the application's DB.
-#[tokio::test]
-#[ignore = "requires MYRIAD_WORK_TEST_DATABASE_URL pointing to myriad_work_loop_test"]
-async fn postgres_fencing_recovery_and_observation_driven_execution() {
+/// Shared, explicit test database; never falls back to the application's DB.
+pub(super) async fn test_database() -> sea_orm::DatabaseConnection {
     let url =
         std::env::var("MYRIAD_WORK_TEST_DATABASE_URL").expect("explicit disposable database URL");
     let db = sea_orm::Database::connect(url).await.unwrap();
@@ -203,6 +201,14 @@ async fn postgres_fencing_recovery_and_observation_driven_execution() {
             .await
             .unwrap();
     }
+    db
+}
+
+/// Uses an isolated PostgreSQL database; never falls back to the application's DB.
+#[tokio::test]
+#[ignore = "requires MYRIAD_WORK_TEST_DATABASE_URL pointing to myriad_work_loop_test"]
+async fn postgres_fencing_recovery_and_observation_driven_execution() {
+    let db = test_database().await;
     let mut state = checkpoint();
     store::save(&db, &mut state).await.unwrap();
     assert!(

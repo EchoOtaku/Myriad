@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 import type { CommentItem } from '../../../types/phantasi'
 import type { ManagedListItem } from '../../settings/ManagedList'
-import { LuMessageSquare } from '@lib/icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { InputItem, ManagedList } from '../../settings'
 import { filterWorkbenchComments } from '../logic/workbench'
 import { noteScheduleLabel } from '../notes/noteBoard'
+import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
 import { listSelectChrome, useListSelection } from '../useListSelection'
 import { WorkbenchPage } from './PhantasiWorkbenchChrome'
 
@@ -131,7 +131,7 @@ export function WorkbenchCommentsPane({
   return (
     <WorkbenchPage
       title={phantasi.workbenchComments}
-      icon={<LuMessageSquare />}
+      icon={<PhantasiWorkbenchIcon kind="comments" />}
       back={back}
       guide={guide}
       guidePath={guidePath}

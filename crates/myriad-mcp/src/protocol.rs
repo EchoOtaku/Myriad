@@ -60,6 +60,8 @@ pub struct McpToolDef {
     pub description: String,
     #[serde(default = "default_schema")]
     pub input_schema: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
     /// 工具自述的行为提示；老 server 不返回时为 `None`
     #[serde(default)]
     pub annotations: Option<McpToolAnnotations>,
@@ -126,6 +128,8 @@ pub struct McpToolResultContent {
 #[serde(rename_all = "camelCase")]
 pub struct McpToolCallResult {
     pub content: Vec<McpToolResultContent>,
+    #[serde(default)]
+    pub structured_content: Option<Value>,
     #[serde(default)]
     pub is_error: bool,
 }

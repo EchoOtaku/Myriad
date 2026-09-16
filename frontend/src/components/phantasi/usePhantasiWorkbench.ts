@@ -1,6 +1,6 @@
 import type { MediaAsset } from '../../services/mediaApi'
 import type { CommentItem } from '../../services/phantasiApi'
-import type { PhantasiNoteDoc } from '../../types/phantasi'
+import type { PhantasiNoteDoc, PhantasiSourceApplication } from '../../types/phantasi'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
 import { loadNoteDocs } from './pageData'
@@ -19,19 +19,27 @@ export function usePhantasiWorkbench(
     mediaUploadFailed: string
     mediaDeleteFailed: string
     commentDeleteFailed: string
+    reviewApproveFailed: string
+    reviewRejectFailed: string
+    reviewDeleteFailed: string
   },
   setError: (message: string) => void,
 ) {
   const [docs, setDocs] = useState<PhantasiNoteDoc[]>([])
   const [media, setMedia] = useState<MediaAsset[]>([])
   const [comments, setComments] = useState<CommentItem[]>([])
+  const [applications, setApplications] = useState<PhantasiSourceApplication[]>(
+    [],
+  )
   const [notesLoading, setNotesLoading] = useState(false)
   const [mediaLoading, setMediaLoading] = useState(false)
   const [commentsLoading, setCommentsLoading] = useState(false)
+  const [applicationsLoading, setApplicationsLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const notesTurn = useRef(new RequestTurn())
   const mediaTurn = useRef(new RequestTurn())
   const commentsTurn = useRef(new RequestTurn())
+  const applicationsTurn = useRef(new RequestTurn())
   const labelsRef = useRef(labels)
   labelsRef.current = labels
 
@@ -109,6 +117,31 @@ export function usePhantasiWorkbench(
     void loadComments()
     return () => commentsTurn.current.cancel()
   }, [docsEpoch, loadComments])
+
+  const loadApplications = useCallback(async () => {
+    if (!enabled) {
+      setApplications([])
+      setApplicationsLoading(false)
+      return
+    }
+    const signal = applicationsTurn.current.begin()
+    setApplicationsLoading(true)
+    try {
+      const next = await phantasiApi.listSourceApplications({ signal })
+      if (!signal.aborted) setApplications(next.applications ?? [])
+    } catch (err) {
+      if (signal.aborted) return
+      setError(userFacingError(err, labelsRef.current.loadFailed))
+      setApplications([])
+    } finally {
+      if (!signal.aborted) setApplicationsLoading(false)
+    }
+  }, [enabled, setError])
+
+  useEffect(() => {
+    void loadApplications()
+    return () => applicationsTurn.current.cancel()
+  }, [docsEpoch, loadApplications])
 
   const removeNotes = useCallback(
     async (docs: PhantasiNoteDoc[]): Promise<boolean> => {
@@ -236,22 +269,99 @@ export function usePhantasiWorkbench(
     [setError],
   )
 
+  const approveApplication = useCallback(
+    async (id: number) => {
+      setBusy(true)
+      try {
+        const next = await phantasiApi.approveSourceApplication(id)
+        setApplications((prev) =>
+          prev.map((row) => (row.id === id ? next.application : row)),
+        )
+        return true
+      } catch (err) {
+        setError(userFacingError(err, labelsRef.current.reviewApproveFailed))
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [setError],
+  )
+
+  const rejectApplication = useCallback(
+    async (id: number) => {
+      setBusy(true)
+      try {
+        const next = await phantasiApi.rejectSourceApplication(id)
+        setApplications((prev) =>
+          prev.map((row) => (row.id === id ? next.application : row)),
+        )
+      } catch (err) {
+        setError(userFacingError(err, labelsRef.current.reviewRejectFailed))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [setError],
+  )
+
+  const removeApplications = useCallback(
+    async (ids: number[]) => {
+      if (ids.length === 0) return
+      setBusy(true)
+      try {
+        const results = await Promise.allSettled(
+          ids.map(async (id) => {
+            await phantasiApi.deleteSourceApplication(id)
+            return id
+          }),
+        )
+        const dropped = new Set(
+          results.flatMap((result) =>
+            result.status === 'fulfilled' ? [result.value] : [],
+          ),
+        )
+        if (dropped.size > 0) {
+          setApplications((prev) => prev.filter((row) => !dropped.has(row.id)))
+        }
+        const failedIds = ids.filter((_, index) => results[index]?.status === 'rejected')
+        if (failedIds.length > 0) {
+          const failed = results.find((result) => result.status === 'rejected')
+          const detail = userFacingError(
+            failed && failed.status === 'rejected' ? failed.reason : null,
+            labelsRef.current.reviewDeleteFailed,
+          )
+          setError(`${detail}: #${failedIds.join('、#')}`)
+        }
+      } finally {
+        setBusy(false)
+      }
+    },
+    [setError],
+  )
+
   return {
     docs,
     media,
     comments,
+    applications,
     notesLoading,
     mediaLoading,
     commentsLoading,
+    applicationsLoading,
     busy,
     removeNote,
     removeNotes,
     removeComments,
+    approveApplication,
+    rejectApplication,
+    removeApplications,
     unschedule,
     upload,
     removeMedia,
     reloadNotes: loadNotes,
     reloadMedia: loadMedia,
     reloadComments: loadComments,
+    reloadApplications: loadApplications,
   }
 }

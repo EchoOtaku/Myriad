@@ -33,6 +33,7 @@ import {
 } from '../components/phantasi/ui/PhantasiPeekAir'
 import { clearPhantasiStoryPeeks } from '../components/phantasi/ui/StoryCard'
 import {
+  filterItemsByQuery,
   filterLaneItems,
   showsFilterLane,
 } from '../components/phantasi/logic/board'
@@ -45,6 +46,7 @@ import { topicDisplayName } from '../components/phantasi/logic/topics'
 import { PhantasiViewLane } from '../components/phantasi/skin/PhantasiChip'
 import { AnimatePresence, PhantasiPage } from '../components/phantasi/skin/PhantasiPage'
 import {
+  PhantasiSearch,
   phantasiSearchInputRef,
   showPhantasiSearchGuide,
 } from '../components/phantasi/ui/PhantasiSearch'
@@ -279,7 +281,24 @@ function PhantasiSubjectPage() {
     return () => cancelAnimationFrame(frame)
   }, [selectedId])
 
-  const listItems = filterLaneItems(route.viewMode, list.items, EMPTY_ITEMS)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [boardHits, setBoardHits] = useState(0)
+  const listItems = useMemo(
+    () =>
+      filterItemsByQuery(
+        filterLaneItems(route.viewMode, list.items, EMPTY_ITEMS),
+        searchQuery,
+      ),
+    [list.items, route.viewMode, searchQuery],
+  )
+  const filterOpen = showsFilterLane(
+    route.viewMode,
+    !!route.selectedTopic,
+    isAuthenticated,
+  )
+  const showSearch = route.viewMode !== 'workbench'
+  const searchHits = filterOpen ? listItems.length : boardHits
+  const searchMiss = !!searchQuery.trim() && searchHits === 0
 
   const topicFeedMode = useMemo(() => {
     if (!route.selectedTopic) return undefined
@@ -414,6 +433,18 @@ function PhantasiSubjectPage() {
   return (
     <PhantasiPage lock>
       <PhantasiPeekAir face={peekFace} />
+      {showSearch ? (
+        <div
+          className="phantasi-search-bar"
+          inert={!!item.selectedItem || notes.noteEditor !== null || undefined}
+        >
+          <PhantasiSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            matchCount={searchHits}
+          />
+        </div>
+      ) : null}
       <PhantasiViewLane
         wave={
           route.viewMode === 'topic-feed'
@@ -468,14 +499,12 @@ function PhantasiSubjectPage() {
             docsEpoch={notes.docsEpoch}
             isAuthenticated={isAuthenticated}
             isAdmin={isAdmin}
+            searchQuery={searchQuery}
+            onSearchHits={setBoardHits}
           />
         )}
 
-        {showsFilterLane(
-          route.viewMode,
-          !!route.selectedTopic,
-          isAuthenticated,
-        ) ? (
+        {filterOpen ? (
           <PhantasiFilterLane
             topicFeedMode={
               route.viewMode === 'topic-feed' ? topicFeedMode : undefined
@@ -492,6 +521,7 @@ function PhantasiSubjectPage() {
             onItemSelectToggle={starred.toggle}
             onPeekItem={handlePeekItem}
             onPeekEnd={handlePeekEnd}
+            searchMiss={searchMiss}
           />
         ) : null}
       </PhantasiViewLane>

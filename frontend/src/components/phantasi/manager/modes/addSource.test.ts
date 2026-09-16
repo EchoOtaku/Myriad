@@ -9,8 +9,10 @@ import {
   canSubmitAdd,
   faviconForUrl,
   isOpmlFilename,
+  filterTopicNames,
   pickAddKind,
   resolveAddSourceType,
+  resolveOpenTopic,
   toAddSourceInput,
 } from './addSource.ts'
 
@@ -78,6 +80,18 @@ describe('pickAddKind / labels / opml', () => {
     assert.equal(isOpmlFilename('a.opml'), true)
     assert.equal(isOpmlFilename('a.xml'), true)
     assert.equal(isOpmlFilename('a.txt'), false)
+  })
+})
+
+describe('filterTopicNames / resolveOpenTopic', () => {
+  it('先命中已有主题，一个匹配就用它', () => {
+    const names = ['Rust', 'AI']
+    assert.deepEqual(filterTopicNames(names, ''), names)
+    assert.deepEqual(filterTopicNames(names, 'ru'), ['Rust'])
+    assert.equal(resolveOpenTopic('ru', names), 'Rust')
+    assert.equal(resolveOpenTopic('AI', names), 'AI')
+    assert.equal(resolveOpenTopic('  新主题  ', names), '新主题')
+    assert.equal(resolveOpenTopic('   ', names), null)
   })
 })
 

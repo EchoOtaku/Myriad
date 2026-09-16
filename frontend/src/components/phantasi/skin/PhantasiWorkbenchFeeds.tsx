@@ -2,13 +2,15 @@
 
 import type { ReactElement, ReactNode } from 'react'
 import type { SourceSortMode, WorkbenchPane } from '../logic/board'
-import { LuPlus, LuRefreshCw, LuTag } from '@lib/icons'
+import { LuChevronLeft, LuPlus, LuRefreshCw, LuTag } from '@lib/icons'
 import { cloneElement, isValidElement, useEffect, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { InputItem, SegmentedControl } from '../../settings'
 import { SettingItemWrapper } from '../../settings/items/SettingItemWrapper'
 import { usePhantasiGuides } from '../guides/usePhantasiGuides'
+import { isFriendLinkCategory, isMineCategory } from '../constants'
 import { readSourceSortMode, writeSourceSortMode } from '../logic/sourceSort'
+import { topicDisplayName } from '../logic/topics'
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
 
@@ -47,6 +49,7 @@ export function WorkbenchFeedsPanes({
   const [sourceQuery, setSourceQuery] = useState('')
   const [sourceRefreshing, setSourceRefreshing] = useState(false)
   const [categoryQuery, setCategoryQuery] = useState('')
+  const [opened, setOpened] = useState<string | null>(null)
   const [sortMode, setSortMode] = useState<SourceSortMode>(readSourceSortMode)
 
   useEffect(() => {
@@ -54,11 +57,19 @@ export function WorkbenchFeedsPanes({
     if (pane !== 'noteCategories' && pane !== 'sourceCategories') {
       setCategoryQuery('')
     }
+    if (
+      pane !== 'noteCategories' &&
+      pane !== 'sourceCategories' &&
+      pane !== 'topics'
+    ) {
+      setOpened(null)
+    }
   }, [pane])
 
   const boundAdmin =
     (pane === 'sources' ||
       pane === 'add' ||
+      pane === 'topics' ||
       pane === 'noteCategories' ||
       pane === 'sourceCategories') &&
     isValidElement(admin)
@@ -67,6 +78,8 @@ export function WorkbenchFeedsPanes({
             query?: string
             refreshingAll?: boolean
             onAdded?: () => void
+            openName?: string | null
+            onOpen?: (name: string | null) => void
           }>,
           {
             query:
@@ -75,9 +88,32 @@ export function WorkbenchFeedsPanes({
                 : sourceQuery,
             refreshingAll: sourceRefreshing,
             onAdded: () => onPane('sources'),
+            openName: opened,
+            onOpen: setOpened,
           },
         )
       : admin
+
+  const backToList = (
+    <button
+      type="button"
+      className="section-header-back phantasi-workbench__parent-back"
+      onClick={() => setOpened(null)}
+      aria-label={t.common.back}
+    >
+      <LuChevronLeft size={18} aria-hidden />
+      <span>{t.common.back}</span>
+    </button>
+  )
+
+  const openedTitle =
+    pane === 'topics'
+      ? topicDisplayName({ key: opened ?? '' }, phantasi)
+      : isFriendLinkCategory(opened)
+        ? phantasi.friendLinks
+        : isMineCategory(opened)
+          ? phantasi.me
+          : opened
 
   return (
     <>
@@ -123,6 +159,12 @@ export function WorkbenchFeedsPanes({
                 onPick={() => onPane('add')}
               />
               <PageAction
+                label={phantasi.topicAggregate}
+                description={phantasi.topicAggregate}
+                icon={<LuTag />}
+                onPick={() => onPane('topics')}
+              />
+              <PageAction
                 label={phantasi.workbenchCategories}
                 description={phantasi.category}
                 icon={<LuTag />}
@@ -166,9 +208,20 @@ export function WorkbenchFeedsPanes({
         </WorkbenchPage>
       ) : null}
 
+      {pane === 'topics' ? (
+        <WorkbenchPage
+          title={opened ? openedTitle || phantasi.topicAggregate : phantasi.topicAggregate}
+          icon={<LuTag />}
+          back={opened ? backToList : backToSources}
+          {...bindGuide('workbench.topics', g.topics)}
+        >
+          {boundAdmin}
+        </WorkbenchPage>
+      ) : null}
+
       {pane === 'noteCategories' || pane === 'sourceCategories' ? (
         <WorkbenchPage
-          title={phantasi.workbenchCategories}
+          title={opened ? openedTitle || phantasi.workbenchCategories : phantasi.workbenchCategories}
           icon={<LuTag />}
           {...bindGuide(
             pane === 'noteCategories'
@@ -176,20 +229,28 @@ export function WorkbenchFeedsPanes({
               : 'workbench.sourceCategories',
             pane === 'noteCategories' ? g.noteCategories : g.sourceCategories,
           )}
-          back={pane === 'noteCategories' ? backToNotes : backToSources}
+          back={
+            opened
+              ? backToList
+              : pane === 'noteCategories'
+                ? backToNotes
+                : backToSources
+          }
           search={
-            <InputItem
-              itemKey="workbench-category-search"
-              label={phantasi.workbenchSearchCategories}
-              value={categoryQuery}
-              onChange={setCategoryQuery}
-              placeholder={phantasi.workbenchSearchCategories}
-              inputType="search"
-              size="sm"
-              layout="vertical"
-              autoComplete="off"
-              className="phantasi-workbench__title-search"
-            />
+            opened ? undefined : (
+              <InputItem
+                itemKey="workbench-category-search"
+                label={phantasi.workbenchSearchCategories}
+                value={categoryQuery}
+                onChange={setCategoryQuery}
+                placeholder={phantasi.workbenchSearchCategories}
+                inputType="search"
+                size="sm"
+                layout="vertical"
+                autoComplete="off"
+                className="phantasi-workbench__title-search"
+              />
+            )
           }
         >
           {boundAdmin}

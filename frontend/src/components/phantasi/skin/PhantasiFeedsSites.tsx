@@ -8,6 +8,7 @@ import {
   getIconUrl,
   normalizeThemeColor,
 } from '../constants'
+import { isSiteSource } from '../logic/board'
 import { LATEST_FEED_ID } from '../logic/feedStories'
 import { SiteCard } from '../ui/SiteCard'
 import { phantasiRelativeTime } from './time'
@@ -68,9 +69,24 @@ export function paintSiteInk(img: HTMLImageElement, fallback: string | null): vo
   }
 }
 
+type MixCard = {
+  id: number
+  name: string
+  description: string
+  latestTitle?: string
+  latestWhen?: string
+  stack: Array<{
+    key: string
+    src?: string | null
+    mark?: string
+    ink?: string | null
+  }>
+}
+
 export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
   sources,
   inbox,
+  mixes = [],
   onId,
   times,
   locale,
@@ -80,23 +96,12 @@ export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
   editLabel,
   canEdit,
   onActivate,
-  onOpenLatest,
   onEdit,
   onIconLoad,
 }: {
   sources: PhantasiSource[]
-  inbox: {
-    name: string
-    description: string
-    latestTitle?: string
-    latestWhen?: string
-    stack: Array<{
-      key: string
-      src?: string | null
-      mark?: string
-      ink?: string | null
-    }>
-  } | null
+  inbox: Omit<MixCard, 'id'> | null
+  mixes?: MixCard[]
   onId: number | null | undefined
   times: TimeTranslations
   locale: string
@@ -106,7 +111,6 @@ export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
   editLabel: string
   canEdit: boolean
   onActivate: (id: number | string) => void
-  onOpenLatest: (id: number | string) => void
   onEdit: (id: number | string) => void
   onIconLoad: (img: HTMLImageElement) => void
 }) {
@@ -116,6 +120,7 @@ export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
         <SiteCard
           key={LATEST_FEED_ID}
           id={LATEST_FEED_ID}
+          arrive={0}
           name={inbox.name}
           description={inbox.description}
           latestTitle={inbox.latestTitle}
@@ -126,16 +131,38 @@ export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
           stack={inbox.stack}
           emptyLabel={emptyLabel}
           onActivate={onActivate}
-          onOpenLatest={inbox.latestTitle ? onOpenLatest : undefined}
           onIconLoad={onIconLoad}
         />
       ) : null}
-      {sources.map((source) => {
+      {mixes.map((mix, index) => {
+        const arrive = (inbox ? 1 : 0) + index
+        return (
+          <SiteCard
+            key={mix.id}
+            id={mix.id}
+            arrive={arrive < 8 ? arrive : undefined}
+            name={mix.name}
+            description={mix.description}
+            latestTitle={mix.latestTitle}
+            latestWhen={mix.latestWhen}
+            on={onId === mix.id}
+            editing={false}
+            tone="mix"
+            stack={mix.stack}
+            emptyLabel={emptyLabel}
+            onActivate={onActivate}
+            onIconLoad={onIconLoad}
+          />
+        )
+      })}
+      {sources.map((source, index) => {
         const latest = source.recent_items?.[0] ?? null
+        const arrive = (inbox ? 1 : 0) + mixes.length + index
         return (
           <SiteCard
             key={source.id}
             id={source.id}
+            arrive={arrive < 8 ? arrive : undefined}
             name={source.name}
             description={source.description?.trim() || ''}
             icon={getIconUrl(source.icon)}
@@ -144,14 +171,14 @@ export const PhantasiFeedsSites = memo(function PhantasiFeedsSites({
             latestWhen={
               latest ? phantasiRelativeTime(latest.published_at, times, locale) : ''
             }
+            styleTags={source.ai_style_tags}
             on={source.id === onId}
             editing={isEditMode}
             picked={selectedIds?.has(source.id)}
             ink={normalizeThemeColor(source.theme_color)}
-            emptyLabel={emptyLabel}
+            emptyLabel={isSiteSource(source) ? undefined : emptyLabel}
             editLabel={editLabel}
             onActivate={onActivate}
-            onOpenLatest={latest ? onOpenLatest : undefined}
             onEdit={canEdit ? onEdit : undefined}
             onIconLoad={onIconLoad}
           />

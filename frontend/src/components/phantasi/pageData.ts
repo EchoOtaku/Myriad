@@ -124,6 +124,14 @@ export async function loadBoardNotes(
   return notes
 }
 
+export async function loadTopicCatalog(
+  signal?: AbortSignal,
+): Promise<{ topics: string[]; cards: string[] }> {
+  const catalog = await phantasiApi.listSubscriptionTopicCatalog()
+  signal?.throwIfAborted()
+  return catalog
+}
+
 export async function loadFeedStories(
   sourceId: number,
   stamp?: number | null,

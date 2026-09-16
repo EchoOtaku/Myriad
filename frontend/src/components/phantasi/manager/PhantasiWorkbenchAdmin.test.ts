@@ -49,6 +49,8 @@ describe('PhantasiWorkbenchAdmin', () => {
     assert.match(src, /workbenchSourceStatus/)
     assert.match(src, /workbench-sources/)
     assert.match(src, /workbench-add/)
+    assert.match(src, /workbench-topics/)
+    assert.match(src, /TopicAggregateField/)
     assert.match(src, /workbench-rsshub/)
     assert.match(src, /workbench-opml/)
     assert.doesNotMatch(src, /formOpen/)

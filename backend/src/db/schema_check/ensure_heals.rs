@@ -1083,6 +1083,42 @@ ON CONFLICT (doc_id, user_id) DO NOTHING;
     Ok(())
 }
 
+/// 友联 / 订阅申请。旧库靠 heal 补表，不新开 folded migration。
+pub(crate) async fn ensure_phantasi_source_applications_table(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS phantasi_source_applications (
+    id SERIAL PRIMARY KEY,
+    kind VARCHAR NOT NULL DEFAULT 'friend',
+    status VARCHAR NOT NULL DEFAULT 'pending',
+    site_name TEXT NOT NULL,
+    site_url TEXT NOT NULL,
+    feed_url TEXT,
+    description TEXT,
+    message TEXT,
+    applicant_name TEXT,
+    applicant_email TEXT,
+    applicant_user_id INTEGER,
+    applicant_ip TEXT,
+    result_source_id INTEGER,
+    review_note TEXT,
+    reviewed_by INTEGER,
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_phantasi_source_applications_status
+    ON phantasi_source_applications (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_phantasi_source_applications_site_url
+    ON phantasi_source_applications (site_url);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
 /// 站点上传/生成媒体目录。外链 `cache_image` 不进。
 pub(crate) async fn ensure_media_assets_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(

@@ -141,10 +141,12 @@ export const PhantasiStoryColumn = memo(({
       {slots.map((slot) => {
         const face = storyCardFace(slot.story, times, locale, labels)
         const showStar = canStar ?? !!onToggleStar
+        const arrive = (slot.column - 1) * 2 + (slot.row - 1)
         return (
           <StoryCard
             key={`${col}:${slot.row}`}
             railId={slot.story.id}
+            arrive={arrive < 8 ? arrive : undefined}
             place={slot}
             railCol={slot.column}
             unreadLabel={labels.unread}

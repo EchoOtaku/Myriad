@@ -13,20 +13,6 @@ pub(super) fn tool_name(id: &str) -> String {
     format!("cap_{readable}_{}", &hash[..12])
 }
 
-pub(super) fn schema(value: &Value) -> Value {
-    match value {
-        Value::Object(object) => Value::Object(
-            object
-                .iter()
-                .filter(|(key, value)| !(key.as_str() == "type" && *value == "any"))
-                .map(|(key, value)| (key.clone(), schema(value)))
-                .collect(),
-        ),
-        Value::Array(values) => Value::Array(values.iter().map(schema).collect()),
-        _ => value.clone(),
-    }
-}
-
 pub(super) fn local_tools() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition { name:"discover_tools".into(), description:"Load the full schemas for up to 12 capability ids from the capability index. They become callable on the next turn. Discover before acting; do not guess parameters.".into(), parameters:json!({"type":"object","properties":{"ids":{"type":"array","items":{"type":"string"},"maxItems":12}},"required":["ids"],"additionalProperties":false}) },
@@ -72,11 +58,13 @@ pub(super) async fn definitions(
     let mut tools = local_tools();
     for id in &state.selected {
         if let Some(cap) = capability::get_capability_by_id(id).await {
-            if capability::capability_covered_by_grants(&cap, Some(granted)) {
+            if capability::capability_covered_by_grants(&cap, Some(granted))
+                && let Ok(schema) = tool_schema::prepare(&cap.input_schema)
+            {
                 tools.push(ToolDefinition {
                     name: tool_name(id),
                     description: format!("{}: {}", id, cap.description),
-                    parameters: schema(&cap.input_schema),
+                    parameters: schema.schema.clone(),
                 });
             }
         }
@@ -94,7 +82,7 @@ pub(super) async fn local_call(
         .into_iter()
         .find(|tool| tool.name == call.name)
         .ok_or("Unknown tool; discover a capability first")?;
-    myriad_json_schema::validate_inline_json_value(&definition.parameters, params)?;
+    tool_schema::prepare(&definition.parameters)?.validate(params)?;
     match call.name.as_str() {
         "discover_tools" => {
             let mut loaded = Vec::new();
@@ -107,9 +95,10 @@ pub(super) async fn local_call(
                 if !capability::capability_covered_by_grants(&cap, Some(granted)) {
                     return Err("Capability is not currently granted".into());
                 }
+                let schema = tool_schema::prepare(&cap.input_schema)?;
                 selected.retain(|value| value != id);
                 selected.push(id.into());
-                loaded.push(json!({"id":id,"tool":tool_name(id),"input":schema(&cap.input_schema),"output":cap.output_schema}));
+                loaded.push(json!({"id":id,"tool":tool_name(id),"input":schema.schema,"output":cap.output_schema}));
             }
             // Bound schema overhead; names are stable when tools are reloaded.
             if selected.len() > 24 {
@@ -191,6 +180,64 @@ Current checklist: {}\nRemaining model turns: {}\n",
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn all_builtin_tools_can_be_discovered_with_bounded_schemas_and_current_grants() {
+        let registry = capability::get_registry().await;
+        let capabilities: Vec<_> = registry.get_all().into_iter().cloned().collect();
+        drop(registry);
+        let granted = capabilities
+            .iter()
+            .flat_map(|cap| cap.required_permissions.clone())
+            .collect();
+        let mut state = super::super::tests::checkpoint();
+        let call = ToolCall {
+            id: "discover".into(),
+            name: "discover_tools".into(),
+            arguments: "{}".into(),
+        };
+        for batch in capabilities.chunks(12) {
+            let ids: Vec<_> = batch.iter().map(|cap| cap.id.clone()).collect();
+            let output = local_call(&mut state, &call, &json!({"ids":ids}), &granted)
+                .await
+                .unwrap();
+            let active = definitions(&state, &granted).await;
+            assert!(state.selected.len() <= 24);
+            assert!(active.len() <= 24 + local_tools().len());
+            for loaded in output["loaded"].as_array().unwrap() {
+                let definition = active
+                    .iter()
+                    .find(|tool| tool.name == loaded["tool"])
+                    .unwrap();
+                assert_eq!(definition.parameters, loaded["input"]);
+            }
+        }
+        let restricted = capabilities
+            .iter()
+            .find(|cap| !cap.required_permissions.is_empty())
+            .unwrap();
+        local_call(&mut state, &call, &json!({"ids":[restricted.id]}), &granted)
+            .await
+            .unwrap();
+        assert!(
+            !definitions(&state, &Default::default())
+                .await
+                .iter()
+                .any(|tool| tool.name == tool_name(&restricted.id))
+        );
+        let before = state.selected.clone();
+        assert!(
+            local_call(
+                &mut state,
+                &call,
+                &json!({"ids":[restricted.id]}),
+                &Default::default()
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(state.selected, before);
+    }
+
     #[test]
     fn provider_tool_names_are_stable_bounded_and_collision_resistant() {
         let a = tool_name("mcp.server.tool-name");

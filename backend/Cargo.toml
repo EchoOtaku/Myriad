@@ -44,6 +44,8 @@ migration = { path = "migrations" }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Native tool schemas validate locally; no network/file reference resolution.
+jsonschema = { version = "0.56.0", default-features = false }
 myriad-tapp-contract = { path = "../crates/tapp-contract" }
 myriad-error = { path = "../crates/myriad-error" }
 myriad-data-key = { path = "../crates/myriad-data-key" }

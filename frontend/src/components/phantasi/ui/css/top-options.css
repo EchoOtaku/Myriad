@@ -1,12 +1,17 @@
-/* 订阅搜索贴在舞台上方，不再走管理岛。 */
+/* 和右上智能岛同一条顶线。 */
+.phantasi-shell .phantasi-search-bar,
 .phantasi-shell .phantasi-feeds__bar {
   --phantasi-tag-h: 3rem;
 
-  position: absolute;
-  top: calc(1rem - var(--page-pad-top) - var(--page-stage-pad));
-  left: 0;
-  right: max(0px, calc(12rem - (100vw - 100%) / 2));
+  position: fixed;
+  top: 1rem;
+  left: max(
+    var(--page-pad-x),
+    calc((100vw - var(--page-max-width)) / 2)
+  );
+  right: auto;
   z-index: 30;
+  display: flex;
   margin: 0;
   padding: 0;
   gap: 0.5rem;

@@ -141,6 +141,17 @@ export function collectWorkbenchCategoryRows(
     })
 }
 
+export function noteMatchesCategory(
+  note: { topic?: string | null },
+  category: string,
+): boolean {
+  const want = canonCategoryName(category)
+  if (!want) return false
+  return phantasiCategoryParts(note.topic).some(
+    (part) => canonCategoryName(part) === want,
+  )
+}
+
 export function categoryMatchesPage(
   row: WorkbenchCategoryRow,
   page: WorkbenchCategoryPage,
