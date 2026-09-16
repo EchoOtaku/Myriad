@@ -278,6 +278,7 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     ensure_phantasi_state_revision(db).await?;
     ensure_phantasi_content_revision(db).await?;
     ensure_phantasi_note_docs_table(db).await?;
+    ensure_note_editor_history(db).await?;
     ensure_phantasi_note_authors_table(db).await?;
     ensure_phantasi_source_applications_table(db).await?;
     ensure_media_assets_table(db).await?;

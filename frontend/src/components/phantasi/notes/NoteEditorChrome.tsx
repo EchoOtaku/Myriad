@@ -132,6 +132,7 @@ interface NoteTopBarProps {
   scheduledAt: number | null
   cloudHint: boolean
   peers: NoteCollabPeer[]
+  collabConnection: 'connecting' | 'connected' | 'reconnecting'
   saving: boolean
   loading: boolean
   onPublish: () => void
@@ -146,6 +147,7 @@ export function NoteTopBar({
   scheduledAt,
   cloudHint,
   peers,
+  collabConnection,
   saving,
   loading,
   onPublish,
@@ -154,6 +156,17 @@ export function NoteTopBar({
   onClose,
 }: NoteTopBarProps) {
   const { t, format, locale } = useI18n()
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (!peers.length) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [peers])
+  const peerLabel = (peer: NoteCollabPeer) => format(
+    peer.lastEditAt != null && now - peer.lastEditAt < 5000 ? t.phantasi.noteCollabTyping : t.phantasi.noteCollabOnline,
+    { name: peer.name || t.phantasi.noteHistoryUnknown },
+  )
   const statusLabel = noteEditorStatus(
     { lastError, status: docStatus, scheduledAt, savedHint: cloudHint },
     {
@@ -182,20 +195,15 @@ export function NoteTopBar({
           >
             {statusLabel}
           </span>
+          {collabConnection !== 'connected' ? <span className="phantasi-note__collab-state" role="status">
+            {collabConnection === 'connecting' ? t.phantasi.noteCollabConnecting : t.phantasi.noteCollabReconnecting}
+          </span> : null}
           {peers.length ? (
-            <div className="phantasi-note__peers">
+            <div className="phantasi-note__peers" aria-live="polite">
               {peers.map((peer) => (
-                <span
-                  key={peer.peerId}
-                  className="phantasi-note__peer"
-                  style={{ '--peer-hue': peerHue(peer.peerId) } as CSSProperties}
-                  title={
-                    peer.name
-                      ? format(t.phantasi.noteCollabNamed, { name: peer.name })
-                      : format(t.phantasi.noteCollabHere, { count: 1 })
-                  }
-                >
-                  {peerInitial(peer)}
+                <span key={peer.peerId} className="phantasi-note__collaborator" title={peerLabel(peer)}>
+                  <span className="phantasi-note__peer" style={{ '--peer-hue': peerHue(peer.peerId) } as CSSProperties} aria-hidden="true">{peerInitial(peer)}</span>
+                  <span>{peerLabel(peer)}</span>
                 </span>
               ))}
             </div>
@@ -969,6 +977,7 @@ export function NoteFootBar({ chars, pane, onPaneChange }: NoteFootBarProps) {
 /* ------------------------------------------------------------------ */
 
 interface NoteSettingsDrawerProps {
+  editorSettings?: React.ReactNode
   open: boolean
   onClose: () => void
   docStatus: NoteEditorDocStatus
@@ -1000,6 +1009,7 @@ interface NoteSettingsDrawerProps {
 
 /** 分类 / 时间 / 封面 / 定时 / 删除。写作时收起来。 */
 export function NoteSettingsDrawer({
+  editorSettings,
   open,
   onClose,
   docStatus,
@@ -1066,6 +1076,7 @@ export function NoteSettingsDrawer({
         />
       </div>
 
+      {editorSettings}
       <NoteSection title={t.phantasi.noteAuthors} hint={authors.length === 0 ? t.phantasi.noteAuthorEmpty : undefined}>
         {authors.length > 0 ? (
           <div className="note-chips">

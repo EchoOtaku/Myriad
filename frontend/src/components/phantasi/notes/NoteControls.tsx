@@ -210,6 +210,7 @@ export function NoteChip({
 }
 
 interface NoteSelectProps<T extends string> {
+  disabled?: boolean
   id?: string
   value: T
   options: { value: T; label: string }[]
@@ -233,6 +234,7 @@ export function NoteSelect<T extends string>({
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
         aria-label={rest['aria-label']}
+        disabled={rest.disabled}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

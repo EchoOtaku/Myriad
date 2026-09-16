@@ -101,3 +101,28 @@ it('retiring a legacy snapshot never deletes a concurrently replaced legacy reco
   NoteRecoveryWriter.consume(old)
   assert.equal(listNoteRecoveryCopies(scope)[0].recovery.fields.contentMd, 'new')
 })
+
+it('reusing a writer for another document never moves or clears the original recovery', () => {
+  const writer = new NoteRecoveryWriter()
+  const fields = { ...base, contentMd: 'same text in distinct documents' }
+  writer.write(scope, fields, base, 1)
+  const other = { userId: 1, docId: 8 }
+  writer.write(other, fields, base, 1)
+  assert.equal(listNoteRecoveryCopies(scope).length, 1)
+  assert.equal(listNoteRecoveryCopies(other).length, 1)
+  writer.clear()
+  assert.equal(listNoteRecoveryCopies(scope).length, 1)
+  assert.equal(listNoteRecoveryCopies(other).length, 0)
+})
+
+it('dismissing a legacy snapshot does not hide a newer snapshot written to that same legacy key', () => {
+  const key = 'phantasi:note-draft:user:1:doc:7'
+  const recovery = { version: 2, fields: { ...base, contentMd: 'old' }, base, revision: 1, savedAt: Date.now() }
+  entries.set(key, JSON.stringify(recovery))
+  const writer = new NoteRecoveryWriter()
+  writer.load(scope)
+  writer.discard()
+  assert.equal(new NoteRecoveryWriter().load(scope), null)
+  entries.set(key, JSON.stringify({ ...recovery, fields: { ...base, contentMd: 'new' } }))
+  assert.equal(new NoteRecoveryWriter().load(scope)?.fields.contentMd, 'new')
+})

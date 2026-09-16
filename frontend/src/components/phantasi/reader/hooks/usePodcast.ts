@@ -320,7 +320,6 @@ export function usePodcast({
       if (podcastDialogues.length > 0) {
         if (engine === 'cloud') {
           if (cloudTtsAvailable === null) {
-            showToastMessage(t.phantasi.checkingCloudTts)
             try {
               const status = await getSpeechStatus()
               if (!isCurrent()) return
@@ -361,7 +360,6 @@ export function usePodcast({
           if (cloudPodcastPlayerRef.current?.hasAudio()) {
             showToastMessage(t.phantasi.switchedToCloudTts)
           } else {
-            showToastMessage(t.phantasi.checkingCloudCache)
             try {
               const cache = await getArticleCacheInfo(sourceId, itemId)
               if (!isCurrent()) return
@@ -543,7 +541,6 @@ export function usePodcast({
         setPodcastCurrentIndex(0)
 
         setCloudTtsLoading(true)
-        showToastMessage(`${voiceName}...`)
 
         try {
           const newHostVoiceId = role === 'host' ? voiceId : hostVoiceId
@@ -673,7 +670,6 @@ export function usePodcast({
                 loaded: 0,
                 total: response.dialogues.length,
               })
-              showToastMessage(t.phantasi.loadingCloudCache)
 
               setHostVoiceId(completeCache.hostVoiceId)
               setGuestVoiceId(completeCache.guestVoiceId)
@@ -682,7 +678,7 @@ export function usePodcast({
                 guestVoiceId: completeCache.guestVoiceId,
               })
 
-              const result = await cloudPodcastPlayerRef.current?.load(
+              await cloudPodcastPlayerRef.current?.load(
                 response.dialogues,
                 {
                   sourceId,
@@ -693,9 +689,6 @@ export function usePodcast({
               )
               if (!isCurrent()) return
 
-              if (result) {
-                showToastMessage(`${t.phantasi.cached}: ${completeCache.voiceName}`)
-              }
               setCloudTtsLoading(false)
             } else {
               setTtsEngine('system')
@@ -717,11 +710,9 @@ export function usePodcast({
                   podcastPlayerRef.current.setVoices(voiceA, voiceB)
                 }
               }
-              showToastMessage(
-                cache.voices.length > 0
-                  ? t.phantasi.cloudCacheIncomplete
-                  : `${response.dialogues.length}`,
-              )
+              if (cache.voices.length > 0) {
+                showToastMessage(t.phantasi.cloudCacheIncomplete)
+              }
             }
           } catch (cacheErr) {
             if (!isCurrent()) return
@@ -749,7 +740,6 @@ export function usePodcast({
                 podcastPlayerRef.current.setVoices(voiceA, voiceB)
               }
             }
-            showToastMessage(`${response.dialogues.length}`)
           }
         } else {
           setTtsEngine('system')
@@ -766,7 +756,6 @@ export function usePodcast({
               podcastPlayerRef.current.setVoices(voiceA, voiceB)
             }
           }
-          showToastMessage(`${response.dialogues.length}`, 3000)
         }
       } else {
         setPodcastError(response.error || t.phantasi.generateFailed)
@@ -806,7 +795,6 @@ export function usePodcast({
 
     setPodcastLoading(true)
     setPodcastError(null)
-    showToastMessage(t.phantasi.regeneratingScript)
 
     try {
       const response = await phantasiaiApi.regeneratePodcastScript(itemId, signal)
@@ -865,7 +853,6 @@ export function usePodcast({
 
     setCloudTtsLoading(true)
     setCloudTtsLoadProgress({ loaded: 0, total: podcastDialogues.length })
-    showToastMessage(t.phantasi.regeneratingCloudVoice)
 
     try {
       const result = await cloudPodcastPlayerRef.current?.load(

@@ -1,7 +1,7 @@
 import type { MutableRefObject } from 'react'
 import type { NoteCollabEvent, NoteCollabPeer } from './noteCollab'
 import type { NoteCloudFields, NoteCloudSaveHandle } from './useNoteCloudSave'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../../services/phantasiApi'
 import { applyCollabPeers } from './noteCollab'
 
@@ -10,7 +10,6 @@ export function useNoteCollab({
   loading,
   userName,
   textareaRef,
-  fields,
   cloud,
   io = phantasiApi,
 }: {
@@ -21,14 +20,17 @@ export function useNoteCollab({
   fields: NoteCloudFields
   cloud: Pick<NoteCloudSaveHandle, 'baseRef' | 'receiveRemote' | 'receiveDoc'>
   io?: Pick<typeof phantasiApi, 'getNoteDoc' | 'noteDocWsUrl'>
-}): { peers: NoteCollabPeer[] } {
+}) {
   const [peers, setPeers] = useState<NoteCollabPeer[]>([])
+  const [connection, setConnection] = useState<'connecting' | 'connected' | 'reconnecting'>('connecting')
+  const lastEditSent = useRef(0)
   const wsRef = useRef<WebSocket | null>(null)
   const liveRef = useRef({ cloud, io })
   liveRef.current = { cloud, io }
 
   useEffect(() => {
     if (loading || cloudId == null) return
+    setConnection('connecting')
     let stopped = false
     let retry: ReturnType<typeof setTimeout> | undefined
     let retryDelay = 1000
@@ -37,6 +39,8 @@ export function useNoteCollab({
       const ws = new WebSocket(liveRef.current.io.noteDocWsUrl(cloudId))
       wsRef.current = ws
       ws.onopen = () => {
+        setConnection('connected')
+        ws.send(JSON.stringify({ type: 'presence' }))
         retryDelay = 1000
         // Repair any snapshots missed while disconnected. The same revision gate
         // handles an HTTP fetch arriving after a newer WS frame.
@@ -48,6 +52,7 @@ export function useNoteCollab({
         if (stopped || wsRef.current !== ws) return
         try {
           const incoming = JSON.parse(String(event.data)) as NoteCollabEvent
+          if (incoming.type === 'join') ws.send(JSON.stringify({ type: 'presence' }))
           setPeers((current) => applyCollabPeers(current, incoming))
           // Unversioned edit snapshots have no common ancestor and replay typing.
           // They carry presence only; text sync uses the autosave's committed doc.
@@ -67,6 +72,7 @@ export function useNoteCollab({
       ws.onclose = () => {
         if (stopped || wsRef.current !== ws) return
         wsRef.current = null
+        setConnection('reconnecting')
         setPeers([])
         retry = setTimeout(connect, retryDelay)
         retryDelay = Math.min(retryDelay * 2, 10_000)
@@ -76,7 +82,7 @@ export function useNoteCollab({
     const ping = setInterval(() => {
       const ws = wsRef.current
       if (ws?.readyState !== WebSocket.OPEN) return
-      ws.send(JSON.stringify({ type: 'presence', name: userName, cursor: textareaRef.current?.selectionStart ?? 0 }))
+      ws.send(JSON.stringify({ type: 'presence', name: userName, cursor: document.activeElement === textareaRef.current ? textareaRef.current?.selectionStart : null }))
     }, 4000)
     return () => {
       stopped = true
@@ -89,15 +95,14 @@ export function useNoteCollab({
     }
   }, [cloudId, loading, textareaRef, userName])
 
-  useEffect(() => {
-    if (loading || cloudId == null) return
-    const timer = setTimeout(() => {
-      const ws = wsRef.current
-      if (ws?.readyState !== WebSocket.OPEN) return
-      ws.send(JSON.stringify({ type: 'edit', name: userName, cursor: textareaRef.current?.selectionStart ?? 0 }))
-    }, 200)
-    return () => clearTimeout(timer)
-  }, [cloudId, loading, textareaRef, userName, fields.title, fields.contentMd, fields.topic, fields.cover])
+  // Only local input is activity; incoming saved snapshots must not advertise typing.
+  const markEditing = useCallback(() => {
+    const ws = wsRef.current
+    const now = Date.now()
+    if (ws?.readyState !== WebSocket.OPEN || now - lastEditSent.current < 200) return
+    lastEditSent.current = now
+    ws.send(JSON.stringify({ type: 'edit', cursor: document.activeElement === textareaRef.current ? textareaRef.current?.selectionStart : null }))
+  }, [textareaRef])
 
-  return { peers }
+  return { peers, connection, markEditing }
 }

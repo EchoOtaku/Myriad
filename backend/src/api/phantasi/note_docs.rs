@@ -200,7 +200,7 @@ async fn respond_doc(
     Ok(attach_authors(to_response(doc), list))
 }
 
-async fn credit_and_respond(
+pub(super) async fn credit_and_respond(
     db: &DatabaseConnection,
     doc: phantasi_note_docs::Model,
     actor_id: i32,
@@ -238,7 +238,7 @@ fn empty_to_none(value: Option<String>) -> Option<String> {
     })
 }
 
-async fn find_doc(
+pub(super) async fn find_doc(
     db: &DatabaseConnection,
     id: i32,
 ) -> Result<phantasi_note_docs::Model, HttpError> {
@@ -288,6 +288,7 @@ pub(crate) async fn create_note_doc(
             .and_then(millis_to_datetime)
             .map(|at| at.into())),
         revision: Set(1),
+        last_edited_by: Set(Some(user_id)),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
         ..Default::default()
@@ -398,6 +399,7 @@ pub(crate) async fn update_note_doc(
     }
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
+    active.last_edited_by = Set(Some(user_id));
     active.last_error = Set(None);
     // RETURNING binds the acknowledgement to this exact revision. A separate
     // SELECT could observe another author's later save and mislabel it as ours.
@@ -439,7 +441,7 @@ fn saved_doc_event(
     }
 }
 
-fn broadcast_saved_doc(
+pub(super) fn broadcast_saved_doc(
     saved: &phantasi_note_docs::Model,
     user_id: i32,
     request_id: Option<String>,
@@ -526,6 +528,7 @@ pub(crate) async fn publish_note_doc(
     active.image = Set(doc.image.clone());
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
+    active.last_edited_by = Set(Some(user_id));
     let claimed = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
@@ -599,6 +602,7 @@ pub(crate) async fn schedule_note_doc(
     active.published_at = Set(millis_to_datetime(at).map(|value| value.into()));
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
+    active.last_edited_by = Set(Some(user_id));
     active.last_error = Set(None);
     let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
@@ -666,6 +670,7 @@ pub(crate) async fn unschedule_note_doc(
     active.last_error = Set(None);
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
+    active.last_edited_by = Set(Some(user_id));
     let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
@@ -926,6 +931,7 @@ mod tests {
             scheduled_at: None,
             published_at: Some(now),
             revision: 4,
+            last_edited_by: Some(1),
             last_error: None,
             created_at: now,
             updated_at: now,

@@ -59,3 +59,13 @@ export async function uploadMedia(
   const data = (await response.json()) as { success: boolean; item: MediaAsset }
   return data.item
 }
+
+export async function previewMediaEdit(id: number, prompt: string, width: number, height: number, signal?: AbortSignal): Promise<string> {
+  const data = await apiService.post<{ image: string }>(`/media/${id}/edit-preview`, { prompt, width, height }, { signal, timeout: 240_000 })
+  return data.image
+}
+
+export async function saveMediaEdit(id: number, image: string, generated: boolean): Promise<MediaAsset> {
+  const data = await apiService.post<{ item: MediaAsset }>(`/media/${id}/edits`, { image, generated })
+  return data.item
+}

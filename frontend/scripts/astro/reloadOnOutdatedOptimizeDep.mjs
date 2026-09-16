@@ -10,11 +10,16 @@ const RELOAD_DEBOUNCE_MS = 50
 
 export function isOptimizedDepRequest(url) {
   const path = String(url || '').split('?')[0]
-  return path.includes('/node_modules/.vite/deps/')
+  return /\/node_modules\/\.vite\/(?:[^/]+\/)?deps\//.test(path)
 }
 
 export function rewriteOptimizedDepCacheControl(url, name, value) {
-  if (!isOptimizedDepRequest(url)) return value
+  // Excluded dependencies (e.g. Lucide) also contain rewritten React imports.
+  // Keeping those immutable can retain a second React URL after cache migration.
+  const request = String(url || '')
+  const versionedDependency = request.split('?')[0].includes('/node_modules/')
+    && /[?&]v=/.test(request)
+  if (!isOptimizedDepRequest(url) && !versionedDependency) return value
   if (String(name).toLowerCase() !== 'cache-control') return value
   if (!/immutable/i.test(String(value))) return value
   return 'no-cache'

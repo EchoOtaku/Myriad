@@ -425,3 +425,57 @@ html.dark .phantasi-note-preview p:not([data-fn], [data-linkdef]) + .link-defini
 html.dark .phantasi-note-preview .link-definition:first-child {
   border-top-color: rgb(255 255 255 / 12%);
 }
+
+.phantasi-note__history-list {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phantasi-note__history-entry {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.phantasi-note__history-entry[aria-pressed="true"],
+.phantasi-note__history-entry:hover {
+  border-color: currentcolor;
+}
+
+.phantasi-note__history-entry span,
+.phantasi-note__collab-state {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.phantasi-note__history-preview pre {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.phantasi-note__collaborator {
+  display: inline-flex;
+  max-width: 180px;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.phantasi-note__collaborator > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

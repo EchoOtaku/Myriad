@@ -575,10 +575,18 @@ html.dark .phantasi-site__unread {
   cursor: pointer;
 }
 
-.phantasi-story:is(:hover, :focus-visible, .is-peek):not(.is-picking, .phantasi-story--slot) {
+.phantasi-story:focus-visible:not(.is-picking, .phantasi-story--slot) {
   transform: translateY(var(--sm-lift, -1px));
   border-color: var(--phantasi-line-hover);
   box-shadow: var(--phantasi-shadow-hover);
+}
+
+@media (width >= 768px) and (hover: hover) and (pointer: fine) {
+  .phantasi-story:is(:hover, .is-peek):not(.is-picking, .phantasi-story--slot) {
+    transform: translateY(var(--sm-lift, -1px));
+    border-color: var(--phantasi-line-hover);
+    box-shadow: var(--phantasi-shadow-hover);
+  }
 }
 
 .phantasi-skin button.phantasi-story.is-current {
@@ -742,23 +750,6 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   -webkit-line-clamp: 2;
 }
 
-.phantasi-story.has-cover.has-peek:not(.is-picking, .phantasi-story--slot) {
-  --phantasi-peek-fade: 220ms;
-}
-
-.phantasi-skin button.phantasi-story.has-cover.has-peek:not(.is-picking, .phantasi-story--slot) {
-  overflow: hidden;
-}
-
-.phantasi-story.has-cover.has-peek .phantasi-story__kicker,
-.phantasi-story.has-cover.has-peek .phantasi-story__title,
-.phantasi-story.has-cover.has-peek .phantasi-story__byline,
-.phantasi-story.has-cover.has-peek .phantasi-story__thumb,
-.phantasi-story.has-cover.has-peek .phantasi-story__summary,
-.phantasi-story.has-cover.has-peek .phantasi-story__peek {
-  transition: opacity var(--phantasi-peek-fade) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
 .phantasi-story__meta {
   color: var(--phantasi-fg-dim);
   font-size: 0.6875rem;
@@ -777,32 +768,6 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
-}
-
-.phantasi-story.has-cover.has-peek .phantasi-story__peek {
-  position: absolute;
-  inset: var(--phantasi-story-inset);
-  z-index: 1;
-  overflow: hidden;
-  color: var(--phantasi-fg-soft);
-  font-size: 0.75rem;
-  line-height: 1.45;
-  opacity: 0;
-  pointer-events: none;
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 0.85em), transparent);
-}
-
-.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__kicker,
-.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__title,
-.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__byline,
-.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__thumb,
-.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__summary {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.phantasi-story.has-cover.has-peek.is-peek:not(.is-picking) .phantasi-story__peek {
-  opacity: 1;
 }
 
 .phantasi-story__source {

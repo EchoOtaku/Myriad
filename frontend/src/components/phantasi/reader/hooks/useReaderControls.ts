@@ -290,15 +290,13 @@ export function useReaderControls({
       const prevId = headingHistory.at(-1)!
       setHeadingHistory((prev) => prev.slice(0, -1))
       scrollToHeading(prevId)
-      showToastMessage(t.phantasi.backToPrevParagraph, 1500)
     } else if (activeHeadingId && toc.length > 0) {
       const currentIndex = toc.findIndex((t) => t.id === activeHeadingId)
       if (currentIndex > 0) {
         scrollToHeading(toc[currentIndex - 1].id)
-        showToastMessage(t.phantasi.backToPrevParagraph, 1500)
       }
     }
-  }, [headingHistory, activeHeadingId, toc, scrollToHeading, showToastMessage])
+  }, [headingHistory, activeHeadingId, toc, scrollToHeading])
 
   const scrollToTop = useCallback(() => {
     if (articleRef.current) {
@@ -308,9 +306,8 @@ export function useReaderControls({
       })
       setHeadingHistory([])
       setActiveHeadingId('')
-      showToastMessage(t.phantasi.backToTop, 1500)
     }
-  }, [showToastMessage])
+  }, [])
 
   const handleProgressPointerDown = useCallback(() => {
     isLongPressRef.current = false

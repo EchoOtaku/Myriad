@@ -4,6 +4,7 @@ import { cancelIdleTask, scheduleIdleTask } from '../../../hooks/animation'
 import { onPhantasiMotion, phantasiMotionBusy } from '../../../hooks/animation/pages/phantasiMotion'
 import { cancelArticlePrefetch, prefetchArticleDetails } from '../articlePrefetch'
 import { storySourceFace } from '../notes/noteSiteSource'
+import { canPhantasiPeek, PHANTASI_PEEK_MEDIA } from './interactionMedia'
 import { notePeekPointer, resetPeekPointer } from './peekLane'
 import { applyPeekFace, toPhantasiPeekFace, writePeekFace } from './PhantasiPeekAir'
 import { cancelPhantasiPeekResume, clearPhantasiStoryPeeks, schedulePhantasiPeekResume } from './StoryCard'
@@ -24,7 +25,7 @@ export function usePeekSession(routeKey: string, blocked: boolean) {
   }, [])
   const handlePeekItem = useCallback((item: PeekStoryPreview) => {
     if (!live.current) return
-    if (blockedRef.current || document.visibilityState === 'hidden') {
+    if (!canPhantasiPeek() || blockedRef.current || document.visibilityState === 'hidden') {
       dropPeekSession()
       return
     }
@@ -34,19 +35,22 @@ export function usePeekSession(routeKey: string, blocked: boolean) {
     cancelIdleTask('phantasi-peek-warm')
     cancelArticlePrefetch()
     scheduleIdleTask('phantasi-peek-warm', () => {
-      if (!live.current || activeId.current !== item.id || phantasiMotionBusy()) return
+      if (!live.current || !canPhantasiPeek() || activeId.current !== item.id || phantasiMotionBusy()) return
       prefetchArticleDetails([item.id])
       void import('../PhantasiReader')
     }, { priority: 'low' })
   }, [dropPeekSession])
   const resumePeekAfterLane = useCallback(() => {
-    if (!live.current || blockedRef.current || document.visibilityState === 'hidden') return
+    if (!live.current || !canPhantasiPeek() || blockedRef.current || document.visibilityState === 'hidden') return
     schedulePhantasiPeekResume(handlePeekItem)
   }, [handlePeekItem])
 
   useLayoutEffect(() => {
     live.current = true
     const leave = () => { resetPeekPointer(); dropPeekSession() }
+    const media = window.matchMedia(PHANTASI_PEEK_MEDIA)
+    const mediaChange = () => { if (!media.matches) leave() }
+    media.addEventListener('change', mediaChange)
     const hide = () => { if (document.visibilityState === 'hidden') leave() }
     const move = (event: PointerEvent) => notePeekPointer(event)
     const touch = (event: PointerEvent) => { if (event.pointerType === 'touch') leave() }
@@ -69,6 +73,7 @@ export function usePeekSession(routeKey: string, blocked: boolean) {
     window.addEventListener('pagehide', leave)
     return () => {
       live.current = false
+      media.removeEventListener('change', mediaChange)
       off()
       document.removeEventListener('pointermove', move)
       document.removeEventListener('pointerdown', touch)

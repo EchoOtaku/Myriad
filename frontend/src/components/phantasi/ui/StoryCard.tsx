@@ -12,6 +12,7 @@ import { forwardRef, useCallback, useRef } from 'react'
 import { scheduleTask } from '../../../hooks/animation'
 import { phantasiMotionBusy, whenPhantasiMotionIdle } from '../../../hooks/animation/pages/phantasiMotion'
 import { cx } from './cx'
+import { canPhantasiPeek } from './interactionMedia'
 import {
   notePeekPointer,
   peekLaneIsLive,
@@ -69,7 +70,7 @@ export function dropPhantasiPeekLane(
 export function resumePhantasiStoryPeek(
   onPeek?: (item: PeekStoryPreview) => void,
 ): boolean {
-  if (phantasiMotionBusy()) return false
+  if (!canPhantasiPeek() || phantasiMotionBusy()) return false
   const node = peekNodeFromPoint()
   if (!node) return false
   markPhantasiStoryPeek(node, true)
@@ -113,7 +114,7 @@ export function usePhantasiPeekLane({
 
   const onPointerOver = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     notePeekPointer(event)
-    if (event.pointerType === 'touch' || event.buttons || blockedRef.current?.()) return
+    if (!canPhantasiPeek() || event.pointerType === 'touch' || event.buttons || blockedRef.current?.()) return
     const node = peekStoryNode(event.target)
     if (!node || !peekLaneIsLive(node) || phantasiMotionBusy()) return
     if (node.classList.contains('is-peek')) return
@@ -138,7 +139,7 @@ export function usePhantasiPeekLane({
   }, [])
 
   const onFocus = useCallback((event: ReactFocusEvent<HTMLElement>) => {
-    if (blockedRef.current?.()) return
+    if (!canPhantasiPeek() || blockedRef.current?.()) return
     const node = peekStoryNode(event.target)
     // A touch/click focus must not manufacture hover. Keyboard focus is explicit.
     if (!node || !peekLaneIsLive(node) || !node.matches(':focus-visible')) return
@@ -193,10 +194,9 @@ function syncStoryCoverClass(story: Element | null, coverOk: boolean): void {
   if (!(story instanceof HTMLElement)) return
   if (coverOk) {
     story.classList.add('has-cover')
-    if (story.querySelector('.phantasi-story__peek')) story.classList.add('has-peek')
     return
   }
-  story.classList.remove('has-cover', 'has-peek')
+  story.classList.remove('has-cover')
 }
 
 function hideBrokenStoryCover(
@@ -221,21 +221,18 @@ function storyCardClass(
   cover: boolean,
   star: boolean,
   hold: boolean,
-  peek: boolean,
 ): string {
   const key =
     (unread ? 1 : 0)
     | (cover ? 2 : 0)
     | (star ? 4 : 0)
     | (hold ? 8 : 0)
-    | (peek ? 16 : 0)
   const hit = storyClass.get(key)
   if (hit) return hit
   const next = cx(
     'phantasi-story phantasi-float phantasi-story__hit phantasi-story__shell',
     unread && 'is-unread',
     cover && 'has-cover',
-    peek && 'has-peek',
     star && 'has-star',
     hold && 'is-hold',
   )
@@ -356,7 +353,6 @@ export const StoryCard = forwardRef<
   ) as CSSProperties | null
   const deferCover = holdCover && !eagerCover
   const showStar = canStar ?? !!onToggleStar
-  const peek = !!(face.cover && face.summary)
   if (
     html
     && !onOpen
@@ -380,7 +376,6 @@ export const StoryCard = forwardRef<
           !!face.cover,
           showStar,
           deferCover,
-          peek,
         )}
         style={style ?? undefined}
         dangerouslySetInnerHTML={{ __html: html }}
@@ -404,7 +399,6 @@ export const StoryCard = forwardRef<
                 !!face.cover,
                 showStar && !picking,
                 deferCover,
-                peek,
               ),
               current && 'is-current',
               picked && 'is-picked',
@@ -416,7 +410,6 @@ export const StoryCard = forwardRef<
               !!face.cover,
               showStar,
               deferCover,
-              peek,
             )
       }
       style={style ?? undefined}
@@ -485,11 +478,6 @@ export const StoryCard = forwardRef<
         ) : null}
         {face.summary ? (
           <span className="phantasi-story__summary">{face.summary}</span>
-        ) : null}
-        {face.cover && face.summary ? (
-          <span className="phantasi-story__peek" aria-hidden>
-            {face.summary}
-          </span>
         ) : null}
       {picking ? (
         <PhantasiPick on={picked} />

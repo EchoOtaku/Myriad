@@ -1388,3 +1388,36 @@ export async function deleteSourceApplication(
 ): Promise<{ success: boolean }> {
   return request(`/applications/${id}`, { method: 'DELETE' })
 }
+
+export type NoteEditorDefaultView = 'write' | 'visual' | 'preview'
+export interface NoteHistoryEntry {
+  revision: number
+  actor_id: number | null
+  actor_name: string | null
+  saved_at: number
+  snapshot: {
+    title: string
+    content_md: string
+    topic: string | null
+    image: string | null
+    published_at: number | null
+  }
+}
+export async function getNoteEditorPreference(signal?: AbortSignal): Promise<NoteEditorDefaultView> {
+  const data = await request<{ default_view: NoteEditorDefaultView }>('/notes/editor-preference', { signal })
+  return data.default_view
+}
+export async function saveNoteEditorPreference(defaultView: NoteEditorDefaultView): Promise<void> {
+  await request('/notes/editor-preference', { method: 'PUT', body: JSON.stringify({ default_view: defaultView }) })
+}
+export async function getNoteHistory(id: number, signal?: AbortSignal): Promise<NoteHistoryEntry[]> {
+  const data = await request<{ history: NoteHistoryEntry[] }>(`/notes/docs/${id}/history`, { signal })
+  return data.history
+}
+export async function restoreNoteHistory(id: number, version: number, revision: number, clientRequestId: string, current: NoteHistoryEntry['snapshot']): Promise<PhantasiNoteDoc> {
+  const data = await request<{ doc: PhantasiNoteDoc }>(`/notes/docs/${id}/history/${version}/restore`, {
+    method: 'POST', body: JSON.stringify({ revision, client_request_id: clientRequestId, current }),
+  })
+  invalidatePhantasiNoteDocsCache()
+  return data.doc
+}

@@ -1,9 +1,11 @@
 import { LuKeyboard, LuSearch, LuX } from '@lib/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { useMediaQuery } from '../../../hooks/useSharedEventListener'
 import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import { cx } from './cx'
+import { PHANTASI_SEARCH_MEDIA } from './interactionMedia'
 import { PhantasiSearchGuide } from './PhantasiSearchGuide'
 
 export const phantasiSearchInputRef: { current: HTMLInputElement | null } = {
@@ -25,6 +27,7 @@ export function PhantasiSearch({
   onChange?: (value: string) => void
   matchCount?: number
 }) {
+  const showSearch = useMediaQuery(PHANTASI_SEARCH_MEDIA)
   const { t, format } = useI18n()
   const phantasi = t.phantasi
   const inputRef = useRef<HTMLInputElement>(null)
@@ -36,6 +39,10 @@ export function PhantasiSearch({
   const typing = focused || Boolean(query)
 
   useEffect(() => {
+    if (!showSearch) {
+      guideApiRef.current = null
+      return
+    }
     showGuide = () => {
       const api = guideApiRef.current
       if (api && !api.open) api.toggle()
@@ -43,7 +50,7 @@ export function PhantasiSearch({
     return () => {
       showGuide = null
     }
-  }, [])
+  }, [showSearch])
 
   useEffect(() => {
     const input = inputRef.current
@@ -55,7 +62,7 @@ export function PhantasiSearch({
     }
   })
 
-  if (!onChange) return null
+  if (!showSearch || !onChange) return null
 
   const search = (
     <div data-phantasi-surface="search" className={cx('phantasi-skin phantasi-search glass', typing && 'is-input')}>

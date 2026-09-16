@@ -6,6 +6,8 @@
 //! - 获取注释/播客：缓存命中谁都能读；无缓存仅管理员生成
 //! - 重新生成 / 风格标签：仅管理员
 
+mod note_edit;
+
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -60,6 +62,7 @@ pub fn create_phantasiai_routes(
     _app_state: crate::state::AppState,
 ) -> Router<crate::state::AppState> {
     Router::<crate::state::AppState>::new()
+        .route("/notes/edit", post(note_edit::edit_note))
         // 获取文章注释：缓存命中即返回；无缓存仅管理员生成
         .route("/items/{item_id}/annotations", get(get_annotations))
         // 重新生成注释

@@ -48,17 +48,6 @@ describe('PhantasiPeekAir', () => {
     assert.match(frame, /#phantasi-peek-copy/)
     assert.match(motion, /prefers-reduced-motion: reduce[\s\S]*phantasi-peek-air/)
     assert.match(motion, /prefers-reduced-motion: reduce[\s\S]*phantasi-peek-air__lede/)
-    assert.match(cards, /\.phantasi-story__peek/)
-    assert.match(cards, /\.phantasi-story\.has-cover\.has-peek \.phantasi-story__peek \{[\s\S]*?position: absolute;/)
-    assert.match(
-      cards,
-      /\.phantasi-story\.has-cover\.has-peek\.is-peek:not\(\.is-picking\) \.phantasi-story__peek/,
-    )
-    assert.doesNotMatch(
-      cards,
-      /\.phantasi-story\.has-cover\.has-peek:is\(:hover, :focus-visible, \.is-peek\)/,
-    )
-    assert.match(cards, /\.phantasi-story\.has-cover\.has-peek \.phantasi-story__peek \{[\s\S]*?font-size: 0\.75rem;/)
     assert.match(cards, /height: var\(--phantasi-story-h\)/)
     assert.doesNotMatch(cards, /interpolate-size/)
     assert.doesNotMatch(cards, /:has\(\.phantasi-story__peek\)/)
@@ -107,11 +96,6 @@ describe('PhantasiPeekAir', () => {
     assert.doesNotMatch(feeds, /event\.currentTarget\.contains\(to\)/)
     assert.match(feeds, /usePhantasiPeekLane/)
     assert.match(feeds, /clearPhantasiStoryPeeks\(itemsTrackRef\.current\)/)
-    assert.match(cards, /--phantasi-peek-fade/)
-    const face = readFileSync(join(dir, '../skin/storyFace.ts'), 'utf8')
-    assert.match(storyCard, /phantasi-story__peek/)
-    assert.match(storyCard, /has-peek/)
-    assert.match(face, /phantasi-story__peek/)
     assert.match(air, /phantasiMotionClaim\('peek'\)/)
     assert.match(air, /whenPhantasiPeekReady/)
     assert.match(air, /whenPhantasiMotionIdle/)

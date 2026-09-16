@@ -36,6 +36,20 @@ test('immutable optimized-dep cache headers become no-cache', () => {
   )
 })
 
+test('command-scoped prebundles and versioned source dependencies revalidate', () => {
+  const prebundle = '/node_modules/.vite/dev/deps/react.js?v=2a19ba24'
+  assert.equal(isOptimizedDepRequest(prebundle), true)
+  for (const url of [
+    prebundle,
+    '/node_modules/.pnpm/lucide-react@1.45.0/node_modules/lucide-react/dist/esm/context.mjs?v=2a19ba24',
+  ]) {
+    assert.equal(
+      rewriteOptimizedDepCacheControl(url, 'Cache-Control', 'max-age=31536000,immutable'),
+      'no-cache',
+    )
+  }
+})
+
 test('only the outdated-optimize-dep 504 asks for a full reload', () => {
   assert.equal(
     shouldReloadForOutdatedOptimizeDep(504, 'Outdated Optimize Dep'),

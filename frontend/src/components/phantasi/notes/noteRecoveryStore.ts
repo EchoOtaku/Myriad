@@ -13,6 +13,11 @@ function storageKey(scope: NoteRecoveryScope): string {
   return `phantasi:note-draft:${noteRecoveryKey(scope)}`
 }
 
+function dismissalKey(copy: NoteRecoveryCopy): string {
+  // Immutable keys identify one snapshot; a legacy mutable key also needs its contents.
+  return copy.key.includes(':copy:') ? copy.key : JSON.stringify([copy.key, copy.raw])
+}
+
 /**
  * Each immutable key names one snapshot. Removing it can never remove a
  * newer snapshot written concurrently by another editor.
@@ -54,13 +59,20 @@ export class NoteRecoveryWriter {
   load(scope: NoteRecoveryScope): NoteRecovery | null {
     this.scope = scope
     const dismissed = this.dismissedKeys()
-    this.recovered = listNoteRecoveryCopies(scope).find(copy => !dismissed.has(copy.key)) ?? null
+    this.recovered = listNoteRecoveryCopies(scope).find(copy => !dismissed.has(dismissalKey(copy))) ?? null
     this.current = this.recovered
     this.ownsCurrent = false
     return this.recovered?.recovery ?? null
   }
 
   write(scope: NoteRecoveryScope, fields: NoteCloudFields, base: NoteCloudFields, revision: number, pending?: NotePendingWrite): boolean {
+    if (this.scope && noteRecoveryKey(this.scope) !== noteRecoveryKey(scope)) {
+      // Leave the previous document's durable copy intact when reusing a writer.
+      this.current = null
+      this.ownsCurrent = false
+      this.recovered = null
+    }
+    this.scope = scope
     if (!pending && sameCloudFields(fields, base)) {
       this.clear()
       const prior = this.recovered?.recovery
@@ -111,8 +123,8 @@ export class NoteRecoveryWriter {
   discard(): void {
     if (this.recovered && this.scope) {
       try {
-        const available = new Set(listNoteRecoveryCopies(this.scope).map(copy => copy.key))
-        const dismissed = [...this.dismissedKeys(), this.recovered.key].filter(key => available.has(key))
+        const available = new Set(listNoteRecoveryCopies(this.scope).map(dismissalKey))
+        const dismissed = [...this.dismissedKeys(), dismissalKey(this.recovered)].filter(key => available.has(key))
         globalThis.sessionStorage?.setItem(`${storageKey(this.scope)}:dismissed`, JSON.stringify([...new Set(dismissed)]))
       } catch { /* Failure to remember dismissal preserves the recoverable copy. */ }
     }

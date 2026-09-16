@@ -153,6 +153,11 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     default_value: Some("false".into()),
                 },
                 ColumnDef {
+                    name: "note_editor_view".into(),
+                    data_type: "character varying".into(),
+                    default_value: Some("'visual'".into()),
+                },
+                ColumnDef {
                     name: "notification_preferences".into(),
                     data_type: "jsonb".into(),
                     default_value: Some("'{}'::jsonb".into()),

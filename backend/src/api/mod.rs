@@ -20,6 +20,7 @@ pub mod github_stars; // GitHub repo summary for settings badges + Phantasi (pla
 pub mod home_stickers; // Free-layout AI stickers
 pub mod mal;
 pub mod media;
+pub mod media_edit;
 pub mod merope_rig; // Site-wide Anime2.5D face for Agent 人设
 pub mod metrics;
 pub mod model3d; // Tripo-backed 3D generation + persisted Web GLBs

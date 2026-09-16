@@ -135,11 +135,6 @@ export function useConfigEditor(
       ) {
         throw new Error(messages.loadConfigFailed)
       }
-      showMessage(
-        scope ? messages.resettingConfig : messages.savingConfig,
-        'info',
-        0,
-      )
       const result = await executeConfigOperations(domains, operations, signal)
       if (result.cancelled) return
       if (result.errors.length) {

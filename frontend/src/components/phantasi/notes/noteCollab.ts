@@ -5,6 +5,7 @@ export interface NoteCollabPeer {
   userId: number
   name?: string | null
   cursor?: number | null
+  lastEditAt?: number
 }
 
 export interface NoteCollabEvent {
@@ -41,7 +42,8 @@ export function applyCollabPeers(
       peerId: event.peer_id,
       userId: event.user_id,
       name: event.name ?? existing?.name,
-      cursor: event.cursor ?? existing?.cursor,
+      cursor: event.cursor === undefined ? existing?.cursor : event.cursor,
+      lastEditAt: event.type === 'edit' ? Date.now() : existing?.lastEditAt,
     }
     const without = peers.filter((peer) => peer.peerId !== event.peer_id)
     return [...without, next]

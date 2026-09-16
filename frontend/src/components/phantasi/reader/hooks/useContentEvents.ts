@@ -138,7 +138,6 @@ export function useContentEvents({
           try {
             neteaseCard.classList.add('opacity-50', 'pointer-events-none')
             await playNeteaseSong(songId)
-            showToastMessage(t.phantasi.startPlaying)
           } catch (error) {
             console.error('[PhantasiReader] 播放网易云音乐失败:', error)
             showToastMessage(t.phantasi.playFailed)

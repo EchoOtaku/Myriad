@@ -40,7 +40,7 @@ describe('phantasiBoardNavItems', () => {
 })
 
 describe('board nav visibility', () => {
-  it('三个板块固定出现，收藏和工作台只看管理员身份', () => {
+  it('三个板块按可见性显示，收藏和工作台只看管理员身份', () => {
     const page = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), '../../views/Phantasi.tsx'),
       'utf8',
@@ -49,6 +49,8 @@ describe('board nav visibility', () => {
     assert.match(page, /includeStarred: isAdmin/)
     assert.match(page, /includeWorkbench: isAdmin/)
     assert.match(page, /onToggleStar=\{isAdmin \? handleCardStar/)
-    assert.doesNotMatch(page, /boardNavVisibility|localStorage/)
+    assert.match(page, /filterBoardNavItems/)
+    assert.match(page, /moduleVisibility\.journalBoards/)
+    assert.doesNotMatch(page, /readBoardNavVisibility|localStorage/)
   })
 })

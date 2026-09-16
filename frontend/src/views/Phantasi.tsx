@@ -23,6 +23,10 @@ import {
   showsFilterLane,
 } from '../components/phantasi/logic/board'
 import {
+  filterBoardNavItems,
+  normalizeBoardNavVisibility,
+} from '../components/phantasi/logic/boardNavVisibility'
+import {
   captureBoardScroll,
   restoreBoardScroll,
 } from '../components/phantasi/logic/boardScroll'
@@ -33,6 +37,7 @@ import PhantasiFilterLane from '../components/phantasi/PhantasiFilterLane'
 import PhantasiSourceGrid from '../components/phantasi/PhantasiSourceGrid'
 import { PhantasiViewLane } from '../components/phantasi/skin/PhantasiChip'
 import { AnimatePresence, PhantasiPage } from '../components/phantasi/skin/PhantasiPage'
+import { PHANTASI_SEARCH_MEDIA } from '../components/phantasi/ui/interactionMedia'
 import {
   PhantasiPeekAir,
   readPeekFace,
@@ -61,6 +66,7 @@ import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useReadingListOptional } from '../contexts/ReadingListContext'
 import { usePhantasiKeyboard } from '../hooks/usePhantasiKeyboard'
+import { useMediaQuery } from '../hooks/useSharedEventListener'
 import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
@@ -135,13 +141,28 @@ function PhantasiSubjectPage() {
     setError,
   )
 
+  const boardNavVisibility = useMemo(
+    () => normalizeBoardNavVisibility(moduleVisibility.journalBoards),
+    [moduleVisibility.journalBoards],
+  )
   const navItems = useMemo(
     () =>
-      phantasiBoardNavItems(t.phantasi, {
-        includeStarred: isAdmin,
-        includeWorkbench: isAdmin,
-      }),
-    [t.phantasi, isAdmin],
+      filterBoardNavItems(
+        phantasiBoardNavItems(t.phantasi, {
+          includeStarred: isAdmin,
+          includeWorkbench: isAdmin,
+        }),
+        boardNavVisibility,
+        moduleVisibility.modules.phantasi,
+        { isAuthenticated, isAdmin },
+      ),
+    [
+      t.phantasi,
+      isAuthenticated,
+      isAdmin,
+      boardNavVisibility,
+      moduleVisibility.modules.phantasi,
+    ],
   )
   const { activeId, setActiveId, setExpanded } = useSecondaryNav({
     routePath: '/journal',
@@ -227,15 +248,6 @@ function PhantasiSubjectPage() {
   )
 
   useEffect(() => {
-    if (!item.opening) return
-    showToast({
-      message: t.common.loading,
-      type: 'info',
-      replaceKey: 'phantasi-page',
-    })
-  }, [item.opening, t.common.loading])
-
-  useEffect(() => {
     if (route.viewMode === 'starred') return
     starred.exitEdit()
   }, [route.viewMode, starred.exitEdit])
@@ -279,7 +291,9 @@ function PhantasiSubjectPage() {
     return () => cancelAnimationFrame(frame)
   }, [selectedId])
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const canSearch = useMediaQuery(PHANTASI_SEARCH_MEDIA)
+  const [savedSearchQuery, setSearchQuery] = useState('')
+  const searchQuery = canSearch ? savedSearchQuery : ''
   const [boardHits, setBoardHits] = useState(0)
   const listItems = useMemo(
     () =>
@@ -294,7 +308,7 @@ function PhantasiSubjectPage() {
     !!route.selectedTopic,
     isAuthenticated,
   )
-  const showSearch = route.viewMode !== 'workbench'
+  const showSearch = canSearch && route.viewMode !== 'workbench'
   const searchHits = filterOpen ? listItems.length : boardHits
   const searchMiss = !!searchQuery.trim() && searchHits === 0
 

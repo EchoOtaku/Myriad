@@ -21,7 +21,24 @@ const pkg = JSON.parse(
 const APP_VERSION = pkg.version || '0.4.12'
 
 export default defineConfig({
-  integrations: [react(), deferNonCriticalCssIntegration()],
+  integrations: [
+    react(),
+    deferNonCriticalCssIntegration(),
+    {
+      name: 'isolate-vite-command-cache',
+      hooks: {
+        'astro:config:setup': ({ command, updateConfig }) => {
+          // A build must not overwrite a running dev server's React prebundle:
+          // the production jsx-dev-runtime exports jsxDEV as undefined.
+          updateConfig({
+            vite: {
+              cacheDir: path.resolve(__dirname, 'node_modules/.vite', command),
+            },
+          })
+        },
+      },
+    },
+  ],
   output: 'static',
   server: {
     port: 1102,

@@ -139,6 +139,10 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/fixture/poseCorrectionEditor.tsx
 !/frontend/tests/browser/fixture/touchHandoff.tsx
 
+# Navigation island browser regressions
+!/frontend/tests/browser/navigationIsland.spec.ts
+!/frontend/tests/browser/fixture/navigationIsland.tsx
+
 # Liquid glass browser integration regressions
 !/frontend/tests/browser/liquidGlass.spec.ts
 !/frontend/tests/browser/fixture/liquidGlass.html

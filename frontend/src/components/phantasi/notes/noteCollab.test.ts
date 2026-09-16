@@ -77,3 +77,10 @@ describe('shouldApplyRemoteDoc', () => {
     )
   })
 })
+
+it('edit marks active typing and a presence heartbeat preserves the activity time', () => {
+  const edit = applyCollabPeers([], { type: 'edit', peer_id: 'a', user_id: 1 })
+  assert.equal(typeof edit[0]?.lastEditAt, 'number')
+  const heartbeat = applyCollabPeers(edit, { type: 'presence', peer_id: 'a', user_id: 1 })
+  assert.equal(heartbeat[0]?.lastEditAt, edit[0]?.lastEditAt)
+})

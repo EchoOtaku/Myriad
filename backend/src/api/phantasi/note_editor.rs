@@ -1,0 +1,110 @@
+//! Account-scoped editor preferences and version-checked history restoration.
+use axum::{Json, extract::{Path, State}, http::{HeaderMap, StatusCode}};
+use chrono::Utc;
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use super::helpers::{get_admin_user_id_from_headers, phantasi_http_err, phantasi_store_http};
+use super::note_docs::{broadcast_saved_doc, credit_and_respond, find_doc};
+use crate::{error::HttpError, models::entities::phantasi_note_docs, services::note_publish::millis_to_datetime};
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum EditorView { Write, #[default] Visual, Preview }
+#[derive(Deserialize, Serialize)]
+pub(crate) struct EditorPreference { default_view: EditorView }
+
+pub(crate) async fn get_preference(State(db): State<DatabaseConnection>, headers: HeaderMap) -> Result<Json<Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let row = db.query_one_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "SELECT note_editor_view FROM users WHERE id = $1", [user_id.into()])).await
+        .map_err(|e| phantasi_store_http("load editor preference", e))?;
+    let view = row.and_then(|row| row.try_get::<String>("", "note_editor_view").ok())
+        .and_then(|value| serde_json::from_value::<EditorView>(json!(value)).ok()).unwrap_or_default();
+    Ok(Json(json!({"default_view": view})))
+}
+pub(crate) async fn put_preference(State(db): State<DatabaseConnection>, headers: HeaderMap, Json(req): Json<EditorPreference>) -> Result<Json<Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let view = serde_json::to_value(req.default_view).unwrap();
+    db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "UPDATE users SET note_editor_view = $1 WHERE id = $2", [view.as_str().unwrap().into(), user_id.into()])).await
+        .map_err(|e| phantasi_store_http("save editor preference", e))?;
+    Ok(Json(json!({"default_view": req.default_view})))
+}
+
+pub(crate) async fn list_history(State(db): State<DatabaseConnection>, headers: HeaderMap, Path(id): Path<i32>) -> Result<Json<Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    find_doc(&db, id).await?;
+    let rows = db.query_all_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "SELECT h.revision, h.actor_id, h.snapshot, (EXTRACT(EPOCH FROM h.saved_at) * 1000)::bigint AS saved_at, COALESCE(u.display_name, u.username) AS actor_name FROM phantasi_note_history h LEFT JOIN users u ON u.id = h.actor_id WHERE h.doc_id = $1 ORDER BY h.revision DESC LIMIT 10", [id.into()])).await
+        .map_err(|e| phantasi_store_http("load note history", e))?;
+    let history = rows.into_iter().map(|row| -> Result<Value, sea_orm::DbErr> {
+        Ok(json!({
+            "revision": row.try_get::<i64>("", "revision")?,
+            "actor_id": row.try_get::<Option<i32>>("", "actor_id")?,
+            "actor_name": row.try_get::<Option<String>>("", "actor_name")?,
+            "saved_at": row.try_get::<i64>("", "saved_at")?,
+            "snapshot": row.try_get::<Value>("", "snapshot")?,
+        }))
+    }).collect::<Result<Vec<_>, _>>().map_err(|e| phantasi_store_http("read note history", e))?;
+    Ok(Json(json!({"history": history})))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct RestoreRequest { revision: i64, client_request_id: Option<String>, current: Snapshot }
+#[derive(Deserialize)]
+struct Snapshot { title: String, content_md: String, topic: Option<String>, image: Option<String>, published_at: Option<i64> }
+
+pub(crate) async fn restore_history(State(db): State<DatabaseConnection>, headers: HeaderMap, Path((id, version)): Path<(i32, i64)>, Json(req): Json<RestoreRequest>) -> Result<Json<Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let txn = db.begin().await.map_err(|e| phantasi_store_http("begin note restore", e))?;
+    let doc = phantasi_note_docs::Entity::find_by_id(id).lock_exclusive().one(&txn).await
+        .map_err(|e| phantasi_store_http("lock note restore", e))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note draft not found"))?;
+    if doc.revision != req.revision {
+        return Err(phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere"));
+    }
+    // Read before preserving the current input, which can evict the oldest version.
+    let row = txn.query_one_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "SELECT snapshot FROM phantasi_note_history WHERE doc_id = $1 AND revision = $2", [id.into(), version.into()])).await
+        .map_err(|e| phantasi_store_http("load history version", e))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note version not found"))?;
+    let snapshot: Value = row.try_get("", "snapshot").map_err(|e| phantasi_store_http("read history version", e))?;
+    let snapshot: Snapshot = serde_json::from_value(snapshot).map_err(|e| phantasi_store_http("decode history version", e))?;
+    let current = req.current;
+    let preserve = phantasi_note_docs::ActiveModel {
+        title: Set(current.title), content_md: Set(current.content_md), topic: Set(current.topic), image: Set(current.image),
+        published_at: Set(current.published_at.and_then(millis_to_datetime).map(Into::into)),
+        last_edited_by: Set(Some(user_id)), revision: Set(req.revision + 1), updated_at: Set(Utc::now().into()), ..Default::default()
+    };
+    phantasi_note_docs::Entity::update_many().set(preserve)
+        .filter(phantasi_note_docs::Column::Id.eq(id)).filter(phantasi_note_docs::Column::Revision.eq(req.revision))
+        .exec(&txn).await.map_err(|e| phantasi_store_http("preserve note before restore", e))?;
+    let active = phantasi_note_docs::ActiveModel {
+        title: Set(snapshot.title), content_md: Set(snapshot.content_md), topic: Set(snapshot.topic), image: Set(snapshot.image),
+        published_at: Set(snapshot.published_at.and_then(millis_to_datetime).map(Into::into)),
+        // A linked article stays published, with its public body untouched. Cancel
+        // scheduled publication so a restored draft cannot publish unexpectedly.
+        status: Set(if doc.item_id.is_some() { "published" } else { "draft" }.into()),
+        scheduled_at: Set(None), last_error: Set(None), last_edited_by: Set(Some(user_id)),
+        revision: Set(req.revision + 2), updated_at: Set(Utc::now().into()), ..Default::default()
+    };
+    let mut rows = phantasi_note_docs::Entity::update_many().set(active)
+        .filter(phantasi_note_docs::Column::Id.eq(id)).filter(phantasi_note_docs::Column::Revision.eq(req.revision + 1))
+        .exec_with_returning(&txn).await.map_err(|e| phantasi_store_http("restore note version", e))?;
+    let saved = rows.pop().ok_or_else(|| phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere"))?;
+    txn.commit().await.map_err(|e| phantasi_store_http("commit note restore", e))?;
+    broadcast_saved_doc(&saved, user_id, req.client_request_id);
+    Ok(Json(json!({"success": true, "doc": credit_and_respond(&db, saved, user_id).await?})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn preference_accepts_only_editor_views() {
+        for view in ["visual", "write", "preview"] { assert!(serde_json::from_value::<EditorPreference>(json!({"default_view": view})).is_ok()); }
+        assert!(serde_json::from_value::<EditorPreference>(json!({"default_view": "arbitrary"})).is_err());
+        assert_eq!(serde_json::to_value(EditorView::default()).unwrap(), "visual");
+    }
+}

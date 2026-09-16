@@ -1277,7 +1277,6 @@ export function useLibraryCardActions() {
           (subjectId ? `https://bgm.tv/subject/${subjectId}` : '')
         if (url) {
           window.open(url, '_blank', 'noopener,noreferrer')
-          showInfo(format(t.library.openExternal, { name: item.title || '' }))
         } else {
           showInfo(t.library.playbackNotSupported)
         }
@@ -1296,7 +1295,6 @@ export function useLibraryCardActions() {
           typeof item.metadata?.url === 'string' ? item.metadata.url : ''
         if (ext) {
           window.open(ext, '_blank', 'noopener,noreferrer')
-          showInfo(format(t.library.openExternal, { name: item.title || '' }))
         } else {
           showInfo(t.library.playbackNotSupported)
         }
@@ -1315,9 +1313,6 @@ export function useLibraryCardActions() {
         // 暂停中再点同一首应恢复，不要当成已在播放。
         if (!musicState.isPlaying) {
           window.dispatchEvent(new CustomEvent('toggle-play-pause'))
-          showInfo(format(t.library.nowPlaying, { name: item.title || '' }))
-        } else {
-          showInfo(t.library.alreadyPlaying)
         }
         return
       }
@@ -1371,7 +1366,6 @@ export function useLibraryCardActions() {
       }
 
       window.dispatchEvent(new CustomEvent('open-control-panel'))
-      showInfo(format(t.library.nowPlaying, { name }))
       window.dispatchEvent(new CustomEvent('play-song', { detail: { song } }))
       void import('../../utils/analyticsEvents').then(
         ({ trackProductEvent, AnalyticsEvents }) => {

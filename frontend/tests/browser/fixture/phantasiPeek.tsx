@@ -4,6 +4,7 @@ import { makePreview, makeSource } from '../../../src/components/phantasi/logic/
 import { PhantasiViewLane } from '../../../src/components/phantasi/skin/PhantasiChip'
 import PhantasiFeeds from '../../../src/components/phantasi/skin/PhantasiFeeds'
 import { PhantasiPeekAir, readPeekFace, subscribePeekFace } from '../../../src/components/phantasi/ui/PhantasiPeekAir'
+import { PhantasiSearch } from '../../../src/components/phantasi/ui/PhantasiSearch'
 import { usePeekSession } from '../../../src/components/phantasi/ui/usePeekSession'
 import { I18nProvider } from '../../../src/contexts/I18nContext'
 import '../../../src/styles/tailwind.css'
@@ -19,6 +20,7 @@ const sources = [makeSource({ recent_items: stories })]
 function Harness() {
   const [route, setRoute] = useState('feeds')
   const [blocked, setBlocked] = useState(false)
+  const [search, setSearch] = useState('')
   const session = usePeekSession(route, blocked)
   const face = useSyncExternalStore(subscribePeekFace, readPeekFace)
   return <div className="phantasi-skin">
@@ -26,6 +28,7 @@ function Harness() {
     <button style={{ position: 'relative', zIndex: 10 }} id="reader" onClick={() => setBlocked(value => !value)}>reader</button>
     <output id="face">{face?.title ?? 'none'}</output>
     <PhantasiPeekAir face={face} />
+    <PhantasiSearch value={search} onChange={setSearch} />
     <div style={{ height: 'calc(100vh - 70px)', display: 'flex', padding: 16 }}>
       <PhantasiViewLane wave={route} onDisplayed={session.resumePeekAfterLane} suspended={blocked}>
         <PhantasiFeeds

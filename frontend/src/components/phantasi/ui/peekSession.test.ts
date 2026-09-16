@@ -8,11 +8,16 @@ import { releasePhantasiStoryPeek, resumePhantasiStoryPeek } from './StoryCard'
 const require = createRequire(import.meta.url)
 const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))
 const dom = new JSDOM('<div class="phantasi-view-lane"><div data-phantasi-peek-lane><button class="phantasi-story" data-rail-id="1"><span class="phantasi-story__title">One</span></button></div></div><nav class="nav-container"></nav>')
+const priorWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+Object.defineProperty(globalThis, 'window', { configurable: true, value: dom.window })
+dom.window.matchMedia = () => ({ matches: true })
 const prior = Object.getOwnPropertyDescriptor(globalThis, 'document')
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.window.document })
 after(() => {
   if (prior) Object.defineProperty(globalThis, 'document', prior)
   else Reflect.deleteProperty(globalThis, 'document')
+  if (priorWindow) Object.defineProperty(globalThis, 'window', priorWindow)
+  else Reflect.deleteProperty(globalThis, 'window')
   dom.window.close()
 })
 const doc = dom.window.document

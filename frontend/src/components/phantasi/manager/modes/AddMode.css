@@ -574,7 +574,7 @@ html.dark .phantasi-add-form .field-input.field-input--image:focus-within {
   }
 }
 
-.phantasi-add-form .settings-btn.settings-btn--sm {
+.phantasi-add-form:not(:where(.phantasi-workbench__io-grid *)) .settings-btn.settings-btn--sm.settings-btn--block {
   min-height: 2.5rem;
   border-radius: 0.65rem;
   font-size: 0.9375rem;

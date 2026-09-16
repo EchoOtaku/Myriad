@@ -20,9 +20,12 @@ export interface AgentUsagePreferences {
   user: AgentUserUsageLevel
 }
 
+export type JournalBoardVisibility = Record<'feeds' | 'notes' | 'sites', ModuleVisibilityLevel>
+
 export interface ModuleVisibilityPreferences {
   modules: Record<ModuleVisibilityKey, ModuleVisibilityLevel>
   agentUsage: AgentUsagePreferences
+  journalBoards: JournalBoardVisibility
 }
 
 interface ModuleVisibilityResponse {
@@ -68,6 +71,7 @@ export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences 
       agent: 'all',
     },
     agentUsage: { ...DEFAULT_AGENT_USAGE_PREFERENCES },
+    journalBoards: { feeds: 'all', notes: 'all', sites: 'all' },
   }
 
 function isVisibilityLevel(value: unknown): value is ModuleVisibilityLevel {
@@ -106,6 +110,11 @@ export function normalizeModuleVisibilityPreferences(
       },
       {} as Record<ModuleVisibilityKey, ModuleVisibilityLevel>,
     ),
+    journalBoards: {
+      feeds: isVisibilityLevel(preferences?.journalBoards?.feeds) ? preferences.journalBoards.feeds : 'all',
+      notes: isVisibilityLevel(preferences?.journalBoards?.notes) ? preferences.journalBoards.notes : 'all',
+      sites: isVisibilityLevel(preferences?.journalBoards?.sites) ? preferences.journalBoards.sites : 'all',
+    },
     agentUsage: {
       guest: isGuestUsageLevel(usage?.guest)
         ? usage.guest
@@ -126,6 +135,9 @@ export function areModuleVisibilityPreferencesEqual(
   )
   return (
     modulesEqual &&
+    left.journalBoards.feeds === right.journalBoards.feeds &&
+    left.journalBoards.notes === right.journalBoards.notes &&
+    left.journalBoards.sites === right.journalBoards.sites &&
     left.agentUsage.guest === right.agentUsage.guest &&
     left.agentUsage.user === right.agentUsage.user
   )

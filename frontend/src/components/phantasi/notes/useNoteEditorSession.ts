@@ -35,6 +35,8 @@ import { expandJammedDefinitions, setVisualImageResolver } from './noteVisual'
 import { useNoteWidgetCatalog } from './noteWidgetCatalog'
 import { useNoteCloudSave } from './useNoteCloudSave'
 import { useNoteCollab } from './useNoteCollab'
+import { useNoteEditorPreference } from './useNoteEditorPreference'
+import * as phantasiApi from '../../../services/phantasiApi'
 import { useNoteEditorAuthors } from './useNoteEditorAuthors'
 import { useNoteEditorFormat } from './useNoteEditorFormat'
 import { useNoteEditorOpen } from './useNoteEditorOpen'
@@ -126,7 +128,12 @@ export function useNoteEditorSession({
   const previewMdRef = useRef('')
   const [previewing, setPreviewing] = useState(false)
   /** 写 / 可视是两种输入法；预览是顶栏开关，关掉回到上一种。 */
-  const [pane, setPane] = useState<Pane>('write')
+  const [pane, setPane] = useState<Pane>('visual')
+  const paneChosenRef = useRef(false)
+  const preference = useNoteEditorPreference(user?.id ?? null, (view) => {
+    if (!paneChosenRef.current) setPane(view)
+  }, () => showNoteNotice(t.phantasi.notePreferenceFailed, 'error'))
+  const choosePane = (view: Pane) => { paneChosenRef.current = true; setPane(view) }
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [insertMenu, setInsertMenu] = useState<NoteInsertMenuState>(null)
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false)
@@ -175,7 +182,7 @@ export function useNoteEditorSession({
   const savedRangeRef = useRef<Range | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   /** 预览之前用的是哪种输入法；点预览编辑就回到它。 */
-  const lastEditPaneRef = useRef<'write' | 'visual'>('write')
+  const lastEditPaneRef = useRef<'write' | 'visual'>('visual')
   const pendingJumpRef = useRef<{
     pane: 'write' | 'visual'
     index: number
@@ -209,7 +216,7 @@ export function useNoteEditorSession({
   const topicRef = useRef<string | null>(null)
   const coverRef = useRef<string | null>(null)
   const publishedAtRef = useRef<number | null>(null)
-  const paneRef = useRef<Pane>('write')
+  const paneRef = useRef<Pane>('visual')
   const coverPreview = useMemo(
     () => cover || firstMarkdownImage(contentMd),
     [cover, contentMd],
@@ -300,7 +307,23 @@ export function useNoteEditorSession({
       uncertain: t.phantasi.noteSaveUnconfirmed,
     },
   })
-  const { peers } = useNoteCollab({
+  const restoreHistory = async (version: number) => {
+    if (cloudId == null || saving) return
+    setSaving(true)
+    try {
+      await cloud.runWrite(async (fields, track) => {
+        const restore = track(fields)
+        const restored = await phantasiApi.restoreNoteHistory(cloudId, version, revisionRef.current, restore.requestId, {
+          title: fields.title, content_md: fields.contentMd, topic: fields.topic, image: fields.cover, published_at: fields.publishedAt,
+        })
+        await restore.receiveDoc(restored)
+      })
+    } catch (error) {
+      showNoteNotice(t.phantasi.noteHistoryFailed, 'error')
+      throw error
+    } finally { setSaving(false) }
+  }
+  const { peers, connection: collabConnection, markEditing } = useNoteCollab({
     cloudId,
     loading,
     userName: user?.username,
@@ -620,7 +643,9 @@ export function useNoteEditorSession({
     html,
     previewing,
     pane,
-    setPane,
+    setPane: choosePane,
+    preference,
+    restoreHistory,
     settingsOpen,
     setSettingsOpen,
     insertMenu,
@@ -668,6 +693,8 @@ export function useNoteEditorSession({
     canConfigureWidget,
     bodyChars,
     peers,
+    collabConnection,
+    markEditing,
     selectionAnchor,
     activeMarks,
     caretLine,

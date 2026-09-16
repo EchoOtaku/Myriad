@@ -1,3 +1,4 @@
+import { NoteEditorSettings } from './NoteEditorSettings'
 import type {
   CSSProperties,
 } from 'react'
@@ -123,6 +124,8 @@ export function NoteEditorView({
   pane,
   setPane,
   settingsOpen,
+  preference,
+  restoreHistory,
   setSettingsOpen,
   insertMenu,
   setInsertMenu,
@@ -169,6 +172,8 @@ export function NoteEditorView({
   canConfigureWidget,
   bodyChars,
   peers,
+  collabConnection,
+  markEditing,
   selectionAnchor,
   activeMarks,
   caretLine,
@@ -421,6 +426,7 @@ export function NoteEditorView({
   return createPortal(
     <motion.div
       data-phantasi-shortcuts="suspended"
+      onInputCapture={markEditing}
       className="phantasi-skin phantasi-note"
       initial={motionEnabled ? phantasiAnimationPresets.readerEnter.initial : false}
       animate={phantasiAnimationPresets.readerEnter.animate}
@@ -434,6 +440,7 @@ export function NoteEditorView({
           scheduledAt={scheduledAt}
           cloudHint={cloudHint}
           peers={peers}
+          collabConnection={collabConnection}
           saving={saving}
           loading={loading}
           onPublish={() => {
@@ -857,6 +864,14 @@ export function NoteEditorView({
         />
 
         <NoteSettingsDrawer
+          editorSettings={settingsOpen ? <NoteEditorSettings
+            cloudId={cloudId}
+            defaultView={preference.defaultView}
+            preferenceBusy={preference.busy}
+            onDefaultView={preference.changeDefaultView}
+            onRestore={restoreHistory}
+            busy={saving || loading}
+          /> : null}
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           docStatus={docStatus}

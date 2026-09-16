@@ -17,6 +17,7 @@ for (const [key, value] of Object.entries({ window: dom.window, document: dom.wi
   prior.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
   Object.defineProperty(globalThis, key, { configurable: true, value })
 }
+dom.window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
 dom.window.document.elementFromPoint = () => null
 let root: Root
 let session: ReturnType<typeof usePeekSession>

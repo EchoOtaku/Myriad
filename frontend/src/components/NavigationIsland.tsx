@@ -542,6 +542,11 @@ export function NavigationIsland() {
     (targetMode: 'normal' | 'secondary') => {
       if (isAnimating || !secondaryNav) return
 
+      // 主动返回一级后，本次路由的自动展开已消费，不能在退场结束后再展开。
+      if (targetMode === 'normal') {
+        autoExpandedRef.current = location.pathname
+      }
+
       const content = navContentRef.current
       if (!content) {
         secondaryNav.onToggleExpand()
@@ -611,7 +616,7 @@ export function NavigationIsland() {
         groups.length * timing.exitStagger + timing.exitDuration,
       )
     },
-    [isAnimating, secondaryNav, setIsAnimating, renderModeRef],
+    [isAnimating, secondaryNav, setIsAnimating, renderModeRef, location.pathname],
   )
 
   const handleExpand = useCallback(

@@ -1005,6 +1005,7 @@ html.dark
 }
 
 @media (width < 1024px) {
+  .phantasi-view-lane > .phantasi-workbench,
   .phantasi-workbench {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.7rem;

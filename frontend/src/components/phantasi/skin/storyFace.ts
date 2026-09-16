@@ -115,10 +115,6 @@ export function storyCardInnerHtml(
   const summary = face.summary
     ? `<span class="phantasi-story__summary">${escapeStoryText(face.summary)}</span>`
     : ''
-  const peek =
-    face.cover && face.summary
-      ? `<span class="phantasi-story__peek" aria-hidden>${escapeStoryText(face.summary)}</span>`
-      : ''
   let star = ''
   if (showStar) {
     const label = escapeStoryText(
@@ -133,7 +129,6 @@ export function storyCardInnerHtml(
     author,
     thumb,
     summary,
-    peek,
     star,
   ].join('')
   cache.set(key, next)

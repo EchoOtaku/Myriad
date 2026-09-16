@@ -93,8 +93,7 @@ html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__kicker
 html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__title,
 html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__byline,
 html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__thumb,
-html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__summary,
-html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__peek {
+html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__summary {
   transition: none;
 }
 
@@ -136,7 +135,6 @@ html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__peek {
   .phantasi-story.has-cover .phantasi-story__byline,
   .phantasi-story.has-cover .phantasi-story__thumb,
   .phantasi-story.has-cover .phantasi-story__summary,
-  .phantasi-story.has-cover .phantasi-story__peek,
   .phantasi-story__star,
   .phantasi-rail-title,
   .phantasi-rail-title__tags,

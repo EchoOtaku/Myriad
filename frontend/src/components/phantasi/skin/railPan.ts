@@ -152,7 +152,7 @@ function onHeldCoverError(event: Event): void {
   const thumb = img.closest('.phantasi-story__thumb')
   const story = img.closest('.phantasi-story')
   if (thumb instanceof HTMLElement) thumb.hidden = true
-  story?.classList.remove('has-cover', 'has-peek')
+  story?.classList.remove('has-cover')
 }
 
 function onHeldIconError(event: Event): void {
@@ -387,9 +387,7 @@ function paintStoryShell(
   el.className =
     `phantasi-story phantasi-float phantasi-story__hit phantasi-story__shell${
       face.unread ? ' is-unread' : ''
-    }${face.cover ? ' has-cover' : ''}${
-      face.cover && face.summary ? ' has-peek' : ''
-    }${showStar ? ' has-star' : ''}${
+    }${face.cover ? ' has-cover' : ''}${showStar ? ' has-star' : ''}${
       hold ? ' is-hold' : ''
     }${peeking ? ' is-peek' : ''}`
   el.dataset.railId = String(face.id)

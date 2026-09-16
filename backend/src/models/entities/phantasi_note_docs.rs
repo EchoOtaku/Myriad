@@ -25,6 +25,7 @@ pub struct Model {
     /// 打算公开时用的发布时间；未发布也可先记着。
     pub published_at: Option<DateTimeWithTimeZone>,
     pub revision: i64,
+    pub last_edited_by: Option<i32>,
     /// 到点发布失败时写给管理端看。成功就清空。
     #[sea_orm(column_type = "Text", nullable)]
     pub last_error: Option<String>,

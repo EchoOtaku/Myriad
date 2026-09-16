@@ -40,6 +40,7 @@ describe('phantasi/skin 边界', () => {
     const src = [
       'PhantasiWorkbench.tsx',
       'PhantasiWorkbenchHome.tsx',
+      'PhantasiWorkbenchHomeOptions.tsx',
       'PhantasiWorkbenchNotes.tsx',
       'PhantasiWorkbenchComments.tsx',
       'PhantasiWorkbenchReviews.tsx',
@@ -75,7 +76,8 @@ describe('phantasi/skin 边界', () => {
       homeView.indexOf('phantasi-workbench__kpis') <
         homeView.indexOf('phantasi-workbench__home-data'),
     )
-    assert.doesNotMatch(src, /boardNavVisibility/)
+    assert.match(src, /boardNavVisibility/)
+    assert.ok(homeView.indexOf('phantasi-workbench__home-data') < homeView.indexOf('<WorkbenchHomeOptions'))
     assert.match(src, /workbenchHomeContinue/)
     assert.match(src, /workbenchHomeUpcoming/)
     assert.match(src, /workbenchHomeRecent/)

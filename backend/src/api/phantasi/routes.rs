@@ -50,6 +50,9 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
             get(super::notes_rss::get_notes_rss_settings)
                 .put(super::notes_rss::put_notes_rss_settings),
         )
+        .route("/notes/editor-preference", get(super::note_editor::get_preference).put(super::note_editor::put_preference))
+        .route("/notes/docs/{id}/history", get(super::note_editor::list_history))
+        .route("/notes/docs/{id}/history/{version}/restore", post(super::note_editor::restore_history))
         .route("/notes", post(notes::create_note))
         .route("/notes/preview", post(notes::preview_note))
         .route(

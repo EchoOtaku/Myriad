@@ -570,6 +570,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             [moduleKey]: visibility,
           },
           agentUsage: prev.agentUsage,
+          journalBoards: prev.journalBoards,
         }),
       )
     },

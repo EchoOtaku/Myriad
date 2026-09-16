@@ -10,6 +10,7 @@ mod feeds_sources;
 mod helpers;
 mod note_collab;
 mod note_docs;
+mod note_editor;
 mod notes;
 mod notes_rss;
 mod reading_item;
