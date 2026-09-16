@@ -102,12 +102,6 @@ export function peekHitFromPoint(): Element | null {
   return document.elementFromPoint(peekPointerX, peekPointerY)
 }
 
-/** 换树、指针还在走、停在岛或正悬着的文章卡上时按住。fromPoint 落到刚离开的卡不算。 */
-export function peekHitWantsAir(hit: EventTarget | null): boolean {
-  if (phantasiPeekHeldForSwap() || peekLaneIsSwapping()) return true
-  return peekGoesToNav(hit)
-}
-
 export function peekPointerWantsAir(): boolean {
   if (phantasiPeekHeldForSwap() || peekLaneIsSwapping()) return true
   if (hoveredPhantasiStory()) return true

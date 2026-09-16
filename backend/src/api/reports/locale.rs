@@ -219,16 +219,6 @@ fn read_locale_field(report: &Value) -> Option<&'static str> {
         .map(normalize_report_locale)
 }
 
-#[allow(dead_code)]
-pub fn pick<'a>(locale: &str, zh: &'a str, ja: &'a str, en: &'a str) -> &'a str {
-    match normalize_report_locale(locale) {
-        "ja-JP" => ja,
-        "en-US" => en,
-        "zh-CN" | "zh-TW" => zh,
-        _ => en,
-    }
-}
-
 pub fn missing_platform_data_message(locale: &str) -> String {
     crate::i18n::reports(locale, "missingPlatformData")
 }

@@ -13,7 +13,6 @@ import {
   holdPhantasiPeekSwap,
   notePeekPointer,
   peekGoesToNav,
-  peekHitWantsAir,
   peekLaneIsLive,
   peekLaneKeepsAir,
   peekLaneIsSwapping,
@@ -158,10 +157,10 @@ describe('peekSwapHoldsAir', () => {
        </div>
        <div id="empty">空白</div>`,
     ).window.document
-    assert.equal(peekHitWantsAir(page.getElementById('notes')), true)
-    assert.equal(peekHitWantsAir(page.getElementById('s')), false)
-    assert.equal(peekHitWantsAir(page.getElementById('empty')), false)
-    assert.equal(peekHitWantsAir(null), false)
+    assert.equal(peekGoesToNav(page.getElementById('notes')), true)
+    assert.equal(peekGoesToNav(page.getElementById('s')), false)
+    assert.equal(peekGoesToNav(page.getElementById('empty')), false)
+    assert.equal(peekGoesToNav(null), false)
     notePeekPointer({ clientX: 12, clientY: 8 })
     assert.equal(peekPointerMoving(), true)
     assert.equal(peekPointerWantsAir(), true)
