@@ -1,10 +1,10 @@
 import type { MediaAsset } from '../../../services/mediaApi'
+import type { PointerEvent, ReactNode } from 'react'
 import {
   LuCheck,
   LuChevronLeft,
   LuChevronRight,
   LuImage,
-  LuSlidersHorizontal,
   LuSparkles,
   LuX,
   LuZoomIn,
@@ -15,6 +15,13 @@ import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { ApiError } from '../../../services/api'
 import { previewMediaEdit, saveMediaEdit } from '../../../services/mediaApi'
+import {
+  InputItem,
+  NumberItem,
+  SettingsButton,
+  SettingTitleTag,
+  SwitchItem,
+} from '../../settings'
 import { displayImageUrl } from '../notes/noteImageUrl'
 import {
   resizedDimensions,
@@ -22,7 +29,86 @@ import {
   validateMediaEditData,
   validMediaDimensions,
 } from './mediaEdit'
+import '../../ConfigForm.css'
 import './MediaEditorDialog.css'
+
+function EditorCanvas({
+  zoom,
+  pannable = true,
+  children,
+}: {
+  zoom: number
+  pannable?: boolean
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const drag = useRef<{
+    pointer: number
+    x: number
+    y: number
+    sl: number
+    st: number
+  } | null>(null)
+  const [panning, setPanning] = useState(false)
+
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas || zoom > 1) return
+    canvas.scrollTo(0, 0)
+  }, [zoom])
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!pannable || event.button !== 0) return
+    const canvas = ref.current
+    if (!canvas) return
+    if (
+      canvas.scrollWidth <= canvas.clientWidth &&
+      canvas.scrollHeight <= canvas.clientHeight
+    ) {
+      return
+    }
+    event.preventDefault()
+    canvas.setPointerCapture(event.pointerId)
+    drag.current = {
+      pointer: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      sl: canvas.scrollLeft,
+      st: canvas.scrollTop,
+    }
+    setPanning(true)
+  }
+
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const start = drag.current
+    const canvas = ref.current
+    if (!start || !canvas) return
+    canvas.scrollLeft = start.sl - (event.clientX - start.x)
+    canvas.scrollTop = start.st - (event.clientY - start.y)
+  }
+
+  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (!drag.current || drag.current.pointer !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    drag.current = null
+    setPanning(false)
+  }
+
+  return (
+    <div
+      ref={ref}
+      className={`media-editor__canvas${pannable ? ' is-pannable' : ''}${panning ? ' is-panning' : ''}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    >
+      {children}
+    </div>
+  )
+}
 
 export function MediaEditorDialog({
   item,
@@ -155,6 +241,15 @@ export function MediaEditorDialog({
     dimensions.height >= 256 &&
     dimensions.width <= 2048 &&
     dimensions.height <= 2048
+  const feedback = error ? (
+    <SettingTitleTag variant="danger">{error}</SettingTitleTag>
+  ) : busy ? (
+    <p role="status" className="setting-hint">
+      {busy === 'save' ? c.saving : c.mediaEditWorking}
+    </p>
+  ) : saved ? (
+    <SettingTitleTag icon={<LuCheck />}>{c.mediaEditSaved}</SettingTitleTag>
+  ) : null
   return createPortal(
     <dialog
       ref={dialog}
@@ -165,7 +260,7 @@ export function MediaEditorDialog({
           event.animationName === 'media-editor-out'
         ) {
           finishClose()
-}
+        }
       }}
       aria-label={item.name}
       onCancel={(event) => {
@@ -189,7 +284,7 @@ export function MediaEditorDialog({
         </div>
         <button
           type="button"
-          className="media-editor__close"
+          className="modal-close-button media-editor__close"
           aria-label={c.close}
           title={c.close}
           disabled={busy === 'save'}
@@ -205,13 +300,14 @@ export function MediaEditorDialog({
           >
             <figure>
               <figcaption>{c.mediaEditOriginal}</figcaption>
-              <div className="media-editor__canvas">
+              <EditorCanvas zoom={video ? 1 : zoom} pannable={!video}>
                 {video ? (
                   <video src={src} controls />
                 ) : (
                   <img
                     src={src}
                     alt={item.name}
+                    draggable={false}
                     style={{
                       width: `${zoom * 100}%`,
                       height: `${zoom * 100}%`,
@@ -229,7 +325,7 @@ export function MediaEditorDialog({
                     }}
                   />
                 )}
-              </div>
+              </EditorCanvas>
             </figure>
             {draft && (
               <figure>
@@ -237,17 +333,18 @@ export function MediaEditorDialog({
                   <LuSparkles aria-hidden="true" />
                   {c.mediaEditResult}
                 </figcaption>
-                <div className="media-editor__canvas">
+                <EditorCanvas zoom={zoom}>
                   <img
                     src={draft.image}
                     alt={c.mediaEditResult}
+                    draggable={false}
                     style={{
                       width: `${zoom * 100}%`,
                       height: `${zoom * 100}%`,
                       maxWidth: 'none',
                     }}
                   />
-                </div>
+                </EditorCanvas>
               </figure>
             )}
           </div>
@@ -302,148 +399,122 @@ export function MediaEditorDialog({
               <LuChevronRight aria-hidden="true" />
             </button>
           </div>
+          {!editable && error ? (
+            <div className="media-editor__feedback">{feedback}</div>
+          ) : null}
         </div>
         {editable && (
           <aside className="media-editor__controls">
-            <fieldset disabled={!!busy}>
-              <legend>
-                <LuSlidersHorizontal aria-hidden="true" />
+            <section className="media-editor__section">
+              <h3 className="media-editor__section-title">
                 {c.mediaEditResolution}
-              </legend>
-              <div className="media-editor__dimensions">
-                <label>
-                  {c.mediaEditWidth}
-                  <span className="media-editor__number">
-                    <input
-                      type="number"
-                      min="1"
-                      max="8192"
-                      aria-label={c.mediaEditWidth}
-                      value={dimensions.width || ''}
-                      onChange={(e) =>
-                        changeSize('width', Number(e.target.value))
-                      }
-                    />
-                    <span aria-hidden="true">px</span>
-                  </span>
-                </label>
-                <label>
-                  {c.mediaEditHeight}
-                  <span className="media-editor__number">
-                    <input
-                      type="number"
-                      min="1"
-                      max="8192"
-                      aria-label={c.mediaEditHeight}
-                      value={dimensions.height || ''}
-                      onChange={(e) =>
-                        changeSize('height', Number(e.target.value))
-                      }
-                    />
-                    <span aria-hidden="true">px</span>
-                  </span>
-                </label>
-              </div>
-              <label className="media-editor__check">
-                <input
-                  type="checkbox"
-                  checked={locked}
-                  onChange={(e) => setLocked(e.target.checked)}
+              </h3>
+              <div className="media-editor__dims">
+                <NumberItem
+                  itemKey="media-edit-width"
+                  size="sm"
+                  layout="vertical"
+                  label={c.mediaEditWidth}
+                  value={dimensions.width}
+                  min={1}
+                  max={8192}
+                  unit="px"
+                  onChange={(value) => changeSize('width', value)}
+                  disabled={!!busy}
                 />
-                <span className="media-editor__switch" aria-hidden="true" />
-                {c.mediaEditLock}
-              </label>
-              <button
-                type="button"
-                className="media-editor__wide"
+                <NumberItem
+                  itemKey="media-edit-height"
+                  size="sm"
+                  layout="vertical"
+                  label={c.mediaEditHeight}
+                  value={dimensions.height}
+                  min={1}
+                  max={8192}
+                  unit="px"
+                  onChange={(value) => changeSize('height', value)}
+                  disabled={!!busy}
+                />
+              </div>
+              <div className="media-editor__toggles">
+                <SwitchItem
+                  itemKey="media-edit-lock"
+                  size="sm"
+                  label={c.mediaEditLock}
+                  value={locked}
+                  onChange={setLocked}
+                  disabled={!!busy}
+                />
+              </div>
+              <SettingsButton
+                variant="secondary"
+                size="sm"
+                block
                 disabled={
+                  !!busy ||
                   !validMediaDimensions(dimensions.width, dimensions.height) ||
                   !source.width
                 }
                 onClick={() => void run('resize')}
               >
                 {c.mediaEditResize}
-              </button>
-            </fieldset>
-            <fieldset disabled={!!busy} className="media-editor__ai">
-              <legend>
-                <LuSparkles aria-hidden="true" />
-                {c.mediaEditAi}
-              </legend>
-              <label>
-                {c.mediaEditPrompt}
-                <textarea
-                  rows={4}
-                  maxLength={2000}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                className="media-editor__wide media-editor__generate"
-                disabled={!prompt.trim() || !canGenerate || !source.width}
+              </SettingsButton>
+            </section>
+            <section className="media-editor__section">
+              <h3 className="media-editor__section-title">{c.mediaEditAi}</h3>
+              <p className="media-editor__section-hint">{c.mediaEditAiSizeHint}</p>
+              <InputItem
+                itemKey="media-edit-prompt"
+                size="sm"
+                label={c.mediaEditPrompt}
+                multiline
+                rows={4}
+                value={prompt}
+                onChange={setPrompt}
+                disabled={!!busy}
+              />
+              <SettingsButton
+                variant="primary"
+                size="sm"
+                block
+                disabled={
+                  !!busy || !prompt.trim() || !canGenerate || !source.width
+                }
+                icon={<LuSparkles />}
                 onClick={() => void run('generate')}
               >
-                <LuSparkles aria-hidden="true" />
                 {c.mediaEditGenerate}
-              </button>
-              <p className="media-editor__hint">{c.mediaEditAiSizeHint}</p>
-            </fieldset>
+              </SettingsButton>
+            </section>
+            {feedback ? (
+              <div className="media-editor__feedback">{feedback}</div>
+            ) : null}
+            {draft ? (
+              <div className="media-editor__actions">
+                <SettingsButton
+                  variant="secondary"
+                  size="sm"
+                  disabled={!!busy}
+                  onClick={() => {
+                    setDraft(null)
+                    setError('')
+                  }}
+                >
+                  {c.mediaEditDiscard}
+                </SettingsButton>
+                <SettingsButton
+                  variant="primary"
+                  size="sm"
+                  disabled={!!busy}
+                  icon={<LuCheck />}
+                  onClick={() => void run('save')}
+                >
+                  {c.mediaEditSave}
+                </SettingsButton>
+              </div>
+            ) : null}
           </aside>
         )}
       </div>
-      {editable && (
-        <footer className="media-editor__footer">
-          <div className="media-editor__feedback">
-            {error ? (
-              <p className="media-editor__error" role="alert">
-                {error}
-              </p>
-            ) : busy ? (
-              <p role="status">
-                <span className="media-editor__spinner" aria-hidden="true" />
-                {busy === 'save' ? c.saving : c.mediaEditWorking}
-              </p>
-            ) : saved ? (
-              <p role="status">
-                <LuCheck aria-hidden="true" />
-                {c.mediaEditSaved}
-              </p>
-            ) : (
-              <p>{c.mediaEditCopyHint}</p>
-            )}
-          </div>
-          {draft && (
-            <div className="media-editor__actions">
-              <button
-                type="button"
-                disabled={!!busy}
-                onClick={() => {
-                  setDraft(null)
-                  setError('')
-                }}
-              >
-                {c.mediaEditDiscard}
-              </button>
-              <button
-                type="button"
-                className="media-editor__save"
-                disabled={!!busy}
-                onClick={() => void run('save')}
-              >
-                <LuCheck aria-hidden="true" />
-                {c.mediaEditSave}
-              </button>
-            </div>
-          )}
-        </footer>
-      )}
-      {!editable && error && (
-        <p className="media-editor__error" role="alert">
-          {error}
-        </p>
-      )}
     </dialog>,
     document.body,
   )

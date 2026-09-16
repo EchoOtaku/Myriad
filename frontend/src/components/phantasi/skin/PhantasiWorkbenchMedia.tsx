@@ -175,6 +175,7 @@ export function WorkbenchMediaPane({
       action={
         <PageAction
           label={phantasi.workbenchUpload}
+          description={phantasi.workbenchUploadHint}
           icon={<LuImage />}
           disabled={busy}
           onPick={() => fileRef.current?.click()}
