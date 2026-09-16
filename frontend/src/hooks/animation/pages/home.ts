@@ -99,7 +99,7 @@ export function useHomeResizeObserver(): {
   return { observeHomeResize, unobserveHomeResize }
 }
 
-export function cleanupHome(): void {
+function cleanupHome(): void {
   getPageIntervalManager(PAGE_ID).cleanup()
   getPageResizeManager(PAGE_ID).cleanup()
 }

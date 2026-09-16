@@ -65,7 +65,7 @@ export function useLibraryIntersectionObserver(): {
   return { observeLibraryIntersection, unobserveLibraryIntersection }
 }
 
-export function cleanupLibrary(): void {
+function cleanupLibrary(): void {
   if (_libraryIntersectionObserver) {
     _libraryIntersectionObserver.disconnect()
     _libraryIntersectionObserver = null

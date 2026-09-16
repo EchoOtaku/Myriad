@@ -110,7 +110,7 @@ export function useTappStagger(
   return { canAnimate, onComplete }
 }
 
-export function cleanupTapp(): void {
+function cleanupTapp(): void {
   staggerIdCounter = 0
 }
 
