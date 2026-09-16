@@ -5,7 +5,7 @@ export type DraftUpdate<T> = T | ((current: T) => T)
 export interface ConfigEffect {
   id: string
   after?: string[]
-  run: () => void | Promise<void>
+  run: (signal?: AbortSignal) => void | Promise<void>
 }
 export interface ConfigDomainOptions<T> {
   id: string
@@ -99,9 +99,106 @@ export interface ConfigOperation {
 }
 export interface ConfigDomainController {
   id: string
+  getSnapshot: () => {
+    ready: boolean
+    loading: boolean
+    dirty: boolean
+    pendingSync: boolean
+  }
   prepareSave: () => ConfigOperation | undefined
   prepareReset: (scope: ConfigResetScope) => ConfigOperation | undefined
-  flushEffects: () => Promise<unknown[]>
+  flushEffects: (signal?: AbortSignal) => Promise<unknown[]>
+}
+
+export const CONFIG_LOAD_CONCURRENCY = 2
+
+interface LoadableConfigDomain {
+  id: string
+  sections?: readonly string[]
+  load: (signal?: AbortSignal) => Promise<void>
+  getSnapshot: () => { ready: boolean; loading: boolean; error?: unknown }
+}
+
+// Shared across editor mounts and section retries. A cancelled editor must not
+// free a slot while its already-started endpoint is still running.
+let activeConfigLoads = 0
+const configLoadQueue: Array<() => void> = []
+function drainConfigLoads() {
+  while (activeConfigLoads < CONFIG_LOAD_CONCURRENCY && configLoadQueue.length) {
+    configLoadQueue.shift()!()
+  }
+}
+
+function queueConfigLoad(domain: LoadableConfigDomain, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return resolve()
+    const cancel = () => {
+      const index = configLoadQueue.indexOf(start)
+      if (index >= 0) configLoadQueue.splice(index, 1)
+      resolve()
+    }
+    const start = () => {
+      signal.removeEventListener('abort', cancel)
+      const state = domain.getSnapshot()
+      if (signal.aborted || (state.ready && !state.error) || state.loading) {
+        resolve()
+        return
+      }
+      activeConfigLoads += 1
+      void Promise.resolve()
+        .then(() => {
+          if (!signal.aborted) return domain.load(signal)
+        })
+        .then(resolve, reject)
+        .finally(() => {
+          activeConfigLoads -= 1
+          drainConfigLoads()
+        })
+    }
+    signal.addEventListener('abort', cancel, { once: true })
+    configLoadQueue.push(start)
+    drainConfigLoads()
+  })
+}
+
+export function configDomainLoadRank(
+  domain: { id: string; sections?: readonly string[] },
+  neededSection: string,
+): number {
+  if (domain.id === 'config') return 0
+  if (neededSection && (domain.sections ?? []).includes(neededSection)) return 1
+  return 2
+}
+
+export function isPriorityConfigDomain(
+  domain: { id: string; sections?: readonly string[] },
+  neededSection: string,
+): boolean {
+  if (!neededSection) return true
+  return (
+    domain.id === 'config' || (domain.sections ?? []).includes(neededSection)
+  )
+}
+
+export async function loadConfigDomains(
+  domains: LoadableConfigDomain[],
+  signal: AbortSignal,
+  neededSection = '',
+): Promise<
+  Array<{
+    domain: (typeof domains)[number]
+    result: PromiseSettledResult<void>
+  }>
+> {
+  const ordered = [...domains].sort(
+    (left, right) =>
+      configDomainLoadRank(left, neededSection) -
+      configDomainLoadRank(right, neededSection),
+  )
+  const results = await Promise.allSettled(
+    ordered.map((domain) => queueConfigLoad(domain, signal)),
+  )
+  return ordered.map((domain, index) => ({ domain, result: results[index] }))
 }
 
 /** One endpoint owns its draft, acknowledged snapshot, and retryable runtime effects. */
@@ -150,11 +247,11 @@ export function createConfigDomain<T>(
           const read = options.load
           pending.set('persisted-snapshot', {
             id: 'persisted-snapshot',
-            run: async () => {
+            run: async (signal) => {
               const baseline = state.saved
               const generation = ++loadGeneration
               const canonical = await read()
-              if (generation !== loadGeneration) return
+              if (generation !== loadGeneration || signal?.aborted) return
               publish({
                 loading: false,
                 saved: structuredClone(canonical),
@@ -204,7 +301,8 @@ export function createConfigDomain<T>(
     acceptPatch: (patch: (current: T) => T) => {
       publish({ draft: patch(state.draft), saved: patch(state.saved) })
     },
-    load: async () => {
+    load: async (signal?: AbortSignal) => {
+      if (signal?.aborted) return
       const loader = getOptions().load
       if (!loader) return
       const generation = ++loadGeneration
@@ -212,7 +310,7 @@ export function createConfigDomain<T>(
       publish({ loading: true, error: null })
       try {
         const saved = await loader()
-        if (generation !== loadGeneration) return
+        if (generation !== loadGeneration || signal?.aborted) return
         publish({
           saved: structuredClone(saved),
           draft: reconcileConfigDraft(state.draft, baseline, saved),
@@ -220,8 +318,12 @@ export function createConfigDomain<T>(
           loading: false,
         })
       } catch (error) {
-        if (generation === loadGeneration) publish({ error, loading: false })
+        if (generation !== loadGeneration || signal?.aborted) return
+        publish({ error, loading: false })
         throw error
+      } finally {
+        if (generation === loadGeneration && signal?.aborted)
+          publish({ loading: false })
       }
     },
     prepareSave: () =>
@@ -230,13 +332,14 @@ export function createConfigDomain<T>(
       const next = getOptions().reset?.(structuredClone(state.saved), scope)
       return next === undefined ? undefined : operation(next, scope)
     },
-    flushEffects: async () => {
+    flushEffects: async (signal?: AbortSignal) => {
       if (pending.size === 0) return []
       const errors: unknown[] = []
       const attempted = new Set<string>()
       // Retried effects keep their Map position. A newly queued prerequisite
       // can appear later, so revisit dependents after each successful refresh.
       while (true) {
+        if (signal?.aborted) break
         const runnable = [...pending].find(
           ([id, effect]) =>
             !attempted.has(id) &&
@@ -246,13 +349,14 @@ export function createConfigDomain<T>(
         const [id, effect] = runnable
         attempted.add(id)
         try {
-          await effect.run()
+          await effect.run(signal)
+          if (signal?.aborted) break
           if (pending.get(id) === effect) pending.delete(id)
         } catch (error) {
           errors.push(error)
         }
       }
-      if (pending.size > 0 && errors.length === 0) {
+      if (pending.size > 0 && errors.length === 0 && !signal?.aborted) {
         errors.push(
           new Error('Configuration refresh dependencies could not be resolved'),
         )
@@ -267,10 +371,12 @@ export function createConfigDomain<T>(
 export async function executeConfigOperations(
   domains: ConfigDomainController[],
   operations: ConfigOperation[],
+  signal?: AbortSignal,
 ) {
   const persisted: string[] = []
   const errors: unknown[] = []
   for (const operation of operations) {
+    if (signal?.aborted) break
     try {
       await operation.persist()
       persisted.push(operation.id)
@@ -279,6 +385,14 @@ export async function executeConfigOperations(
       break
     }
   }
-  for (const domain of domains) errors.push(...(await domain.flushEffects()))
-  return { persisted, errors }
+  for (const domain of domains) {
+    if (signal?.aborted) break
+    errors.push(...(await domain.flushEffects(signal)))
+  }
+  return {
+    persisted,
+    errors,
+    cancelled: signal?.aborted ?? false,
+    pendingSync: domains.some((domain) => domain.getSnapshot().pendingSync),
+  }
 }

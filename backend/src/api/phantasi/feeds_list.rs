@@ -26,8 +26,7 @@ use crate::services::phantasi_topics::{
 };
 
 use super::helpers::{
-    get_admin_user_id_from_headers, get_optional_user_and_admin_status, phantasi_http_err,
-    phantasi_store_http,
+    get_admin_user_id_from_headers, get_phantasi_viewer, phantasi_http_err, phantasi_store_http,
 };
 
 // 订阅主题
@@ -101,10 +100,7 @@ pub(crate) async fn list_subscription_topics(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    let (_, is_admin) = get_phantasi_viewer(&headers, &db).await?;
     let topics = list_subscription_topic_names(&db, is_admin)
         .await
         .map_err(|e| phantasi_store_http("list topics", e))?;
@@ -187,10 +183,7 @@ pub(crate) async fn list_items(
     Query(query): Query<phantasi_items::ItemsQuery>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     // 获取可选用户 ID 与管理员状态
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    let (user_id, is_admin) = get_phantasi_viewer(&headers, &db).await?;
 
     let mut visible_sources = phantasi_sources::Entity::find()
         .select_only()
@@ -328,7 +321,7 @@ pub(crate) async fn list_items(
         items_query.limit(fetch).all(&db).await
     } else {
         items_query
-            .offset(((page - 1) * per_page) as u64)
+            .offset((page as u64 - 1) * per_page as u64)
             .limit(fetch)
             .all(&db)
             .await
@@ -394,8 +387,7 @@ pub(crate) async fn list_items(
                     // 游客所有文章都是未读、未收藏
                     let state = states_map.get(&item.id);
                     let is_read = user_id.is_some() && state.map(|s| s.is_read).unwrap_or(false);
-                    let is_starred =
-                        user_id.is_some() && state.map(|s| s.is_starred).unwrap_or(false);
+                    let is_starred = is_admin && state.map(|s| s.is_starred).unwrap_or(false);
                     let read_progress = if user_id.is_some() {
                         state.and_then(|s| s.read_progress)
                     } else {

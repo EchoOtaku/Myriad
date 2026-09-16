@@ -13,7 +13,7 @@ import {
   pastedHtmlToMarkdown,
   plainTableToMarkdown,
 } from './notePaste.ts'
-import { visualHtmlToMarkdown } from './noteVisual.ts'
+import { markdownToVisualHtml, visualHtmlToMarkdown } from './noteVisual.ts'
 
 const require = createRequire(import.meta.url)
 const { JSDOM } = require(
@@ -256,5 +256,25 @@ describe('visualHtmlToMarkdown 套层', () => {
       '<table><tr><td style="text-align:center">A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>',
     )
     assert.match(md, /\| :---: \| --- \|/)
+  })
+})
+
+describe('pasted table cell line breaks (#359)', () => {
+  it('keeps both model names in the value cell through repeated edits', () => {
+    const html =
+      '<table><tr><th>PARAM</th><th>VALUE</th></tr><tr><td>model</td><td><code>deepseek-flash</code> (1)<br><code>deepseek-v4-pro</code> (2)</td></tr></table>'
+    const expected =
+      '| PARAM | VALUE |\n| --- | --- |\n| model | `deepseek-flash` (1)<br>`deepseek-v4-pro` (2) |'
+    let md = pastedHtmlToMarkdown(html)
+    assert.equal(md, expected)
+    for (let i = 0; i < 3; i += 1) {
+      const visual = markdownToVisualHtml(md)
+      assert.match(
+        visual,
+        /<td><code>deepseek-flash<\/code> \(1\)<br><code>deepseek-v4-pro<\/code> \(2\)<\/td>/,
+      )
+      md = visualHtmlToMarkdown(visual)
+      assert.equal(md, expected)
+    }
   })
 })

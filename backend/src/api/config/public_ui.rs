@@ -428,6 +428,7 @@ pub async fn get_public_config(
         .filter(|value| !value.is_empty());
     let response = json!({
         "platforms": public_platforms,
+        "aiAvailability": db_config.as_ref().map(ai_availability),
         "meropeEnabled": is_enabled,
         "agentPersonaName": crate::services::agent::merope::public_persona_name(
             is_enabled,
@@ -527,4 +528,56 @@ pub async fn get_public_ui_config(
     });
 
     (StatusCode::OK, Json(ui_config))
+}
+
+/// Readiness only; provider credentials never leave the backend.
+fn ai_availability(config: &crate::config::DynamicConfig) -> Value {
+    use crate::config::ModelTier;
+    let ready = |tier| {
+        config
+            .resolve_ai_config(tier)
+            .api_key
+            .is_some_and(|key| !key.trim().is_empty())
+    };
+    let standard = ready(ModelTier::Standard);
+    let pro = ready(ModelTier::Pro);
+    json!({
+        "standard": standard,
+        "chat": standard || (config.merope_enabled_resolved() && config.lite_enabled && ready(ModelTier::Lite)),
+        "pro": pro,
+        "persona": config.pro_enabled && pro,
+        "image": crate::services::image_generation::config_from_dynamic(config).is_ok(),
+    })
+}
+
+#[cfg(test)]
+mod ai_availability_tests {
+    use super::*;
+
+    #[test]
+    fn missing_configuration_has_no_available_ai() {
+        let value = ai_availability(&crate::config::DynamicConfig::default());
+        assert!(
+            value
+                .as_object()
+                .unwrap()
+                .values()
+                .all(|flag| flag == false)
+        );
+    }
+
+    #[test]
+    fn shared_credentials_follow_runtime_resolution_without_exposing_keys() {
+        let config = crate::config::DynamicConfig {
+            provider_openai_api_key: Some("test-private-key".into()),
+            ..Default::default()
+        };
+        let value = ai_availability(&config);
+        assert!(config.text_ai_available());
+        assert_eq!(value["standard"], true);
+        assert_eq!(value["chat"], true);
+        assert_eq!(value["pro"], true);
+        assert_eq!(value["persona"], false);
+        assert!(!value.to_string().contains("test-private-key"));
+    }
 }

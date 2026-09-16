@@ -17,7 +17,7 @@ describe('ownItemState', () => {
     assert.equal(ownItemState({ source_id: 4 }, null, true), 'not-own')
   })
 
-  it('分类含「我」且非 admin_only 才是 own', () => {
+  it('本地笔记或「我」分类且非 admin_only 才是 own', () => {
     assert.equal(
       ownItemState({ source_id: 4 }, { category: '我' }, true),
       'own',
@@ -33,6 +33,14 @@ describe('ownItemState', () => {
     assert.equal(
       ownItemState({ source_id: 4 }, { category: '友情链接' }, true),
       'not-own',
+    )
+    assert.equal(
+      ownItemState(
+        { source_id: 4 },
+        { source_type: 'note', category: null },
+        true,
+      ),
+      'own',
     )
   })
 })

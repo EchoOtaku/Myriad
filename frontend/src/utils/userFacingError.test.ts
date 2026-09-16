@@ -16,6 +16,13 @@ function fill(
 }
 
 describe('userFacingError', () => {
+  it('guides missing AI configuration without misclassifying an upstream failure', () => {
+    for (const code of ['ai_not_configured', 'AI_NOT_CONFIGURED']) {
+      assert.equal(userFacingError(new ApiError('No AI provider configured', 409, code)), currentCopy().errors.aiNotConfigured)
+    }
+    assert.notEqual(userFacingError(new ApiError('bad gateway: client error (Connect)', 502)), currentCopy().errors.aiNotConfigured)
+  })
+
   it('treats API Error: 500 and JSON dumps as useless', () => {
     assert.equal(isUselessErrorText('API Error: 500'), true)
     assert.equal(isUselessErrorText('{"error":"boom"}'), true)

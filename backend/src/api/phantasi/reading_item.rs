@@ -12,7 +12,7 @@ use crate::models::entities::{
     phantasi_annotations, phantasi_items, phantasi_podcasts, phantasi_sources, phantasi_user_states,
 };
 
-use super::helpers::{get_optional_user_and_admin_status, phantasi_http_err, phantasi_store_http};
+use super::helpers::{get_phantasi_viewer, phantasi_store_http};
 use myriad_error::AppError;
 
 /// 获取单篇文章详情（游客可访问）
@@ -25,10 +25,7 @@ pub(crate) async fn get_item(
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     // 获取可选用户 ID 与管理员状态
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Item not found"));
-    }
+    let (user_id, is_admin) = get_phantasi_viewer(&headers, &db).await?;
 
     // 获取文章
     let item = phantasi_items::Entity::find_by_id(id)
@@ -67,7 +64,7 @@ pub(crate) async fn get_item(
                 let (is_read, is_starred, read_progress, state_revision) = if user_id.is_some() {
                     (
                         state.as_ref().map(|s| s.is_read).unwrap_or(false),
-                        state.as_ref().map(|s| s.is_starred).unwrap_or(false),
+                        is_admin && state.as_ref().map(|s| s.is_starred).unwrap_or(false),
                         state.as_ref().and_then(|s| s.read_progress),
                         Some(state.as_ref().map_or(0, |s| s.revision)),
                     )

@@ -50,14 +50,16 @@ export function phantasiCategoryParts(
     .filter(Boolean)
 }
 
-/** category 含「我」且非 admin_only 才算自有，才可做文章级 SEO。 */
+/** 本地笔记或 category 含「我」的公开源才算自有，可做文章级 SEO。 */
 export function isOwnPhantasiSource(source: {
+  source_type?: string | null
   category?: string | null
   admin_only?: boolean
 } | null | undefined): boolean {
   if (!source) return false
   // admin_only 源不公开收录
   if (source.admin_only) return false
+  if (source.source_type === 'note') return true
   return phantasiCategoryParts(source.category).some(isMineCategory)
 }
 

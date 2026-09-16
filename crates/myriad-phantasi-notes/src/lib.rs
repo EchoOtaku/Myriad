@@ -1338,6 +1338,15 @@ mod tests {
     }
 
     #[test]
+    fn table_cell_break_stays_in_value_column() {
+        let md = "| PARAM | VALUE |\n| --- | --- |\n| model | `deepseek-flash` (1)<br>`deepseek-v4-pro` (2) |";
+        for html in [render_markdown(md), render_markdown_preview(md)] {
+            assert!(html.contains("<td><code>deepseek-flash</code> (1)<br><code>deepseek-v4-pro</code> (2)</td>"), "{html}");
+            assert_eq!(html.matches("<td>").count(), 2, "{html}");
+        }
+    }
+
+    #[test]
     fn table_alignment_becomes_align_attribute() {
         let html = render_markdown("| a | b | c |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |");
         assert!(html.contains("<th align=\"left\">"), "{html}");

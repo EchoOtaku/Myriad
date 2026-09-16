@@ -34,6 +34,7 @@ import {
   useConfigMessage,
   useConfigNavigation,
   useConfigSearch,
+  useConfigSessionKey,
 } from './config/form'
 import MyriadConfigIcon from './config/MyriadConfigIcon'
 import { useSpeechTest } from './config/useSpeechTest'
@@ -106,6 +107,7 @@ const ModernConfigForm: React.FC = () => {
     [bag, ...Object.values(drafts), favoritesDomain],
     showMessage,
     t.config,
+    activeSection,
   )
   const {
     isDirty: isConfigDirty,
@@ -209,11 +211,7 @@ const ModernConfigForm: React.FC = () => {
             <div role="alert">
               <p>{t.config.loadConfigFailed}</p>
               <SettingsButton
-                onClick={() => {
-                  void Promise.allSettled(
-                    unavailable.map((domain) => domain.load()),
-                  )
-                }}
+                onClick={() => void loadConfig(section)}
                 disabled={unavailable.some((domain) => domain.loading)}
               >
                 {t.common.retry}
@@ -669,10 +667,10 @@ const ModernConfigForm: React.FC = () => {
 }
 
 export default function ConfigForm() {
-  const { user } = useAuth()
+  const sessionKey = useConfigSessionKey()
   return (
     <ConfigDefaultsProvider>
-      <ModernConfigForm key={user?.id ?? 'anonymous'} />
+      <ModernConfigForm key={sessionKey} />
     </ConfigDefaultsProvider>
   )
 }

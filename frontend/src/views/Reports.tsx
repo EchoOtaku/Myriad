@@ -46,6 +46,7 @@ import {
   useTitleFont,
 } from '../hooks/useTitleFont'
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
+import { fetchWithAiConfiguration } from '../utils/aiConfiguration'
 import { getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { buildModulePageSeo } from '../utils/modulePageSeo'
@@ -645,7 +646,7 @@ export default function Reports() {
         console.warn(`Refresh ${platformId} data request error:`, fetchErr)
       }
 
-      const response = await fetch(`${API_URL}/api/reports/platform`, {
+      const response = await fetchWithAiConfiguration(`${API_URL}/api/reports/platform`, {
         method: 'POST',
         headers: jsonLocaleHeaders(csrfToken),
         credentials: 'include',
@@ -871,7 +872,7 @@ export default function Reports() {
           console.warn(`刷新 ${platformId} 数据请求出错:`, fetchErr)
         }
 
-        const response = await fetch(`${API_URL}/api/reports/platform`, {
+        const response = await fetchWithAiConfiguration(`${API_URL}/api/reports/platform`, {
           method: 'POST',
           headers: jsonLocaleHeaders(csrfToken),
           credentials: 'include',

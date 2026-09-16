@@ -290,8 +290,11 @@ async fn generate_and_save_annotations(
         None => {
             tracing::error!("AI analyzer unavailable: no API key configured");
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AppError::fail_json("AI service unavailable")),
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "code": "ai_not_configured",
+                    "error": "AI is not configured. Open Settings > AI or contact an administrator."
+                })),
             )
                 .into_response();
         }
@@ -908,8 +911,11 @@ async fn get_podcast_script(
         None => {
             tracing::error!("AI analyzer unavailable: no API key configured");
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AppError::fail_json("AI service unavailable")),
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "code": "ai_not_configured",
+                    "error": "AI is not configured. Open Settings > AI or contact an administrator."
+                })),
             )
                 .into_response();
         }
@@ -1376,8 +1382,11 @@ async fn generate_style_tags(
         None => {
             tracing::error!("AI analyzer unavailable: no API key configured");
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AppError::fail_json("AI service unavailable")),
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "code": "ai_not_configured",
+                    "error": "AI is not configured. Open Settings > AI or contact an administrator."
+                })),
             )
                 .into_response();
         }

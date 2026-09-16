@@ -27,8 +27,8 @@ export function PhantasiFilterTitleTags({
 
   if (starredMode?.isEditMode) {
     const picked = starredMode.selectedIds.size
-    const total = starredMode.total
-    const allOn = picked === total && total > 0
+    const loaded = starredMode.loadedCount
+    const allOn = picked === loaded && loaded > 0
     return (
       <>
         <SettingTitleTag
@@ -49,7 +49,7 @@ export function PhantasiFilterTitleTags({
           {allOn ? phantasi.deselectAll : phantasi.selectAll}
         </SettingTitleTag>
         <SettingTitleTag className={TAG} variant="muted">
-          {picked}/{total}
+          {picked}/{loaded}
         </SettingTitleTag>
         <SettingTitleTag
           className={TAG}

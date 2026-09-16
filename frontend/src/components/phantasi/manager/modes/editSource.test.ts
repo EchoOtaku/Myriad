@@ -93,6 +93,25 @@ describe('canSubmitEdit', () => {
 })
 
 describe('resolveEditSourcePayload', () => {
+  it('笔记源不把源分类混进笔记分类', () => {
+    const payload = resolveEditSourcePayload({
+      source: { source_type: 'note', feed_type: 'rss' },
+      fieldKind: 'note',
+      name: '笔记',
+      category: '错误的源分类',
+      url: 'myriad:notes',
+      updateInterval: 30,
+      subscriptionMode: 'normal',
+      customIcon: null,
+      themeColor: '',
+      styleTags: [],
+      adminOnly: false,
+    })
+    assert.equal(payload.category, undefined)
+    assert.equal(payload.source_type, undefined)
+    assert.equal(payload.url, undefined)
+  })
+
   it('普通 RSS 切 Phantasiai 并带上间隔', () => {
     const payload = resolveEditSourcePayload({
       source: { source_type: 'rss', feed_type: 'rss' },

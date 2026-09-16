@@ -15,9 +15,7 @@ use serde_json::json;
 use crate::error::HttpError;
 use crate::models::entities::{phantasi_items, phantasi_sources, phantasi_user_states};
 
-use super::helpers::{
-    get_user_and_admin_status, get_user_id_from_headers, phantasi_http_err, phantasi_store_http,
-};
+use super::helpers::{get_phantasi_user_and_admin_status, phantasi_http_err, phantasi_store_http};
 
 // 阅读状态
 
@@ -71,9 +69,7 @@ pub(crate) async fn update_item_state(
     is_read: Option<bool>,
     is_starred: Option<bool>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let user_id = get_user_id_from_headers(headers, db).await?;
-
-    let (_, is_admin) = get_user_and_admin_status(headers, db).await;
+    let (user_id, is_admin) = get_phantasi_user_and_admin_status(headers, db).await?;
     if is_starred.is_some() && !is_admin {
         return Err(phantasi_http_err(StatusCode::FORBIDDEN, "Forbidden"));
     }
@@ -203,9 +199,8 @@ pub(crate) async fn mark_all_read(
     headers: axum::http::HeaderMap,
     Json(req): Json<phantasi_user_states::MarkAllReadRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
+    let (user_id, is_admin) = get_phantasi_user_and_admin_status(&headers, &db).await?;
     // 共享订阅库：按当前用户可见源标记，而非「我创建的源」
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
 
     let mut source_ids_query = phantasi_sources::Entity::find()
         .select_only()

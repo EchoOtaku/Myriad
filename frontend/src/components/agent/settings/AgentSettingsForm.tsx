@@ -10,6 +10,7 @@ import { ConfigDefaultsProvider } from '../../config/ConfigDefaultsProvider'
 import {
   useConfigEditor,
   useConfigMessage,
+  useConfigSessionKey,
 } from '../../config/form'
 import { useAgentDomain } from '../../config/form/domains/useAgentDomain'
 import MyriadConfigIcon from '../../config/MyriadConfigIcon'
@@ -18,9 +19,7 @@ import {
   SettingsButton,
   SettingsPageActionsProvider,
 } from '../../settings'
-import {
-  scheduleScrollToSettingGuide,
-} from '../../settings/guides/guideAnchor'
+import { scheduleScrollToSettingGuide } from '../../settings/guides/guideAnchor'
 import { Spinner } from '../../Spinner'
 import '../../ConfigForm.css'
 
@@ -177,9 +176,10 @@ const AgentSettingsEditor: React.FC = () => {
 }
 
 export default function AgentSettingsForm() {
+  const sessionKey = useConfigSessionKey()
   return (
     <ConfigDefaultsProvider>
-      <AgentSettingsEditor />
+      <AgentSettingsEditor key={sessionKey} />
     </ConfigDefaultsProvider>
   )
 }

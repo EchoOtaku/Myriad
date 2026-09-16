@@ -24,8 +24,8 @@ use crate::services::permission_service::{
 };
 
 use super::helpers::{
-    get_admin_user_id_from_headers, get_optional_user_and_admin_status, get_user_and_admin_status,
-    get_user_id_from_headers, phantasi_http_err, phantasi_store_http,
+    get_admin_user_id_from_headers, get_phantasi_user_and_admin_status, get_phantasi_viewer,
+    phantasi_http_err, phantasi_store_http,
 };
 
 static COMMENT_COLOR: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -184,10 +184,7 @@ pub(crate) async fn list_comments(
     headers: axum::http::HeaderMap,
     Path(item_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    let (user_id, is_admin) = get_phantasi_viewer(&headers, &db).await?;
     let can_write = match user_id {
         Some(uid) => {
             let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
@@ -270,10 +267,7 @@ pub(crate) async fn create_comment(
     Path(item_id): Path<i32>,
     Json(req): Json<phantasi_comments::CreateCommentRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
+    let (user_id, is_admin) = get_phantasi_user_and_admin_status(&headers, &db).await?;
     require_comment_write(user_id, is_admin).await?;
     let item = visible_item(&db, item_id, is_admin).await?;
 
@@ -379,9 +373,7 @@ pub(crate) async fn update_comment(
     Path(comment_id): Path<i32>,
     Json(req): Json<phantasi_comments::UpdateCommentRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
+    let (user_id, is_admin) = get_phantasi_user_and_admin_status(&headers, &db).await?;
     require_comment_write(user_id, is_admin).await?;
 
     // 获取评论并验证所有权
@@ -392,6 +384,7 @@ pub(crate) async fn update_comment(
 
     match comment {
         Ok(Some(comment)) => {
+            visible_item(&db, comment.item_id, is_admin).await?;
             let mut active: phantasi_comments::ActiveModel = comment.clone().into();
 
             if let Some(comment_text) = req.comment {
@@ -463,9 +456,8 @@ pub(crate) async fn delete_comment(
     headers: axum::http::HeaderMap,
     Path(comment_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, is_admin) = get_user_and_admin_status(&headers, &db).await;
-    let user_id =
-        user_id.ok_or_else(|| phantasi_http_err(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
+    let (user_id, is_admin) = get_phantasi_user_and_admin_status(&headers, &db).await?;
+    require_comment_write(user_id, is_admin).await?;
 
     let comment = phantasi_comments::Entity::find_by_id(comment_id)
         .one(&db)
@@ -473,6 +465,7 @@ pub(crate) async fn delete_comment(
 
     match comment {
         Ok(Some(comment)) if can_delete_comment(comment.user_id, user_id, is_admin) => {
+            visible_item(&db, comment.item_id, is_admin).await?;
             // Cascade nested replies first (no DB self-FK on parent_id)
             if let Err(e) = phantasi_comments::Entity::delete_many()
                 .filter(phantasi_comments::Column::ParentId.eq(comment_id))
@@ -516,10 +509,7 @@ pub(crate) async fn list_comment_replies(
     headers: axum::http::HeaderMap,
     Path(comment_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    let (_, is_admin) = get_phantasi_viewer(&headers, &db).await?;
     let parent = match phantasi_comments::Entity::find_by_id(comment_id)
         .one(&db)
         .await
@@ -756,14 +746,19 @@ mod tests {
         let src = include_str!("comments.rs");
         let create = fn_body(src, "create_comment");
         let update = fn_body(src, "update_comment");
+        let delete = fn_body(src, "delete_comment");
         let list = fn_body(src, "list_comments");
-        assert!(create.contains("get_user_id_from_headers"));
+        assert!(create.contains("get_phantasi_user_and_admin_status"));
         assert!(create.contains("require_comment_write"));
-        assert!(update.contains("get_user_id_from_headers"));
+        assert!(update.contains("get_phantasi_user_and_admin_status"));
         assert!(update.contains("require_comment_write"));
+        assert!(update.contains("visible_item"));
+        assert!(delete.contains("get_phantasi_user_and_admin_status"));
+        assert!(delete.contains("require_comment_write"));
+        assert!(delete.contains("visible_item"));
         assert!(list.contains("can_write"));
         assert!(list.contains("comment_write_granted_for"));
-        assert!(list.contains("get_optional_user_and_admin_status"));
+        assert!(list.contains("get_phantasi_viewer"));
     }
 
     #[test]

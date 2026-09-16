@@ -87,14 +87,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAuthInflight = useRef<Promise<boolean> | null>(null)
   /** Monotonic generation so a stale probe cannot clear a fresher login hint. */
   const checkAuthGeneration = useRef(0)
+  const checkAuthRef = useRef<(() => void) | null>(null)
+  const authRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const authRetryAttempt = useRef(0)
+  const mounted = useRef(true)
+
+  const clearAuthRetry = useCallback(() => {
+    if (authRetryTimer.current) {
+      clearTimeout(authRetryTimer.current)
+      authRetryTimer.current = null
+    }
+    authRetryAttempt.current = 0
+  }, [])
+
+  const scheduleAuthRetry = useCallback(() => {
+    if (!hasSessionHint() || authRetryTimer.current || authRetryAttempt.current >= 3) return
+    const delay = 1_000 * 2 ** authRetryAttempt.current
+    authRetryAttempt.current += 1
+    authRetryTimer.current = setTimeout(() => {
+      authRetryTimer.current = null
+      void checkAuthRef.current?.()
+    }, delay)
+  }, [])
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      checkAuthGeneration.current++
+      clearAuthRetry()
+    }
+  }, [clearAuthRetry])
 
   const checkAuth = useCallback(async (): Promise<boolean> => {
+    if (!mounted.current) return false
     while (checkAuthInflight.current) {
       try {
         await checkAuthInflight.current
       } catch {
         // Failed probe; still run a fresh one.
       }
+      if (!mounted.current) return false
     }
 
     const generation = ++checkAuthGeneration.current
@@ -158,6 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setIsAuthenticated(true)
             setIsAdmin(u.is_admin || false)
             setKnownAuthState(true)
+            clearAuthRetry()
             return true
           }
           // Drop the session hint only on a definitive guest body.
@@ -168,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAuthenticated(false)
           setIsAdmin(false)
           setKnownAuthState(false)
+          clearAuthRetry()
           return false
         }
 
@@ -179,18 +214,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAuthenticated(false)
           setIsAdmin(false)
           setKnownAuthState(false)
+          clearAuthRetry()
+        } else {
+          scheduleAuthRetry()
         }
         // 5xx is not a definitive guest; do not let the sandbox block on it. Hint may remain.
         return false
       } catch {
-        // Network/timeout: keep the session hint; do not claim authenticated.
+        // Network/timeout is inconclusive. Preserve the last confirmed identity;
+        // only a definitive guest body or 401/403 may clear admin state.
         if (generation !== checkAuthGeneration.current) return false
-        authSubject.change('unknown')
-        phantasiSubject.change('unknown', false)
-        setUser(null)
-        setIsAuthenticated(false)
-        setIsAdmin(false)
-        // Missed probe; do not write knownAuthState.
+        scheduleAuthRetry()
         return false
       } finally {
         if (generation === checkAuthGeneration.current) {
@@ -204,7 +238,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
     checkAuthInflight.current = inflight.current
     return await inflight.current
-  }, [])
+  }, [clearAuthRetry, scheduleAuthRetry])
+  checkAuthRef.current = checkAuth
 
   const logout = useCallback(() => {
     checkAuthGeneration.current++
@@ -218,7 +253,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAdmin(false)
     setKnownAuthState(false)
     clearSessionHint()
-  }, [resetTappSubjectState])
+    clearAuthRetry()
+  }, [clearAuthRetry, resetTappSubjectState])
 
   // Probe on OAuth callback or session hint; skip for a hintless guest.
   // /api/auth/me is 200 + authenticated:false for guests (never 401).

@@ -10,9 +10,7 @@ use serde_json::json;
 use crate::error::HttpError;
 use crate::models::entities::{phantasi_items, phantasi_user_states};
 
-use super::helpers::{
-    get_user_and_admin_status, get_user_id_from_headers, phantasi_http_err, phantasi_store_http,
-};
+use super::helpers::{get_phantasi_user_and_admin_status, phantasi_http_err, phantasi_store_http};
 use super::reading_mark::visible_state_sources;
 
 async fn apply_unread_delta(
@@ -248,9 +246,7 @@ pub(crate) async fn sync_states(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     req.validate_targets()
         .map_err(|message| phantasi_http_err(StatusCode::BAD_REQUEST, message))?;
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
+    let (user_id, is_admin) = get_phantasi_user_and_admin_status(&headers, &db).await?;
 
     let now = Utc::now();
     let mut synced = 0;

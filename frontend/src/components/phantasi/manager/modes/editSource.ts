@@ -1,8 +1,8 @@
 /** 分类预置值走库里的「友情链接 / 我」，不走界面语言。 */
 
-import type { PhantasiSource, FeedType, SourceType, UpdateSourceRequest } from '../../../../types/phantasi'
-import { workbenchSourceKind } from '../../logic/board'
+import type { FeedType, PhantasiSource, SourceType, UpdateSourceRequest } from '../../../../types/phantasi'
 import type { AddFieldKind } from './addSource'
+import { workbenchSourceKind } from '../../logic/board'
 import { pickAddKind } from './addSource'
 
 export type SubscriptionMode = 'disabled' | 'normal' | 'phantasiai'
@@ -109,7 +109,6 @@ export function resolveEditSourcePayload(input: {
   const isLink = input.fieldKind === 'link'
   const payload: UpdateSourceRequest = {
     name: input.name.trim() || undefined,
-    category: input.category.trim() || undefined,
     theme_color: input.themeColor,
     ai_style_tags: Iterator.from(input.styleTags).toArray(),
     admin_only: input.adminOnly,
@@ -118,6 +117,7 @@ export function resolveEditSourcePayload(input: {
   if (input.fieldKind === 'note') return payload
 
   const fieldKind = input.fieldKind
+  payload.category = input.category.trim() || undefined
   payload.source_type = resolveSourceType(fieldKind, input.subscriptionMode)
   payload.feed_type = resolveFeedType(fieldKind, input.source, originalKind)
   const url = input.url.trim()

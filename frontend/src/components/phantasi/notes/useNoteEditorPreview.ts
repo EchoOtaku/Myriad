@@ -1,11 +1,12 @@
 import type {
   Dispatch,
-  MouseEvent as ReactMouseEvent,
   MutableRefObject,
+  MouseEvent as ReactMouseEvent,
   RefObject,
   SetStateAction,
 } from 'react'
 import type { TranslationKeys } from '../../../i18n/assembleLocale'
+import type { WidgetType } from '../../widgetGridTypes'
 import type { NoteEditorPane } from './NoteEditorChrome'
 import { useCallback, useEffect, useLayoutEffect } from 'react'
 import * as phantasiApi from '../../../services/phantasiApi'
@@ -28,7 +29,7 @@ import { noteWidgetTypesInHtml } from './noteWidgetHtml'
 import { replaceNoteHtml, useNoteWidgetHydration } from './noteWidgetMount'
 import { hydrateVisualMath } from './renderMath'
 
-type Jump = {
+interface Jump {
   pane: 'write' | 'visual'
   index: number
   plainOffset: number
@@ -49,7 +50,7 @@ export function useNoteEditorPreview(host: {
   visualEditing: MutableRefObject<boolean>
   lastEditPaneRef: MutableRefObject<'write' | 'visual'>
   pendingJumpRef: MutableRefObject<Jump | null>
-  widgetCatalog: Array<{ id: string; settings?: unknown[]; supportedSizes?: string[] }>
+  widgetCatalog: WidgetType[]
   setHtml: Dispatch<SetStateAction<string>>
   setContentMd: Dispatch<SetStateAction<string>>
   setPreviewing: Dispatch<SetStateAction<boolean>>

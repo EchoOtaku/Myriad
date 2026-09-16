@@ -166,10 +166,6 @@ export default function Home() {
   const layoutImportInFlightRef = useRef(false)
   const gridRef = useRef<WidgetGridHandle>(null)
   useImmersiveChrome('home-edit-mode', isEditMode)
-  useEditModeEscape(isEditMode, () => {
-    if (getTourSnapshot().active) stopTour('abort')
-    setIsEditMode(false)
-  })
   useEffect(() => {
     setHomeEditSurface(isEditMode)
     return () => setHomeEditSurface(false)
@@ -272,6 +268,14 @@ export default function Home() {
     }
   } | null>(null)
   const [stickerBusy, setStickerBusy] = useState(false)
+  useEditModeEscape(
+    isEditMode && !stickerPicking && !stickerDraft,
+    () => {
+      if (getTourSnapshot().active) stopTour('abort')
+      setIsEditMode(false)
+    },
+    t.home.exitEditConfirm,
+  )
   const showHomeAdminActions = Boolean(isAdmin && isDesktopBand)
 
   useEffect(() => {

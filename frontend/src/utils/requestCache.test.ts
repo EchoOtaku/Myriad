@@ -62,4 +62,5 @@ describe('request cache invalidation', () => {
     await loading
     assert.equal(cache.get('phantasi:item:1'), 'mutation')
   })
+
 })

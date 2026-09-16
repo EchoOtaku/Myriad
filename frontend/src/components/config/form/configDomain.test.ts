@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  CONFIG_LOAD_CONCURRENCY,
+  configDomainLoadRank,
   createConfigDomain,
   executeConfigOperations,
+  isPriorityConfigDomain,
+  loadConfigDomains,
   reconcileConfigDraft,
 } from './configDomain'
 
@@ -16,7 +20,259 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+describe('configuration domain load scheduling', () => {
+  it('keeps the concurrency cap across rapid editor remounts and cancels queued reads', async () => {
+    const gate = deferred<void>()
+    const started: string[] = []
+    const make = (id: string) => createConfigDomain(() => ({
+      id,
+      initial: 0,
+      persist: async (value: number) => value,
+      load: async () => {
+        started.push(id)
+        // Simulate a server read that cannot be cancelled once started.
+        await gate.promise
+        return 1
+      },
+    }))
+    const oldSession = new AbortController()
+    const first = loadConfigDomains(
+      [make('old-a'), make('old-b'), make('cancelled')], oldSession.signal,
+    )
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(started, ['old-a', 'old-b'])
+    oldSession.abort()
+    const second = loadConfigDomains(
+      [make('new-a'), make('new-b')], new AbortController().signal,
+    )
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(started, ['old-a', 'old-b'], 'remount must wait for outstanding reads')
+    gate.resolve()
+    await Promise.all([first, second])
+    assert.deepEqual(started, ['old-a', 'old-b', 'new-a', 'new-b'])
+  })
+
+  it('ranks the bag and the open section ahead of the rest', () => {
+    assert.equal(configDomainLoadRank({ id: 'config' }, 'permissions'), 0)
+    assert.equal(
+      configDomainLoadRank(
+        { id: 'permissions', sections: ['permissions'] },
+        'permissions',
+      ),
+      1,
+    )
+    assert.equal(
+      configDomainLoadRank(
+        { id: 'oauth', sections: ['oauth', 'users'] },
+        'permissions',
+      ),
+      2,
+    )
+    assert.equal(isPriorityConfigDomain({ id: 'config' }, 'permissions'), true)
+    assert.equal(
+      isPriorityConfigDomain(
+        { id: 'oauth', sections: ['oauth'] },
+        'permissions',
+      ),
+      false,
+    )
+    assert.equal(
+      isPriorityConfigDomain({ id: 'agent', sections: ['agent'] }, ''),
+      true,
+    )
+  })
+
+  it('loads at most two domains at once and skips domains already in flight', async () => {
+    assert.equal(CONFIG_LOAD_CONCURRENCY, 2)
+    let inflight = 0
+    let peak = 0
+    const gate = deferred<void>()
+    const make = (id: string, sections: string[] = []) => {
+      const started = deferred<void>()
+      const domain = createConfigDomain(() => ({
+        id,
+        sections,
+        initial: 0,
+        persist: async (value: number) => value,
+        load: async () => {
+          inflight++
+          peak = Math.max(peak, inflight)
+          started.resolve()
+          await gate.promise
+          inflight--
+          return 1
+        },
+      }))
+      return { domain, started: started.promise }
+    }
+    const first = make('config')
+    const second = make('permissions', ['permissions'])
+    const third = make('oauth', ['oauth'])
+    const loading = loadConfigDomains(
+      [third.domain, first.domain, second.domain],
+      new AbortController().signal,
+      'permissions',
+    )
+    await Promise.all([first.started, second.started])
+    assert.equal(peak, 2)
+    assert.equal(third.domain.getSnapshot().loading, false)
+    gate.resolve()
+    await loading
+    assert.equal(first.domain.getSnapshot().ready, true)
+    assert.equal(second.domain.getSnapshot().ready, true)
+    assert.equal(third.domain.getSnapshot().ready, true)
+  })
+})
+
 describe('configuration domain lifecycle', () => {
+  it('keeps an interrupted canonical read pending without applying its response', async () => {
+    const response = deferred<string>()
+    const controller = new AbortController()
+    const domain = createConfigDomain(() => ({
+      id: 'bag',
+      initial: 'old',
+      ready: true,
+      readBack: true,
+      persist: async (value: string) => value,
+      load: () => response.promise,
+    }))
+    domain.setDraft('submitted')
+    await domain.prepareSave()!.persist()
+    const refresh = domain.flushEffects(controller.signal)
+    controller.abort()
+    response.resolve('canonical')
+    await refresh
+    assert.equal(domain.getSnapshot().saved, 'submitted')
+    assert.equal(domain.getSnapshot().pendingSync, true)
+    await domain.flushEffects()
+    assert.equal(domain.getSnapshot().saved, 'canonical')
+    assert.equal(domain.getSnapshot().pendingSync, false)
+  })
+
+  it('stops queued writes and refreshes when a save session is cancelled', async () => {
+    const controller = new AbortController()
+    const response = deferred<number>()
+    let writes = 0
+    let refreshes = 0
+    const first = createConfigDomain(() => ({
+      id: 'first',
+      initial: 0,
+      ready: true,
+      persist: async () => {
+        writes++
+        return response.promise
+      },
+      effects: () => [
+        {
+          id: 'refresh',
+          run: () => {
+            refreshes++
+          },
+        },
+      ],
+    }))
+    const second = createConfigDomain(() => ({
+      id: 'second',
+      initial: 0,
+      ready: true,
+      persist: async (value: number) => {
+        writes++
+        return value
+      },
+    }))
+    first.setDraft(1)
+    second.setDraft(2)
+    const saving = executeConfigOperations(
+      [first, second],
+      [first.prepareSave()!, second.prepareSave()!],
+      controller.signal,
+    )
+    controller.abort()
+    response.resolve(1)
+    const result = await saving
+    assert.equal(result.cancelled, true)
+    assert.deepEqual(result.persisted, ['first'])
+    assert.equal(result.pendingSync, true)
+    assert.equal(writes, 1)
+    assert.equal(refreshes, 0)
+    assert.equal(first.getSnapshot().saved, 1)
+    assert.equal(second.getSnapshot().dirty, true)
+  })
+
+  it('cancellation during a refresh stops the following effects', async () => {
+    const controller = new AbortController()
+    const refreshed: string[] = []
+    const domain = createConfigDomain(() => ({
+      id: 'bag',
+      initial: 0,
+      ready: true,
+      persist: async (value: number) => value,
+      effects: () => [
+        {
+          id: 'one',
+          run: () => {
+            refreshed.push('one')
+            controller.abort()
+          },
+        },
+        {
+          id: 'two',
+          run: () => {
+            refreshed.push('two')
+          },
+        },
+      ],
+    }))
+    domain.setDraft(1)
+    const result = await executeConfigOperations(
+      [domain],
+      [domain.prepareSave()!],
+      controller.signal,
+    )
+    assert.equal(result.cancelled, true)
+    assert.equal(result.errors.length, 0)
+    assert.deepEqual(refreshed, ['one'])
+    assert.equal(result.pendingSync, true)
+  })
+
+  it('ignores obsolete failures after a newer load succeeds', async () => {
+    const old = deferred<number>()
+    let loads = 0
+    const domain = createConfigDomain(() => ({
+      id: 'bag',
+      initial: 0,
+      load: () => (++loads === 1 ? old.promise : Promise.resolve(2)),
+      persist: async (value: number) => value,
+    }))
+    const stale = domain.load()
+    await domain.load()
+    old.reject(new Error('obsolete failure'))
+    await stale
+    assert.equal(domain.getSnapshot().saved, 2)
+    assert.equal(domain.getSnapshot().error, null)
+  })
+
+  it('does not accept a cancelled load and can load again in a new session', async () => {
+    const old = deferred<number>()
+    const controller = new AbortController()
+    let loads = 0
+    const domain = createConfigDomain(() => ({
+      id: 'bag',
+      initial: 0,
+      load: () => (++loads === 1 ? old.promise : Promise.resolve(2)),
+      persist: async (value: number) => value,
+    }))
+    const loading = domain.load(controller.signal)
+    controller.abort()
+    old.resolve(1)
+    await loading
+    assert.equal(domain.getSnapshot().saved, 0)
+    assert.equal(domain.getSnapshot().ready, false)
+    assert.equal(domain.getSnapshot().loading, false)
+    await domain.load()
+    assert.equal(domain.getSnapshot().saved, 2)
+  })
+
   it('acknowledges and refreshes a saved domain even when the next endpoint fails', async () => {
     const writes: string[] = []
     const effects: string[] = []

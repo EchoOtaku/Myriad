@@ -273,7 +273,6 @@ export default function WidgetLibraryIsland({
     islandBoxStyle: dockIslandBoxStyle,
     restore: restoreLibraryDock,
     setStageHovered,
-    consumeEscape,
     onIslandAnimationComplete,
   } = dock
 
@@ -287,18 +286,6 @@ export default function WidgetLibraryIsland({
       () => {},
     )
   }, [availableWidgets, visible])
-
-  useEffect(() => {
-    if (!visible || !parkable) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      if (!consumeEscape()) return
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [consumeEscape, parkable, visible])
 
   const libraryScrollRef = useRef<HTMLDivElement>(null)
   const [librarySearchQuery, setLibrarySearchQuery] = useState('')

@@ -1205,6 +1205,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.asrInvalidAudio
   }
+  if (code === 'ai_not_configured' || code === 'AI_NOT_CONFIGURED' || /^(?:No AI provider configured|AI analyzer not configured)/i.test(raw)) {
+    return t.aiNotConfigured
+  }
   if (
     code === 'speech_not_configured' ||
     /speech service is not configured|语音服务未配置|TTS 服务未配置/i.test(raw)

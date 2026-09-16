@@ -3,7 +3,8 @@
 import type { CSSProperties } from 'react'
 import type { PhantasiItemPreview, PhantasiNoteDoc, PhantasiSource } from '../../../types/phantasi'
 import type { HomeBoardNote } from '../logic/homeBoard'
-import { useMemo, useRef } from 'react'
+import type { PeekStoryPreview } from '../ui/peekLane'
+import { useCallback, useMemo, useRef } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { getIconUrl, getImageUrl } from '../constants'
 import { isSiteSource, visitFriendHref } from '../logic/board'
@@ -20,10 +21,10 @@ import {
   noteStoryTopic,
 } from '../notes/noteCategory'
 import { storySourceFace } from '../notes/noteSiteSource'
-import { StoryCard, clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
+import { clearPhantasiStoryPeeks, StoryCard, usePhantasiPeekLane } from '../ui/StoryCard'
 import { PhantasiStory } from './PhantasiStory'
 import { usePhantasiTimes } from './time'
-import { usePhantasiRailPan } from './usePhantasiRailPan'
+import { useStoryWindow } from './useStoryWindow'
 
 function openLink(source: PhantasiSource) {
   const href = visitFriendHref(source)
@@ -36,6 +37,9 @@ export default function PhantasiNotes({
   notes,
   docs,
   category = null,
+  loading = false,
+  failed = false,
+  onRetry,
   isEditMode = false,
   selectedIds,
   onToggleSelect,
@@ -49,6 +53,9 @@ export default function PhantasiNotes({
   sources: PhantasiSource[]
   notes: HomeBoardNote[]
   docs: PhantasiNoteDoc[]
+  loading?: boolean
+  failed?: boolean
+  onRetry?: () => void
   category?: string | null
   isEditMode?: boolean
   selectedIds?: Set<number>
@@ -59,7 +66,7 @@ export default function PhantasiNotes({
     source: PhantasiSource,
     neighbors?: Array<{ id: number; title: string }>,
   ) => void
-  onPeekItem?: (item: PhantasiItemPreview) => void
+  onPeekItem?: (item: PeekStoryPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: PhantasiItemPreview) => void
   onOpenDoc?: (id: number) => void
@@ -67,16 +74,16 @@ export default function PhantasiNotes({
   const { t, locale } = useI18n()
   const times = usePhantasiTimes()
   const labels = t.phantasi
-  const leftover = leftoverNoteSources(sources, notes)
-  const byId = new Map(sources.map((source) => [source.id, source]))
-  const shownDocs = docs.filter((doc) => matchesNoteCategory(doc.topic, category))
-  const shownNotes = notes.filter((note) => matchesNoteCategory(note.topic, category))
-  const shownLeftover = leftover.filter((source) => {
+  const leftover = useMemo(() => leftoverNoteSources(sources, notes), [sources, notes])
+  const byId = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources])
+  const shownDocs = useMemo(() => docs.filter((doc) => matchesNoteCategory(doc.topic, category)), [docs, category])
+  const shownNotes = useMemo(() => notes.filter((note) => matchesNoteCategory(note.topic, category)), [notes, category])
+  const shownLeftover = useMemo(() => leftover.filter((source) => {
     if (category == null) return true
     const story = sourceLatestStory(source)
     if (story) return matchesNoteCategory(story.topic, category)
     return category === NOTE_CATEGORY_NONE
-  })
+  }), [leftover, category])
   const cardCount = shownDocs.length + shownNotes.length + shownLeftover.length
   const storyCols = Math.max(1, Math.ceil(cardCount / 2))
   const notesViewRef = useRef<HTMLDivElement>(null)
@@ -117,21 +124,10 @@ export default function PhantasiNotes({
     onPeekEnd,
     blocked: () => isEditMode || !onPeekItem,
   })
-  usePhantasiRailPan(
-    notesViewRef,
-    notesTrackRef,
-    cardCount > 0,
-    notesKey,
-    '.phantasi-story',
-    undefined,
-    undefined,
-    true,
-    undefined,
-    () => {
-      clearPhantasiStoryPeeks(notesTrackRef.current)
-      onPeekEnd?.()
-    },
-  )
+  const window = useStoryWindow(cardCount, notesKey, notesViewRef, notesTrackRef, () => {
+    clearPhantasiStoryPeeks(notesTrackRef.current)
+    onPeekEnd?.()
+  }, `${category ?? "all"}:${shownDocs[0]?.id ?? ""}:${shownNotes[0]?.id ?? ""}:${shownLeftover[0]?.id ?? ""}`)
 
   const activateSource = (source: PhantasiSource) => {
     if (isEditMode) {
@@ -150,19 +146,18 @@ export default function PhantasiNotes({
     onSourceClick(source)
   }
 
-  const openArticle = (item: PhantasiItemPreview, sourceId: number) => {
+  const openArticle = useCallback((item: PhantasiItemPreview & { source_id?: number }) => {
+    const sourceId = item.source_id
+    if (sourceId == null) return
     if (isEditMode) {
       onToggleSelect?.(sourceId)
       return
     }
     const source = byId.get(sourceId)
     if (source) onOpenItem(item, source, wallNeighbors)
-  }
+  }, [byId, isEditMode, onToggleSelect, onOpenItem, wallNeighbors])
 
-  let cardAt = 0
-  const takeSeat = () => {
-    const index = cardAt
-    cardAt += 1
+  const takeSeat = (index: number) => {
     const column = Math.floor(index / 2) + 1
     return {
       arrive: index < 8 ? index : undefined,
@@ -175,12 +170,14 @@ export default function PhantasiNotes({
   }
 
   return (
-    <div className="phantasi-notes-board">
+    <div className="phantasi-notes-board" aria-busy={loading}>
       <div
         className="phantasi-skin phantasi-notes"
         ref={notesViewRef}
         data-phantasi-peek-lane
         {...peekLane}
+        onFocusCapture={window.onFocusCapture}
+        onBlurCapture={window.onBlurCapture}
       >
       <div
         className="phantasi-notes-track"
@@ -188,9 +185,11 @@ export default function PhantasiNotes({
         data-phantasi-rail-track="items"
         style={{ '--phantasi-story-cols': storyCols } as CSSProperties}
       >
-      {shownDocs.map((doc) => {
+      {window.indices.map((index) => {
+        if (index < shownDocs.length) {
+        const doc = shownDocs[index]!
         const faceTopic = noteStoryTopic(doc.topic, labels)
-        const seat = takeSeat()
+        const seat = takeSeat(index)
         return (
           <StoryCard
             key={`doc:${doc.id}`}
@@ -220,11 +219,12 @@ export default function PhantasiNotes({
             }}
           />
         )
-      })}
-      {shownNotes.map((note) => {
-        const source = byId.get(note.source_id)
-        const item = toNoteStory(note, source)
-        const seat = takeSeat()
+        }
+        const noteIndex = index - shownDocs.length
+        if (noteIndex < shownNotes.length) {
+        const note = shownNotes[noteIndex]!
+        const item = peekById.get(note.id)!
+        const seat = takeSeat(index)
         return (
           <PhantasiStory
             key={`note:${note.id}`}
@@ -237,18 +237,18 @@ export default function PhantasiNotes({
             place={seat.place}
             picking={isEditMode}
             picked={!!selectedIds?.has(note.source_id)}
-            onOpen={() => openArticle(item, note.source_id)}
+            onOpen={openArticle}
             onToggleStar={
               isEditMode || !onToggleStar
                 ? undefined
-                : (story) => onToggleStar(story)
+                : onToggleStar
             }
           />
         )
-      })}
-      {shownLeftover.map((source) => {
-        const story = sourceLatestStory(source)
-        const seat = takeSeat()
+        }
+        const source = shownLeftover[noteIndex - shownNotes.length]!
+        const story = source.recent_items?.[0] ? peekById.get(source.recent_items[0].id) : undefined
+        const seat = takeSeat(index)
         if (story) {
           return (
             <PhantasiStory
@@ -262,11 +262,11 @@ export default function PhantasiNotes({
               place={seat.place}
               picking={isEditMode}
               picked={!!selectedIds?.has(source.id)}
-              onOpen={() => openArticle(story, source.id)}
+              onOpen={openArticle}
               onToggleStar={
                 isEditMode || !onToggleStar
                   ? undefined
-                  : (item) => onToggleStar(item)
+                  : onToggleStar
               }
             />
           )
@@ -300,6 +300,13 @@ export default function PhantasiNotes({
       })}
       </div>
       </div>
+      {failed ? (
+        <div className="phantasi-stories__more" role="status">
+          {labels.loadFailed} <button type="button" onClick={onRetry}>{t.common.retry}</button>
+        </div>
+      ) : loading ? (
+        <div className="phantasi-stories__more" role="status">{labels.loading}</div>
+      ) : null}
     </div>
   )
 }

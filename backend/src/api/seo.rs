@@ -33,7 +33,9 @@ use serde_json::{Value, json};
 use crate::models::entities::{phantasi_items, phantasi_sources, tapps};
 use crate::services::tapp_ownership::{find_admin_user_id, public_install_visible_to_viewer};
 use crate::services::tapp_validation::validate_tapp_id;
-use myriad_module_visibility::load_module_visibility_preferences;
+use myriad_module_visibility::{
+    load_module_visibility_preferences, try_load_module_visibility_preferences,
+};
 
 /// Fixed DB category label for site-owner original Phantasi content.
 /// Must match frontend `PHANTASI_MINE_CATEGORY` (`frontend/src/components/phantasi/constants.ts`).
@@ -694,12 +696,13 @@ async fn load_site_branding(db: &DatabaseConnection) -> SiteBranding {
 }
 
 async fn module_open_to_guests(db: &DatabaseConnection, key: &str) -> bool {
-    let prefs = load_module_visibility_preferences(db).await;
-    prefs
-        .modules
-        .get(key)
-        .map(|s| module_is_public_all(s))
-        .unwrap_or(true)
+    match try_load_module_visibility_preferences(db).await {
+        Ok(preferences) => module_is_public_all(preferences.module_visibility(key)),
+        Err(error) => {
+            tracing::warn!(%error, module = key, "Failed closed while checking module visibility");
+            false
+        }
+    }
 }
 
 async fn tapp_module_open_to_guests(db: &DatabaseConnection) -> bool {
@@ -759,11 +762,18 @@ fn notes_rss_alternate(base: Option<&str>, enabled: bool) -> String {
     )
 }
 
-/// Whether a Phantasi source is site-owner original content (category contains `我`).
+/// Whether a Phantasi source is site-owner original content.
 /// Friend links and third-party feeds must never be treated as own content.
-fn phantasi_source_is_own(category: &Option<String>, admin_only: bool) -> bool {
+fn phantasi_source_is_own(
+    source_type: &phantasi_sources::SourceType,
+    category: &Option<String>,
+    admin_only: bool,
+) -> bool {
     if admin_only {
         return false;
+    }
+    if *source_type == phantasi_sources::SourceType::Note {
+        return true;
     }
     category
         .as_ref()
@@ -837,8 +847,8 @@ async fn resolve_phantasi_item_seo_summary(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Hard gate: only `我` category, never friend-links / third-party feeds
-    if !phantasi_source_is_own(&source.category, source.admin_only) {
+    // Hard gate: local notes or `我` sources, never friend links / third-party feeds.
+    if !phantasi_source_is_own(&source.source_type, &source.category, source.admin_only) {
         return Err(StatusCode::NOT_FOUND);
     }
 
@@ -1313,7 +1323,7 @@ async fn own_phantasi_item_links(
     };
     let own_source_ids: Vec<i32> = sources
         .into_iter()
-        .filter(|s| phantasi_source_is_own(&s.category, s.admin_only))
+        .filter(|s| phantasi_source_is_own(&s.source_type, &s.category, s.admin_only))
         .map(|s| s.id)
         .collect();
     if own_source_ids.is_empty() {
@@ -1356,7 +1366,7 @@ async fn own_phantasi_note_links(
         .into_iter()
         .filter(|s| {
             s.source_type == phantasi_sources::SourceType::Note
-                || phantasi_source_is_own(&s.category, s.admin_only)
+                || phantasi_source_is_own(&s.source_type, &s.category, s.admin_only)
         })
         .map(|s| s.id)
         .collect();
@@ -2070,7 +2080,7 @@ pub async fn sitemap_xml(State(db): State<DatabaseConnection>, _headers: HeaderM
         {
             let own_source_ids: Vec<i32> = sources
                 .into_iter()
-                .filter(|s| phantasi_source_is_own(&s.category, s.admin_only))
+                .filter(|s| phantasi_source_is_own(&s.source_type, &s.category, s.admin_only))
                 .map(|s| s.id)
                 .collect();
             if !own_source_ids.is_empty() {
@@ -2137,16 +2147,47 @@ mod tests {
 
     #[test]
     fn phantasi_own_category_gate() {
-        assert!(phantasi_source_is_own(&Some("我".into()), false));
-        assert!(phantasi_source_is_own(&Some("博客, 我".into()), false));
-        assert!(phantasi_source_is_own(&Some("我, 随笔".into()), false));
+        use phantasi_sources::SourceType;
+
+        assert!(phantasi_source_is_own(
+            &SourceType::Rss,
+            &Some("我".into()),
+            false
+        ));
+        assert!(phantasi_source_is_own(
+            &SourceType::Rss,
+            &Some("博客, 我".into()),
+            false
+        ));
+        assert!(phantasi_source_is_own(
+            &SourceType::Rss,
+            &Some("我, 随笔".into()),
+            false
+        ));
+        assert!(phantasi_source_is_own(&SourceType::Note, &None, false));
         // Friend links and third-party feeds must never pass
-        assert!(!phantasi_source_is_own(&Some("友情链接".into()), false));
-        assert!(!phantasi_source_is_own(&Some("科技".into()), false));
-        assert!(!phantasi_source_is_own(&None, false));
-        assert!(!phantasi_source_is_own(&Some("我".into()), true)); // admin_only
+        assert!(!phantasi_source_is_own(
+            &SourceType::Rss,
+            &Some("友情链接".into()),
+            false
+        ));
+        assert!(!phantasi_source_is_own(
+            &SourceType::Rss,
+            &Some("科技".into()),
+            false
+        ));
+        assert!(!phantasi_source_is_own(&SourceType::Rss, &None, false));
+        assert!(!phantasi_source_is_own(
+            &SourceType::Note,
+            &Some("我".into()),
+            true
+        )); // admin_only
         // Substring false positive: 「我们」 is not the mine preset
-        assert!(!phantasi_source_is_own(&Some("我们".into()), false));
+        assert!(!phantasi_source_is_own(
+            &SourceType::Rss,
+            &Some("我们".into()),
+            false
+        ));
     }
 
     #[test]

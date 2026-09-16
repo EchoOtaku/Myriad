@@ -110,45 +110,59 @@ impl ModuleVisibilityPreferences {
 
     /// Agent 模块页面可见级别
     pub fn agent_visibility(&self) -> &str {
-        self.modules
-            .get("agent")
-            .map(String::as_str)
-            .unwrap_or("all")
+        self.module_visibility("agent")
     }
+
+    pub fn module_visibility(&self, key: &str) -> &str {
+        self.modules.get(key).map(String::as_str).unwrap_or("all")
+    }
+}
+
+fn parse_module_visibility_preferences(
+    value: Value,
+) -> Result<ModuleVisibilityPreferences, String> {
+    let preferences = serde_json::from_value::<ModuleVisibilityPreferences>(value)
+        .map_err(|error| format!("invalid module visibility preferences: {error}"))?;
+    for key in MODULE_VISIBILITY_KEYS {
+        if let Some(level) = preferences.modules.get(key)
+            && !MODULE_VISIBILITY_LEVELS.contains(&level.as_str())
+        {
+            return Err(format!("invalid visibility level for {key}"));
+        }
+    }
+    Ok(preferences.normalized())
+}
+
+/// Strict loader for authorization boundaries. Missing configuration uses product
+/// defaults; malformed rows and database errors are returned to the caller.
+pub async fn try_load_module_visibility_preferences(
+    db: &impl ConnectionTrait,
+) -> Result<ModuleVisibilityPreferences, String> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT value FROM configurations WHERE key = $1",
+            vec![MODULE_VISIBILITY_PREFERENCES_KEY.into()],
+        ))
+        .await
+        .map_err(|error| format!("failed to load module visibility preferences: {error}"))?;
+    let Some(row) = row else {
+        return Ok(ModuleVisibilityPreferences::default());
+    };
+    let value = row
+        .try_get::<Value>("", "value")
+        .map_err(|error| format!("failed to read module visibility preferences: {error}"))?;
+    parse_module_visibility_preferences(value)
 }
 
 /// Load preferences from `configurations`, always returning a normalized value.
 pub async fn load_module_visibility_preferences(
     db: &impl ConnectionTrait,
 ) -> ModuleVisibilityPreferences {
-    let sql = "SELECT value FROM configurations WHERE key = $1";
-    let result = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            sql,
-            vec![MODULE_VISIBILITY_PREFERENCES_KEY.into()],
-        ))
-        .await;
-
-    match result {
-        Ok(Some(row)) => match row.try_get::<Value>("", "value") {
-            Ok(value) => serde_json::from_value::<ModuleVisibilityPreferences>(value)
-                .map(ModuleVisibilityPreferences::normalized)
-                .unwrap_or_else(|e| {
-                    tracing::warn!(
-                        "Invalid module visibility preferences, using defaults: {}",
-                        e
-                    );
-                    ModuleVisibilityPreferences::default()
-                }),
-            Err(e) => {
-                tracing::warn!("Failed to read module visibility preferences: {}", e);
-                ModuleVisibilityPreferences::default()
-            }
-        },
-        Ok(None) => ModuleVisibilityPreferences::default(),
-        Err(e) => {
-            tracing::warn!("Failed to load module visibility preferences: {}", e);
+    match try_load_module_visibility_preferences(db).await {
+        Ok(preferences) => preferences,
+        Err(error) => {
+            tracing::warn!(%error, "Using default module visibility preferences");
             ModuleVisibilityPreferences::default()
         }
     }
@@ -197,6 +211,24 @@ mod tests {
         assert_eq!(p.agent_usage.user, "elevated");
         // missing keys filled
         assert_eq!(p.modules.get("phantasi").map(String::as_str), Some("all"));
+    }
+
+    #[test]
+    fn strict_parser_rejects_levels_that_would_expand_access() {
+        assert!(
+            parse_module_visibility_preferences(serde_json::json!({
+                "modules": { "phantasi": "invalid" }
+            }))
+            .is_err()
+        );
+        assert_eq!(
+            parse_module_visibility_preferences(serde_json::json!({
+                "modules": { "phantasi": "admin" }
+            }))
+            .unwrap()
+            .module_visibility("phantasi"),
+            "admin"
+        );
     }
 
     #[test]

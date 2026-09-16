@@ -1,32 +1,49 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { describe, it } from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { afterEach, it } from 'node:test'
+import { requestCache } from '../../utils/requestCache'
+import { BOARD_NOTES_CACHE_PREFIX, loadBoardNotes } from './pageData'
 
-const dir = dirname(fileURLToPath(import.meta.url))
+afterEach(() => requestCache.deleteByPrefix(BOARD_NOTES_CACHE_PREFIX))
 
-describe('pageData abort', () => {
-  it('feed stories and board notes share one in-flight request and honour the caller signal after it', () => {
-    const src = readFileSync(join(dir, 'pageData.ts'), 'utf8')
-    assert.match(src, /export async function loadFeedStories\([\s\S]*signal\?: AbortSignal/)
-    assert.match(src, /export async function loadBoardNotes\([\s\S]*signal\?: AbortSignal/)
-    assert.match(src, /export async function loadNoteDocs\([\s\S]*signal\?: AbortSignal/)
-    // 请求本身不带 signal（否则一个调用方放弃会把大家共用的那次请求一起掐掉），
-    // 结果拿到后再看调用方还要不要。
-    assert.doesNotMatch(src, /signal \? \{ signal \} : undefined/)
-    assert.equal((src.match(/requestCache\.fetch\(/g) ?? []).length, 3)
-    assert.equal((src.match(/signal\?\.throwIfAborted\(\)/g) ?? []).length, 3)
-  })
+it('cancelling one notes consumer preserves shared pages and progress for another', async () => {
+  const original = globalThis.fetch
+  const first = Promise.withResolvers<Response>()
+  let calls = 0
+  globalThis.fetch = (async () => {
+    calls++
+    if (calls === 1) return first.promise
+    return Response.json({ items: [{ id: 2, source_id: 4, title: 'older', published_at: 1 }], next_cursor: null })
+  }) as typeof fetch
+  const abandoned = new AbortController()
+  try {
+    const a = loadBoardNotes([{ id: 4, source_type: 'note' }], abandoned.signal).catch(error => error)
+    const snapshots: number[][] = []
+    const b = loadBoardNotes([{ id: 4, source_type: 'note' }], undefined, notes => snapshots.push(notes.map(note => note.id)))
+    abandoned.abort()
+    first.resolve(Response.json({ items: [{ id: 3, source_id: 4, title: 'newer', published_at: 2 }], next_cursor: 'next' }))
+    assert.equal((await a).name, 'AbortError')
+    assert.deepEqual((await b).map(note => note.id), [3, 2])
+    assert.deepEqual(snapshots, [[3], [3, 2]])
+    assert.equal(calls, 2)
+  } finally { globalThis.fetch = original }
+})
 
-  it('board page aborts in-flight notes loads; feed stories drop late results', () => {
-    const src = readFileSync(join(dir, 'useBoardPage.ts'), 'utf8')
-    assert.match(src, /new AbortController\(\)/)
-    assert.match(src, /loadFeedStories\(source\.id, stamp\)/)
-    assert.match(src, /loadBoardNotes\(sourcesRef\.current, controller\.signal\)/)
-    assert.match(src, /controller\.abort\(\)/)
-    assert.match(src, /if \(!fetchLiveRef\.current\) return/)
-    assert.match(src, /noteSourceStamp/)
-    assert.doesNotMatch(src, /\[board, key, sources\]/)
-  })
+it('many note sources do not create an unbounded request burst', async () => {
+  const original = globalThis.fetch
+  let active = 0
+  let peak = 0
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const id = Number(new URL(String(input), 'https://test.invalid').searchParams.get('source_id'))
+    active++
+    peak = Math.max(peak, active)
+    await new Promise(resolve => setTimeout(resolve, 2))
+    active--
+    return Response.json({ items: [{ id, source_id: id, title: String(id), published_at: id }], next_cursor: null })
+  }) as typeof fetch
+  try {
+    const notes = await loadBoardNotes(Array.from({ length: 12 }, (_, i) => ({ id: i + 1, source_type: 'note' })))
+    assert.equal(notes.length, 12)
+    assert.ok(peak <= 3, `issued ${peak} simultaneous requests`)
+    assert.deepEqual(notes.map(note => note.id), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
+  } finally { globalThis.fetch = original }
 })

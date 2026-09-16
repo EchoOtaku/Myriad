@@ -1,6 +1,7 @@
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { currentCopy, formatCurrent } from '../i18n/localeCopy'
 import { ApiError, parseApiErrorBody } from '../services/api'
+import { fetchWithAiConfiguration } from './aiConfiguration'
 import { withAiTimeoutSignal } from './aiRequestTimeout.mjs'
 import { httpStatusMessage, isUselessErrorText } from './userFacingError'
 
@@ -84,7 +85,7 @@ export async function fetchJson<T = any>(
 
   for (let attempt = 0; ; attempt++) {
     try {
-      const response = await fetch(
+      const response = await fetchWithAiConfiguration(
         url,
         withAiTimeoutSignal(url, {
           credentials: 'include',

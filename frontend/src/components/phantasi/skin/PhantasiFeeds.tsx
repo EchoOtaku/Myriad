@@ -1,10 +1,11 @@
-import type { CSSProperties, ReactNode, RefObject } from 'react'
+import type { ReactNode } from 'react'
 import type { PhantasiItemPreview, PhantasiSource } from '../../../types/phantasi'
 import type { FeedStory } from '../logic/feedStories'
-import type { TimeTranslations } from '../types'
-import type { PhantasiRailApi } from './usePhantasiRailPan'
+import type { PeekStoryPreview } from '../ui/peekLane'
+import type { StorySlot } from './PhantasiFeedsStories'
 
-import { isValidElement, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { PhantasiRailApi } from './usePhantasiRailPan'
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { getIconUrl, normalizeThemeColor } from '../constants'
 import {
@@ -15,7 +16,6 @@ import {
   LATEST_FEED_STACK_POOL,
   latestFeedStackFaces,
   railGroupSourceCount,
-  topicFeedId,
   sourceColumnStarts,
   sourceScrollStarts,
   storyColumnLeads,
@@ -24,18 +24,19 @@ import {
   storyRailSlots,
   storySlotAtColumn,
   storySlotsByColumn,
+  topicFeedId,
 } from '../logic/feedStories'
-import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
-import { clearPhantasiStoryPeeks, schedulePhantasiPeekResume } from '../ui/StoryCard'
 import { topicDisplayName } from '../logic/topics'
 import { PhantasiVacant } from '../ui/Empty'
-import { PhantasiFeedsSites, paintSiteInk, paintSiteOn } from './PhantasiFeedsSites'
+import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
+import { clearPhantasiStoryPeeks, schedulePhantasiPeekResume } from '../ui/StoryCard'
+import { paintSiteInk, paintSiteOn, PhantasiFeedsSites } from './PhantasiFeedsSites'
+import { PhantasiFeedsStories } from './PhantasiFeedsStories'
 import {
   dropStoryDomShells,
   eagerStoryCovers,
   ensureStoryShells,
   followRailScroll,
-  onStoryMediaError,
   paintStoryAway,
   paintStoryLiveCols,
   RAIL_MOUNT_BOOT_TO,
@@ -49,16 +50,12 @@ import {
   railMountColumns,
   railMountColumnsCovered,
   railMountColumnsPan,
-  railMountColumnsSettle,
   railTrackScroll,
   recycleStoryDomShellsOutside,
   sourceAtScroll,
-  storyRailTrackSize,
 } from './railPan'
-import { warmStoryCovers, warmStoryFaces } from './storyFace'
 import { phantasiRelativeTime, usePhantasiTimes } from './time'
 import { usePhantasiRailPan } from './usePhantasiRailPan'
-import { PhantasiFeedsStories, type StorySlot } from './PhantasiFeedsStories'
 
 const ARTICLES_SETTLE_MS = 200
 
@@ -70,7 +67,7 @@ interface PhantasiFeedsProps {
   onToggleSelect?: (id: number) => void
   onSourceClick: (source: PhantasiSource) => void
   onOpenItem?: (item: PhantasiItemPreview, source: PhantasiSource) => void
-  onPeekItem?: (item: PhantasiItemPreview) => void
+  onPeekItem?: (item: PeekStoryPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: PhantasiItemPreview) => void | false | Promise<void | false>
   onEditSource?: (source: PhantasiSource) => void
@@ -149,7 +146,6 @@ function PhantasiFeeds({
   const reactMountStaleRef = useRef(false)
   const lastEagerRef = useRef<{ from: number; to: number }>({ from: 1, to: 8 })
   const storyWarmRef = useRef<() => void>(() => {})
-  const pendingFlushRef = useRef(false)
   const grabbingRef = useRef(false)
   const appliedFocus = useRef<number | null>(null)
   const seatSitesRef = useRef<number | null>(null)
@@ -497,73 +493,6 @@ function PhantasiFeeds({
   onToggleStarRef.current = onToggleStar
   const onStarStory = useCallback((item: FeedStory) => {
     return onToggleStarRef.current?.(item)
-  }, [])
-  const flushStorySettle = useCallback(() => {
-    focusTimerRef.current = 0
-    if (grabbingRef.current) {
-      pendingFlushRef.current = true
-      return
-    }
-    pendingFlushRef.current = false
-    let settleId: number | null = null
-    if (railDriverRef.current !== 'sites') {
-      const id = lastSourceRef.current
-      if (id != null && id !== focusIdRef.current) {
-        skipStoryAlignRef.current = true
-        focusIdRef.current = id
-        settleId = id
-      }
-    }
-    const columns = sourceColsRef.current
-    const totalCols = Math.max(
-      1,
-      columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
-    )
-    const prev = storyMountCommittedRef.current
-    const settled = railMountColumnsSettle(
-      prev,
-      lastScrollRef.current,
-      lastViewWRef.current,
-      colWRef.current,
-      totalCols,
-    )
-    const ideal = railMountColumns(
-      lastScrollRef.current,
-      lastViewWRef.current,
-      colWRef.current,
-      totalCols,
-    )
-    const stale = reactMountStaleRef.current
-    reactMountStaleRef.current = false
-    const next = settled
-    const mountChanged = next.from !== prev.from || next.to !== prev.to
-    if (mountChanged) {
-      mountColsRef.current = next
-      storyMountCommittedRef.current = next
-    } else {
-      mountColsRef.current = prev
-    }
-    const keepLive = Math.min(liveToRef.current, next.to)
-    liveToRef.current = stale || keepLive < ideal.to
-      ? Math.max(
-          keepLive,
-          Math.min(next.to, railLiveTo(ideal.to, next.to, keepLive)),
-        )
-      : keepLive
-    const syncMount = mountChanged
-    const prevBand = eagerBandRef.current
-    eagerBandRef.current = ideal
-    paintStoryAway(itemsTrackRef.current, ideal.from, ideal.to, prevBand, false)
-    if (!syncMount) {
-      eagerStoryCovers(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
-      lastEagerRef.current = { from: ideal.from, to: ideal.to }
-    }
-    if (syncMount) storySetMountRef.current(mountColsRef.current)
-    storySetLiveRef.current(liveToRef.current)
-    if (settleId == null) return
-    skipStoryAlignRef.current = true
-    appliedFocus.current = settleId
-    setFocusId(settleId)
   }, [])
   const grabFillRef = useRef({ armed: false, from: 0, to: -1, frame: 0 })
   useEffect(() => {
@@ -1049,7 +978,6 @@ function PhantasiFeeds({
       window.clearTimeout(focusTimerRef.current)
       focusTimerRef.current = 0
     }
-    pendingFlushRef.current = false
     skipStoryAlignRef.current = true
     setFocusId(id)
     setReadyId(id)

@@ -299,6 +299,20 @@ pub(crate) async fn get_note_doc_for_item(
     Path(item_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let item = crate::models::entities::phantasi_items::Entity::find_by_id(item_id)
+        .one(&db)
+        .await
+        .map_err(|e| phantasi_store_http("find note", e))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
+    let source = crate::models::entities::phantasi_sources::Entity::find_by_id(item.source_id)
+        .one(&db)
+        .await
+        .map_err(|e| phantasi_store_http("find note source", e))?;
+    if !source.as_ref().is_some_and(|source| {
+        source.source_type == crate::models::entities::phantasi_sources::SourceType::Note
+    }) {
+        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"));
+    }
     if let Some(doc) = phantasi_note_docs::Entity::find()
         .filter(phantasi_note_docs::Column::ItemId.eq(item_id))
         .one(&db)
@@ -309,11 +323,6 @@ pub(crate) async fn get_note_doc_for_item(
             json!({ "success": true, "doc": respond_doc(&db, doc).await? }),
         ));
     }
-    let item = crate::models::entities::phantasi_items::Entity::find_by_id(item_id)
-        .one(&db)
-        .await
-        .map_err(|e| phantasi_store_http("find note", e))?
-        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
     let published = crate::services::note_publish::PublishedNote {
         id: item.id,
         link: item.link.clone(),

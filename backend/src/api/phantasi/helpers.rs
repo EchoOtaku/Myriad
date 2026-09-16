@@ -89,6 +89,50 @@ pub(crate) async fn get_optional_user_and_admin_status(
     Ok((Some(user_id), is_admin))
 }
 
+fn phantasi_access_allowed(level: &str, user_id: Option<i32>, is_admin: bool) -> bool {
+    match level {
+        "all" => true,
+        "authenticated" => user_id.is_some(),
+        "admin" => is_admin,
+        _ => false,
+    }
+}
+
+pub(crate) async fn require_phantasi_module_access(
+    db: &DatabaseConnection,
+    user_id: Option<i32>,
+    is_admin: bool,
+) -> Result<(), HttpError> {
+    let preferences = myriad_module_visibility::try_load_module_visibility_preferences(db)
+        .await
+        .map_err(|error| phantasi_store_http("load module visibility", error))?;
+    if phantasi_access_allowed(preferences.module_visibility("phantasi"), user_id, is_admin) {
+        return Ok(());
+    }
+    Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"))
+}
+
+/// Public Journal boundary: invalid credentials are rejected and the complete
+/// all/authenticated/admin visibility matrix is enforced before data access.
+pub(crate) async fn get_phantasi_viewer(
+    headers: &axum::http::HeaderMap,
+    db: &DatabaseConnection,
+) -> Result<(Option<i32>, bool), HttpError> {
+    let viewer = get_optional_user_and_admin_status(headers, db).await?;
+    require_phantasi_module_access(db, viewer.0, viewer.1).await?;
+    Ok(viewer)
+}
+
+pub(crate) async fn get_phantasi_user_and_admin_status(
+    headers: &axum::http::HeaderMap,
+    db: &DatabaseConnection,
+) -> Result<(i32, bool), HttpError> {
+    let user_id = get_user_id_from_headers(headers, db).await?;
+    let (_, is_admin) = get_user_and_admin_status(headers, db).await;
+    require_phantasi_module_access(db, Some(user_id), is_admin).await?;
+    Ok((user_id, is_admin))
+}
+
 /// 从请求头获取管理员用户 ID（用于管理功能）
 /// 非管理员返回 403 Forbidden
 pub(crate) async fn get_admin_user_id_from_headers(
@@ -433,6 +477,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn module_access_uses_the_complete_viewer_matrix() {
+        assert!(phantasi_access_allowed("all", None, false));
+        assert!(!phantasi_access_allowed("authenticated", None, false));
+        assert!(phantasi_access_allowed("authenticated", Some(2), false));
+        assert!(!phantasi_access_allowed("admin", Some(2), false));
+        assert!(phantasi_access_allowed("admin", Some(1), true));
+        assert!(!phantasi_access_allowed("invalid", Some(1), true));
+    }
+
     fn sample_source(
         name: &str,
         url: &str,
@@ -594,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    fn public_reads_use_optional_session_not_guest_fallback() {
+    fn public_reads_use_the_complete_module_access_guard() {
         for (src, name) in [
             (include_str!("reading_item.rs"), "get_item"),
             (include_str!("reading_stats.rs"), "get_stats"),
@@ -608,16 +662,29 @@ mod tests {
         ] {
             let body = impl_fn(src, name);
             assert!(
-                body.contains("get_optional_user_and_admin_status"),
-                "{name} must reject bad cookies instead of treating them as guests"
+                body.contains("get_phantasi_viewer"),
+                "{name} must enforce all/authenticated/admin before data access"
             );
+        }
+        assert!(
+            impl_fn(include_str!("applications.rs"), "create_application")
+                .contains("get_phantasi_viewer")
+        );
+    }
+
+    #[test]
+    fn user_writes_use_the_complete_module_access_guard() {
+        for (src, name) in [
+            (include_str!("reading_mark.rs"), "update_item_state"),
+            (include_str!("reading_mark.rs"), "mark_all_read"),
+            (include_str!("reading_sync.rs"), "sync_states"),
+            (include_str!("comments.rs"), "create_comment"),
+            (include_str!("comments.rs"), "update_comment"),
+            (include_str!("comments.rs"), "delete_comment"),
+        ] {
             assert!(
-                !body.contains("= get_user_and_admin_status("),
-                "{name} must not use the guest-fallback extractor"
-            );
-            assert!(
-                body.contains("phantasi_module_open_to_guests"),
-                "{name} must 404 guests when the module is closed"
+                impl_fn(src, name).contains("get_phantasi_user_and_admin_status"),
+                "{name} must enforce module visibility before writing"
             );
         }
     }

@@ -14,6 +14,7 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
     '../config': { API_URL: 'https://example.test' },
     '../i18n/hostLocaleHeaders': { hostLocaleHeaders: () => ({}) },
     '../i18n/localeCopy': { currentCopy: () => ({ errors: { timeout: 'timeout', networkError: 'network' } }) },
+    '../utils/aiConfiguration': { fetchWithAiConfiguration: fetcher },
     '../utils/aiRequestTimeout.mjs': { aiRequestTimeoutMs: () => 0 },
     '../utils/csrf': { getCSRFToken: csrf, clearCSRFToken: () => {} },
     '../utils/httpRateLimitToast': { notifyHttpRateLimit: () => {} },

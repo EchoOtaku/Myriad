@@ -596,6 +596,7 @@
     "glowNone": "Kein Leuchten"
   },
   "home": {
+    "exitEditConfirm": "Layoutänderungen werden automatisch gespeichert. Bearbeitung beenden?",
     "defaultBio": "Willkommen auf meiner persönlichen Startseite",
     "switchToFreeLayout": "Zum freien Layout",
     "switchToStandardLayout": "Zum Standardlayout",

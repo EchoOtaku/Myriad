@@ -17,6 +17,7 @@ export function useNoteBoardCategory(
   notes: readonly HomeBoardNote[],
   docs: readonly PhantasiNoteDoc[],
   sources: readonly PhantasiSource[],
+  pending = false,
 ) {
   const categories = useMemo(
     () => collectNoteCategories([...notes, ...docs]),
@@ -40,10 +41,10 @@ export function useNoteBoardCategory(
   )
   const [filter, setFilter] = useState<string | null>(null)
   useEffect(() => {
-    if (filter && filter !== NOTE_CATEGORY_NONE && !categories.includes(filter)) {
+    if (!pending && filter && filter !== NOTE_CATEGORY_NONE && !categories.includes(filter)) {
       setFilter(null)
     }
-  }, [categories, filter])
+  }, [categories, filter, pending])
   return { categories, hasUnfiled, filter, setFilter }
 }
 

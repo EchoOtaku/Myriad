@@ -6,12 +6,16 @@ test('identity invalidation is synchronous; same-user refresh is not invalidatio
   const scope = new AuthSubjectScope()
   let resets = 0
   const guest = scope.signal
-  const off = scope.subscribe(() => { resets += 1; assert.equal(guest.aborted, true) })
+  const off = scope.subscribe(() => {
+    resets += 1
+    assert.equal(guest.aborted, true)
+  })
   scope.change(authSubjectKey({ id: 1 }))
   const user = scope.signal
   scope.change(authSubjectKey({ id: 1 }))
   assert.equal(user.aborted, false)
   assert.equal(resets, 1)
+  assert.equal(scope.revision, 1)
   scope.change(authSubjectKey({ id: 2 }))
   assert.equal(user.aborted, true)
   scope.change('guest', true)
@@ -19,6 +23,7 @@ test('identity invalidation is synchronous; same-user refresh is not invalidatio
   scope.change('guest', true)
   assert.equal(nextGuest.aborted, true)
   assert.equal(resets, 4)
+  assert.equal(scope.revision, 4)
   off()
   scope.change('changing')
   assert.equal(resets, 4)

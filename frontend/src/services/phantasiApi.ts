@@ -1,7 +1,9 @@
 import type {
   AddRsshubInstanceRequest,
   AddSourceRequest,
+  ApplySourceApplicationInput,
   CommentItem,
+  CreateCategoryRequest,
   PhantasiCategoriesResponse,
   PhantasiCategory,
   PhantasiItem,
@@ -13,11 +15,9 @@ import type {
   PhantasiNoteInput,
   PhantasiSource,
   PhantasiSourceApplication,
-  ApplySourceApplicationInput,
   PhantasiSourcesResponse,
   PhantasiStats,
   PhantasiStatsResponse,
-  CreateCategoryRequest,
   RsshubInstance,
   UpdateCategoryRequest,
   UpdateRsshubInstanceRequest,
@@ -25,19 +25,26 @@ import type {
 } from '../types/phantasi'
 import { parseFeedTopicCards } from '../components/phantasi/logic/feedTopicCards'
 import { API_URL } from '../config'
-
-export type { CommentItem }
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
+import { getCSRFToken } from '../utils/csrf'
+import { notifyHttpRateLimit, parseRetryAfterSeconds } from '../utils/httpRateLimitToast'
+import { KeyedWrites } from '../utils/keyedWrites'
 import { phantasiItemState } from '../utils/phantasiItemState'
 import { PhantasiRevisionChain } from '../utils/phantasiRevisionChain'
 import { phantasiSubject } from '../utils/phantasiSubject'
 import { PhantasiSyncConflictError } from '../utils/phantasiSyncConflict'
-import { getCSRFToken } from '../utils/csrf'
-import { notifyHttpRateLimit, parseRetryAfterSeconds } from '../utils/httpRateLimitToast'
-import { KeyedWrites } from '../utils/keyedWrites'
 import { requestCache } from '../utils/requestCache'
 import { httpStatusMessage, isUselessErrorText } from '../utils/userFacingError'
 import { ApiError, parseApiErrorBody } from './api'
+import {
+  invalidatePhantasiBoardCache,
+  invalidatePhantasiNoteDocsCache,
+  invalidatePhantasiSourcesCache,
+  invalidatePhantasiStatsCache,
+  phantasiCacheKeys,
+} from './phantasiCache'
+
+export type { CommentItem }
 
 const API_BASE = `${API_URL}/api/phantasi`
 
@@ -185,19 +192,23 @@ type PhantasiAttributionHeaders = Record<string, string>
 /** Tapp attribution skips cache. */
 export async function getSources(
   attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal; view?: 'catalog' },
+  options?: { signal?: AbortSignal; view?: 'catalog'; forceRefresh?: boolean },
 ): Promise<PhantasiSource[]> {
+  options?.signal?.throwIfAborted()
   const catalog = options?.view === 'catalog'
   const path = catalog ? '/sources?view=catalog' : '/sources'
-  const cacheKey = catalog ? 'phantasi:sources:catalog' : 'phantasi:sources'
+  const cacheKey = catalog ? phantasiCacheKeys.sourceCatalog : phantasiCacheKeys.sources
   const fetchSources = async () => {
     const data = await request<PhantasiSourcesResponse>(path, {
       headers: attributionHeaders,
-      signal: options?.signal,
+      // Shared cache requests belong to the current subject, not the first
+      // component that asked. Attribution requests are never shared.
+      signal: attributionHeaders ? options?.signal : undefined,
     })
     return data.sources
   }
   if (attributionHeaders) return fetchSources()
+  if (options?.forceRefresh) requestCache.delete(cacheKey)
   const sources = await requestCache.fetch(
     cacheKey,
     fetchSources,
@@ -208,20 +219,16 @@ export async function getSources(
 }
 
 export function invalidateStatsCache(): void {
-  requestCache.delete('phantasi:stats')
+  invalidatePhantasiStatsCache()
 }
 
 export function invalidateSourcesCache(): void {
-  requestCache.delete('phantasi:sources')
-  requestCache.delete('phantasi:sources:catalog')
-  invalidateStatsCache()
+  invalidatePhantasiSourcesCache()
 }
 
 /** Source/note mutations only; not read/star. */
 function invalidateBoardPageCache(): void {
-  requestCache.deleteByPrefix('phantasi:feed-stories:')
-  requestCache.deleteByPrefix('phantasi:board-notes:')
-  requestCache.delete('phantasi:note-docs')
+  invalidatePhantasiBoardCache()
 }
 
 export async function addSource(
@@ -293,12 +300,14 @@ export async function refreshSources(
   attributionHeaders?: PhantasiAttributionHeaders,
 ): Promise<number> {
   if (ids.length === 0) return 0
-  const counts = await Promise.all(
+  const results = await Promise.allSettled(
     ids.map((id) => refreshSource(id, attributionHeaders, { skipCache: true })),
   )
   invalidateSourcesCache()
   invalidateBoardPageCache()
-  return counts.reduce((sum, count) => sum + count, 0)
+  const failed = results.find(result => result.status === 'rejected')
+  if (failed?.status === 'rejected') throw failed.reason
+  return results.reduce((sum, result) => sum + (result.status === 'fulfilled' ? result.value : 0), 0)
 }
 
 export async function discoverSource(
@@ -371,32 +380,29 @@ export async function exportOpml(
 
 export async function getCategories(
   attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<PhantasiCategoriesResponse['categories']> {
+  options?.signal?.throwIfAborted()
   const fetchCategories = async () => {
     const data = await request<PhantasiCategoriesResponse>('/categories', {
       headers: attributionHeaders,
-      signal: options?.signal,
+      signal: attributionHeaders ? options?.signal : undefined,
     })
     return data.categories
   }
   if (attributionHeaders) return fetchCategories()
-  if (options?.signal) {
-    const categories = await fetchCategories()
-    if (!options.signal.aborted) {
-      requestCache.set('phantasi:categories', categories, CACHE_TTL.CATEGORIES)
-    }
-    return categories
-  }
-  return requestCache.fetch(
-    'phantasi:categories',
+  if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.categories)
+  const categories = await requestCache.fetch(
+    phantasiCacheKeys.categories,
     fetchCategories,
     CACHE_TTL.CATEGORIES,
   )
+  options?.signal?.throwIfAborted()
+  return categories
 }
 
 function invalidateCategoriesCache(): void {
-  requestCache.delete('phantasi:categories')
+  requestCache.delete(phantasiCacheKeys.categories)
 }
 
 export async function createCategory(
@@ -496,7 +502,7 @@ export function getItems(
   attributionHeaders?: PhantasiAttributionHeaders,
   options?: { signal?: AbortSignal },
 ): Promise<PhantasiItemsResponse> {
-  return queryItems(query, attributionHeaders, undefined, options?.signal)
+  return queryItems(query, attributionHeaders, 'full', options?.signal)
 }
 
 export function getItemPreviews(
@@ -510,7 +516,7 @@ export function getItemPreviews(
 async function queryItems<T>(
   query: PhantasiItemsQuery = {},
   attributionHeaders?: PhantasiAttributionHeaders,
-  projection?: 'preview',
+  projection?: 'preview' | 'full',
   signal?: AbortSignal,
 ): Promise<T> {
   const params = new URLSearchParams()
@@ -533,37 +539,40 @@ async function queryItems<T>(
 export async function getItem(
   id: number,
   attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<PhantasiItem> {
+  options?.signal?.throwIfAborted()
   const fetchItem = async () => {
     const data = await request<{ success: boolean; item: PhantasiItem }>(
       `/items/${id}`,
-      { headers: attributionHeaders, signal: options?.signal },
+      {
+        headers: attributionHeaders,
+        signal: attributionHeaders ? options?.signal : undefined,
+      },
     )
     return data.item
   }
   if (attributionHeaders) return fetchItem()
-  if (options?.signal) {
-    const item = await fetchItem()
-    if (!options.signal.aborted) {
-      requestCache.set(`phantasi:item:${id}`, item, CACHE_TTL.ITEM)
-    }
-    return item
-  }
-  return requestCache.fetch(`phantasi:item:${id}`, fetchItem, CACHE_TTL.ITEM)
+  if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.item(id))
+  const item = await requestCache.fetch(
+    phantasiCacheKeys.item(id),
+    fetchItem,
+    CACHE_TTL.ITEM,
+  )
+  options?.signal?.throwIfAborted()
+  return item
 }
 
-const TOPIC_CATALOG_CACHE_KEY = 'phantasi:topic-catalog'
-
-export type SubscriptionTopicCatalog = {
+export interface SubscriptionTopicCatalog {
   topics: string[]
   cards: string[]
 }
 
 export async function listSubscriptionTopicCatalog(
   attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<SubscriptionTopicCatalog> {
+  options?.signal?.throwIfAborted()
   const fetchCatalog = async () => {
     const data = await request<{
       success: boolean
@@ -571,19 +580,22 @@ export async function listSubscriptionTopicCatalog(
       cards?: unknown
     }>('/topics', {
       headers: attributionHeaders,
-      signal: options?.signal,
+      signal: attributionHeaders ? options?.signal : undefined,
     })
     return {
       topics: parseFeedTopicCards(data.topics),
       cards: parseFeedTopicCards(data.cards),
     }
   }
-  if (attributionHeaders || options?.signal) return fetchCatalog()
-  return requestCache.fetch(
-    TOPIC_CATALOG_CACHE_KEY,
+  if (attributionHeaders) return fetchCatalog()
+  if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.topicCatalog)
+  const catalog = await requestCache.fetch(
+    phantasiCacheKeys.topicCatalog,
     fetchCatalog,
     CACHE_TTL.CATEGORIES,
   )
+  options?.signal?.throwIfAborted()
+  return catalog
 }
 
 export async function listSubscriptionTopics(
@@ -599,13 +611,13 @@ export async function setFeedTopicCards(
     '/topics/cards',
     { method: 'PUT', body: JSON.stringify({ cards }) },
   )
-  requestCache.delete(TOPIC_CATALOG_CACHE_KEY)
+  requestCache.delete(phantasiCacheKeys.topicCatalog)
   return parseFeedTopicCards(data.cards)
 }
 
 function rememberItemTopic(id: number, topic: string | null): string | null {
-  requestCache.delete(`phantasi:item:${id}`)
-  requestCache.delete(TOPIC_CATALOG_CACHE_KEY)
+  requestCache.delete(phantasiCacheKeys.item(id))
+  requestCache.delete(phantasiCacheKeys.topicCatalog)
   invalidateSourcesCache()
   invalidateBoardPageCache()
   return topic
@@ -729,7 +741,7 @@ export async function createNoteDoc(
       body: JSON.stringify(req),
     },
   )
-  requestCache.delete('phantasi:note-docs')
+  invalidatePhantasiNoteDocsCache()
   return data.doc
 }
 
@@ -766,13 +778,13 @@ export async function updateNoteDoc(
       body: JSON.stringify(req),
     },
   )
-  requestCache.delete('phantasi:note-docs')
+  invalidatePhantasiNoteDocsCache()
   return data.doc
 }
 
 export async function deleteNoteDoc(id: number): Promise<void> {
   await request(`/notes/docs/${id}`, { method: 'DELETE' })
-  requestCache.delete('phantasi:note-docs')
+  invalidatePhantasiNoteDocsCache()
 }
 
 export async function publishNoteDoc(
@@ -805,6 +817,7 @@ export async function scheduleNoteDoc(
       body: JSON.stringify(req),
     },
   )
+  invalidatePhantasiNoteDocsCache()
   return data.doc
 }
 
@@ -819,6 +832,7 @@ export async function unscheduleNoteDoc(
       body: JSON.stringify(req),
     },
   )
+  invalidatePhantasiNoteDocsCache()
   return data.doc
 }
 
@@ -878,7 +892,7 @@ export async function previewNote(
 }
 
 function invalidateItemCache(id: number): void {
-  requestCache.delete(`phantasi:item:${id}`)
+  requestCache.delete(phantasiCacheKeys.item(id))
 }
 
 let localRevisions = new PhantasiRevisionChain()
@@ -1001,18 +1015,20 @@ export async function markAllRead(
 
 export async function getStats(
   attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<PhantasiStats> {
+  options?.signal?.throwIfAborted()
   const fetchStats = async () => {
     const data = await request<PhantasiStatsResponse>('/stats', {
       headers: attributionHeaders,
-      signal: options?.signal,
+      signal: attributionHeaders ? options?.signal : undefined,
     })
     return data.stats
   }
   if (attributionHeaders) return fetchStats()
+  if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.stats)
   const stats = await requestCache.fetch(
-    'phantasi:stats',
+    phantasiCacheKeys.stats,
     fetchStats,
     CACHE_TTL.STATS,
   )

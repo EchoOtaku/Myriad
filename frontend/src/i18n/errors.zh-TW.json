@@ -1,4 +1,7 @@
 {
+  "aiNotConfigured": "此功能需要的 AI 服務尚未設定，請至設定 → AI 配置完成設定，或聯絡管理員。",
+  "aiConfigureAction": "前往 AI 配置",
+  "aiContactAdmin": "AI 尚未設定，請聯絡管理員完成設定。",
   "networkError": "網路連線失敗",
   "unknown": "未知錯誤",
   "setupCheckFailed": "無法連線到伺服器檢查系統狀態（{status}）",

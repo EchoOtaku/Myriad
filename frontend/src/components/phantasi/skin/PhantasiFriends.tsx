@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import type { PhantasiItemPreview, PhantasiSource } from '../../../types/phantasi'
 import type { FeedStory } from '../logic/feedStories'
+import type { PeekStoryPreview } from '../ui/peekLane'
 import type { PhantasiRailApi } from './usePhantasiRailPan'
 
 import { useId, useMemo, useRef } from 'react'
@@ -13,8 +14,8 @@ import {
 } from '../constants'
 import { isSiteSource, visitFriendHref } from '../logic/board'
 import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
-import { clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
 import { SiteCard } from '../ui/SiteCard'
+import { clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
 import { PhantasiStory } from './PhantasiStory'
 import { friendsSiteAutoOn, friendsStoryAutoOn } from './railCruise'
 import { phantasiRelativeTime, usePhantasiTimes } from './time'
@@ -45,7 +46,7 @@ export default function PhantasiFriends({
   selectedIds?: Set<number>
   onToggleSelect?: (id: number) => void
   onOpenItem?: (item: PhantasiItemPreview, source: PhantasiSource) => void
-  onPeekItem?: (item: PhantasiItemPreview) => void
+  onPeekItem?: (item: PeekStoryPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: PhantasiItemPreview) => void
   onEditSource?: (source: PhantasiSource) => void

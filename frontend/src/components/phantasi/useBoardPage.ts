@@ -4,7 +4,7 @@ import type { PhantasiBoard, SourceSortMode } from './logic/board'
 import type { FeedStory, FeedStorySlot } from './logic/feedStories'
 import type { HomeBoardNote } from './logic/homeBoard'
 import type { PhantasiViewerRole } from './logic/score'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
 
@@ -64,7 +64,11 @@ export function useBoardNotes(
     last_success_at?: number | null
   }>,
   epoch = 0,
-): HomeBoardNote[] {
+) {
+  const [loading, setLoading] = useState(board === 'notes')
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const retry = useCallback(() => setAttempt(value => value + 1), [])
   const flags = useArticleFlags()
   const flagsRevision = flags.getSnapshot()
   const key = useMemo(() => noteSourceKey(sources), [sources])
@@ -74,29 +78,39 @@ export function useBoardNotes(
   const [rawNotes, setNotes] = useState<HomeBoardNote[]>([])
 
   useEffect(() => {
-    if (board !== 'notes') return
+    if (board !== 'notes') { setLoading(false); return }
+    setFailed(false)
     if (!key) {
       setNotes([])
+      setLoading(false)
       return
     }
+    setLoading(true)
     const controller = new AbortController()
-    void loadBoardNotes(sourcesRef.current, controller.signal)
+    const publish = (next: HomeBoardNote[]) => {
+      if (!controller.signal.aborted) startTransition(() => setNotes(next))
+    }
+    void loadBoardNotes(sourcesRef.current, controller.signal, publish)
       .then((next) => {
         if (!controller.signal.aborted) setNotes(next)
       })
       .catch(() => {
-        if (!controller.signal.aborted) setNotes([])
+        if (!controller.signal.aborted) setFailed(true)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
       })
     return () => {
       controller.abort()
     }
     // stamp：源集合或抓取结果变了才重拉。epoch：发布后条数可能不变，但缓存已失效。
-  }, [board, key, stamp, epoch])
+  }, [board, key, stamp, epoch, attempt])
 
-  return useMemo(() => {
+  const notes = useMemo(() => {
     if (board !== 'notes') return []
     return rawNotes.map((note) => flags.project(note))
   }, [board, flags, flagsRevision, rawNotes])
+  return { notes, loading, failed, retry }
 }
 
 export function useFeedStories(

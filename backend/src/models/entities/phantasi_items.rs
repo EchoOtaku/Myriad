@@ -237,17 +237,28 @@ pub struct ItemListCursor {
 }
 
 pub fn encode_item_cursor(published_at: DateTimeWithTimeZone, id: i32) -> String {
-    format!("{}:{id}", published_at.timestamp_millis())
+    // PostgreSQL timestamptz preserves microseconds. Millisecond truncation
+    // skips rows in descending order and repeats rows in ascending order.
+    format!("us:{}:{id}", published_at.timestamp_micros())
 }
 
 pub fn decode_item_cursor(raw: &str) -> Option<ItemListCursor> {
-    let (millis, id) = raw.split_once(':')?;
-    let published_at_ms: i64 = millis.parse().ok()?;
+    let (micros, raw) = match raw.strip_prefix("us:") {
+        Some(raw) => (true, raw),
+        None => (false, raw),
+    };
+    let (stamp, id) = raw.split_once(':')?;
+    let stamp: i64 = stamp.parse().ok()?;
     let id: i32 = id.parse().ok()?;
     if id <= 0 {
         return None;
     }
-    let published_at = chrono::DateTime::from_timestamp_millis(published_at_ms)?.fixed_offset();
+    let published_at = if micros {
+        chrono::DateTime::from_timestamp_micros(stamp)?
+    } else {
+        chrono::DateTime::from_timestamp_millis(stamp)?
+    }
+    .fixed_offset();
     Some(ItemListCursor { published_at, id })
 }
 
@@ -395,6 +406,33 @@ mod preview_tests {
     }
 
     #[test]
+    fn cursor_preserves_database_precision_in_both_directions() {
+        let stamp = chrono::DateTime::from_timestamp_micros(1_700_000_000_123_456)
+            .unwrap()
+            .fixed_offset();
+        let cursor = decode_item_cursor(&encode_item_cursor(stamp, 9)).unwrap();
+        assert_eq!(cursor.published_at, stamp);
+        let rows = [(stamp, 10), (stamp, 9), (stamp, 8)];
+        let descending: Vec<_> = rows
+            .iter()
+            .filter(|(time, id)| (*time, *id) < (cursor.published_at, cursor.id))
+            .collect();
+        let ascending: Vec<_> = rows
+            .iter()
+            .filter(|(time, id)| (*time, *id) > (cursor.published_at, cursor.id))
+            .collect();
+        assert_eq!(descending, vec![&(stamp, 8)]);
+        assert_eq!(ascending, vec![&(stamp, 10)]);
+        assert_eq!(
+            decode_item_cursor("1700000000123:9")
+                .unwrap()
+                .published_at
+                .timestamp_millis(),
+            1_700_000_000_123
+        );
+    }
+
+    #[test]
     fn split_list_page_keeps_the_last_returned_row_as_cursor() {
         let stamp = chrono::DateTime::from_timestamp_millis(1_700_000_000_000)
             .unwrap()
@@ -427,7 +465,7 @@ mod preview_tests {
             page.iter().map(|item| item.id).collect::<Vec<_>>(),
             vec![1, 2]
         );
-        assert_eq!(next.as_deref(), Some("1700000000000:2"));
+        assert_eq!(next.as_deref(), Some("us:1700000000000000:2"));
         let (short, none) = split_list_page(vec![row(1)], 2);
         assert_eq!(short.len(), 1);
         assert_eq!(none, None);

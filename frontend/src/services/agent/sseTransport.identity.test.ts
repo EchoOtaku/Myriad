@@ -22,6 +22,7 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
   const dependencies: Record<string, unknown> = {
     '../../i18n/hostLocaleHeaders': { hostLocaleHeaders: () => ({}) },
     '../../i18n/localeCopy': { currentCopy: () => ({ errors: {} }) },
+    '../../utils/aiConfiguration': { fetchWithAiConfiguration: fetcher },
     '../../utils/authSubject': { authSubject: subject },
     '../../utils/csrf': { getCSRFToken: csrf, clearCSRFToken: () => {} },
     '../../utils/userFacingError': { isUselessErrorText: () => false },

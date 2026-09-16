@@ -596,6 +596,7 @@
     "glowNone": "關閉光暈"
   },
   "home": {
+    "exitEditConfirm": "版面變更會自動儲存。確定退出編輯？",
     "defaultBio": "歡迎訪問我的個人儀表盤",
     "switchToFreeLayout": "切換到自由佈局",
     "switchToStandardLayout": "切換到標準佈局",

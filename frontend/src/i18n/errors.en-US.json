@@ -1,4 +1,7 @@
 {
+  "aiNotConfigured": "The AI service required for this feature is not configured. Set it up in Settings → AI, or contact an administrator.",
+  "aiConfigureAction": "Open AI settings",
+  "aiContactAdmin": "AI is not configured. Please contact an administrator to set it up.",
   "networkError": "Network connection failed",
   "unknown": "Unknown error",
   "setupCheckFailed": "Could not reach the server to check setup status ({status}).",

@@ -24,8 +24,8 @@ use crate::services::phantasi_scheduler::get_phantasi_scheduler;
 use myriad_error::AppError;
 
 use super::helpers::{
-    get_admin_user_id_from_headers, get_optional_user_and_admin_status, normalize_http_url,
-    phantasi_http_err, phantasi_store_http, url_match_key,
+    get_admin_user_id_from_headers, get_phantasi_viewer, normalize_http_url, phantasi_http_err,
+    phantasi_store_http, url_match_key,
 };
 
 const FRIEND_CATEGORY: &str = "友情链接";
@@ -193,7 +193,7 @@ pub(crate) async fn create_application(
     headers: HeaderMap,
     Json(req): Json<CreateApplicationRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, _) = get_optional_user_and_admin_status(&headers, &db).await?;
+    let (user_id, _) = get_phantasi_viewer(&headers, &db).await?;
     let site_name = require_text(&req.site_name, MAX_NAME, "Site name is required")?;
     let site_url = parse_public_url(&req.site_url)?;
     let feed_url = match trim_opt(req.feed_url, MAX_URL)? {

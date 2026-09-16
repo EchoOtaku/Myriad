@@ -163,3 +163,13 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/settingsEditor.spec.ts
 !/frontend/tests/browser/fixture/settingsEditor.html
 !/frontend/tests/browser/fixture/settingsEditor.tsx
+
+# Home edit keyboard and dock regressions.
+!/frontend/tests/browser/homeEdit.spec.ts
+!/frontend/tests/browser/fixture/homeEdit.html
+!/frontend/tests/browser/fixture/homeEdit.tsx
+
+# Note editor undo regressions.
+!/frontend/tests/browser/noteSourceEdit.spec.ts
+!/frontend/tests/browser/fixture/noteSourceEdit.html
+!/frontend/tests/browser/fixture/noteSourceEdit.tsx

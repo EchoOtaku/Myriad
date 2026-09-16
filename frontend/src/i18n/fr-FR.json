@@ -596,6 +596,7 @@
     "glowNone": "Sans halo"
   },
   "home": {
+    "exitEditConfirm": "Les modifications de la disposition sont enregistrées automatiquement. Quitter le mode édition ?",
     "defaultBio": "Bienvenue sur mon tableau de bord",
     "switchToFreeLayout": "Passer en disposition libre",
     "switchToStandardLayout": "Passer en disposition standard",

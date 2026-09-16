@@ -122,8 +122,6 @@
   "workbenchHomeRecentSource": "Feed",
   "workbenchHomeRecentMedia": "Media",
   "workbenchHomeEmpty": "Start with a note or a feed.",
-  "workbenchBoardNavTitle": "Shown pages",
-  "workbenchBoardNavDesc": "Follows Journal page visibility. If it is open to everyone, keep at least one page public. If it is for signed-in users, keep at least one page for them.",
   "workbenchHomeScheduleMissing": "No time set",
   "workbenchHomeScheduleOverdue": "Already due",
   "workbenchHomeNoteFailed": "Didn’t publish",

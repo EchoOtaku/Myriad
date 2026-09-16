@@ -272,7 +272,7 @@ Owner persona, Bot pairing, and heartbeat live at `/agent/settings` — not `/co
 
 ## Phantasi
 
-Internal name for the Journal (zh: 手帐, ja/zh-TW: 手帳, ko: 수첩). RSS, Notion, RSSHub, optional AI enrichment. Default: anyone can read. Signed-in users mark read and save. Admins manage sources from `/journal/workbench`. Friend links can appear on the homepage.
+Internal name for the Journal (zh: 手帐, ja/zh-TW: 手帳, ko: 수첩). RSS, Notion, RSSHub, optional AI enrichment. Default: anyone can read. Signed-in users mark read; starred items and source management are admin-only. Admins manage sources from `/journal/workbench`. Friend links can appear on the homepage.
 
 Boards: `/journal` (feeds), `/journal/notes`, `/journal/friends`. Starred: `/journal/starred`. Own articles: `/journal/articles/...`. Notes RSS (`/journal/notes.xml`) is off until an admin enables it. Notes support TeX math, co-authors, columns, and in-body widgets. Crawlers receive an HTML shell; browsers receive the app.
 

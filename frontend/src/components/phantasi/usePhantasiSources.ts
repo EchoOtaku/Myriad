@@ -2,15 +2,14 @@
 import type {
   AddSourceInput,
   PhantasiSource,
-  PhantasiStats,
   UpdateSourceRequest,
 } from '../../types/phantasi'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import * as phantasiApi from '../../services/phantasiApi'
 import { phantasiItemState } from '../../utils/phantasiItemState'
-import { reportPhantasiError } from './phantasiNotice'
 import { RequestTurn } from './logic/requestTurn'
+import { reportPhantasiError } from './phantasiNotice'
 
 function applyReadMutation(
   source: PhantasiSource,
@@ -55,19 +54,16 @@ export function usePhantasiSources(
 ) {
   const [sources, setSources] = useState<PhantasiSource[]>([])
   const [sourcesLoaded, setSourcesLoaded] = useState(false)
-  const [stats, setStats] = useState<PhantasiStats | null>(null)
   const [booting, setBooting] = useState(true)
 
   const sourceRequest = useRef(0)
-  const statsRequest = useRef(0)
   const sourceTurns = useRef(new RequestTurn())
-  const statsTurns = useRef(new RequestTurn())
 
-  const loadSources = useCallback(async () => {
+  const loadSources = useCallback(async (forceRefresh = false) => {
     const request = ++sourceRequest.current
     const signal = sourceTurns.current.begin()
     try {
-      const data = await phantasiApi.getSources(undefined, { signal })
+      const data = await phantasiApi.getSources(undefined, { signal, forceRefresh })
       if (signal.aborted || request !== sourceRequest.current) return
       setSourcesLoaded(true)
       setSources(data)
@@ -77,24 +73,8 @@ export function usePhantasiSources(
     }
   }, [labels.loadFailed, setError])
 
-  const loadStats = useCallback(async () => {
-    const request = ++statsRequest.current
-    const signal = statsTurns.current.begin()
-    try {
-      const next = await phantasiApi.getStats(undefined, { signal })
-      if (signal.aborted || request !== statsRequest.current) return
-      setStats(next)
-    } catch (err) {
-      if (signal.aborted || request !== statsRequest.current) return
-      console.error('Failed to load stats:', err)
-    }
-  }, [])
-
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined
     const unsubscribe = phantasiItemState.subscribeMutations((id, patch, sourceId) => {
-      statsTurns.current.cancel()
-      statsRequest.current++
       if (typeof patch.is_read === 'boolean') {
         setSources((prev) =>
           prev.map((source) =>
@@ -102,33 +82,26 @@ export function usePhantasiSources(
           ),
         )
       }
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        void loadStats()
-      }, 100)
     })
-    return () => { unsubscribe(); if (timer) clearTimeout(timer) }
-  }, [loadSources, loadStats])
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     setBooting(true)
-    void Promise.all([loadSources(), loadStats()]).finally(() => {
+    void loadSources().finally(() => {
       if (!cancelled) setBooting(false)
     })
     return () => {
       cancelled = true
       sourceTurns.current.cancel()
-      statsTurns.current.cancel()
       sourceRequest.current++
-      statsRequest.current++
     }
-  }, [loadSources, loadStats])
+  }, [loadSources])
 
   const refreshRef = useRef(() => {})
   refreshRef.current = () => {
-    void loadSources()
-    void loadStats()
+    void loadSources(true)
   }
 
   useEffect(() => {
@@ -172,9 +145,8 @@ export function usePhantasiSources(
   }, [isAuthenticated])
 
   const reloadBoard = useCallback(() => {
-    void loadSources()
-    void loadStats()
-  }, [loadSources, loadStats])
+    void loadSources(true)
+  }, [loadSources])
 
   const updateSource = useCallback(
     async (id: number, data: UpdateSourceRequest) => {
@@ -182,9 +154,8 @@ export function usePhantasiSources(
       setSources((prev) =>
         prev.map((source) => (source.id === id ? updated : source)),
       )
-      void loadStats()
     },
-    [loadStats],
+    [],
   )
 
   const importOpml = useCallback(
@@ -218,7 +189,6 @@ export function usePhantasiSources(
             .filter((source) => !gone.has(source.id))
             .toArray(),
         )
-        void loadStats()
       }
       const failed = ids.filter((_, index) => results[index]?.status === 'rejected')
       if (failed.length > 0) {
@@ -228,7 +198,7 @@ export function usePhantasiSources(
         throw new Error(names)
       }
     },
-    [loadStats, sources],
+    [sources],
   )
 
   const addSource = useCallback(
@@ -255,9 +225,8 @@ export function usePhantasiSources(
       } else {
         setSources((prev) => [...prev, source])
       }
-      void loadStats()
     },
-    [loadStats],
+    [],
   )
 
   const discoverSource = useCallback(
@@ -277,10 +246,11 @@ export function usePhantasiSources(
   const refreshSource = useCallback(
     async (sourceId: number) => {
       try {
-        const newCount = await phantasiApi.refreshSource(sourceId)
-        if (newCount > 0) reloadBoard()
+        await phantasiApi.refreshSource(sourceId)
       } catch (err) {
         reportPhantasiError(err, labels.refreshFailed, setError)
+      } finally {
+        reloadBoard()
       }
     },
     [reloadBoard, labels.refreshFailed, setError],
@@ -291,9 +261,10 @@ export function usePhantasiSources(
       if (ids.length === 0) return
       try {
         await phantasiApi.refreshSources(ids)
-        reloadBoard()
       } catch (err) {
         reportPhantasiError(err, labels.refreshFailed, setError)
+      } finally {
+        reloadBoard()
       }
     },
     [reloadBoard, labels.refreshFailed, setError],
@@ -303,11 +274,8 @@ export function usePhantasiSources(
     sources,
     setSources,
     sourcesLoaded,
-    stats,
-    setStats,
     booting,
     loadSources,
-    loadStats,
     reloadBoard,
     addSource,
     updateSource,

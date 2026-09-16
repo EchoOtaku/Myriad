@@ -11,17 +11,16 @@ describe('source catalog abort contract', () => {
     const api = readFileSync(join(dir, '../../services/phantasiApi.ts'), 'utf8')
     assert.match(
       api,
-      /export async function getSources\([\s\S]*options\?: \{ signal\?: AbortSignal; view\?: 'catalog' \}/,
+      /export async function getSources\([\s\S]*options\?: \{ signal\?: AbortSignal; view\?: 'catalog'; forceRefresh\?: boolean \}/,
     )
     assert.match(
       api,
-      /export async function getStats\([\s\S]*options\?: \{ signal\?: AbortSignal \}/,
+      /export async function getStats\([\s\S]*options\?: \{ signal\?: AbortSignal; forceRefresh\?: boolean \}/,
     )
   })
 
   it('catalog hooks cancel the in-flight turn on unmount', () => {
     const src = readFileSync(join(dir, 'usePhantasiSources.ts'), 'utf8')
     assert.match(src, /sourceTurns\.current\.cancel\(/)
-    assert.match(src, /statsTurns\.current\.cancel\(/)
   })
 })

@@ -2,10 +2,15 @@
 export class AuthSubjectScope {
   private key = 'guest'
   private controller = new AbortController()
+  private generation = 0
   private readonly listeners = new Set<() => void>()
 
   get signal(): AbortSignal {
     return this.controller.signal
+  }
+
+  get revision(): number {
+    return this.generation
   }
 
   change(key: string, force = false): void {
@@ -13,12 +18,15 @@ export class AuthSubjectScope {
     this.key = key
     this.controller.abort()
     this.controller = new AbortController()
+    this.generation += 1
     for (const listener of this.listeners) listener()
   }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
-    return () => { this.listeners.delete(listener) }
+    return () => {
+      this.listeners.delete(listener)
+    }
   }
 }
 

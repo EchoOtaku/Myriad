@@ -877,7 +877,7 @@ const GamePresenceWidget = memo(
                   ))}
                 </div>
 
-                <div className="mt-2 flex items-center gap-5 shrink-0 overflow-hidden">
+                <div className="mt-2 flex items-center gap-4 shrink-0 overflow-hidden">
                   {[
                     ...(score ? [{ label: score.label, value: score.value }] : []),
                     ...(data?.highlights.slice(0, 3) || []),

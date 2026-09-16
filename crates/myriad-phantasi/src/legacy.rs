@@ -171,7 +171,7 @@ pub fn rename_json_brew_key(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(map) => {
             if let Some(child) = map.remove("brew") {
-                map.insert("phantasi".into(), child);
+                map.entry("phantasi").or_insert(child);
             }
             for child in map.values_mut() {
                 rename_json_brew_key(child);
@@ -209,6 +209,16 @@ mod tests {
         });
         rename_json_brew_key(&mut value);
         assert_eq!(value["modules"]["phantasi"], "all");
+        assert!(value["modules"].get("brew").is_none());
+    }
+
+    #[test]
+    fn json_key_rename_preserves_an_existing_phantasi_value() {
+        let mut value = serde_json::json!({
+            "modules": { "brew": "all", "phantasi": "admin" }
+        });
+        rename_json_brew_key(&mut value);
+        assert_eq!(value["modules"]["phantasi"], "admin");
         assert!(value["modules"].get("brew").is_none());
     }
 

@@ -2,113 +2,83 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/**
- * Astro/Vite emits lazy-route CSS as HTML <link>, which blocks FCP.
- * Strip non-shell styles from HTML and inject them when the owning JS chunk runs.
- * Keep tailwind / index / App on the first paint.
- */
+/** Keep eager CSS in HTML; Vite's dynamic-import preloader owns lazy CSS. */
 export function deferNonCriticalCssIntegration() {
-  /** @type {{ cssPrefix: string, jsPrefixes: string[] }[]} */
-  const DEFER = [
-    { cssPrefix: 'AraelPanel-', jsPrefixes: ['AraelPanel-'] },
-    { cssPrefix: 'Config-', jsPrefixes: ['Config-'] },
-    { cssPrefix: 'ConfigForm-', jsPrefixes: ['Config-'] },
-    { cssPrefix: 'Setup-', jsPrefixes: ['Setup-'] },
-    { cssPrefix: 'TappPlaygroundPage-', jsPrefixes: ['TappPlaygroundPage-'] },
-    // Toast.css is owned by Toast.tsx; ToastContainer is sync in AppLayout, so
-    // the chunk may be Toast-* or merged into App-*. Inject both (idempotent).
-    { cssPrefix: 'Toast-', jsPrefixes: ['Toast-', 'App-'] },
-    { cssPrefix: 'MusicPlayer-', jsPrefixes: ['MusicPlayer-'] },
-  ]
+  const chunks = new Map()
+  let clientBuild = false
+  const plugin = {
+    name: 'collect-css-dependencies',
+    apply: 'build',
+    enforce: 'post',
+    configResolved(config) {
+      clientBuild = !config.build.ssr
+    },
+    generateBundle(_options, bundle) {
+      if (!clientBuild) return
+      for (const [file, chunk] of Object.entries(bundle)) {
+        if (chunk.type !== 'chunk') continue
+        chunks.set(file, {
+          imports: chunk.imports,
+          dynamicImports: chunk.dynamicImports,
+          css: [...(chunk.viteMetadata?.importedCss ?? [])],
+        })
+      }
+    },
+  }
 
-  function cssInjectorSnippet(href) {
-    return `(function(){try{var h=${JSON.stringify(href)};if(document.querySelector('link[href="'+h+'"]'))return;var l=document.createElement("link");l.rel="stylesheet";l.href=h;document.head.appendChild(l)}catch(e){}})();`
+  function stylesFor(roots, includeDynamic) {
+    const seen = new Set()
+    const css = new Set()
+    const pending = [...roots]
+    while (pending.length) {
+      const file = pending.pop()
+      if (seen.has(file)) continue
+      seen.add(file)
+      const chunk = chunks.get(file)
+      if (!chunk) continue
+      for (const style of chunk.css) css.add(style)
+      pending.push(...chunk.imports)
+      if (includeDynamic) pending.push(...chunk.dynamicImports)
+    }
+    return css
   }
 
   return {
     name: 'defer-non-critical-css',
     hooks: {
-      'astro:build:done': async ({ dir }) => {
+      'astro:config:setup': ({ updateConfig }) => {
+        updateConfig({ vite: { plugins: [plugin] } })
+      },
+      'astro:build:done': ({ dir }) => {
         const outDir = fileURLToPath(dir)
-        const assetsDir = path.join(outDir, 'assets')
-        let assetFiles = []
-        try {
-          assetFiles = readdirSync(assetsDir)
-        } catch {
-          return
-        }
-
-        const cssFiles = assetFiles.filter((f) => f.endsWith('.css'))
-        const jsFiles = assetFiles.filter((f) => f.endsWith('.js'))
-
-        /** @type {Map<string, string[]>} */
-        const injectMap = new Map()
-        /** @type {Set<string>} */
-        const stripCss = new Set()
-
-        for (const rule of DEFER) {
-          const matchedCss = cssFiles.filter((f) =>
-            f.startsWith(rule.cssPrefix),
-          )
-          for (const cssName of matchedCss) {
-            stripCss.add(cssName)
-            const href = `/assets/${cssName}`
-            for (const jsPrefix of rule.jsPrefixes) {
-              const matchedJs = jsFiles.filter((f) => f.startsWith(jsPrefix))
-              for (const jsName of matchedJs) {
-                const list = injectMap.get(jsName) || []
-                if (!list.includes(href)) list.push(href)
-                injectMap.set(jsName, list)
-              }
-            }
-          }
-        }
-
-        for (const [jsName, hrefs] of injectMap) {
-          const jsPath = path.join(assetsDir, jsName)
-          const original = readFileSync(jsPath, 'utf8')
-          if (
-            hrefs.every(
-              (h) =>
-                original.includes(h) &&
-                original.includes('createElement("link")'),
-            )
-          ) {
-            // Vite may already inject; still prepend the idempotent snippet below.
-          }
-          const banner = hrefs.map(cssInjectorSnippet).join('')
-          if (!original.startsWith('(function(){try{var h=')) {
-            writeFileSync(jsPath, banner + original)
-          }
-        }
-
-        const stripRe = new RegExp(
-          `<link[^>]+href="/assets/(${[...stripCss]
-            .map((s) => RegExp.escape(s))
-            .join('|')})"[^>]*>`,
-          'g',
-        )
-
-        let htmlCount = 0
         let removed = 0
-        for (const name of readdirSync(outDir)) {
-          if (!name.endsWith('.html')) continue
-          const htmlPath = path.join(outDir, name)
-          let html = readFileSync(htmlPath, 'utf8')
-          const before = html
-          html = html.replace(stripRe, () => {
+        for (const entry of readdirSync(outDir, { recursive: true })) {
+          if (!entry.endsWith('.html')) continue
+          const htmlPath = path.join(outDir, entry)
+          const html = readFileSync(htmlPath, 'utf8')
+          const assetName = (href) => {
+            if (/^(?:[a-z]+:|\/\/)/i.test(href)) return null
+            const pathname = href.split(/[?#]/)[0]
+            return pathname.startsWith('/')
+              ? pathname.slice(1)
+              : path.relative(outDir, path.resolve(path.dirname(htmlPath), pathname))
+          }
+          const roots = [...html.matchAll(/(?:src|component-url|renderer-url)=["']([^"']+\.js(?:[?#][^"']*)?)["']/g)]
+            .map((match) => assetName(match[1]))
+          const eager = stylesFor(roots, false)
+          const reachable = stylesFor(roots, true)
+          const next = html.replace(/<link\b[^>]*>/gi, (tag) => {
+            if (!/\brel=["']stylesheet["']/i.test(tag)) return tag
+            const href = tag.match(/\bhref=["']([^"']+)["']/i)?.[1]
+            const file = href && assetName(href)
+            // Unknown assets (including Astro's document CSS) remain untouched.
+            if (!reachable.has(file) || eager.has(file)) return tag
             removed++
             return ''
           })
-          if (html !== before) {
-            writeFileSync(htmlPath, html)
-            htmlCount++
-          }
+          if (next !== html) writeFileSync(htmlPath, next)
         }
-
-        console.log(
-          `[defer-non-critical-css] stripped ${removed} link(s) from ${htmlCount} html; injected into ${injectMap.size} js chunk(s)`,
-        )
+        console.log(`[defer-non-critical-css] deferred ${removed} lazy stylesheet link(s)`)
       },
     },
   }

@@ -5,6 +5,11 @@ interface SettingsFixture {
   refreshSpeech: () => Promise<void>
   writes: string[]
   refreshes: string[]
+  results: unknown[]
+  notices: string[]
+  leave: () => void
+  changeAccount: () => void
+  settled: () => Promise<void>
   failSecond: (value: boolean) => void
   deferFirst: () => void
   release: () => void
@@ -23,6 +28,86 @@ test.beforeEach(async ({ page }, testInfo) => {
     : ''
   await page.goto(`/settingsEditor.html${query}`)
   await expect(page.getByLabel('First', { exact: true })).toHaveValue('saved')
+})
+
+test('leaving an editor stops queued writes and suppresses late completion events', async ({
+  page,
+}) => {
+  await page.getByLabel('First', { exact: true }).fill('first edit')
+  await page.getByLabel('Second', { exact: true }).fill('second edit')
+  await page.evaluate(() => {
+    window.settingsFixture.deferFirst()
+    void window.settingsFixture.save()
+    window.settingsFixture.leave()
+  })
+  await expect(page.getByTestId('left-editor')).toBeVisible()
+  await page.evaluate(async () => {
+    window.settingsFixture.release()
+    await window.settingsFixture.settled()
+  })
+  const actual = await page.evaluate(() => ({
+    writes: window.settingsFixture.writes.length,
+    refreshes: window.settingsFixture.refreshes,
+    results: window.settingsFixture.results,
+  }))
+  expect(actual).toEqual({ writes: 1, refreshes: [], results: [] })
+})
+
+test('switching accounts isolates the new editor from an in-flight old save', async ({
+  page,
+}) => {
+  await page.getByLabel('First', { exact: true }).fill('old account')
+  await page.getByLabel('Second', { exact: true }).fill('must not be submitted')
+  await page.evaluate(() => {
+    window.settingsFixture.deferFirst()
+    void window.settingsFixture.save()
+    window.settingsFixture.changeAccount()
+  })
+  await expect(page.getByLabel('First', { exact: true })).toHaveValue('saved')
+  await page.evaluate(async () => {
+    window.settingsFixture.release()
+    await window.settingsFixture.settled()
+  })
+  expect(await page.evaluate(() => window.settingsFixture.writes.length)).toBe(
+    1,
+  )
+  expect(await page.evaluate(() => window.settingsFixture.results)).toEqual([])
+  await expect(page.getByTestId('message')).toHaveText('')
+  await page.getByLabel('First', { exact: true }).fill('new account')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByTestId('dirty')).toHaveText('false')
+  expect(await page.evaluate(() => window.settingsFixture.results.length)).toBe(
+    1,
+  )
+  await page
+    .getByLabel('First', { exact: true })
+    .fill('unsaved same-account edit')
+  await page.evaluate(() => window.settingsFixture.changeAccount())
+  await expect(page.getByLabel('First', { exact: true })).toHaveValue('saved')
+  await expect(page.getByTestId('dirty')).toHaveText('false')
+})
+
+test('an in-flight reset protects page unload even when the draft was clean', async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    window.settingsFixture.deferFirst()
+    void window.settingsFixture.reset()
+  })
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeDisabled()
+  expect(
+    await page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }),
+  ).toBe(true)
+  await page.evaluate(() => window.settingsFixture.release())
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeEnabled()
 })
 
 test('independent save failure preserves retry and refreshes the acknowledged domain', async ({

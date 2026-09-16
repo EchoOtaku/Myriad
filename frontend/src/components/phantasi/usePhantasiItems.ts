@@ -4,10 +4,10 @@ import type { PhantasiViewMode } from './logic/board'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import * as phantasiApi from '../../services/phantasiApi'
-import { reportPhantasiError } from './phantasiNotice'
 import { itemListHasMore, itemListRequest } from './logic/itemList'
 import { appendUniqueById } from './logic/itemState'
 import { RequestTurn } from './logic/requestTurn'
+import { reportPhantasiError } from './phantasiNotice'
 import { useArticleFlags } from './useArticleFlags'
 
 export function usePhantasiItems(
@@ -62,7 +62,7 @@ export function usePhantasiItems(
         else setItems(prev => appendUniqueById(prev, collected))
         membershipDirty.current = false
         nextCursorRef.current = data.next_cursor ?? null
-        if (!cursor && data.total > 0) setTotal(data.total)
+        if (!cursor) setTotal(data.total)
         const perPage = data.per_page > 0 ? data.per_page : 20
         setHasMore(itemListHasMore(data.next_cursor, data.items.length, perPage))
       } catch (err) {

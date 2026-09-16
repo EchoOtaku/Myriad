@@ -1,9 +1,10 @@
 import { API_URL } from '../config'
 import { currentCopy } from '../i18n/localeCopy'
 import { getDefaultLocale } from '../i18n/locales'
+import { fetchWithAiConfiguration } from '../utils/aiConfiguration'
 import { withAiTimeoutSignal } from '../utils/aiRequestTimeout.mjs'
-import { phantasiSubject } from '../utils/phantasiSubject'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
+import { phantasiSubject } from '../utils/phantasiSubject'
 import { httpStatusMessage, isUselessErrorText } from '../utils/userFacingError'
 import { parseApiErrorBody } from './api'
 
@@ -111,7 +112,7 @@ async function request<T>(
 
   const url = `${API_BASE}${endpoint}`
   phantasiSubject.assert(subject)
-  const response = await fetch(
+  const response = await fetchWithAiConfiguration(
     url,
     withAiTimeoutSignal(url, {
       ...options,
@@ -140,6 +141,9 @@ async function request<T>(
       }
     }
     const parsed = parseApiErrorBody(data, response.status)
+    if (parsed.code === 'ai_not_configured') {
+      throw new Error(currentCopy().errors.aiNotConfigured)
+    }
     throw new Error(
       isUselessErrorText(parsed.message)
         ? httpStatusMessage(response.status)

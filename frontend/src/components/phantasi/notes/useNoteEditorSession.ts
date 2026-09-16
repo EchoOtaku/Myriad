@@ -30,6 +30,7 @@ import {
 } from './noteFields'
 import { displayImageUrl } from './noteImageUrl'
 import { NOTE_WIDGET_SIZES, noteWidgetCanConfigure } from './noteLayout'
+import { applyNoteSourceEdit } from './noteSourceEdit'
 import { expandJammedDefinitions, setVisualImageResolver } from './noteVisual'
 import { useNoteWidgetCatalog } from './noteWidgetCatalog'
 import { useNoteCloudSave } from './useNoteCloudSave'
@@ -438,12 +439,7 @@ export function useNoteEditorSession({
       const el = textareaRef.current
       if (!el) return
       const result = fn(el.value, el.selectionStart, el.selectionEnd)
-      setContentMd(result.value)
-      // setState 后等下一帧再设选区。
-      requestAnimationFrame(() => {
-        el.focus()
-        el.setSelectionRange(result.selectionStart, result.selectionEnd)
-      })
+      applyNoteSourceEdit(el, result, setContentMd)
     },
     [],
   )

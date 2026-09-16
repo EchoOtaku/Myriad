@@ -1,4 +1,7 @@
 {
+  "aiNotConfigured": "この機能に必要な AI が未設定です。設定 → AI で設定するか、管理者にお問い合わせください。",
+  "aiConfigureAction": "AI 設定を開く",
+  "aiContactAdmin": "AI が未設定です。管理者に設定を依頼してください。",
   "networkError": "ネットワーク接続に失敗しました",
   "unknown": "不明なエラー",
   "setupCheckFailed": "セットアップ状態を確認できませんでした（{status}）。",

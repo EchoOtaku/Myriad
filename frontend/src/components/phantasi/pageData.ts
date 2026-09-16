@@ -4,6 +4,11 @@ import type { PhantasiItemPreview, PhantasiNoteDoc } from '../../types/phantasi'
 import type { FeedStory } from './logic/feedStories'
 import type { HomeBoardNote } from './logic/homeBoard'
 import * as phantasiApi from '../../services/phantasiApi'
+import {
+  PHANTASI_BOARD_NOTES_CACHE_PREFIX,
+  PHANTASI_FEED_STORIES_CACHE_PREFIX,
+  phantasiCacheKeys,
+} from '../../services/phantasiCache'
 import { requestCache } from '../../utils/requestCache'
 import {
   FEEDS_ARTICLE_MAX,
@@ -12,29 +17,21 @@ import {
 } from './logic/feedStories'
 import { toHomeBoardNote } from './logic/homeBoard'
 
-export const FEED_STORIES_CACHE_PREFIX = 'phantasi:feed-stories:'
-export const BOARD_NOTES_CACHE_PREFIX = 'phantasi:board-notes:'
-export const NOTE_DOCS_CACHE_KEY = 'phantasi:note-docs'
+export const FEED_STORIES_CACHE_PREFIX = PHANTASI_FEED_STORIES_CACHE_PREFIX
+export const BOARD_NOTES_CACHE_PREFIX = PHANTASI_BOARD_NOTES_CACHE_PREFIX
+export const NOTE_DOCS_CACHE_KEY = phantasiCacheKeys.noteDocs
 const BOARD_PAGE_TTL = 60_000
 const BOARD_NOTES_PAGE = 100
 
-interface CachedFeedStories {
-  stamp: number
-  items: FeedStory[]
-}
-
-export function feedStoriesCacheKey(sourceId: number): string {
-  return `${FEED_STORIES_CACHE_PREFIX}${sourceId}`
+export function feedStoriesCacheKey(sourceId: number, stamp = 0): string {
+  return phantasiCacheKeys.feedStories(sourceId, stamp)
 }
 
 export function peekFeedStories(
   sourceId: number,
   stamp?: number | null,
 ): FeedStory[] | null {
-  const hit = requestCache.get<CachedFeedStories>(feedStoriesCacheKey(sourceId))
-  if (!hit) return null
-  if (stamp != null && (stamp ?? 0) !== hit.stamp) return null
-  return hit.items
+  return requestCache.get<FeedStory[]>(feedStoriesCacheKey(sourceId, stamp ?? 0))
 }
 
 export function peekLatestStory(source: {
@@ -64,10 +61,9 @@ export async function loadLatestStory(
 
 /** 不管抓取戳；换源先画上一轮，避免闪回预览。 */
 export function peekFeedStoriesLoose(sourceId: number): FeedStory[] | null {
-  return (
-    requestCache.get<CachedFeedStories>(feedStoriesCacheKey(sourceId))?.items ??
-    null
-  )
+  const prefix = phantasiCacheKeys.feedStoriesForSource(sourceId)
+  const key = requestCache.keys.toReversed().find((candidate) => candidate.startsWith(prefix))
+  return key ? requestCache.get<FeedStory[]>(key) : null
 }
 
 export function putFeedStories(
@@ -76,8 +72,8 @@ export function putFeedStories(
   items: FeedStory[],
 ): void {
   requestCache.set(
-    feedStoriesCacheKey(sourceId),
-    { stamp: stamp ?? 0, items },
+    feedStoriesCacheKey(sourceId, stamp ?? 0),
+    items,
     BOARD_PAGE_TTL,
   )
 }
@@ -94,34 +90,61 @@ export async function loadNoteDocs(
   return docs
 }
 
-/** 笔记墙：该笔记源上全部已发布条目。 */
+/** Share individual pages, not the consumer's traversal: leaving stops later pages
+ * without cancelling a page another mounted consumer is still awaiting. */
 export async function loadBoardNotes(
   sources: Array<{ id: number; source_type: string }>,
   signal?: AbortSignal,
+  onPage?: (notes: HomeBoardNote[]) => void,
 ): Promise<HomeBoardNote[]> {
-  const ids = sources
+  const queue = [...new Set(sources
     .filter((source) => source.source_type === 'note')
-    .map((source) => source.id)
-    .toSorted((left, right) => left - right)
-  if (ids.length === 0) return []
-  const cacheKey = `${BOARD_NOTES_CACHE_PREFIX}${ids.join(',')}`
+    .map((source) => source.id))]
+    .map((id) => ({ id, cursor: undefined as string | undefined, seen: new Set<string>() }))
+  const items = new Map<number, HomeBoardNote>()
+  let snapshot: HomeBoardNote[] = []
+  let failed = false
   const load = async () => {
-    const pages = await Promise.all(
-      ids.map((sourceId) =>
-        phantasiApi.getItemPreviews({
-          source_id: sourceId,
-          sort_order: 'desc',
-          per_page: BOARD_NOTES_PAGE,
-        }),
-      ),
-    )
-    return pages
-      .flatMap((page) => page.items.map(toHomeBoardNote))
-      .toSorted((left, right) => (right.published_at ?? 0) - (left.published_at ?? 0))
+    try {
+      while (queue.length > 0 && !failed) {
+        signal?.throwIfAborted()
+        const source = queue.shift()!
+        const page = await requestCache.fetch(
+          `${phantasiCacheKeys.boardNotes([source.id])}:page:${JSON.stringify(source.cursor ?? null)}`,
+          () => phantasiApi.getItemPreviews({
+            source_id: source.id,
+            sort_order: 'desc',
+            per_page: BOARD_NOTES_PAGE,
+            cursor: source.cursor,
+          }),
+          BOARD_PAGE_TTL,
+        )
+        signal?.throwIfAborted()
+        if (failed) return
+        for (const item of page.items) items.set(item.id, toHomeBoardNote(item))
+        snapshot = [...items.values()].toSorted(
+          (left, right) => (right.published_at ?? 0) - (left.published_at ?? 0) || right.id - left.id,
+        )
+        onPage?.(snapshot)
+        const next = page.next_cursor?.trim()
+        if (next) {
+          if (source.seen.has(next)) {
+            throw new Error('Journal notes pagination returned a repeated cursor')
+          }
+          source.seen.add(next)
+          queue.push({ ...source, cursor: next })
+        }
+        // Cached pages must not form one long microtask chain starving input/paint.
+        if (onPage && queue.length > 0) await new Promise<void>(resolve => setTimeout(resolve, 0))
+      }
+    } catch (error) {
+      failed = true
+      throw error
+    }
   }
-  const notes = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
+  await Promise.all(Array.from({ length: Math.min(3, queue.length) }, load))
   signal?.throwIfAborted()
-  return notes
+  return snapshot
 }
 
 export async function loadTopicCatalog(
@@ -138,10 +161,9 @@ export async function loadFeedStories(
   signal?: AbortSignal,
 ): Promise<FeedStory[]> {
   const normalized = stamp ?? 0
-  const latest = requestCache.get<CachedFeedStories>(
-    feedStoriesCacheKey(sourceId),
-  )
-  if (latest?.stamp === normalized) return latest.items
+  const cacheKey = feedStoriesCacheKey(sourceId, normalized)
+  const latest = requestCache.get<FeedStory[]>(cacheKey)
+  if (latest) return latest
 
   // 同上：不把 signal 传进请求，换源太快时别把同一个源的请求发好几遍。
   const load = async () => {
@@ -150,12 +172,10 @@ export async function loadFeedStories(
       sort_order: 'desc',
       per_page: FEEDS_ARTICLE_MAX,
     })
-    const items = res.items.map(toFeedStory)
-    putFeedStories(sourceId, normalized, items)
-    return items
+    return res.items.map(toFeedStory)
   }
   const items = await requestCache.fetch(
-    `${feedStoriesCacheKey(sourceId)}:${normalized}`,
+    cacheKey,
     load,
     BOARD_PAGE_TTL,
   )

@@ -1,4 +1,7 @@
 {
+  "aiNotConfigured": "L’IA nécessaire à cette fonction n’est pas configurée. Configurez-la dans Paramètres → IA ou contactez un administrateur.",
+  "aiConfigureAction": "Ouvrir les paramètres IA",
+  "aiContactAdmin": "L’IA n’est pas configurée. Contactez un administrateur.",
   "networkError": "La connexion réseau a échoué",
   "unknown": "Erreur inconnue",
   "setupCheckFailed": "Impossible de joindre le serveur pour vérifier l’installation ({status}).",

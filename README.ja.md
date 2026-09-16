@@ -108,7 +108,7 @@ Chat / Work · パネル
 </td>
 <td width="33%" valign="top">
 
-**Phantasi**（手帳）`/phantasi`  
+**Phantasi**（手帳）`/journal`
 RSS · Notion · RSSHub
 
 </td>
@@ -274,7 +274,7 @@ Page：Canvas / WebGL、パッケージ内アセット、音声、任意のホ�
 
 ## Phantasi
 
-内部名。ユーザー向けの製品名は**手帳**（en: Journal）。RSS、Notion、RSSHub、任意の AI 強化。既定は誰でも閲覧可。ログインユーザーは既読と保存。管理者は `/journal/workbench` でソースを管理。相互リンクはホームページに出せる。
+内部名。ユーザー向けの製品名は**手帳**（en: Journal）。RSS、Notion、RSSHub、任意の AI 強化。既定は誰でも閲覧可。ログインユーザーは既読を記録でき、スターとソース管理は管理者専用。管理者は `/journal/workbench` でソースを管理。相互リンクはホームページに出せる。
 
 ボード：`/journal`（購読）、`/journal/notes`、`/journal/friends`。スター：`/journal/starred`。自身の記事：`/journal/articles/...`。ノート RSS（`/journal/notes.xml`）は管理者が有効化するまで非公開。ノートは TeX 数式、共同著者、本文カラム、本文ウィジェットに対応。クローラは HTML シェル、ブラウザはアプリ。
 

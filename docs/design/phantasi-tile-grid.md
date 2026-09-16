@@ -1,8 +1,8 @@
 # Phantasi 磁贴网格改造 · 实施手册
 
-> **现状：** 本文是磁贴墙落地时的实施手册，不是现行路由规格。用户地址是 `/journal`（`frontend/src/components/phantasi/logic/journalRoutes.ts`），不是 `/phantasi`。`PhantasiViewMode` 现行是 `'sources' | 'starred' | 'topic-feed' | 'workbench'`（`logic/board.ts`）。订阅列表 API 在 `feeds_articles.rs`。宿主 UI 现为 7 种 locale。下面 PR 验收里的 `/phantasi` 是当时的地址。
+> **历史文档：** 本文只记录磁贴墙落地时的设计背景，不是现行规格或实施源。当前事实以 `CONTEXT.md` 与代码为准：用户地址在 `frontend/src/components/phantasi/logic/journalRoutes.ts`，列表 API 在 `backend/src/api/phantasi/feeds_list.rs`。下面的旧文件名、参数和 `/phantasi` 验收地址不要用于新改动。
 
-交接文档。实施时以**本文为源**，旁边的 Canvas demo 只做视觉对照，不要从 demo 里抄网格行数或装箱参数。
+旁边的 Canvas demo 只保留视觉背景，不要从本文或 demo 复制现行网格参数。
 
 配套视觉：
 

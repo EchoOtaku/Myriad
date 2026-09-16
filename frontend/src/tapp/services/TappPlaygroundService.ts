@@ -3,6 +3,7 @@ import { API_URL } from '../../config'
 import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
 import { currentCopy } from '../../i18n/localeCopy'
 import { ApiError, parseApiErrorBody } from '../../services/api'
+import { fetchWithAiConfiguration } from '../../utils/aiConfiguration'
 import { getCSRFToken } from '../../utils/csrf'
 
 /** 编辑态按层分框，不是运行时模块表。打包映射到 core.js / page/index.js / widget/index.js。 */
@@ -208,7 +209,7 @@ async function generateViaStream(
   signal: AbortSignal,
 ): Promise<GeneratePlaygroundResponse> {
   const csrfToken = await getCSRFToken()
-  const response = await fetch(
+  const response = await fetchWithAiConfiguration(
     `${API_URL}/api/tapp-playground/generate-stream`,
     {
       method: 'POST',
@@ -308,7 +309,7 @@ async function generateViaOneShot(
   signal: AbortSignal,
 ): Promise<GeneratePlaygroundResponse> {
   const csrfToken = await getCSRFToken()
-  const response = await fetch(`${API_URL}/api/tapp-playground/generate`, {
+  const response = await fetchWithAiConfiguration(`${API_URL}/api/tapp-playground/generate`, {
     method: 'POST',
     headers: buildGenerateHeaders(csrfToken),
     body: JSON.stringify(request),

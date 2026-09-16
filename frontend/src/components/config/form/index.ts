@@ -36,7 +36,7 @@ export type {
 } from './types'
 export { useConfigBagState } from './useConfigBagState'
 export { useConfigDomains } from './useConfigDomains'
-export { useConfigEditor } from './useConfigEditor'
+export { useConfigEditor, useConfigSessionKey } from './useConfigEditor'
 export { useConfigMessage } from './useConfigMessage'
 export { useConfigNavigation } from './useConfigNavigation'
 export { useConfigSearch } from './useConfigSearch'

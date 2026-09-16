@@ -163,6 +163,13 @@ describe('表格对齐', () => {
     assert.equal(visualHtmlToMarkdown(html), md)
   })
 
+  it('表格只解释无属性的 br，代码里的 br 仍是文字', () => {
+    const html = markdownToVisualHtml('| A |\n| --- |\n| first<BR />second<br onclick="bad()">third `<br>` |')
+    assert.match(html, /first<br>second&lt;br onclick=/)
+    assert.match(html, /<code>&lt;br&gt;<\/code>/)
+    assert.doesNotMatch(html, /<br onclick/)
+  })
+
   it('单元格里的竖线要转义', () => {
     assert.match(visualHtmlToMarkdown('<table><tr><th>a|b</th></tr></table>'), /a\\\|b/)
   })

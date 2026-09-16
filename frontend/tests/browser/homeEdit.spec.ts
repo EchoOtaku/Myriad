@@ -1,0 +1,112 @@
+import { expect, test } from '@playwright/test'
+
+test.beforeEach(async ({ page }) => {
+  await page.goto('/homeEdit.html')
+  await expect(page.getByTestId('editing')).toHaveText('true')
+  await expect(page.locator('.widget-library-island')).toHaveAttribute(
+    'data-library-stage',
+    'parked',
+  )
+})
+
+test('blank clicks never reopen the dock, including after an outside click parks it', async ({
+  page,
+}) => {
+  const dock = page.locator('.widget-library-island')
+  await page.getByTestId('blank').click()
+  await expect(dock).toHaveAttribute('data-library-stage', 'parked')
+  await page.locator('.widget-library-stage-badge').click()
+  await expect(dock).not.toHaveAttribute('data-library-stage', 'parked')
+  await page.locator('.widget-library-title').click()
+  await expect(dock).not.toHaveAttribute('data-library-stage', 'parked')
+  await page.getByTestId('blank').click()
+  await expect(dock).toHaveAttribute('data-library-stage', 'parked')
+  // Click again after the park animation/suppression period, not just during it.
+  await expect(page.locator('.widget-library-stage-hit')).toBeVisible()
+  await page.waitForTimeout(700)
+  await page.getByTestId('blank').click({ clickCount: 3 })
+  await expect(dock).toHaveAttribute('data-library-stage', 'parked')
+})
+
+for (const expanded of [false, true]) {
+  test(`Escape confirms exit with the dock ${expanded ? 'expanded' : 'parked'}`, async ({
+    page,
+  }) => {
+    if (expanded) {
+      await page.locator('.widget-library-stage-badge').click()
+      await expect(page.locator('.widget-library-island')).not.toHaveAttribute(
+        'data-library-stage',
+        'parked',
+      )
+    }
+    let confirmations = 0
+    let accept = false
+    page.on('dialog', async (dialog) => {
+      expect(dialog.type()).toBe('confirm')
+      confirmations++
+      if (accept) await dialog.accept()
+      else await dialog.dismiss()
+    })
+    await page.keyboard.press('Escape')
+    await expect.poll(() => confirmations).toBe(1)
+    await expect(page.getByTestId('editing')).toHaveText('true')
+    if (!expanded) {
+      await expect(page.locator('.widget-library-island')).toHaveAttribute(
+        'data-library-stage',
+        'parked',
+      )
+    }
+    accept = true
+    await page.keyboard.press('Escape')
+    await expect.poll(() => confirmations).toBe(2)
+    await expect(page.getByTestId('editing')).toHaveText('false')
+    await expect(page.locator('.widget-library-island')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    expect(confirmations).toBe(2)
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await expect(page.getByTestId('editing')).toHaveText('true')
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('editing')).toHaveText('false')
+    expect(confirmations).toBe(3)
+  })
+}
+
+test('Escape consumed by an inner editor does not ask to exit or open the dock', async ({
+  page,
+}) => {
+  let confirmations = 0
+  page.on('dialog', async (dialog) => {
+    confirmations++
+    await dialog.dismiss()
+  })
+  await page.getByRole('textbox', { name: 'Inner editor' }).press('Escape')
+  await expect(page.locator('.widget-library-island')).toHaveAttribute(
+    'data-library-stage',
+    'parked',
+  )
+  await expect(page.getByTestId('editing')).toHaveText('true')
+  expect(confirmations).toBe(0)
+})
+
+test('drag completion keeps the dock parked until its own entrance is clicked', async ({
+  page,
+}) => {
+  await page.locator('.widget-library-stage-badge').click()
+  await page.getByRole('button', { name: 'Start drag' }).click()
+  await expect(page.locator('.widget-library-island')).toHaveAttribute(
+    'data-library-stage',
+    'parked',
+  )
+  await page.getByRole('button', { name: 'End drag' }).click()
+  await page.waitForTimeout(700)
+  await page.getByTestId('blank').click()
+  await expect(page.locator('.widget-library-island')).toHaveAttribute(
+    'data-library-stage',
+    'parked',
+  )
+  await page.locator('.widget-library-stage-badge').click()
+  await expect(page.locator('.widget-library-island')).not.toHaveAttribute(
+    'data-library-stage',
+    'parked',
+  )
+})

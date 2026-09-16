@@ -219,12 +219,17 @@ function LiveMeropeWidget({
   const liveCapabilities = motionReady ? capabilities : []
   const packageKey = motionReady
     ? 'live'
-    : !playableRig && portraitUrl
+    : !playableRig && portraitUrl && !rigFailed
       ? portraitUrl
       : ''
   const wantLive = Boolean(packageKey)
   const ready = readyKey === packageKey && packageKey !== ''
   const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
+  useEffect(() => {
+    if (loading || !wantLive || ready) return
+    const timeout = window.setTimeout(setRigFailed, 12_000, true)
+    return () => window.clearTimeout(timeout)
+  }, [loading, packageKey, ready, wantLive])
   useLayoutEffect(() => {
     setReadyKey((current) => readyKeyAfterMotionChange(motionReady, current))
   }, [motionReady])
@@ -263,6 +268,13 @@ function LiveMeropeWidget({
         if (request === faceRequestRef.current) setLoading(false)
       })
   }, [])
+
+  const retryFace = useCallback(() => {
+    setLoading(true)
+    setReadyKey('')
+    setRigFailed(false)
+    loadFace()
+  }, [loadFace])
 
   useEffect(() => {
     loadFace()
@@ -369,11 +381,18 @@ function LiveMeropeWidget({
           onLiveUnmounted={() => notifyLiveFaceUnmounted(playbackId)}
           vacant={
             !loading && (failed || rigFailed || !playableRig) ? (
-              <p className="merope-widget__empty" role="status">
-                {failed || rigFailed
-                  ? t.merope.loadFailed
-                  : t.merope.assetEmpty}
-              </p>
+              <div className="merope-widget__empty" role="status">
+                <span>
+                  {failed || rigFailed
+                    ? t.merope.loadFailed
+                    : t.merope.assetEmpty}
+                </span>
+                {failed || rigFailed ? (
+                  <button type="button" onClick={retryFace}>
+                    {t.common.retry}
+                  </button>
+                ) : null}
+              </div>
             ) : null
           }
         >
@@ -403,7 +422,7 @@ function LiveMeropeWidget({
       ) : null}
 
       <WidgetSkeletonCover
-        active={loading}
+        active={loading || (wantLive && !ready)}
         preset="hero"
         label={t.common.loading}
         accent="var(--color-primary)"

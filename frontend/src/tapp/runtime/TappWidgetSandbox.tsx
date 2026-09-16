@@ -158,16 +158,6 @@ function generateWidgetHTML(
         window.dispatchEvent(new CustomEvent('tapp:resize', { detail: msg.payload }));
       }
     });
-
-    // iframe → host: early ready 必须带 session token（与 Bridge 校验对齐）
-    window.parent.postMessage({
-      type: 'event',
-      id: 'widget-ready-' + Date.now(),
-      action: 'tapp.ready',
-      payload: null,
-      timestamp: Date.now(),
-      _sessionToken: window._TAPP_SESSION_TOKEN
-    }, document.referrer ? new URL(document.referrer).origin : '*');
   </script>
 
   <!-- 安全包装（冻结危险 API；边界仍以 CSP/sandbox 为准） -->
@@ -187,10 +177,23 @@ function generateWidgetHTML(
   </script>
 
   <!-- Always try render(): pure-JS fills container; hybrid paints data into template.
-       Microtask so first paint is not delayed after widget registration. -->
+       Ready after first paint so the host skeleton covers bootstrap. -->
   <script nonce="${nonce}">
     (function() {
       'use strict';
+      let readySent = false;
+      const postWidgetReady = function() {
+        if (readySent) return;
+        readySent = true;
+        window.parent.postMessage({
+          type: 'event',
+          id: 'widget-ready-' + Date.now(),
+          action: 'tapp.ready',
+          payload: null,
+          timestamp: Date.now(),
+          _sessionToken: window._TAPP_SESSION_TOKEN
+        }, document.referrer ? new URL(document.referrer).origin : '*');
+      };
       const runRender = function() {
         try {
           const widgetId = ${serializeSandboxScriptValue(widgetId)};
@@ -199,11 +202,11 @@ function generateWidgetHTML(
           if (!container) return;
 
           if (!widgetDef || typeof widgetDef.render !== 'function') {
-            // Pure HTML static widget is fine; only error when there is no HTML either.
             if (!window._TAPP_HAS_HTML) {
               console.warn('[Widget] Not found:', widgetId);
               container.innerHTML = '<div class="tapp-empty">' + ${serializeSandboxScriptValue(labels.missing)} + '</div>';
             }
+            postWidgetReady();
             return;
           }
 
@@ -211,8 +214,17 @@ function generateWidgetHTML(
           props.scale = window._TAPP_DIMENSIONS.scale;
           props.fontScale = window._TAPP_DIMENSIONS.fontScale;
 
-          widgetDef.render(container, props);
-
+          const painted = widgetDef.render(container, props);
+          if (painted && typeof painted.then === 'function') {
+            painted.then(postWidgetReady, function(error) {
+              console.error('[Widget] Render error:', error);
+              container.innerHTML =
+                '<div class="tapp-empty tapp-text-error">' + ${serializeSandboxScriptValue(labels.renderFailed)} + '</div>';
+              postWidgetReady();
+            });
+            return;
+          }
+          postWidgetReady();
         } catch (error) {
           console.error('[Widget] Render error:', error);
           const root = document.getElementById('widget-root');
@@ -220,6 +232,7 @@ function generateWidgetHTML(
             root.innerHTML =
               '<div class="tapp-empty tapp-text-error">' + ${serializeSandboxScriptValue(labels.renderFailed)} + '</div>';
           }
+          postWidgetReady();
         }
       };
       if (typeof Promise !== 'undefined' && Promise.resolve) {

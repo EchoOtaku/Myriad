@@ -1,8 +1,33 @@
 import type { ConfigDomainController, ConfigOperation } from './configDomain'
 import type { ShowMessage } from './types'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
+import { authSubject } from '../../../utils/authSubject'
 import { userFacingError } from '../../../utils/userFacingError'
-import { executeConfigOperations } from './configDomain'
+import {
+  executeConfigOperations,
+  isPriorityConfigDomain,
+  loadConfigDomains,
+} from './configDomain'
+
+function subscribeSubject(listener: () => void) {
+  return authSubject.subscribe(listener)
+}
+const subjectRevision = () => authSubject.revision
+
+/** Remount drafts for every identity invalidation, including forced reauthentication. */
+export function useConfigSessionKey() {
+  return useSyncExternalStore(
+    subscribeSubject,
+    subjectRevision,
+    subjectRevision,
+  )
+}
 
 interface EditorDomain extends ConfigDomainController {
   ready: boolean
@@ -10,7 +35,8 @@ interface EditorDomain extends ConfigDomainController {
   error: unknown
   dirty: boolean
   pendingSync: boolean
-  load: () => Promise<void>
+  sections?: readonly string[]
+  load: (signal?: AbortSignal) => Promise<void>
 }
 interface EditorMessages {
   loadConfigFailed: string
@@ -29,40 +55,52 @@ export function useConfigEditor(
   domains: EditorDomain[],
   showMessage: ShowMessage,
   messages: EditorMessages,
+  neededSection = '',
 ) {
-  const latest = useRef({ domains, showMessage, messages })
-  latest.current = { domains, showMessage, messages }
+  const latest = useRef({ domains, showMessage, messages, neededSection })
+  latest.current = { domains, showMessage, messages, neededSection }
   const busy = useRef(false)
+  const session = useRef<AbortSignal | null>(null)
   const [saving, setSaving] = useState(false)
   const isDirty = domains.some((domain) => domain.dirty || domain.pendingSync)
 
-  const load = useCallback(async () => {
-    const { domains, showMessage, messages } = latest.current
-    const results = await Promise.allSettled(
-      domains.map((domain) => domain.load()),
+  const load = useCallback(async (section?: string) => {
+    const signal = session.current
+    if (!signal || signal.aborted) return
+    const { domains, showMessage, messages, neededSection } = latest.current
+    const selected = section
+      ? domains.filter((domain) => domain.sections?.includes(section))
+      : domains
+    const outcomes = await loadConfigDomains(selected, signal, section ?? neededSection)
+    if (signal.aborted) return
+    const failed = outcomes.find(
+      ({ domain, result }) =>
+        result.status === 'rejected' &&
+        isPriorityConfigDomain(domain, latest.current.neededSection),
     )
-    const failed = results.find((result) => result.status === 'rejected')
-    if (failed?.status === 'rejected') {
+    if (failed?.result.status === 'rejected') {
       showMessage(
-        userFacingError(failed.reason, messages.loadConfigFailed),
+        userFacingError(failed.result.reason, messages.loadConfigFailed),
         'error',
         0,
       )
     }
   }, [])
   useEffect(() => {
+    const lifetime = new AbortController()
+    session.current = AbortSignal.any([lifetime.signal, authSubject.signal])
     void load()
+    return () => lifetime.abort()
   }, [load])
-
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent('config-dirty-state', { detail: { dirty: isDirty } }),
     )
-    if (!isDirty) return
+    if (!isDirty && !saving) return
     const beforeUnload = (event: BeforeUnloadEvent) => event.preventDefault()
     window.addEventListener('beforeunload', beforeUnload)
     return () => window.removeEventListener('beforeunload', beforeUnload)
-  }, [isDirty])
+  }, [isDirty, saving])
   useEffect(
     () => () => {
       window.dispatchEvent(
@@ -74,7 +112,8 @@ export function useConfigEditor(
 
   const run = useCallback(async (scope?: string) => {
     // Save, reset and external save events share the same synchronous lock.
-    if (busy.current) return
+    const signal = session.current
+    if (busy.current || !signal || signal.aborted) return
     busy.current = true
     setSaving(true)
     const { domains, showMessage, messages } = latest.current
@@ -88,10 +127,10 @@ export function useConfigEditor(
       })
       if (
         operations.some((operation) =>
-          domains.some(
-            (domain) =>
-              domain.id === operation.id && (!domain.ready || domain.loading),
-          ),
+          domains.some((domain) => {
+            const state = domain.getSnapshot()
+            return domain.id === operation.id && (!state.ready || state.loading)
+          }),
         )
       ) {
         throw new Error(messages.loadConfigFailed)
@@ -101,11 +140,10 @@ export function useConfigEditor(
         'info',
         0,
       )
-      const result = await executeConfigOperations(domains, operations)
+      const result = await executeConfigOperations(domains, operations, signal)
+      if (result.cancelled) return
       if (result.errors.length) {
-        const partial =
-          result.persisted.length > 0 ||
-          domains.some((domain) => domain.pendingSync)
+        const partial = result.persisted.length > 0 || result.pendingSync
         const detail = userFacingError(
           result.errors[0],
           scope ? messages.resetFailed : messages.configSaveFailed,
@@ -133,6 +171,7 @@ export function useConfigEditor(
         new CustomEvent(eventName, { detail: { success: true, message } }),
       )
     } catch (error) {
+      if (signal.aborted) return
       const message = userFacingError(
         error,
         scope ? messages.resetFailed : messages.configSaveFailed,
@@ -143,7 +182,7 @@ export function useConfigEditor(
       )
     } finally {
       busy.current = false
-      setSaving(false)
+      if (!signal.aborted) setSaving(false)
     }
   }, [])
   const save = useCallback(() => run(), [run])

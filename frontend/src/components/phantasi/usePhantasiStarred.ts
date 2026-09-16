@@ -5,8 +5,8 @@ import type { PhantasiItem } from '../../types/phantasi'
 
 import { useCallback, useRef, useState } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
-import { reportPhantasiError } from './phantasiNotice'
 import { dropItems, dropStarredId } from './logic/itemState'
+import { reportPhantasiError } from './phantasiNotice'
 
 export function usePhantasiStarred(
   items: PhantasiItem[],

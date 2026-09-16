@@ -40,7 +40,6 @@ describe('phantasi/skin 边界', () => {
     const src = [
       'PhantasiWorkbench.tsx',
       'PhantasiWorkbenchHome.tsx',
-      'PhantasiWorkbenchHomeOptions.tsx',
       'PhantasiWorkbenchNotes.tsx',
       'PhantasiWorkbenchComments.tsx',
       'PhantasiWorkbenchReviews.tsx',
@@ -73,15 +72,10 @@ describe('phantasi/skin 边界', () => {
         homeView.indexOf('phantasi-workbench__home-data'),
     )
     assert.ok(
-      homeView.indexOf('phantasi-workbench__home-data') <
-        homeView.indexOf('<WorkbenchHomeOptions'),
+      homeView.indexOf('phantasi-workbench__kpis') <
+        homeView.indexOf('phantasi-workbench__home-data'),
     )
-    assert.match(src, /workbenchBoardNavTitle/)
-    assert.match(src, /SettingGroupGrid/)
-    assert.match(src, /moduleVisibilityAll/)
-    assert.match(src, /readBoardNavVisibility/)
-    assert.match(src, /useModuleVisibilityPreferences/)
-    assert.match(src, /boardNavLevelsForPane/)
+    assert.doesNotMatch(src, /boardNavVisibility/)
     assert.match(src, /workbenchHomeContinue/)
     assert.match(src, /workbenchHomeUpcoming/)
     assert.match(src, /workbenchHomeRecent/)
@@ -108,7 +102,7 @@ describe('phantasi/skin 边界', () => {
     assert.doesNotMatch(src, /pane: 'categories'/)
     assert.doesNotMatch(src, /pane: 'noteCategories'/)
     assert.doesNotMatch(src, /pane: 'sourceCategories'/)
-    assert.match(src, /pack\.id}-\$\{item\.pane\}/)
+    assert.match(src, /pack\.id\}-\$\{item\.pane\}/)
     assert.match(src, /workbenchDefaultSort/)
     assert.match(src, /layout="horizontal"/)
     assert.match(src, /refreshAllSources/)
@@ -166,7 +160,6 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /admin/)
     assert.match(src, /SettingGroupGrid/)
     assert.match(src, /phantasi-workbench__io-grid/)
-    assert.match(src, /<SettingGroup[\s/>]/)
     assert.doesNotMatch(
       readFileSync(join(dir, 'PhantasiWorkbenchIo.tsx'), 'utf8'),
       /<SettingGroup[\s/>]/,

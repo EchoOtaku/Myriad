@@ -596,6 +596,7 @@
     "glowNone": "关闭光晕"
   },
   "home": {
+    "exitEditConfirm": "布局更改会自动保存。确定退出编辑？",
     "defaultBio": "欢迎访问我的个人仪表盘",
     "switchToFreeLayout": "切换到自由布局",
     "switchToStandardLayout": "切换到标准布局",

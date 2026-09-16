@@ -6,7 +6,7 @@ use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::services::phantasi_scheduler::get_phantasi_scheduler;
 
-use super::helpers::phantasi_http_err;
+use super::helpers::{phantasi_http_err, require_phantasi_module_access};
 
 // WebSocket
 
@@ -23,6 +23,10 @@ pub(crate) async fn phantasi_websocket(
         .sub
         .parse::<i32>()
         .map_err(|_| phantasi_http_err(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
+    let is_admin = crate::middleware::auth::ensure_current_admin_on(&claims, &db)
+        .await
+        .is_ok();
+    require_phantasi_module_access(&db, Some(user_id), is_admin).await?;
     Ok(ws.on_upgrade(move |socket| handle_phantasi_websocket(socket, db, user_id)))
 }
 

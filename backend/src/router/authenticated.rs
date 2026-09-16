@@ -250,6 +250,7 @@ pub(super) fn build_authenticated_router(
             "/api/phantasi",
             api::phantasi::create_phantasi_routes(app_state.clone()),
         )
+        .nest("/api/brew", api::phantasi::legacy_brew_image_cache_routes())
         // Phantasiai AI 增强 API
         // 注释 / 播客脚本 / 风格标签
         .nest(

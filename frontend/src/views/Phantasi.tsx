@@ -22,38 +22,6 @@ import {
 } from '../components/phantasi/articlePrefetch'
 import { phantasiBoardNavItems } from '../components/phantasi/boardNav'
 import {
-  BOARD_NAV_VISIBILITY_CHANGED,
-  filterBoardNavItems,
-  readBoardNavVisibility,
-} from '../components/phantasi/logic/boardNavVisibility'
-import PhantasiFilterLane from '../components/phantasi/PhantasiFilterLane'
-import PhantasiSourceGrid from '../components/phantasi/PhantasiSourceGrid'
-import { journalItemPath } from '../components/phantasi/logic/journalRoutes'
-import { storySourceFace } from '../components/phantasi/notes/noteSiteSource'
-import {
-  PHANTASI_PEEK_HANDOFF_MS,
-  PhantasiPeekAir,
-  applyPeekFace,
-  readPeekFace,
-  subscribePeekFace,
-  toPhantasiPeekFace,
-  writePeekFace,
-} from '../components/phantasi/ui/PhantasiPeekAir'
-import {
-  decidePeekSettle,
-  notePeekPointer,
-} from '../components/phantasi/ui/peekLane'
-import {
-  onPhantasiMotion,
-  phantasiMotionBusy,
-} from '../hooks/animation/pages/phantasiMotion'
-import {
-  cancelPhantasiPeekResume,
-  clearPhantasiStoryPeeks,
-  resumePhantasiStoryPeek,
-  schedulePhantasiPeekResume,
-} from '../components/phantasi/ui/StoryCard'
-import {
   filterItemsByQuery,
   filterLaneItems,
   showsFilterLane,
@@ -62,15 +30,38 @@ import {
   captureBoardScroll,
   restoreBoardScroll,
 } from '../components/phantasi/logic/boardScroll'
+import { journalItemPath } from '../components/phantasi/logic/journalRoutes'
 import { shouldPopOpenedItem } from '../components/phantasi/logic/phantasiItemRoute'
 import { topicDisplayName } from '../components/phantasi/logic/topics'
+import { storySourceFace } from '../components/phantasi/notes/noteSiteSource'
+import PhantasiFilterLane from '../components/phantasi/PhantasiFilterLane'
+import PhantasiSourceGrid from '../components/phantasi/PhantasiSourceGrid'
 import { PhantasiViewLane } from '../components/phantasi/skin/PhantasiChip'
 import { AnimatePresence, PhantasiPage } from '../components/phantasi/skin/PhantasiPage'
+import {
+  decidePeekSettle,
+  notePeekPointer,
+} from '../components/phantasi/ui/peekLane'
+import {
+  applyPeekFace,
+  PHANTASI_PEEK_HANDOFF_MS,
+  PhantasiPeekAir,
+  readPeekFace,
+  subscribePeekFace,
+  toPhantasiPeekFace,
+  writePeekFace,
+} from '../components/phantasi/ui/PhantasiPeekAir'
 import {
   PhantasiSearch,
   phantasiSearchInputRef,
   showPhantasiSearchGuide,
 } from '../components/phantasi/ui/PhantasiSearch'
+import {
+  cancelPhantasiPeekResume,
+  clearPhantasiStoryPeeks,
+  resumePhantasiStoryPeek,
+  schedulePhantasiPeekResume,
+} from '../components/phantasi/ui/StoryCard'
 import { usePhantasiAgentOpen } from '../components/phantasi/usePhantasiAgentOpen'
 import { usePhantasiBoardRoute } from '../components/phantasi/usePhantasiBoardRoute'
 import { usePhantasiItemActions } from '../components/phantasi/usePhantasiItemActions'
@@ -87,12 +78,16 @@ import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useReadingListOptional } from '../contexts/ReadingListContext'
 import { cancelIdleTask, scheduleIdleTask } from '../hooks/animation'
+import {
+  onPhantasiMotion,
+  phantasiMotionBusy,
+} from '../hooks/animation/pages/phantasiMotion'
 import { usePhantasiKeyboard } from '../hooks/usePhantasiKeyboard'
-import { phantasiSubject } from '../utils/phantasiSubject'
 import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../utils/moduleVisibility'
+import { phantasiSubject } from '../utils/phantasiSubject'
 import { showToast } from '../utils/toastManager'
 
 const PhantasiReader = lazy(() => import('../components/phantasi/PhantasiReader'))
@@ -162,32 +157,13 @@ function PhantasiSubjectPage() {
     setError,
   )
 
-  const [boardNavVisibility, setBoardNavVisibility] = useState(
-    readBoardNavVisibility,
-  )
-  useEffect(() => {
-    const sync = () => setBoardNavVisibility(readBoardNavVisibility())
-    window.addEventListener(BOARD_NAV_VISIBILITY_CHANGED, sync)
-    return () => window.removeEventListener(BOARD_NAV_VISIBILITY_CHANGED, sync)
-  }, [])
   const navItems = useMemo(
     () =>
-      filterBoardNavItems(
-        phantasiBoardNavItems(t.phantasi, {
-          includeStarred: isAdmin,
-          includeWorkbench: isAdmin,
-        }),
-        boardNavVisibility,
-        moduleVisibility.modules.phantasi,
-        { isAuthenticated, isAdmin },
-      ),
-    [
-      t.phantasi,
-      isAuthenticated,
-      isAdmin,
-      boardNavVisibility,
-      moduleVisibility.modules.phantasi,
-    ],
+      phantasiBoardNavItems(t.phantasi, {
+        includeStarred: isAdmin,
+        includeWorkbench: isAdmin,
+      }),
+    [t.phantasi, isAdmin],
   )
   const { activeId, setActiveId, setExpanded } = useSecondaryNav({
     routePath: '/journal',
@@ -271,7 +247,6 @@ function PhantasiSubjectPage() {
     list.loadItems,
     sources.reloadBoard,
     sources.loadSources,
-    sources.loadStats,
   )
   usePhantasiSeo(
     item.selectedItem,
@@ -368,7 +343,8 @@ function PhantasiSubjectPage() {
 
   const starredMode = useMemo(
     () => ({
-      total: sources.stats?.total_starred || 0,
+      total: list.total,
+      loadedCount: list.items.length,
       selectedIds: starred.selectedIds,
       isEditMode: starred.editMode,
       onBack: handleStarredBack,
@@ -379,7 +355,8 @@ function PhantasiSubjectPage() {
       isProcessing: starred.processing,
     }),
     [
-      sources.stats?.total_starred,
+      list.total,
+      list.items.length,
       starred.selectedIds,
       starred.editMode,
       handleStarredBack,

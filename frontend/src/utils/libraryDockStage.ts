@@ -32,9 +32,6 @@ export const LIBRARY_DOCK_STAGE_ORIGIN_Y = 0.5
 /** Clicks on these roots must not park/restore the dock. */
 export const LIBRARY_DOCK_CHROME_ATTR = 'data-library-dock-chrome'
 export const LIBRARY_DOCK_POINTER_CHROME = `[${LIBRARY_DOCK_CHROME_ATTR}], [data-sticker-pick], .nav-container, .global-control-bar, .tour-overlay`
-export const LIBRARY_DOCK_RESTORE_BLOCK =
-  '.widget-grid-item, button, input, select, textarea, a, [role="button"]'
-
 export const LIBRARY_DOCK_PARK_EASE = [0.22, 1, 0.36, 1] as const
 export const LIBRARY_DOCK_PARK_DURATION_S = 0.56
 export const LIBRARY_DOCK_RESTORE_SUPPRESS_MS =

@@ -23,9 +23,9 @@ use crate::services::phantasi_parser::{FeedParser, ParseError, ParsedFeed};
 use crate::services::phantasi_scheduler::get_phantasi_scheduler;
 
 use super::helpers::{
-    build_feed_discovery_candidates, get_admin_user_id_from_headers,
-    get_optional_user_and_admin_status, overlay_requested_feed_type, parse_feed_type_label,
-    phantasi_http_err, phantasi_store_http,
+    build_feed_discovery_candidates, get_admin_user_id_from_headers, get_phantasi_viewer,
+    normalize_http_url, overlay_requested_feed_type, parse_feed_type_label, phantasi_http_err,
+    phantasi_store_http,
 };
 
 // 订阅源管理
@@ -92,10 +92,7 @@ pub(crate) async fn list_sources(
     headers: axum::http::HeaderMap,
     Query(query): Query<ListSourcesQuery>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    let (user_id, is_admin) = get_phantasi_viewer(&headers, &db).await?;
 
     // 获取订阅源（非管理员过滤掉 admin_only=true 的源）
     let mut source_query =
@@ -207,7 +204,8 @@ pub(crate) async fn list_sources(
                     let published_at: Option<sea_orm::entity::prelude::DateTimeWithTimeZone> =
                         row.try_get("", "published_at").ok();
                     let is_read: bool = row.try_get("", "is_read").unwrap_or(false);
-                    let is_starred: bool = row.try_get("", "is_starred").unwrap_or(false);
+                    let is_starred: bool =
+                        is_admin && row.try_get("", "is_starred").unwrap_or(false);
                     let topic: Option<String> = row.try_get("", "topic").ok().flatten();
                     map.entry(source_id).or_default().push(ItemPreview {
                         id,
@@ -600,6 +598,25 @@ pub(crate) async fn update_source(
 
     match source {
         Ok(Some(source)) => {
+            let source_is_note = source.source_type == phantasi_sources::SourceType::Note;
+            let requested_type = req.source_type.as_deref();
+            let changes_note_transport = req.url.is_some()
+                || req.feed_type.is_some()
+                || req.rsshub_route.is_some()
+                || req.extra_config.is_some()
+                || req
+                    .category
+                    .as_deref()
+                    .is_some_and(|category| category.trim() != "我")
+                || requested_type.is_some_and(|value| value != "note");
+            if (source_is_note && changes_note_transport)
+                || (!source_is_note && requested_type == Some("note"))
+            {
+                return Err(phantasi_http_err(
+                    StatusCode::BAD_REQUEST,
+                    "Note sources cannot change subscription type",
+                ));
+            }
             let mut active: phantasi_sources::ActiveModel = source.into();
 
             if let Some(name) = req.name {
@@ -641,11 +658,23 @@ pub(crate) async fn update_source(
             if let Some(sort_order) = req.sort_order {
                 active.sort_order = Set(Some(sort_order));
             }
+            if let Some(url) = req.url {
+                active.url = Set(normalize_http_url(&url)
+                    .map_err(|error| phantasi_http_err(StatusCode::BAD_REQUEST, error))?
+                    .to_string());
+            }
             if let Some(ref source_type_str) = req.source_type {
                 let st = match source_type_str.as_str() {
                     "link" => phantasi_sources::SourceType::Link,
                     "phantasiai" => phantasi_sources::SourceType::Phantasiai,
-                    _ => phantasi_sources::SourceType::Rss,
+                    "rss" | "rsshub" => phantasi_sources::SourceType::Rss,
+                    "note" => phantasi_sources::SourceType::Note,
+                    _ => {
+                        return Err(phantasi_http_err(
+                            StatusCode::BAD_REQUEST,
+                            "Invalid source type",
+                        ));
+                    }
                 };
                 active.source_type = Set(st);
             }
@@ -668,6 +697,13 @@ pub(crate) async fn update_source(
             }
             if let Some(ref extra_config) = req.extra_config {
                 active.extra_config = Set(Some(extra_config.clone()));
+            }
+            if let Some(rsshub_route) = req.rsshub_route {
+                active.rsshub_route = Set(if rsshub_route.trim().is_empty() {
+                    None
+                } else {
+                    Some(rsshub_route.trim().to_string())
+                });
             }
             // 处理 AI 风格标签（用户自定义或 AI 生成）
             if let Some(ref tags) = req.ai_style_tags {
@@ -890,10 +926,7 @@ pub(crate) async fn list_categories(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, _) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    get_phantasi_viewer(&headers, &db).await?;
     let categories = phantasi_categories::Entity::find()
         .order_by_asc(phantasi_categories::Column::SortOrder)
         .all(&db)

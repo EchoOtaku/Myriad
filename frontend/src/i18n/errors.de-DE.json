@@ -1,4 +1,7 @@
 {
+  "aiNotConfigured": "Die für diese Funktion benötigte KI ist nicht eingerichtet. Öffnen Sie Einstellungen → KI oder wenden Sie sich an einen Administrator.",
+  "aiConfigureAction": "KI-Einstellungen öffnen",
+  "aiContactAdmin": "KI ist nicht eingerichtet. Wenden Sie sich an einen Administrator.",
   "networkError": "Netzwerkverbindung fehlgeschlagen",
   "unknown": "Unbekannter Fehler",
   "setupCheckFailed": "Der Server war nicht erreichbar, um den Einrichtungsstatus zu prüfen ({status}).",

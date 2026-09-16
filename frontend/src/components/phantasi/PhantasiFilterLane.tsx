@@ -23,7 +23,7 @@ interface PhantasiFilterLaneProps {
   total: number
   onItemSelect: (item: PhantasiItem) => void
   onLoadMore: () => void
-  onToggleStar: (item: PhantasiItem) => void
+  onToggleStar?: (item: PhantasiItem) => void
   onItemSelectToggle?: (id: number) => void
   onPeekItem?: (item: PhantasiItem) => void
   onPeekEnd?: () => void

@@ -5,6 +5,7 @@ import { API_URL } from '../config'
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { currentCopy } from '../i18n/localeCopy'
 import { parseApiErrorBody } from '../services/api'
+import { checkAiConfiguration } from '../utils/aiConfiguration'
 import { aiRequestTimeoutMs } from '../utils/aiRequestTimeout.mjs'
 import { clearCSRFToken, getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
 import {
@@ -90,6 +91,18 @@ const api = axios.create({
 
 api.interceptors.request.use(
   async (config) => {
+    const blocked = await checkAiConfiguration(config.url || '', {
+      method: config.method,
+      body: typeof config.data === 'string' ? config.data : JSON.stringify(config.data),
+      signal: config.signal as AbortSignal | undefined,
+    })
+    if (blocked) {
+      const data = blocked.headers.get('content-type')?.includes('application/json')
+        ? await blocked.json() : { error: await blocked.text() }
+      throw new axios.AxiosError(data.error, 'ERR_BAD_REQUEST', config, undefined, {
+        data, status: blocked.status, statusText: blocked.statusText, headers: {}, config,
+      })
+    }
     const aiTimeoutMs = aiRequestTimeoutMs(config.url || '')
     if (aiTimeoutMs) {
       config.timeout = Math.max(config.timeout ?? 0, aiTimeoutMs)

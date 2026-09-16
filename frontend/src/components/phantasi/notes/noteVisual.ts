@@ -213,7 +213,11 @@ function resolveDefinedLink(
 }
 
 /** 行内 Markdown → HTML。`  \n` 和 `\\\n` 是硬换行，普通换行只是空格。 */
-function inlineMarkdown(text: string, defs: ReadonlyMap<string, LinkDef> = EMPTY_DEFS): string {
+function inlineMarkdown(
+  text: string,
+  defs: ReadonlyMap<string, LinkDef> = EMPTY_DEFS,
+  tableCell = false,
+): string {
   const codes: string[] = []
   let html = escapeHtml(stashEscapes(text))
     .replaceAll(/(?: {2,}|\\)\n/g, '<br>')
@@ -254,6 +258,8 @@ function inlineMarkdown(text: string, defs: ReadonlyMap<string, LinkDef> = EMPTY
       codes.push(code)
       return `\uE020${codes.length - 1}\uE021`
     })
+  // 表格用内联 br 保存格内换行；代码里的 <br> 已被上面的占位符保护。
+  if (tableCell) html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>')
   html = replaceMathMarkdown(html)
   html = html.replace(
     /\uE020(\d+)\uE021/g,
@@ -537,7 +543,7 @@ function renderTable(
       const cells = splitTableRow(row)
         .map(
           (cell, col) =>
-            `<${tag}${alignAttr(aligns[col] ?? null)}>${inlineMarkdown(cell.trim(), defs)}</${tag}>`,
+            `<${tag}${alignAttr(aligns[col] ?? null)}>${inlineMarkdown(cell.trim(), defs, true)}</${tag}>`,
         )
         .join('')
       return `<tr>${cells}</tr>`
@@ -891,7 +897,11 @@ export function visualHtmlToMarkdown(html: string): string {
                   /text-align:\s*(left|center|right)/i.exec(raw)?.[1]
                 aligns[col] = (align?.toLowerCase() as CellAlign) ?? null
               }
-              return inlineHtml(cell[2]!).trim().replaceAll('|', String.raw`\|`)
+              // Markdown 表格每行必须保持一条物理行，否则格内内容会掉到下一行。
+              return inlineHtml(cell[2]!)
+                .trim()
+                .replace(/ *\r?\n/g, '<br>')
+                .replaceAll('|', String.raw`\|`)
             },
           )
           return `| ${cells.join(' | ')} |`

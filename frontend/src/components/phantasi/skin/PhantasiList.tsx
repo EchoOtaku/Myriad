@@ -8,7 +8,8 @@ import { PhantasiVacant } from '../ui/Empty'
 import { clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
 import { PhantasiStory } from './PhantasiStory'
 import { usePhantasiTimes } from './time'
-import { usePhantasiRailPan } from './usePhantasiRailPan'
+import { useStoryWindow } from './useStoryWindow'
+import type { FeedStory } from '../logic/feedStories'
 import '../ui/phantasi.css'
 
 interface PhantasiListViewProps {
@@ -65,21 +66,20 @@ export default function PhantasiListView({
     onPeekEnd,
     blocked: () => !!editMode || !onPeekItem,
   })
-  usePhantasiRailPan(
-    viewRef,
-    trackRef,
-    items.length > 0,
-    itemKey,
-    '.phantasi-story',
-    undefined,
-    undefined,
-    true,
-    undefined,
-    () => {
-      clearPhantasiStoryPeeks(trackRef.current)
-      onPeekEnd?.()
-    },
-  )
+  const window = useStoryWindow(items.length, itemKey, viewRef, trackRef, () => {
+    clearPhantasiStoryPeeks(trackRef.current)
+    onPeekEnd?.()
+  }, items[0]?.id)
+  const open = useCallback((story: FeedStory) => {
+    const item = itemsById.get(story.id)
+    if (!item) return
+    if (editMode) onItemSelectToggle?.(item.id)
+    else onItemSelect(item)
+  }, [editMode, itemsById, onItemSelect, onItemSelectToggle])
+  const star = useCallback((story: FeedStory) => {
+    const item = itemsById.get(story.id)
+    if (item) onToggleStar?.({ ...item, is_starred: !!story.is_starred })
+  }, [itemsById, onToggleStar])
 
   const lastItemRef = useCallback(
     (node: HTMLButtonElement | null) => {
@@ -113,6 +113,8 @@ export default function PhantasiListView({
       ref={viewRef}
       data-phantasi-peek-lane
       {...peekLane}
+      onFocusCapture={window.onFocusCapture}
+      onBlurCapture={window.onBlurCapture}
     >
       <div
         className="phantasi-stories-track"
@@ -120,27 +122,15 @@ export default function PhantasiListView({
         data-phantasi-rail-track="items"
         style={{ '--phantasi-story-cols': storyCols } as CSSProperties}
       >
-        {items.map((item, index) => {
+        {window.indices.map((index) => {
+          const item = items[index]!
           const last = index === items.length - 1
           const column = Math.floor(index / 2) + 1
           return (
             <PhantasiStory
               key={item.id}
               ref={last ? lastItemRef : undefined}
-              item={{
-                id: item.id,
-                title: item.title,
-                summary: item.summary,
-                image: item.image,
-                published_at: item.published_at,
-                is_read: item.is_read,
-                is_starred: item.is_starred,
-                topic: item.topic,
-                author: item.author,
-                source_name: item.source_name,
-                source_icon: item.source_icon,
-                guid: item.guid,
-              }}
+              item={item}
               times={times}
               locale={locale}
               labels={labels}
@@ -153,20 +143,8 @@ export default function PhantasiListView({
               }}
               picking={!!editMode}
               picked={!!selectedIds?.has(item.id)}
-              onOpen={() => {
-                if (editMode) onItemSelectToggle?.(item.id)
-                else onItemSelect(item)
-              }}
-              onToggleStar={
-                editMode || !onToggleStar
-                  ? undefined
-                  : (story) => {
-                      onToggleStar({
-                        ...item,
-                        is_starred: !!story.is_starred,
-                      })
-                    }
-              }
+              onOpen={open}
+              onToggleStar={editMode || !onToggleStar ? undefined : star}
             />
           )
         })}

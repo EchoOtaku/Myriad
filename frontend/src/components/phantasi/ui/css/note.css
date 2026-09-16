@@ -1109,8 +1109,14 @@ html.dark .phantasi-note__menu {
   border-left: 1px solid var(--note-line);
   background: var(--note-paper);
   box-shadow: -12px 0 32px rgb(0 0 0 / 8%);
+  user-select: none;
   animation: phantasi-note-drawer-in var(--sm-dur-base, 220ms)
     var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+
+.phantasi-note__drawer input,
+.phantasi-note__drawer textarea {
+  user-select: text;
 }
 
 .phantasi-note__drawer.is-leaving {

@@ -28,7 +28,6 @@ import {
   addUrlLabelKey,
   addUrlPlaceholder,
 } from './addSource'
-import { FormBlock } from './FormBlock'
 import {
   canSubmitEdit,
   EDIT_INTERVALS,
@@ -36,6 +35,7 @@ import {
   pickEditKind,
   resolveEditSourcePayload,
 } from './editSource'
+import { FormBlock } from './FormBlock'
 import { SourceCategoryField } from './SourceCategoryField'
 import { SourceKindControl } from './SourceKindControl'
 import './AddMode.css'
@@ -446,15 +446,17 @@ export function EditSourceMode({
               placeholder={isLink ? phantasi.enterName : phantasi.sourceName}
               disabled={saving}
             />
-            <SourceCategoryField
-              categories={allCategories}
-              value={category}
-              open={categoryOpen}
-              onOpenChange={setCategoryOpen}
-              onChange={setCategory}
-              disabled={saving}
-              labelFor={(name) => categoryLabel(name, presetLabels)}
-            />
+            {!isNote ? (
+              <SourceCategoryField
+                categories={allCategories}
+                value={category}
+                open={categoryOpen}
+                onOpenChange={setCategoryOpen}
+                onChange={setCategory}
+                disabled={saving}
+                labelFor={(name) => categoryLabel(name, presetLabels)}
+              />
+            ) : null}
           </CompactSettingGroup>
           <InputItem
             itemKey="phantasi-edit-color"
@@ -515,21 +517,21 @@ export function EditSourceMode({
 
             {showAiTags ? (
               <TagEditor
-            itemKey="phantasi-edit-ai-tag"
-            label={phantasi.aiStyleTags}
-            description={phantasi.styleTagsDesc}
-            draft={newTag}
-            onDraft={setNewTag}
-            placeholder={phantasi.tagInputPlaceholder}
-            tags={styleTags}
-            empty={phantasi.noTagsHint}
-            deleteLabel={phantasi.deleteTag}
-            disabled={saving || generatingTags || styleTags.length >= 3}
-            onAdd={addTag}
-            onRemove={(tag) =>
+                itemKey="phantasi-edit-ai-tag"
+                label={phantasi.aiStyleTags}
+                description={phantasi.styleTagsDesc}
+                draft={newTag}
+                onDraft={setNewTag}
+                placeholder={phantasi.tagInputPlaceholder}
+                tags={styleTags}
+                empty={phantasi.noTagsHint}
+                deleteLabel={phantasi.deleteTag}
+                disabled={saving || generatingTags || styleTags.length >= 3}
+                onAdd={addTag}
+                onRemove={(tag) =>
               setStyleTags((prev) => prev.filter((item) => item !== tag))
             }
-            accessory={
+                accessory={
               <SettingTitleTag
                 icon={generatingTags ? <Spinner size="xs" /> : <Sparkles />}
                 disabled={generatingTags || !onGenerateStyleTags || saving}
@@ -561,7 +563,7 @@ export function EditSourceMode({
                 {styleTags.length > 0 ? phantasi.regenerateTags : phantasi.generateTags}
               </SettingTitleTag>
             }
-          />
+              />
         ) : null}
 
         {showCustomTags ? (

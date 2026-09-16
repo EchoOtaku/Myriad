@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  isItemListCursor,
   itemListHasMore,
   itemListRequest,
 } from './itemList.ts'
@@ -14,21 +13,22 @@ describe('item list cursor', () => {
     assert.equal(itemListHasMore(undefined, 3, 20), false)
   })
 
-  it('drops page when a cursor is present', () => {
-    assert.equal(isItemListCursor('1700000000000:2'), true)
-    assert.equal(isItemListCursor('x:2'), false)
-    assert.equal(isItemListCursor('1:0'), false)
-    assert.deepEqual(itemListRequest({ cursor: '1:2', page: 3, perPage: 20 }), {
-      cursor: '1:2',
+  it('passes opaque cursors through and drops page', () => {
+    assert.deepEqual(itemListRequest({ cursor: 'us:1700000000123456:2', page: 3, perPage: 20 }), {
+      cursor: 'us:1700000000123456:2',
       per_page: 20,
     })
     assert.deepEqual(
-      itemListRequest({ cursor: 'bad', page: 3, perPage: 20 }),
+      itemListRequest({ cursor: ' opaque-v2-token ', page: 3, perPage: 20 }),
       {
-        page: 3,
+        cursor: 'opaque-v2-token',
         per_page: 20,
       },
     )
+    assert.deepEqual(itemListRequest({ cursor: ' ', page: 3, perPage: 20 }), {
+      page: 3,
+      per_page: 20,
+    })
     assert.deepEqual(itemListRequest({ page: 1, perPage: 20 }), {
       page: 1,
       per_page: 20,

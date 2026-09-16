@@ -6,10 +6,10 @@ import type {
   UpdateSourceRequest,
 } from '../../types/phantasi'
 import type { PhantasiBoard, SourceSortMode } from './logic/board'
+import type { PeekStoryPreview } from './ui/peekLane'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
-import { loadNoteDocs } from './pageData'
 import {
   filterItemsByQuery,
   filterSourcesByQuery,
@@ -18,20 +18,21 @@ import {
   sourcesForBoard,
 } from './logic/board'
 import { shuffleBySeed, storiesFromSources } from './logic/feedStories'
-import { leftoverNoteSources, visibleCloudNoteDocs } from './notes/noteBoard'
 import { roleFromAuth } from './logic/score'
 import { readSourceSortMode, writeSourceSortMode } from './logic/sourceSort'
 import { PhantasiSourceTitleTags } from './manager/PhantasiSourceTitleTags'
+import { leftoverNoteSources, visibleCloudNoteDocs } from './notes/noteBoard'
+import { loadNoteDocs } from './pageData'
 import PhantasiBoardView from './skin/PhantasiBoard'
+import { PhantasiViewLane } from './skin/PhantasiChip'
 import {
   PhantasiNoteCategoryTitleTags,
   useNoteBoardCategory,
 } from './skin/PhantasiNoteCategoryTitleTags'
-import { PhantasiViewLane } from './skin/PhantasiChip'
-import { schedulePhantasiPeekResume } from './ui/StoryCard'
+import { PhantasiVacant } from './ui/Empty'
 import { PhantasiPageStage } from './ui/PhantasiPageStage'
 import { PhantasiRailTitle } from './ui/PhantasiRailTitle'
-import { PhantasiVacant } from './ui/Empty'
+import { schedulePhantasiPeekResume } from './ui/StoryCard'
 import { useArticleFlags } from './useArticleFlags'
 import { useBoardEdit } from './useBoardEdit'
 import {
@@ -66,7 +67,7 @@ interface PhantasiSourceGridProps {
   ) => Promise<{ imported: number; skipped: number }>
   onRemoveSources?: (ids: number[]) => Promise<void>
   onOpenItem: (item: PhantasiItemPreview, source: PhantasiSource) => void
-  onPeekItem?: (item: PhantasiItemPreview) => void
+  onPeekItem?: (item: PeekStoryPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: PhantasiItemPreview) => void
   onWriteNote?: () => void
@@ -116,7 +117,7 @@ export default function PhantasiSourceGrid({
     viewerRole,
     scoreNow,
   )
-  const notes = useBoardNotes(board, sources, docsEpoch)
+  const { notes, loading: notesLoading, failed: notesFailed, retry: retryNotes } = useBoardNotes(board, sources, docsEpoch)
   const [docs, setDocs] = useState<PhantasiNoteDoc[]>([])
   useEffect(() => {
     if (board !== 'notes' || !isAdmin) {
@@ -142,6 +143,7 @@ export default function PhantasiSourceGrid({
     board === 'notes' ? notes : [],
     board === 'notes' ? cloudDocs : [],
     board === 'notes' ? sorted : [],
+    notesLoading || notesFailed,
   )
   const {
     stories,
@@ -284,7 +286,7 @@ export default function PhantasiSourceGrid({
   const searchMiss =
     !!searchQuery.trim() &&
     (board === 'notes'
-      ? noteHits === 0
+      ? noteHits === 0 && !notesLoading && !notesFailed
       : board === 'sites'
         ? friendSources.length === 0 && friendStories.length === 0
         : filtered.length === 0)
@@ -351,6 +353,9 @@ export default function PhantasiSourceGrid({
       sourceTags={board === 'feeds' ? sourceTags : undefined}
       topicCards={board === 'feeds' ? topicCards : undefined}
       notes={searchedNotes}
+      notesLoading={notesLoading}
+      notesFailed={notesFailed}
+      onRetryNotes={retryNotes}
       docs={board === 'notes' ? searchedDocs : docs}
       noteCategory={board === 'notes' ? noteCats.filter : null}
       onOpenDoc={onOpenDoc}

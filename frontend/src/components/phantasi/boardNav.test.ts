@@ -39,17 +39,16 @@ describe('phantasiBoardNavItems', () => {
   })
 })
 
-describe('board nav visibility wiring', () => {
-  it('页面用可见性裁二级菜单，名单仍在 boardNav', () => {
+describe('board nav visibility', () => {
+  it('三个板块固定出现，收藏和工作台只看管理员身份', () => {
     const page = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), '../../views/Phantasi.tsx'),
       'utf8',
     )
-    assert.match(page, /filterBoardNavItems/)
     assert.match(page, /phantasiBoardNavItems/)
     assert.match(page, /includeStarred: isAdmin/)
     assert.match(page, /includeWorkbench: isAdmin/)
     assert.match(page, /onToggleStar=\{isAdmin \? handleCardStar/)
-    assert.match(page, /BOARD_NAV_VISIBILITY_CHANGED/)
+    assert.doesNotMatch(page, /boardNavVisibility|localStorage/)
   })
 })

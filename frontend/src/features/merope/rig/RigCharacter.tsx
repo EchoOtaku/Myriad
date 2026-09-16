@@ -237,24 +237,44 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
     if (!fallbackUrl) return null
 
     return (
-      <StaticFaceImage src={fallbackUrl} onPlaybackReady={onPlaybackReady} />
+      <StaticFaceImage
+        src={fallbackUrl}
+        onPlaybackError={onPlaybackError}
+        onPlaybackReady={onPlaybackReady}
+      />
     )
   },
 )
 
 function StaticFaceImage({
   src,
+  onPlaybackError,
   onPlaybackReady,
 }: {
   src: string
+  onPlaybackError?: (error: unknown) => void
   onPlaybackReady?: () => void
 }) {
+  const imageRef = useRef<HTMLImageElement>(null)
   useLayoutEffect(() => {
-    onPlaybackReady?.()
-  }, [onPlaybackReady, src])
+    const image = imageRef.current
+    if (image?.complete) {
+      if (image.naturalWidth > 0) onPlaybackReady?.()
+      else onPlaybackError?.(new Error('Persona portrait failed to load'))
+    }
+  }, [onPlaybackError, onPlaybackReady, src])
   return (
     <span className="merope-rig is-ready" data-rig-quality="static">
-      <img src={src} alt="" draggable={false} />
+      <img
+        ref={imageRef}
+        src={src}
+        alt=""
+        draggable={false}
+        onLoad={() => onPlaybackReady?.()}
+        onError={(event) =>
+          onPlaybackError?.(event.nativeEvent ?? new Error('Persona portrait failed to load'))
+        }
+      />
     </span>
   )
 }

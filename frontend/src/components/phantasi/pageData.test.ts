@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 import { requestCache } from '../../utils/requestCache.ts'
 import {
+  BOARD_NOTES_CACHE_PREFIX,
   FEED_STORIES_CACHE_PREFIX,
   feedStoriesCacheKey,
-  BOARD_NOTES_CACHE_PREFIX,
   loadBoardNotes,
   loadFeedStories,
   loadLatestStory,
@@ -21,7 +21,8 @@ afterEach(() => {
 
 describe('feedStoriesCacheKey', () => {
   it('一份源一把钥匙', () => {
-    assert.equal(feedStoriesCacheKey(7), 'phantasi:feed-stories:7')
+    assert.equal(feedStoriesCacheKey(7), 'phantasi:feed-stories:7:0')
+    assert.equal(feedStoriesCacheKey(7, 9), 'phantasi:feed-stories:7:9')
   })
 })
 
@@ -133,6 +134,93 @@ describe('并发同源请求合并', () => {
       assert.match(urls[0] ?? '', /source_id=3/)
       assert.doesNotMatch(urls[0] ?? '', /category=/)
     } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('笔记墙逐页透传不透明游标并合并结果', async () => {
+    const original = globalThis.fetch
+    const urls: URL[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), 'https://test.invalid')
+      urls.push(url)
+      const second = url.searchParams.has('cursor')
+      return Response.json({
+        items: [{
+          id: second ? 11 : 12,
+          title: second ? 'older' : 'newer',
+          summary: null,
+          image: null,
+          published_at: second ? 10 : 20,
+          source_id: 31,
+        }],
+        total: second ? 0 : 2,
+        page: 1,
+        per_page: 100,
+        next_cursor: second ? null : 'us:1700000000123456:12',
+      })
+    }) as typeof fetch
+    try {
+      const notes = await loadBoardNotes([{ id: 31, source_type: 'note' }])
+      assert.deepEqual(notes.map(note => note.id), [12, 11])
+      assert.equal(urls.length, 2)
+      assert.equal(urls[1]?.searchParams.get('cursor'), 'us:1700000000123456:12')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('笔记墙遇到重复游标会停止而不是无限请求', async () => {
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      return Response.json({
+        items: [],
+        total: 0,
+        page: 1,
+        per_page: 100,
+        next_cursor: 'repeat-token',
+      })
+    }) as typeof fetch
+    try {
+      await assert.rejects(
+        loadBoardNotes([{ id: 32, source_type: 'note' }]),
+        /repeated cursor/,
+      )
+      assert.equal(calls, 2)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+})
+
+describe('progressive note pages', () => {
+  it('publishes the first page before a slow second page and stops after cancellation', async () => {
+    const original = globalThis.fetch
+    const second = Promise.withResolvers<Response>()
+    const started = Promise.withResolvers<void>()
+    const snapshots: number[][] = []
+    const controller = new AbortController()
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      if (calls === 2) { started.resolve(); return second.promise }
+      return Response.json({ items: [{ id: 101, source_id: 91, title: 'new', published_at: 2 }], next_cursor: 'second', per_page: 100, total: 300 })
+    }) as typeof fetch
+    try {
+      const pending = loadBoardNotes([{ id: 91, source_type: 'note' }], controller.signal, (notes) => snapshots.push(notes.map(note => note.id)))
+      const result = pending.catch(error => error)
+      await started.promise
+      assert.deepEqual(snapshots, [[101]])
+      controller.abort()
+      second.resolve(Response.json({ items: [{ id: 100, source_id: 91, title: 'old', published_at: 1 }], next_cursor: 'third', per_page: 100, total: 0 }))
+      assert.equal((await result).name, 'AbortError')
+      assert.equal(calls, 2)
+      assert.deepEqual(snapshots, [[101]])
+    } finally {
+      controller.abort()
+      second.resolve(Response.json({ items: [], next_cursor: null }))
       globalThis.fetch = original
     }
   })

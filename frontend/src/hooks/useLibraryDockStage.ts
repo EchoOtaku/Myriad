@@ -6,7 +6,6 @@ import {
   LIBRARY_BESIDE_PANEL_ANCHOR,
   LIBRARY_DOCK_BOTTOM_REM,
   LIBRARY_DOCK_POINTER_CHROME,
-  LIBRARY_DOCK_RESTORE_BLOCK,
   LIBRARY_DOCK_RESTORE_SUPPRESS_MS,
   LIBRARY_DOCK_STAGE_ORIGIN_X,
   LIBRARY_DOCK_STAGE_ORIGIN_Y,
@@ -234,13 +233,6 @@ export function useLibraryDockStage(input: {
     setStaged(false)
   }, [parkable, widgetDragActive])
 
-  const consumeEscape = useCallback(() => {
-    if (tourDockPose) return false
-    if (!parkable || !staged) return false
-    restore()
-    return true
-  }, [parkable, restore, staged, tourDockPose])
-
   const onIslandAnimationComplete = useCallback(() => {
     if (stagedRef.current) setParkMotionDone(true)
   }, [])
@@ -310,11 +302,8 @@ export function useLibraryDockStage(input: {
       const target = event.target
       if (!(target instanceof Element)) return
       if (target.closest(LIBRARY_DOCK_POINTER_CHROME)) return
-      if (staged) {
-        if (target.closest(LIBRARY_DOCK_RESTORE_BLOCK)) return
-        restore()
-        return
-      }
+      // Outside clicks only dismiss. Reopening belongs to the dock's entrance.
+      if (staged) return
       parkIgnorePointerRef.current = event.pointerId
       park()
     }
@@ -336,7 +325,7 @@ export function useLibraryDockStage(input: {
       window.removeEventListener('pointerup', onPointerUp, true)
       window.removeEventListener('pointercancel', onPointerUp, true)
     }
-  }, [park, parkable, pausePointer, restore, staged, tourDockPose, visible])
+  }, [park, parkable, pausePointer, staged, tourDockPose, visible])
 
   return {
     parked,
@@ -348,7 +337,6 @@ export function useLibraryDockStage(input: {
     islandBoxStyle,
     restore,
     setStageHovered,
-    consumeEscape,
     onIslandAnimationComplete,
   }
 }

@@ -1,6 +1,7 @@
 import { API_URL } from '../config'
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { currentCopy } from '../i18n/localeCopy'
+import { fetchWithAiConfiguration } from '../utils/aiConfiguration'
 import { aiRequestTimeoutMs } from '../utils/aiRequestTimeout.mjs'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
@@ -128,7 +129,7 @@ async function request<T>(
   const timeoutId = setTimeout(() => controller.abort(), timeout)
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithAiConfiguration(url, {
       ...fetchOptions,
       headers,
       credentials: 'include',
@@ -234,7 +235,7 @@ async function requestBlob(
   const timeoutId = setTimeout(() => controller.abort(), timeout)
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithAiConfiguration(url, {
       ...fetchOptions,
       method: 'GET',
       headers,

@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react'
 import type { TranslationKeys } from '../../../i18n/assembleLocale'
+import type { WidgetType } from '../../widgetGridTypes'
 import type { InlineLink } from './noteDraft'
 import type { NoteInsertMenuState, TableAlign } from './NoteEditorChrome'
 import type { SelectionAnchor } from './noteSelection'
@@ -52,7 +53,7 @@ export function useNoteEditorFormat(host: {
   editingLinkRef: MutableRefObject<InlineLink | null>
   overlayOpenRef: MutableRefObject<boolean>
   selectionRef: MutableRefObject<SelectionAnchor | null>
-  widgetCatalog: Array<{ id: string; settings?: unknown[]; supportedSizes?: string[] }>
+  widgetCatalog: WidgetType[]
   visualWidgets: { refresh: () => void }
   commitVisualMd: (md: string) => void
   runVisual: (command: string, value?: string) => void

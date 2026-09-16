@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
-import { loadFeedStories, loadBoardNotes } from '../components/phantasi/pageData'
+import { loadBoardNotes, loadFeedStories } from '../components/phantasi/pageData'
 import { getItem, getItemPreviews, getItems } from './phantasiApi'
 
 it('requests explicit previews while preserving full list and detail contracts', async () => {
@@ -22,7 +22,7 @@ it('requests explicit previews while preserving full list and detail contracts',
     assert.equal(urls[0].searchParams.get('page'), '2')
     assert.equal(Object.hasOwn(previews.items[0], 'content'), false)
     const full = await getItems()
-    assert.equal(urls[1].searchParams.has('projection'), false)
+    assert.equal(urls[1].searchParams.get('projection'), 'full')
     assert.equal(full.items[0].content, '<p>list body</p>')
     assert.equal((await getItem(91234)).content, '<p>detail</p>')
     await loadFeedStories(91235, 1)

@@ -13,8 +13,8 @@ use serde_json::json;
 use crate::models::entities::phantasi_sources;
 
 use super::helpers::{
-    generate_opml, get_admin_user_id_from_headers, get_optional_user_and_admin_status, parse_opml,
-    phantasi_http_err, phantasi_store_http,
+    generate_opml, get_admin_user_id_from_headers, get_phantasi_viewer, parse_opml,
+    phantasi_store_http,
 };
 
 // OPML 导入导出
@@ -102,10 +102,7 @@ pub(crate) async fn export_opml(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, HttpError> {
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    let (_, is_admin) = get_phantasi_viewer(&headers, &db).await?;
 
     let mut query = phantasi_sources::Entity::find()
         // 笔记源的 url 是 `myriad:notes`，不是一个可订阅的 feed。导出来别人

@@ -5,6 +5,8 @@ import type { PhantasiBoard } from '../logic/board'
 import type { FeedStory } from '../logic/feedStories'
 
 import type { HomeBoardNote } from '../logic/homeBoard'
+import type { PeekStoryPreview } from '../ui/peekLane'
+import { useMemo } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import {
   notesBoardIsEmpty,
@@ -25,12 +27,15 @@ interface PhantasiBoardViewProps {
   onToggleSelect?: (id: number) => void
   onSourceClick: (source: PhantasiSource) => void
   onOpenItem: (item: PhantasiItemPreview, source: PhantasiSource) => void
-  onPeekItem?: (item: PhantasiItemPreview) => void
+  onPeekItem?: (item: PeekStoryPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: PhantasiItemPreview) => void
   onEditSource?: (source: PhantasiSource) => void
   onOpenDoc?: (id: number) => void
   toolbar?: ReactNode
+  notesLoading?: boolean
+  notesFailed?: boolean
+  onRetryNotes?: () => void
   notes?: HomeBoardNote[]
   docs?: PhantasiNoteDoc[]
   vacant?: ReactNode
@@ -63,6 +68,9 @@ export default function PhantasiBoardView({
   onOpenDoc,
   toolbar,
   notes = [],
+  notesLoading = false,
+  notesFailed = false,
+  onRetryNotes,
   docs = [],
   vacant,
   stories,
@@ -79,13 +87,13 @@ export default function PhantasiBoardView({
 }: PhantasiBoardViewProps) {
   const { t } = useI18n()
 
-  const cloudDocs = board === 'notes' ? visibleCloudNoteDocs(docs) : []
+  const cloudDocs = useMemo(() => board === 'notes' ? visibleCloudNoteDocs(docs) : [], [board, docs])
   const empty =
     board === 'notes'
       ? notesBoardIsEmpty(sources.length, notes.length, docs)
       : sources.length === 0
 
-  if (empty && board !== 'feeds') {
+  if (empty && board !== 'feeds' && !(board === 'notes' && (notesLoading || notesFailed))) {
     if (vacant) return vacant
     return (
       <PhantasiVacant
@@ -155,6 +163,9 @@ export default function PhantasiBoardView({
     <PhantasiNotes
       sources={sources}
       notes={notes}
+      loading={notesLoading}
+      failed={notesFailed}
+      onRetry={onRetryNotes}
       docs={cloudDocs}
       category={noteCategory}
       isEditMode={isEditMode}

@@ -31,6 +31,7 @@ export interface TopicFeedModeConfig {
 
 export interface StarredModeConfig {
   total: number
+  loadedCount: number
   selectedIds: Set<number>
   isEditMode: boolean
   onBack: () => void

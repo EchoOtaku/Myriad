@@ -596,6 +596,7 @@
     "glowNone": "グローなし"
   },
   "home": {
+    "exitEditConfirm": "レイアウトの変更は自動保存されます。編集を終了しますか？",
     "defaultBio": "私のパーソナルダッシュボードへようこそ",
     "switchToFreeLayout": "フリーレイアウトに切り替え",
     "switchToStandardLayout": "標準レイアウトに切り替え",

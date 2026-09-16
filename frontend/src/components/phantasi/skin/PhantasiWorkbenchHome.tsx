@@ -7,16 +7,16 @@ import type {
   PhantasiSourceApplication,
 } from '../../../types/phantasi'
 import type { WorkbenchPane } from '../logic/board'
+import type { WorkbenchHomeRecent } from '../logic/workbenchHome'
 import { getImageUrl } from '../constants'
+import { workbenchNoteCover, workbenchNoteListExcerpt, workbenchNoteOpen } from '../logic/workbench'
 import {
   workbenchHomeMediaFace,
+
   workbenchHomeScheduleKind,
-  type WorkbenchHomeRecent,
 } from '../logic/workbenchHome'
-import { workbenchNoteCover, workbenchNoteListExcerpt, workbenchNoteOpen } from '../logic/workbench'
 import { noteScheduleLabel } from '../notes/noteBoard'
 import { displayImageUrl } from '../notes/noteImageUrl'
-import { WorkbenchHomeOptions } from './PhantasiWorkbenchHomeOptions'
 
 export function Thumb({
   src,
@@ -335,7 +335,6 @@ export function WorkbenchHome({
             <p className="phantasi-workbench__home-empty">{copy.workbenchHomeEmpty}</p>
           ) : null}
         </div>
-        <WorkbenchHomeOptions />
       </div>
     </div>
   )

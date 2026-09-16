@@ -28,7 +28,7 @@ describe('手帐审计契约', () => {
     const sources = read('usePhantasiSources.ts')
     assert.match(sources, /subscribeMutations/)
     assert.match(sources, /applyReadMutation/)
-    assert.match(sources, /loadStats\(/)
+    assert.doesNotMatch(sources, /loadStats\(/)
   })
 
   it('批量刷新每源跳过缓存、结束只清一次', () => {

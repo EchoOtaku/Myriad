@@ -84,7 +84,9 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
       await openArticle(async (signal) => {
         const check = () => signal.throwIfAborted()
         if (articleId || articleLink) {
-          return findAgentArticle(
+          const found = await findAgentArticle<
+            Pick<PhantasiItem, 'id' | 'title' | 'link' | 'guid'>
+          >(
             { articleId, articleLink },
             itemsRef.current,
             {
@@ -106,6 +108,10 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
               },
             },
           )
+          if (!found) return null
+          if (Object.hasOwn(found, 'content')) return found as PhantasiItem
+          check()
+          return phantasiApi.getItem(found.id, undefined, { signal })
         }
         if (wantsLatestOnly({ articleId, articleLink, openLatest })) {
           const data = await phantasiApi.getItemPreviews(
@@ -113,7 +119,10 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
             undefined,
             { signal },
           )
-          return data.items[0]
+          const latest = data.items[0]
+          if (!latest) return null
+          check()
+          return phantasiApi.getItem(latest.id, undefined, { signal })
         }
         return null
       }, { queue })

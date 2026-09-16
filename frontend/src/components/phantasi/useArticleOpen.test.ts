@@ -11,7 +11,6 @@ import { useContentEvents } from './reader/hooks/useContentEvents'
 import { useArticleOpen } from './useArticleOpen'
 import { useFeedStories } from './useBoardPage'
 import { usePhantasiItems } from './usePhantasiItems'
-import { usePhantasiSources } from './usePhantasiSources'
 import { usePhantasiStarred } from './usePhantasiStarred'
 
 const require = createRequire(import.meta.url)
@@ -237,33 +236,6 @@ it('Phantasi hooks reject stale opens, retry failed pages, and settle partial un
     await act(async () => { await feed.onStar(story) })
     assert.equal(feed.stories[0].is_starred, true)
     assert.equal(session.selectedItem?.is_starred, true)
-
-    let serverStarred = 5
-    let statsFetches = 0
-    globalThis.fetch = async (input) => {
-      if (String(input).endsWith('/stats')) {
-        statsFetches++
-        return Response.json({ stats: { total_starred: serverStarred, total_unread: 7, total_items: 12, total_sources: 1 } })
-      }
-      return Response.json({ sources: [] })
-    }
-    let sourcesState!: ReturnType<typeof usePhantasiSources>
-    function SourcesHarness() {
-      sourcesState = usePhantasiSources(false, { loadFailed: 'failed', refreshFailed: 'failed' }, report)
-      return null
-    }
-    await act(async () => { root.render(createElement(SourcesHarness)) })
-    assert.equal(sourcesState.stats?.total_starred, 5)
-    serverStarred = 3
-    await act(async () => {
-      const { invalidateSourcesCache } = await import('../../services/phantasiApi')
-      invalidateSourcesCache()
-      phantasiItemState.commit(1, { is_starred: false })
-      phantasiItemState.commit(2, { is_starred: false })
-      await new Promise(resolve => setTimeout(resolve, 150))
-    })
-    assert.equal(sourcesState.stats?.total_starred, 3)
-    assert.equal(statsFetches, 2)
 
     await act(async () => { root.render(null) })
     phantasiItemState.clear()

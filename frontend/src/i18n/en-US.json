@@ -596,6 +596,7 @@
     "glowNone": "No glow"
   },
   "home": {
+    "exitEditConfirm": "Layout changes are saved automatically. Exit editing?",
     "defaultBio": "Welcome to my personal dashboard",
     "switchToFreeLayout": "Switch to free layout",
     "switchToStandardLayout": "Switch to standard layout",

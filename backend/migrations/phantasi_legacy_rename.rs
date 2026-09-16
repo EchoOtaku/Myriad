@@ -61,14 +61,16 @@ pub async fn rename_brew_to_phantasi_if_needed(db: &impl ConnectionTrait) -> Res
     let has_old = table_exists(db, OLD_SOURCES_TABLE).await?;
     let has_new = table_exists(db, NEW_SOURCES_TABLE).await?;
     let pending_old_version = migration_version_exists(db, OLD_MIGRATION_NAME).await?;
-    if !rename_needed(has_old, has_new, pending_old_version)? {
-        return Ok(());
+    if rename_needed(has_old, has_new, pending_old_version)? {
+        rename_relations(db).await?;
+        rewrite_row_text(db).await?;
+        rewrite_json_documents(db).await?;
+        rewrite_migration_version(db).await?;
     }
 
-    rename_relations(db).await?;
-    rewrite_row_text(db).await?;
-    rewrite_json_documents(db).await?;
-    rewrite_migration_version(db).await?;
+    // This repair also runs for databases that completed the original rename
+    // before agent_persona asset fields were added to its rewrite scope.
+    repair_agent_persona_asset_urls(db).await?;
     Ok(())
 }
 
@@ -166,8 +168,12 @@ const FEDERATION_PAYLOAD_REWRITES: &[(&str, &str, Option<&str>)] = &[
 ];
 
 fn apply_sql_replaces(expr: &str) -> String {
+    apply_replacements(expr, TEXT_REPLACEMENTS)
+}
+
+fn apply_replacements(expr: &str, replacements: &[(&str, &str)]) -> String {
     let mut out = expr.to_string();
-    for (from, to) in TEXT_REPLACEMENTS {
+    for (from, to) in replacements {
         let from = from.replace('\'', "''");
         let to = to.replace('\'', "''");
         out = format!("replace({out}, '{from}', '{to}')");
@@ -265,6 +271,31 @@ async fn rewrite_row_text(db: &impl ConnectionTrait) -> Result<(), DbErr> {
     Ok(())
 }
 
+const LEGACY_IMAGE_CACHE_REPLACEMENTS: &[(&str, &str)] =
+    &[("/api/brew/image-cache/", "/api/phantasi/image-cache/")];
+
+const AGENT_PERSONA_ASSET_COLUMNS: &[(&str, Option<&str>)] = &[
+    ("portrait_asset_id", None),
+    ("avatar_asset_id", None),
+    ("visual_profile", Some("jsonb")),
+    ("portrait_generation", Some("jsonb")),
+    ("avatar_generation", Some("jsonb")),
+];
+
+async fn repair_agent_persona_asset_urls(db: &impl ConnectionTrait) -> Result<(), DbErr> {
+    for (column, restore_cast) in AGENT_PERSONA_ASSET_COLUMNS {
+        rewrite_column_with_replacements(
+            db,
+            "agent_persona",
+            column,
+            *restore_cast,
+            LEGACY_IMAGE_CACHE_REPLACEMENTS,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 /// Rewrite stored brew strings in one column. `restore_cast` is `json` / `jsonb`
 /// when the column is not text; `None` writes the replaced text back as-is.
 /// Missing table or column is a no-op so a half-applied rename can resume.
@@ -274,12 +305,33 @@ async fn rewrite_column(
     column: &str,
     restore_cast: Option<&str>,
 ) -> Result<(), DbErr> {
+    rewrite_column_with_replacements(db, table, column, restore_cast, TEXT_REPLACEMENTS).await
+}
+
+async fn rewrite_column_with_replacements(
+    db: &impl ConnectionTrait,
+    table: &str,
+    column: &str,
+    restore_cast: Option<&str>,
+    replacements: &[(&str, &str)],
+) -> Result<(), DbErr> {
+    if replacements.is_empty() {
+        return Ok(());
+    }
     if !table_exists(db, table).await? || !column_exists(db, table, column).await? {
         return Ok(());
     }
     let table = qident(table)?;
     let column = qident(column)?;
-    let expr = apply_sql_replaces(&format!("{column}::text"));
+    let expr = apply_replacements(&format!("{column}::text"), replacements);
+    let contains_legacy_value = replacements
+        .iter()
+        .map(|(from, _)| {
+            let from = from.replace('\'', "''");
+            format!("position('{from}' in {column}::text) > 0")
+        })
+        .collect::<Vec<_>>()
+        .join(" OR ");
     let value = match restore_cast {
         Some(ty) => {
             if !ident_ok(ty) {
@@ -290,7 +342,7 @@ async fn rewrite_column(
         None => expr,
     };
     db.execute_unprepared(&format!(
-        "UPDATE {table} SET {column} = {value} WHERE {column} IS NOT NULL"
+        "UPDATE {table} SET {column} = {value} WHERE {column} IS NOT NULL AND ({contains_legacy_value})"
     ))
     .await?;
     Ok(())
@@ -318,13 +370,24 @@ async fn column_exists(
 async fn rewrite_json_documents(db: &impl ConnectionTrait) -> Result<(), DbErr> {
     if table_exists(db, "configurations").await? {
         db.execute_unprepared(
-            "UPDATE configurations
+            "DELETE FROM configurations legacy
+              WHERE legacy.key = 'brew_notes_rss'
+                AND EXISTS (
+                    SELECT 1 FROM configurations current
+                     WHERE current.key = 'phantasi_notes_rss'
+                );
+             UPDATE configurations
                 SET key = 'phantasi_notes_rss'
               WHERE key = 'brew_notes_rss'",
         )
         .await?;
         db.execute_unprepared(
-            "UPDATE configurations
+            "DELETE FROM configurations legacy
+              USING configurations current
+              WHERE legacy.key LIKE '%perm_brew_%'
+                AND current.key = replace(legacy.key, 'perm_brew_', 'perm_phantasi_')
+                AND current.id <> legacy.id;
+             UPDATE configurations
                 SET key = replace(key, 'perm_brew_', 'perm_phantasi_')
               WHERE key LIKE '%perm_brew_%'",
         )
@@ -401,7 +464,13 @@ async fn rewrite_migration_version(db: &impl ConnectionTrait) -> Result<(), DbEr
         return Ok(());
     }
     db.execute_unprepared(&format!(
-        "UPDATE seaql_migrations
+        "DELETE FROM seaql_migrations
+          WHERE version = '{OLD_MIGRATION_NAME}'
+            AND EXISTS (
+                SELECT 1 FROM seaql_migrations
+                 WHERE version = '{NEW_MIGRATION_NAME}'
+            );
+         UPDATE seaql_migrations
             SET version = '{NEW_MIGRATION_NAME}'
           WHERE version = '{OLD_MIGRATION_NAME}'"
     ))
@@ -412,6 +481,84 @@ async fn rewrite_migration_version(db: &impl ConnectionTrait) -> Result<(), DbEr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Requires a disposable empty database; never point this at an instance database.
+    #[tokio::test]
+    #[ignore = "requires MYRIAD_MIGRATION_TEST_DATABASE_URL pointing to an empty disposable database"]
+    async fn repairs_persona_assets_after_completed_rename_in_postgres() {
+        let url = std::env::var("MYRIAD_MIGRATION_TEST_DATABASE_URL").unwrap();
+        let db = sea_orm::Database::connect(url).await.unwrap();
+        let existing = db
+            .query_all_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public'",
+            ))
+            .await
+            .unwrap();
+        assert!(existing.is_empty(), "test database must be empty");
+
+        // Greenfield startup, then a database whose original rename already finished.
+        rename_brew_to_phantasi_if_needed(&db).await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE phantasi_sources (id integer PRIMARY KEY);
+             CREATE TABLE agent_persona (
+                 id integer PRIMARY KEY, portrait_asset_id text, avatar_asset_id text,
+                 visual_profile jsonb, portrait_generation jsonb, avatar_generation jsonb
+             );
+             INSERT INTO agent_persona VALUES (
+                 1, '/api/brew/image-cache/aa/portrait.png', '/api/brew/image-cache/bb/avatar.png',
+                 '{\"wardrobe\":[{\"portraitAssetId\":\"/api/brew/image-cache/cc/outfit.png\"}],\"label\":\"brew\"}',
+                 '{\"image\":\"/api/brew/image-cache/dd/generated.png\"}',
+                 '{\"sourcePortraitAssetId\":\"/api/brew/image-cache/aa/portrait.png\"}'
+             ), (
+                 2, '/api/phantasi/image-cache/aa/current.png', NULL,
+                 '{\"remote\":\"https://example.com/portrait.png\"}', NULL, NULL
+             );",
+        ).await.unwrap();
+        let read = || {
+            Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT *, xmin::text AS row_version FROM agent_persona ORDER BY id",
+            )
+        };
+        let before = db.query_all_raw(read()).await.unwrap();
+        rename_brew_to_phantasi_if_needed(&db).await.unwrap();
+        let repaired = db.query_all_raw(read()).await.unwrap();
+        let portrait: String = repaired[0].try_get("", "portrait_asset_id").unwrap();
+        let avatar: String = repaired[0].try_get("", "avatar_asset_id").unwrap();
+        let profile: Value = repaired[0].try_get("", "visual_profile").unwrap();
+        let generation: Value = repaired[0].try_get("", "portrait_generation").unwrap();
+        let avatar_generation: Value = repaired[0].try_get("", "avatar_generation").unwrap();
+        assert_eq!(portrait, "/api/phantasi/image-cache/aa/portrait.png");
+        assert_eq!(avatar, "/api/phantasi/image-cache/bb/avatar.png");
+        assert_eq!(
+            profile["wardrobe"][0]["portraitAssetId"],
+            "/api/phantasi/image-cache/cc/outfit.png"
+        );
+        assert_eq!(profile["label"], "brew");
+        assert_eq!(
+            generation["image"],
+            "/api/phantasi/image-cache/dd/generated.png"
+        );
+        assert_eq!(
+            avatar_generation["sourcePortraitAssetId"],
+            "/api/phantasi/image-cache/aa/portrait.png"
+        );
+        assert_eq!(
+            before[1].try_get::<String>("", "row_version").unwrap(),
+            repaired[1].try_get::<String>("", "row_version").unwrap()
+        );
+
+        rename_brew_to_phantasi_if_needed(&db).await.unwrap();
+        let repeated = db.query_all_raw(read()).await.unwrap();
+        for (previous, current) in repaired.iter().zip(&repeated) {
+            assert_eq!(
+                previous.try_get::<String>("", "row_version").unwrap(),
+                current.try_get::<String>("", "row_version").unwrap(),
+                "repeated startup must not rewrite already repaired rows"
+            );
+        }
+    }
 
     #[test]
     fn rename_needed_skips_greenfield_and_finished_upgrade() {
@@ -448,5 +595,27 @@ mod tests {
                         && *column == "object_json"
                 )
         );
+    }
+
+    #[test]
+    fn agent_persona_repair_rewrites_asset_columns_and_json_urls() {
+        let columns: Vec<_> = AGENT_PERSONA_ASSET_COLUMNS
+            .iter()
+            .map(|(column, ty)| (*column, *ty))
+            .collect();
+        assert_eq!(
+            columns,
+            [
+                ("portrait_asset_id", None),
+                ("avatar_asset_id", None),
+                ("visual_profile", Some("jsonb")),
+                ("portrait_generation", Some("jsonb")),
+                ("avatar_generation", Some("jsonb")),
+            ]
+        );
+        let expr = apply_replacements("visual_profile::text", LEGACY_IMAGE_CACHE_REPLACEMENTS);
+        assert!(expr.contains("/api/brew/image-cache/"));
+        assert!(expr.contains("/api/phantasi/image-cache/"));
+        assert!(expr.starts_with("replace("));
     }
 }

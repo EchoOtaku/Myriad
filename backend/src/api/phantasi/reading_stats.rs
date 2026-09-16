@@ -1,11 +1,11 @@
 //! Phantasi reading stats.
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{Json, extract::State};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
 use crate::error::HttpError;
 
-use super::helpers::{get_optional_user_and_admin_status, phantasi_http_err, phantasi_store_http};
+use super::helpers::{get_phantasi_viewer, phantasi_store_http};
 
 // 统计信息
 
@@ -15,10 +15,7 @@ pub(crate) async fn get_stats(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
-    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
-        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
-    }
+    let (user_id, is_admin) = get_phantasi_viewer(&headers, &db).await?;
 
     let totals_sql = if is_admin {
         "SELECT COUNT(*)::int AS total_sources, COALESCE(SUM(item_count), 0)::int AS total_items FROM phantasi_sources"
@@ -121,7 +118,7 @@ mod journal_audit_contracts {
         let stats = impl_fn(include_str!("reading_stats.rs"), "get_stats");
         assert!(stats.contains("SUM(item_count)"));
         assert!(stats.contains("NOT EXISTS"));
-        assert!(stats.contains("get_optional_user_and_admin_status"));
+        assert!(stats.contains("get_phantasi_viewer"));
         assert!(
             !stats.contains("phantasi_items::Entity::find()"),
             "get_stats must not load item rows just to count them"

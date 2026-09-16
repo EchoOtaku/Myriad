@@ -122,8 +122,6 @@
   "workbenchHomeRecentSource": "订阅",
   "workbenchHomeRecentMedia": "媒体",
   "workbenchHomeEmpty": "从一篇笔记或一个订阅开始。",
-  "workbenchBoardNavTitle": "子页面显示",
-  "workbenchBoardNavDesc": "跟随手帐的页面可见性。全体时至少留一页给全体，仅登录时至少留一页给登录用户。",
   "workbenchHomeScheduleMissing": "还没定时间",
   "workbenchHomeScheduleOverdue": "已经过点",
   "workbenchHomeNoteFailed": "没发出去",

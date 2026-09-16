@@ -6,12 +6,16 @@ import React, { useCallback, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { configBagEffects } from '../../../src/components/config/form/configBagEffects'
 import { useConfigDomain } from '../../../src/components/config/form/useConfigDomain'
-import { useConfigEditor } from '../../../src/components/config/form/useConfigEditor'
+import {
+  useConfigEditor,
+  useConfigSessionKey,
+} from '../../../src/components/config/form/useConfigEditor'
 import { InputItem } from '../../../src/components/settings/items/InputItem'
 import { SettingsButton } from '../../../src/components/settings/items/SettingsButton'
 import { SettingsDefaultsProvider } from '../../../src/components/settings/SettingsDefaultsContext'
 import { I18nProvider } from '../../../src/contexts/I18nContext'
 import messages from '../../../src/i18n/config.en-US.json'
+import { authSubject } from '../../../src/utils/authSubject'
 
 let failSecond = false
 let deferFirst = false
@@ -20,6 +24,12 @@ const writes: string[] = []
 const refreshes: string[] = []
 const listeners = new Set<() => void>()
 let dismissed = false
+const results: unknown[] = []
+const notices: string[] = []
+let activeSave: Promise<void> = Promise.resolve()
+window.addEventListener('config-save-result', (event) =>
+  results.push((event as CustomEvent).detail),
+)
 const source = {
   getNotice: () =>
     dismissed
@@ -76,7 +86,13 @@ function changedBagEffects() {
   return configBagEffects(next, base)
 }
 
-function Editor() {
+function Editor({
+  leave,
+  changeAccount,
+}: {
+  leave: () => void
+  changeAccount: () => void
+}) {
   const first = useConfigDomain({
     id: 'first',
     initial: { one: 'saved', two: 'saved' },
@@ -117,12 +133,20 @@ function Editor() {
     },
   })
   const [message, setMessage] = useState('')
-  const showMessage = useCallback((text: string) => setMessage(text), [])
+  const showMessage = useCallback((text: string) => {
+    notices.push(text)
+    setMessage(text)
+  }, [])
   const editor = useConfigEditor([first, second], showMessage, messages)
   Object.assign(window, {
     settingsFixture: {
       writes,
       refreshes,
+      results,
+      notices,
+      leave,
+      changeAccount,
+      settled: () => activeSave,
       bagEffectIds: () =>
         changedBagEffects().map(({ id, after }) => ({ id, after })),
       refreshSpeech: async () => {
@@ -140,7 +164,10 @@ function Editor() {
         deferFirst = false
         release?.()
       },
-      save: editor.save,
+      save: () => {
+        activeSave = editor.save()
+        return activeSave
+      },
       reset: () => editor.reset('first'),
     },
   })
@@ -190,8 +217,26 @@ function Editor() {
     </>
   )
 }
+
+function Harness() {
+  const [visible, setVisible] = useState(true)
+  const account = useConfigSessionKey()
+  return visible ? (
+    <Editor
+      key={account}
+      leave={() => setVisible(false)}
+      changeAccount={() => {
+        authSubject.change('fixture-account', true)
+      }}
+    />
+  ) : (
+    <div data-testid="left-editor">Left settings</div>
+  )
+}
 createRoot(document.getElementById('root')!).render(
-  <I18nProvider>
-    <Editor />
-  </I18nProvider>,
+  <React.StrictMode>
+    <I18nProvider>
+      <Harness />
+    </I18nProvider>
+  </React.StrictMode>,
 )

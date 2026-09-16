@@ -7,9 +7,10 @@ import type {
   TaskDetail,
   TaskInfo,
 } from './types'
-
 import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
+
 import { currentCopy } from '../../i18n/localeCopy'
+import { fetchWithAiConfiguration } from '../../utils/aiConfiguration'
 import { authSubject } from '../../utils/authSubject'
 import { clearCSRFToken, getCSRFToken } from '../../utils/csrf'
 import { isUselessErrorText } from '../../utils/userFacingError'
@@ -202,7 +203,7 @@ export async function executeSSERequest({
 
     const startFetch = (): Promise<Response> => {
       requestSignal.throwIfAborted()
-      return fetch(url, {
+      return fetchWithAiConfiguration(url, {
         method,
         headers: buildHeaders(),
         body: body ? JSON.stringify(body) : undefined,

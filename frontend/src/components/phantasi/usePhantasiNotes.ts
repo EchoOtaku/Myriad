@@ -16,7 +16,6 @@ export function usePhantasiNotes(
   loadItems: (reset?: boolean) => Promise<void>,
   reloadBoard: () => void,
   loadSources: () => Promise<void>,
-  loadStats: () => Promise<void>,
 ) {
   const [noteEditor, setNoteEditor] = useState<
     number | 'new' | { docId: number } | null
@@ -30,7 +29,7 @@ export function usePhantasiNotes(
     async (id: number) => {
       setNoteEditor(null)
       bumpDocs()
-      await Promise.all([loadSources(), loadStats()])
+      await loadSources()
       if (selectedItem?.id === id) {
         const signal = saveTurn.current.begin()
         try {
@@ -53,7 +52,6 @@ export function usePhantasiNotes(
       topicKey,
       loadItems,
       loadSources,
-      loadStats,
       bumpDocs,
     ],
   )

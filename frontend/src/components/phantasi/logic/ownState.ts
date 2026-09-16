@@ -6,7 +6,11 @@ export type OwnItemState = 'unknown' | 'own' | 'not-own'
 
 export function ownItemState(
   item: { fromWebSearch?: boolean; source_id: number } | null,
-  source: { category?: string | null; admin_only?: boolean } | null,
+  source: {
+    source_type?: string | null
+    category?: string | null
+    admin_only?: boolean
+  } | null,
   sourcesLoaded: boolean,
 ): OwnItemState {
   if (!item) return 'unknown'
