@@ -875,6 +875,7 @@ html.dark .phantasi-note.phantasi-skin .phantasi-note__bubble-btn:hover {
 
 .phantasi-note__foot {
   display: flex;
+  flex-wrap: wrap;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
@@ -889,10 +890,16 @@ html.dark .phantasi-note.phantasi-skin .phantasi-note__bubble-btn:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.phantasi-note__foot-left,
+.phantasi-note__foot-actions,
 .phantasi-note__foot-right {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.phantasi-note__foot-right {
+  margin-inline-start: auto;
 }
 
 /* ---- 行槛「+」 ---- */
@@ -1250,11 +1257,13 @@ html.dark .phantasi-note__menu {
 /* ---- 窄屏 ---- */
 
 @media (width < 640px) {
-  .phantasi-note__top-right .note-btn--quiet .note-btn__label {
+  .phantasi-note__top-right .note-btn--quiet .note-btn__label,
+  .phantasi-note__foot-actions .note-btn__label {
     display: none;
   }
 
-  .phantasi-note__top-right .note-btn--quiet {
+  .phantasi-note__top-right .note-btn--quiet,
+  .phantasi-note__foot-actions .note-btn--quiet {
     width: var(--note-ctl-h);
     padding: 0;
   }

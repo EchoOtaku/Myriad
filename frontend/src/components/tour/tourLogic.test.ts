@@ -596,8 +596,12 @@ describe('page tours', () => {
     assert.equal(pickTour(TOURS, '/config', true)?.id, 'config-owner')
   })
 
-  it('does not register phantasi reading routes', () => {
-    assert.equal(pickTour(TOURS, '/journal', true), null)
+  it('registers journal boards without including readers or workbench', () => {
+    for (const route of ['/journal', '/journal/feeds', '/journal/notes', '/journal/friends']) {
+      assert.equal(pickTour(TOURS, route, true)?.id, 'journal-owner')
+      assert.equal(pickTour(TOURS, route, false)?.id, 'journal-visitor')
+    }
+    assert.equal(pickTour(TOURS, '/journal/workbench', true), null)
     assert.equal(pickTour(TOURS, '/journal/articles/1', true), null)
     assert.equal(pickTour(TOURS, '/phantasi', true), null)
     assert.equal(pickTour(TOURS, '/phantasi/item/1', true), null)

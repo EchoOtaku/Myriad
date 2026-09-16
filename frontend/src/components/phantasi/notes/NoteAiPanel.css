@@ -20,19 +20,23 @@
 .note-ai__heading {
   justify-content: space-between;
 }
+
 .note-ai h2 {
   margin: 0;
   font-size: 1.1rem;
 }
+
 .note-ai h3 {
   margin: 16px 0 8px;
   font-size: 0.9rem;
 }
+
 .note-ai__hint {
   font-size: 0.85rem;
   opacity: 0.72;
   line-height: 1.6;
 }
+
 .note-ai__instruction {
   display: grid;
   gap: 8px;
@@ -55,15 +59,18 @@
 .note-ai__actions {
   margin: 16px 0;
 }
+
 .note-ai__notice {
   padding: 12px;
   border-left: 3px solid currentcolor;
 }
+
 .note-ai__comparison {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
+
 .note-ai__comparison > div {
   min-width: 0;
 }
@@ -85,6 +92,7 @@
   white-space: pre-wrap;
   font: 0.85rem/1.65 monospace;
 }
+
 .note-ai__selection {
   max-height: 120px;
   margin-top: 12px;
@@ -95,6 +103,7 @@
     width: calc(100% - 20px);
     padding: 16px;
   }
+
   .note-ai__comparison {
     grid-template-columns: minmax(0, 1fr);
   }

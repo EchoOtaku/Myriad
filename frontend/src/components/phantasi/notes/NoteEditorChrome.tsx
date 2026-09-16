@@ -1,13 +1,14 @@
+import type { CSSProperties, FocusEvent, KeyboardEvent, ReactNode, RefObject } from 'react'
+import type { NoteCollabPeer } from './noteCollab'
 /**
  * 写作器的外壳：薄顶栏、标题下的一行元信息、选区浮动条、底栏、发布抽屉。
  * 控件全是 NoteControls 里自己的，不借设置页；这里不碰 phantasiApi。
  */
 
-import type { CSSProperties, FocusEvent, KeyboardEvent, ReactNode, RefObject } from 'react'
-import type { NoteCollabPeer } from './noteCollab'
+import type { NoteImageValues } from './NoteImageFields'
 import type { PopoverCoords } from './notePopover'
-
 import type { SelectionAnchor, VisualBlockKind } from './noteSelection'
+
 import {
   LuImage as Image,
   LuPlus as Plus,
@@ -35,6 +36,7 @@ import {
   NoteSelect,
   NoteSwitch,
 } from './NoteControls'
+import { NoteImageFields } from './NoteImageFields'
 import { placePopover } from './notePopover'
 import { placeBubble, placeGutter } from './noteSelection'
 
@@ -135,7 +137,6 @@ interface NoteTopBarProps {
   collabConnection: 'connecting' | 'connected' | 'reconnecting'
   saving: boolean
   loading: boolean
-  aiActions?: ReactNode
   onPublish: () => void
   settingsOpen: boolean
   onToggleSettings: () => void
@@ -152,7 +153,6 @@ export function NoteTopBar({
   saving,
   loading,
   onPublish,
-  aiActions,
   settingsOpen,
   onToggleSettings,
   onClose,
@@ -212,7 +212,6 @@ export function NoteTopBar({
           ) : null}
         </div>
         <div className="phantasi-note__top-right">
-          {aiActions}
           <NoteButton
             variant="solid"
             size="lg"
@@ -466,7 +465,9 @@ interface NoteBlockBarProps {
   onTableRemoveColumn: () => void
   onTableRemove: () => void
   imageAlt: string
-  onImageAltChange: (alt: string) => void
+  imageSrc: string
+  imageHref: string
+  onImageApply: (values: NoteImageValues) => void
   onImageReplace: () => void
   onImageRemove: () => void
   onColumnsAdd: () => void
@@ -564,7 +565,9 @@ export function NoteBlockBar({
   onTableRemoveColumn,
   onTableRemove,
   imageAlt,
-  onImageAltChange,
+  imageSrc,
+  imageHref,
+  onImageApply,
   onImageReplace,
   onImageRemove,
   onColumnsAdd,
@@ -581,16 +584,35 @@ export function NoteBlockBar({
   barRef,
 }: NoteBlockBarProps) {
   const { t } = useI18n()
+  const [imagePlacement, setImagePlacement] = useState<{ top: number; left: number } | null>(null)
+  useLayoutEffect(() => {
+    if (block?.kind !== 'img') return
+    const bar = barRef?.current
+    const container = bar?.parentElement
+    if (!bar || !container) return
+    const place = () => {
+      const left = Math.max(8, Math.min(block.anchor.left, container.clientWidth - bar.offsetWidth - 8))
+      const preferred = block.anchor.top - bar.offsetHeight - 8
+      const top = Math.max(container.scrollTop + 8, Math.min(preferred, container.scrollTop + container.clientHeight - bar.offsetHeight - 8))
+      setImagePlacement(current => current?.top === top && current.left === left ? current : { top, left })
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    observer.observe(bar)
+    observer.observe(container)
+    container.addEventListener('scroll', place, { passive: true })
+    return () => { observer.disconnect(); container.removeEventListener('scroll', place) }
+  }, [block?.kind, block?.anchor.top, block?.anchor.left, barRef])
   if (!block) return null
   const { anchor, kind } = block
   return (
     <div
       ref={barRef}
       key={kind}
-      className="phantasi-note__blockbar"
+      className={`phantasi-note__blockbar${kind === 'img' ? ' phantasi-note__blockbar--image' : ''}`}
       style={{
-        top: `${anchor.top - 8}px`,
-        left: `${anchor.left + anchor.width}px`,
+        top: `${kind === 'img' ? imagePlacement?.top ?? anchor.top : anchor.top - 8}px`,
+        left: `${kind === 'img' ? imagePlacement?.left ?? anchor.left : anchor.left + anchor.width}px`,
       }}
       role="toolbar"
     >
@@ -632,12 +654,7 @@ export function NoteBlockBar({
         </>
       ) : kind === 'img' ? (
         <>
-          <BlockBarField
-            label={t.phantasi.noteImageAlt}
-            value={imageAlt}
-            onChange={onImageAltChange}
-            onFocusChange={onFocusChange}
-          />
+          <NoteImageFields values={{ alt: imageAlt, src: imageSrc, href: imageHref }} onApply={onImageApply} onFocusChange={onFocusChange} />
           <BlockBarButton
             label={t.phantasi.noteImageReplace}
             icon={<Replace />}
@@ -947,19 +964,23 @@ export function NoteGutter({
 /* ------------------------------------------------------------------ */
 
 interface NoteFootBarProps {
+  aiActions?: ReactNode
   chars: number
   pane: NoteEditorPane
   onPaneChange: (pane: NoteEditorPane) => void
 }
 
-/** 底栏只是状态栏：字数 + Markdown / 富文本 / 预览三档。 */
-export function NoteFootBar({ chars, pane, onPaneChange }: NoteFootBarProps) {
+/** 底栏：字数、AI 排版操作和编辑模式切换。 */
+export function NoteFootBar({ chars, pane, onPaneChange, aiActions }: NoteFootBarProps) {
   const { t, format } = useI18n()
   return (
     <footer className="phantasi-note__foot">
-      <span className="phantasi-note__count">
-        {format(t.phantasi.noteCharCount, { count: chars })}
-      </span>
+      <div className="phantasi-note__foot-left">
+        <span className="phantasi-note__count">
+          {format(t.phantasi.noteCharCount, { count: chars })}
+        </span>
+        {aiActions ? <div className="phantasi-note__foot-actions">{aiActions}</div> : null}
+      </div>
       <div className="phantasi-note__foot-right">
         <NoteSwitch<NoteEditorPane>
           className="phantasi-note__modes"

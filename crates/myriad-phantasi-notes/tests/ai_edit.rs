@@ -75,9 +75,16 @@ fn malformed_selection_without_text_is_rejected_before_slicing() {
 #[test]
 fn code_language_and_footnote_contents_are_preserved() {
     let source = "```rs\nlet x = 1;\n```\n\nText[^a]\n\n[^a]: Complete reference with details\n";
-    let req = json!({"title":"", "content_md":source,"instruction":"","locale":"en-US","selection":null});
-    for (from, to) in [("```rs", "```text"), ("Complete reference with details", "omitted")] {
+    let req =
+        json!({"title":"", "content_md":source,"instruction":"","locale":"en-US","selection":null});
+    for (from, to) in [
+        ("```rs", "```text"),
+        ("Complete reference with details", "omitted"),
+    ] {
         let response = json!({"replacement":source.replace(from, to),"complete":true});
-        assert!(validate_result(&req, &response.to_string()).is_err(), "changed {from}");
+        assert!(
+            validate_result(&req, &response.to_string()).is_err(),
+            "changed {from}"
+        );
     }
 }

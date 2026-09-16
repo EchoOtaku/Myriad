@@ -189,7 +189,7 @@ export default function PhantasiFriends({
 
   return (
     <div className="phantasi-skin phantasi-friends">
-      <div className="phantasi-friends__sites" ref={sitesViewRef}>
+      <div data-tour="journal-sources" className="phantasi-friends__sites" ref={sitesViewRef}>
         <div
           className="phantasi-friends__sites-track"
           ref={sitesTrackRef}
@@ -237,6 +237,7 @@ export default function PhantasiFriends({
         <>
           <PhantasiRailTitle id={itemsTitleId}>{t.phantasi.friendArticles}</PhantasiRailTitle>
           <div
+            data-tour="journal-articles"
             className="phantasi-friends__items"
             ref={itemsViewRef}
             data-phantasi-peek-lane

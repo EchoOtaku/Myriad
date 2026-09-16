@@ -47,7 +47,7 @@ import { useNoteEditorPreview } from './useNoteEditorPreview'
 import { useNoteEditorSidecar } from './useNoteEditorSidecar'
 import { useNotePublish } from './useNotePublish'
 import { useNoteSelection } from './useNoteSelection'
-import { useNoteVisual } from './useNoteVisual'
+import { useNoteVisual, VISUAL_UNDO_LIMIT } from './useNoteVisual'
 
 // 富文本层里的图片：Markdown 存原地址，浏览器看本站 origin 上的那份。
 setVisualImageResolver(displayImageUrl)
@@ -148,6 +148,8 @@ export function useNoteEditorSession({
   const [selectedImage, setSelectedImage] = useState<{
     anchor: SelectionAnchor
     alt: string
+    src: string
+    href: string
   } | null>(null)
   const [selectedWidget, setSelectedWidget] = useState<{
     anchor: SelectionAnchor
@@ -629,6 +631,7 @@ export function useNoteEditorSession({
       } else {
         const history = historyRef.current
         history.past.push(contentMdRef.current)
+        if (history.past.length > VISUAL_UNDO_LIMIT) history.past.shift()
         history.future = []
         history.restoring = true
         history.lastPush = 0

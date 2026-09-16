@@ -83,7 +83,7 @@ export function useNoteEditorFormat(host: {
   setWidgetSettingsOpen: Dispatch<SetStateAction<boolean>>
   setLinkOpen: Dispatch<SetStateAction<boolean>>
   setLinkInitial: Dispatch<SetStateAction<string>>
-  setSelectedImage: Dispatch<SetStateAction<{ anchor: SelectionAnchor; alt: string } | null>>
+  setSelectedImage: Dispatch<SetStateAction<{ anchor: SelectionAnchor; alt: string; src: string; href: string } | null>>
   setSelectedWidget: Dispatch<SetStateAction<{ anchor: SelectionAnchor; type: string; size: string } | null>>
   setCodeLang: Dispatch<SetStateAction<string>>
   setColumnAlign: Dispatch<SetStateAction<TableAlign>>
@@ -322,6 +322,8 @@ export function useNoteEditorFormat(host: {
     setSelectedImage({
       anchor: anchorInContainer(img.getBoundingClientRect(), container),
       alt: img.alt,
+      src: img.dataset.src ?? img.getAttribute('src') ?? '',
+      href: img.closest('a')?.getAttribute('href') ?? '',
     })
   }, [])
 
@@ -355,13 +357,13 @@ export function useNoteEditorFormat(host: {
     const container = scrollRef.current
     if (!container) return
     const anchor = anchorInContainer(img.getBoundingClientRect(), container)
+    const src = img.dataset.src ?? img.getAttribute('src') ?? ''
+    const href = img.closest('a')?.getAttribute('href') ?? ''
     setSelectedImage((current) =>
-      current &&
-      current.anchor.top === anchor.top &&
-      current.anchor.left === anchor.left &&
-      current.anchor.width === anchor.width
-        ? current
-        : { anchor, alt: img.alt },
+      current && current.anchor.top === anchor.top && current.anchor.left === anchor.left &&
+      current.anchor.width === anchor.width && current.anchor.height === anchor.height &&
+      current.alt === img.alt && current.src === src && current.href === href
+        ? current : { anchor, alt: img.alt, src, href },
     )
   }, [contentMd, selectImage])
 
@@ -369,9 +371,9 @@ export function useNoteEditorFormat(host: {
     (fn: (root: HTMLElement, img: HTMLImageElement) => string, keep = true) => {
       const root = visualRef.current
       const img = selectedImageRef.current
-      if (!root || !img) return
+      if (!root || !img || !root.contains(img)) return
       commitVisualMd(fn(root, img))
-      if (!keep) selectImage(null)
+      selectImage(keep ? img : null)
     },
     [selectImage, commitVisualMd],
   )

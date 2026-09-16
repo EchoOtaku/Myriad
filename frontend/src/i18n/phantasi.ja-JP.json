@@ -124,6 +124,9 @@
   "workbenchHomeEmpty": "ノートか購読から始めます。",
   "workbenchBoardNavTitle": "ページの表示",
   "workbenchBoardNavDesc": "手帳のページ公開範囲に従います。全体公開なら少なくとも1ページは全体に、ログイン限定なら少なくとも1ページはログインユーザーに残します。",
+  "workbenchBoardFeedsDesc": "購読元と最新記事を読む「購読」の入口を表示する相手を選びます。",
+  "workbenchBoardNotesDesc": "公開済みの自分の記事を読む「ノート」の入口を表示する相手を選びます。",
+  "workbenchBoardSitesDesc": "友人のサイトを訪れる「友達」の入口を表示する相手を選びます。",
   "workbenchHomeScheduleMissing": "時刻未設定",
   "workbenchHomeScheduleOverdue": "予定を過ぎています",
   "workbenchHomeNoteFailed": "公開できませんでした",
@@ -830,5 +833,10 @@
   "noteAiEmpty": "内容を入力してから AI 整形を使ってください。",
   "noteAiIncomplete": "AI が完全な結果を返しませんでした。変更は適用されていません。再試行してください。",
   "noteAiProtected": "コード、数式、リンクなどの保護対象が失われたか変更されたため、適用できません。指示を調整して再試行してください。",
-  "mediaEditTooLarge": "編集画像が 5 MB を超えています。解像度を下げて再度プレビューしてください。"
+  "mediaEditTooLarge": "編集画像が 5 MB を超えています。解像度を下げて再度プレビューしてください。",
+  "noteImageSource": "画像のURL",
+  "noteImageDestination": "クリック時のリンク先",
+  "noteImageDestinationHint": "空欄にするとリンクを解除します。",
+  "noteImageUrlInvalid": "有効な画像URLまたはリンク先を入力してください。",
+  "noteImageApply": "画像設定を適用"
 }

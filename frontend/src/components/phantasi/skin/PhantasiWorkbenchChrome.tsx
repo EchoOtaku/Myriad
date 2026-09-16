@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import type { PhantasiGuidesCatalog } from '../guides/types'
 import { CheckboxCard, SettingSection } from '../../settings'
+import { usePhantasiGuides } from '../guides/usePhantasiGuides'
 
 export function WorkbenchPage({
   title,
@@ -20,12 +22,19 @@ export function WorkbenchPage({
   back: ReactNode
   children: ReactNode
 }) {
+  const { catalog } = usePhantasiGuides()
+  const page = guidePath?.replace(/^workbench\./, '')
+  const description = page && Object.hasOwn(catalog, page)
+    ? catalog[page as keyof PhantasiGuidesCatalog].what
+    : undefined
+
   return (
     <SettingSection
       title={title}
       icon={icon}
       guide={guide}
       guidePath={guidePath}
+      description={description}
       descriptionVisible={false}
       subtitle={search}
       headerLeading={back}

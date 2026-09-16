@@ -124,6 +124,9 @@
   "workbenchHomeEmpty": "從一篇筆記或一個訂閱開始。",
   "workbenchBoardNavTitle": "子頁面顯示",
   "workbenchBoardNavDesc": "跟隨手帳的頁面可見性。全體時至少留一頁給全體，僅登入時至少留一頁給登入使用者。",
+  "workbenchBoardFeedsDesc": "選擇誰能看到訂閱入口，用來瀏覽訂閱來源與最新文章。",
+  "workbenchBoardNotesDesc": "選擇誰能看到筆記入口，用來閱讀已發佈的自有文章。",
+  "workbenchBoardSitesDesc": "選擇誰能看到朋友們入口，用來造訪友情連結。",
   "workbenchHomeScheduleMissing": "還沒定時間",
   "workbenchHomeScheduleOverdue": "已經過點",
   "workbenchHomeNoteFailed": "沒發出",
@@ -830,5 +833,10 @@
   "noteAiEmpty": "先寫一些內容，再使用智慧排版。",
   "noteAiIncomplete": "AI 未傳回完整結果，未套用任何修改。請重試。",
   "noteAiProtected": "結果遺失或更動了程式碼、公式、連結等受保護內容，已阻止套用。請調整要求後重試。",
-  "mediaEditTooLarge": "編輯後的圖片超過 5 MB，請降低解析度後重新預覽。"
+  "mediaEditTooLarge": "編輯後的圖片超過 5 MB，請降低解析度後重新預覽。",
+  "noteImageSource": "圖片網址",
+  "noteImageDestination": "點擊跳轉連結",
+  "noteImageDestinationHint": "留空表示點擊圖片不跳轉。",
+  "noteImageUrlInvalid": "請輸入有效的圖片網址或跳轉連結。",
+  "noteImageApply": "套用圖片設定"
 }

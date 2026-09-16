@@ -124,6 +124,9 @@
   "workbenchHomeEmpty": "Commencez par une note ou un abonnement.",
   "workbenchBoardNavTitle": "Pages affichées",
   "workbenchBoardNavDesc": "Suit la visibilité du Journal. Ouvert à tous : garder au moins une page publique. Réservé aux comptes : garder au moins une page pour eux.",
+  "workbenchBoardFeedsDesc": "Choisissez qui voit l’entrée des abonnements pour consulter les flux et les articles récents.",
+  "workbenchBoardNotesDesc": "Choisissez qui voit l’entrée des notes pour lire vos articles publiés.",
+  "workbenchBoardSitesDesc": "Choisissez qui voit l’entrée des amis pour visiter les sites liés.",
   "workbenchHomeScheduleMissing": "Pas d’heure",
   "workbenchHomeScheduleOverdue": "Déjà dû",
   "workbenchHomeNoteFailed": "Pas publié",
@@ -830,5 +833,10 @@
   "noteAiEmpty": "Écrivez du contenu avant d’utiliser la mise en forme IA.",
   "noteAiIncomplete": "L’IA n’a pas renvoyé de résultat complet. Aucune modification appliquée. Réessayez.",
   "noteAiProtected": "Le résultat supprime ou modifie du code, des formules, des liens ou d’autres contenus protégés. Il ne peut pas être appliqué. Ajustez les consignes et réessayez.",
-  "mediaEditTooLarge": "L’image modifiée dépasse 5 Mo. Réduisez sa résolution et relancez l’aperçu."
+  "mediaEditTooLarge": "L’image modifiée dépasse 5 Mo. Réduisez sa résolution et relancez l’aperçu.",
+  "noteImageSource": "Adresse de l’image",
+  "noteImageDestination": "Lien au clic",
+  "noteImageDestinationHint": "Laissez vide pour retirer le lien de l’image.",
+  "noteImageUrlInvalid": "Saisissez une adresse d’image ou un lien valide.",
+  "noteImageApply": "Appliquer les réglages"
 }

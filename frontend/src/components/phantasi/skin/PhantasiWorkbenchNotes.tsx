@@ -259,14 +259,12 @@ export function WorkbenchNotesPane({
         <>
           <PageAction
             label={phantasi.noteWrite}
-            description={phantasi.boardNotesTitle}
             icon={<LuNotebookPen />}
             disabled={busy}
             onPick={onWrite}
           />
           <PageAction
             label={phantasi.workbenchCategories}
-            description={phantasi.noteTopic}
             icon={<LuTag />}
             onPick={onOpenCategories}
           />

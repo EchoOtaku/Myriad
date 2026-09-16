@@ -1024,6 +1024,7 @@ function PhantasiFeeds({
       <div className="phantasi-feeds__stage">
         {toolbar ? <div className="phantasi-feeds__bar">{toolbar}</div> : null}
         <section
+          data-tour="journal-sources"
           className="phantasi-feeds__sites"
           ref={sitesViewRef}
           aria-labelledby={sitesTitleId}
@@ -1071,6 +1072,7 @@ function PhantasiFeeds({
         </section>
 
         <section
+          data-tour="journal-articles"
           className="phantasi-feeds__items"
           ref={itemsViewRef}
           hidden={!!vacant || sources.length === 0}

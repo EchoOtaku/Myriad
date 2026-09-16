@@ -2,7 +2,7 @@ import type { NoteEditorDefaultView, NoteHistoryEntry } from '../../../services/
 import { useEffect, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { getNoteHistory } from '../../../services/phantasiApi'
-import { NoteButton, NoteSection, NoteSelect } from './NoteControls'
+import { NoteButton, NoteSection, NoteSwitch } from './NoteControls'
 
 export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDefaultView, onRestore, busy }: {
   cloudId: number | null
@@ -47,9 +47,9 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
   return (
     <>
       <NoteSection title={t.phantasi.noteDefaultView} hint={t.phantasi.noteDefaultViewHint}>
-        <NoteSelect
-          id="note-default-view"
-          aria-label={t.phantasi.noteDefaultView}
+        <NoteSwitch
+          className="phantasi-note__default-view"
+          ariaLabel={t.phantasi.noteDefaultView}
           value={defaultView}
           disabled={preferenceBusy}
           options={[
@@ -60,19 +60,24 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
           onChange={(value) => { void onDefaultView(value as NoteEditorDefaultView) }}
         />
       </NoteSection>
-      <NoteSection title={t.phantasi.noteHistory} hint={t.phantasi.noteHistoryHint}>
-        <NoteButton onClick={() => setRefresh((value) => value + 1)} disabled={loading || restoring}>
+      <NoteSection
+        title={<span className="phantasi-note__history-heading">
+        <span>{t.phantasi.noteHistory}</span>
+        <NoteButton variant="quiet" className="phantasi-note__history-refresh" onClick={() => setRefresh((value) => value + 1)} disabled={loading || restoring}>
           {t.phantasi.noteHistoryRefresh}
         </NoteButton>
-        {loading ? <p role="status">{t.phantasi.noteHistoryLoading}</p> : null}
-        {error ? <p role="alert">{t.phantasi.noteHistoryFailed}</p> : null}
-        {!loading && !error && history.length === 0 ? <p>{t.phantasi.noteHistoryEmpty}</p> : null}
+      </span>}
+        hint={t.phantasi.noteHistoryHint}
+      >
+        {loading ? <p className="phantasi-note__history-message" role="status">{t.phantasi.noteHistoryLoading}</p> : null}
+        {error ? <p className="phantasi-note__history-message is-error" role="alert">{t.phantasi.noteHistoryFailed}</p> : null}
+        {!loading && !error && history.length === 0 ? <p className="phantasi-note__history-message">{t.phantasi.noteHistoryEmpty}</p> : null}
         <ul className="phantasi-note__history-list">
           {history.map((entry) => (
             <li key={entry.revision}>
               <button type="button" className="phantasi-note__history-entry" aria-pressed={selected?.revision === entry.revision} onClick={() => setSelected(entry)} disabled={restoring}>
                 <strong>{entry.snapshot.title || t.phantasi.noteHistoryUntitled}</strong>
-                <span>{new Date(entry.saved_at).toLocaleString(locale)}</span>
+                <time dateTime={new Date(entry.saved_at).toISOString()}>{new Date(entry.saved_at).toLocaleString(locale)}</time>
                 <span>{entry.actor_name || t.phantasi.noteHistoryUnknown} · {format(t.phantasi.noteHistoryVersion, { revision: entry.revision })}</span>
               </button>
             </li>

@@ -29,6 +29,7 @@ import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
 import { MediaEditorDialog } from './MediaEditorDialog'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
 import { Thumb } from './PhantasiWorkbenchHome'
+import './WorkbenchMediaCards.css'
 
 export function WorkbenchMediaPane({
   active,
@@ -174,7 +175,6 @@ export function WorkbenchMediaPane({
       action={
         <PageAction
           label={phantasi.workbenchUpload}
-          description={phantasi.workbenchMedia}
           icon={<LuImage />}
           disabled={busy}
           onPick={() => fileRef.current?.click()}

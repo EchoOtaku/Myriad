@@ -124,6 +124,9 @@
   "workbenchHomeEmpty": "Start with a note or a feed.",
   "workbenchBoardNavTitle": "Shown pages",
   "workbenchBoardNavDesc": "Follows Journal page visibility. If it is open to everyone, keep at least one page public. If it is for signed-in users, keep at least one page for them.",
+  "workbenchBoardFeedsDesc": "Choose who sees the subscriptions entry for feeds and recent articles.",
+  "workbenchBoardNotesDesc": "Choose who sees the notes entry for your published writing.",
+  "workbenchBoardSitesDesc": "Choose who sees the friends entry for links to other sites.",
   "workbenchHomeScheduleMissing": "No time set",
   "workbenchHomeScheduleOverdue": "Already due",
   "workbenchHomeNoteFailed": "Didn’t publish",
@@ -830,5 +833,10 @@
   "noteAiEmpty": "Write some content before using AI formatting.",
   "noteAiIncomplete": "AI did not return a complete result. No changes were applied. Please retry.",
   "noteAiProtected": "The result removed or changed protected code, formulas, links, or other content. It cannot be applied. Adjust the instructions and retry.",
-  "mediaEditTooLarge": "The edited image exceeds 5 MB. Reduce its resolution and preview again."
+  "mediaEditTooLarge": "The edited image exceeds 5 MB. Reduce its resolution and preview again.",
+  "noteImageSource": "Image address",
+  "noteImageDestination": "Click destination",
+  "noteImageDestinationHint": "Leave empty to keep the image unlinked.",
+  "noteImageUrlInvalid": "Enter a valid image address or destination.",
+  "noteImageApply": "Apply image settings"
 }

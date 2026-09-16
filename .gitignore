@@ -201,3 +201,7 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/noteEditorSettings.spec.ts
 !/frontend/tests/browser/fixture/noteEditorSettings.html
 !/frontend/tests/browser/fixture/noteEditorSettings.tsx
+!/frontend/tests/browser/noteImageEditing.spec.ts
+!/frontend/tests/browser/fixture/noteImageEditing.html
+!/frontend/tests/browser/fixture/noteImageEditing.tsx
+!/frontend/tests/browser/fixture/note-editor-cover.svg

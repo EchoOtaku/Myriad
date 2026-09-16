@@ -65,7 +65,7 @@ export function PhantasiSearch({
   if (!showSearch || !onChange) return null
 
   const search = (
-    <div data-phantasi-surface="search" className={cx('phantasi-skin phantasi-search glass', typing && 'is-input')}>
+    <div data-tour="journal-search" data-phantasi-surface="search" className={cx('phantasi-skin phantasi-search glass', typing && 'is-input')}>
       <span className="phantasi-search__mark" aria-hidden>
         <LuSearch />
       </span>

@@ -169,7 +169,6 @@ export function WorkbenchFeedsPanes({
             <>
               <PageAction
                 label={phantasi.refreshAllSources}
-                description={phantasi.workbenchSourceList}
                 icon={<LuRefreshCw />}
                 disabled={!canRefreshSources || sourceRefreshing}
                 loading={sourceRefreshing}
@@ -182,19 +181,16 @@ export function WorkbenchFeedsPanes({
               />
               <PageAction
                 label={phantasi.addSubscription}
-                description={phantasi.workbenchSourceList}
                 icon={<LuPlus />}
                 onPick={() => onPane('add')}
               />
               <PageAction
                 label={phantasi.topicAggregate}
-                description={phantasi.topicAggregate}
                 icon={<LuTag />}
                 onPick={() => onPane('topics')}
               />
               <PageAction
                 label={phantasi.workbenchCategories}
-                description={phantasi.category}
                 icon={<LuTag />}
                 onPick={() => onPane('sourceCategories')}
               />

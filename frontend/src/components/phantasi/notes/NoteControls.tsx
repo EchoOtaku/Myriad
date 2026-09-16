@@ -74,6 +74,7 @@ interface NoteSwitchOption<T extends string> {
 }
 
 interface NoteSwitchProps<T extends string> {
+  disabled?: boolean
   value: T | null
   options: NoteSwitchOption<T>[]
   onChange: (value: T) => void
@@ -88,6 +89,7 @@ export function NoteSwitch<T extends string>({
   onChange,
   ariaLabel,
   className = '',
+  disabled = false,
 }: NoteSwitchProps<T>) {
   const index = options.findIndex((option) => option.value === value)
   return (
@@ -108,6 +110,7 @@ export function NoteSwitch<T extends string>({
           key={option.value}
           type="button"
           role="radio"
+          disabled={disabled}
           aria-checked={option.value === value}
           className={`note-switch__item${option.value === value ? ' is-on' : ''}`}
           onClick={() => onChange(option.value)}

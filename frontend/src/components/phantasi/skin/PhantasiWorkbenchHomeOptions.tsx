@@ -49,6 +49,11 @@ export function WorkbenchHomeOptions() {
     notes: phantasi.boardNotes,
     sites: phantasi.boardSites,
   }
+  const descriptions = {
+    feeds: phantasi.workbenchBoardFeedsDesc,
+    notes: phantasi.workbenchBoardNotesDesc,
+    sites: phantasi.workbenchBoardSitesDesc,
+  }
   const visibilityLabels: Record<ModuleVisibilityLevel, string> = {
     all: t.config.moduleVisibilityAll,
     authenticated: t.config.moduleVisibilityAuthenticated,
@@ -89,7 +94,6 @@ export function WorkbenchHomeOptions() {
         toc={false}
         title={phantasi.workbenchBoardNavTitle}
         description={phantasi.workbenchBoardNavDesc}
-        descriptionVisible
         icon={<LuEye size={15} />}
       >
         <SettingGroupGrid
@@ -108,6 +112,7 @@ export function WorkbenchHomeOptions() {
                 key={pane}
                 toc={false}
                 title={labels[pane]}
+                description={descriptions[pane]}
                 icon={<Icon size={15} />}
               >
                 <SegmentedControl

@@ -20,6 +20,7 @@ import {
   LuPuzzle as Puzzle,
   LuQuote as Quote,
   LuSigma as Sigma,
+  LuSparkles as Sparkles,
   LuSquareCode as SquareCode,
   LuStrikethrough as Strikethrough,
   FaUndo as Undo,
@@ -77,6 +78,8 @@ import {
   removeImage,
   removeNoteWidget,
   setImageAlt,
+  setImageLink,
+  setImageSrc,
   setNoteWidgetConfig,
   setNoteWidgetSize,
   tableAddColumn,
@@ -143,7 +146,6 @@ export function NoteEditorView({
   columnAlign,
   setColumnAlign,
   selectedImage,
-  setSelectedImage,
   selectedWidget,
   setSelectedWidget,
   widgetSettingsOpen,
@@ -440,19 +442,6 @@ export function NoteEditorView({
     >
       <div className="phantasi-note__frame">
         <NoteTopBar
-          aiActions={<>
-            {ai.canUndo ? <NoteButton variant="quiet" icon={<Undo />} aria-label={t.phantasi.noteAiUndo} title={t.phantasi.noteAiUndo} onClick={ai.undo}>{t.phantasi.noteAiUndo}</NoteButton> : null}
-            <NoteButton
-              variant="quiet"
-              disabled={loading || saving || !contentMd.trim()}
-              active={ai.isOpen}
-              aria-expanded={ai.isOpen}
-              onMouseDown={event => event.preventDefault()}
-              onClick={ai.isOpen ? ai.close : openAi}
-            >
-              {t.phantasi.noteAiTitle}
-            </NoteButton>
-          </>}
           docStatus={docStatus}
           lastError={lastError}
           scheduledAt={scheduledAt}
@@ -709,6 +698,7 @@ export function NoteEditorView({
                     }
                     selectWidget(null)
                     selectImage(target instanceof HTMLImageElement ? target : null)
+                    if (target.closest('a')) e.preventDefault()
                     if (footnoteJump(root, target)) {
                       e.preventDefault()
                       return
@@ -795,9 +785,14 @@ export function NoteEditorView({
             onTableRemoveColumn={() => tableOp(tableRemoveColumn)}
             onTableRemove={() => tableOp(tableRemove)}
             imageAlt={selectedImage?.alt ?? ''}
-            onImageAltChange={(alt) => {
-              setSelectedImage((current) => (current ? { ...current, alt } : current))
-              imageOp((root, img) => setImageAlt(root, img, alt))
+            imageSrc={selectedImage?.src ?? ''}
+            imageHref={selectedImage?.href ?? ''}
+            onImageApply={(values) => {
+              imageOp((root, img) => {
+                setImageSrc(root, img, values.src)
+                setImageLink(root, img, values.href)
+                return setImageAlt(root, img, values.alt)
+              })
             }}
             onImageReplace={() => imageReplaceRef.current?.click()}
             onImageRemove={() => imageOp(removeImage, false)}
@@ -877,6 +872,22 @@ export function NoteEditorView({
         </div>
 
         <NoteFootBar
+          aiActions={<>
+            {ai.canUndo ? <NoteButton variant="quiet" icon={<Undo />} aria-label={t.phantasi.noteAiUndo} title={t.phantasi.noteAiUndo} onClick={ai.undo}>{t.phantasi.noteAiUndo}</NoteButton> : null}
+            <NoteButton
+              variant="quiet"
+              disabled={loading || saving || !contentMd.trim()}
+              icon={<Sparkles />}
+              aria-label={t.phantasi.noteAiTitle}
+              title={t.phantasi.noteAiTitle}
+              active={ai.isOpen}
+              aria-expanded={ai.isOpen}
+              onMouseDown={event => event.preventDefault()}
+              onClick={ai.isOpen ? ai.close : openAi}
+            >
+              {t.phantasi.noteAiTitle}
+            </NoteButton>
+          </>}
           chars={bodyChars}
           pane={pane}
           onPaneChange={setPane}

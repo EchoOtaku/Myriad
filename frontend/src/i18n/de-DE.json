@@ -180,6 +180,22 @@
         "title": "Bedienfeld",
         "body": "Aussehen, Animation und Sprache. Systemeinstellungen öffnen. Musik auf dieser Website abspielen. Zwischen Steuerung und Hinweisen wechseln."
       },
+      "journal-search": {
+        "title": "Suche",
+        "body": "Filtere die angezeigten Inhalte nach Stichwort. Das Tastatursymbol zeigt die Tastenkürzel."
+      },
+      "journal-sources": {
+        "title": "Quellen",
+        "body": "Durchsuche Feeds oder befreundete Websites. Wähle eine Quelle, um ihre Inhalte anzuzeigen."
+      },
+      "journal-articles": {
+        "title": "Artikel",
+        "body": "Klicke auf eine Artikelkarte, um den Reader zu öffnen."
+      },
+      "journal-notes": {
+        "title": "Notizen",
+        "body": "Durchsuche deine Notizen und klicke auf eine Karte, um sie zu öffnen."
+      },
       "library-filters": {
         "title": "Filter",
         "body": "Filtern nach Alle, Spiele, Videos, Musik, Anime, Serien oder Bücher. Wenn eingeklappt, Bibliothek erneut öffnen."

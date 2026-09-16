@@ -124,6 +124,9 @@
   "workbenchHomeEmpty": "从一篇笔记或一个订阅开始。",
   "workbenchBoardNavTitle": "子页面显示",
   "workbenchBoardNavDesc": "跟随手帐的页面可见性。全体时至少留一页给全体，仅登录时至少留一页给登录用户。",
+  "workbenchBoardFeedsDesc": "选择谁能看到订阅入口，用来浏览订阅源与最新文章。",
+  "workbenchBoardNotesDesc": "选择谁能看到笔记入口，用来阅读已发布的自有文章。",
+  "workbenchBoardSitesDesc": "选择谁能看到朋友们入口，用来访问友情链接。",
   "workbenchHomeScheduleMissing": "还没定时间",
   "workbenchHomeScheduleOverdue": "已经过点",
   "workbenchHomeNoteFailed": "没发出去",
@@ -830,5 +833,10 @@
   "noteAiEmpty": "先写一些内容，再使用智能排版。",
   "noteAiIncomplete": "AI 未返回完整结果，未应用任何修改。请重试。",
   "noteAiProtected": "结果丢失或改动了代码、公式、链接等受保护内容，已阻止应用。请调整要求后重试。",
-  "mediaEditTooLarge": "编辑后的图片超过 5 MB，请降低分辨率后重新预览。"
+  "mediaEditTooLarge": "编辑后的图片超过 5 MB，请降低分辨率后重新预览。",
+  "noteImageSource": "图片地址",
+  "noteImageDestination": "点击跳转链接",
+  "noteImageDestinationHint": "留空表示点击图片不跳转。",
+  "noteImageUrlInvalid": "请输入有效的图片地址或跳转链接。",
+  "noteImageApply": "应用图片设置"
 }

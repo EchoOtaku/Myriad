@@ -357,14 +357,12 @@ export default function PhantasiWorkbench({
               <>
                 <PageAction
                   label={phantasi.noteWrite}
-                  description={phantasi.boardNotesTitle}
                   icon={<LuNotebookPen />}
                   disabled={busy}
                   onPick={onWrite}
                 />
                 <PageAction
                   label={phantasi.addSubscription}
-                  description={phantasi.workbenchSourceList}
                   icon={<LuPlus />}
                   onPick={() => open('add')}
                 />

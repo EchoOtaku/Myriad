@@ -1,5 +1,5 @@
 //! AI 排版的纯规则。完整原文进提示词；只有可解析、保留受保护内容的结果才能应用。
-use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -77,21 +77,29 @@ fn protected_parts(source: &str) -> HashMap<String, usize> {
     let mut add = |key: String| {
         *parts.entry(key).or_insert(0) += 1;
     };
-    let mut code: Option<String> = None;
-    for event in Parser::new_ext(source, crate::markdown_options()) {
+    let mut code: Option<(String, String)> = None;
+    for (event, range) in Parser::new_ext(source, crate::markdown_options()).into_offset_iter() {
         match event {
-            Event::Start(Tag::CodeBlock(_)) => code = Some(String::new()),
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let language = match kind {
+                    CodeBlockKind::Fenced(info) => info.to_string(),
+                    CodeBlockKind::Indented => String::new(),
+                };
+                code = Some((language, String::new()));
+            }
             Event::End(TagEnd::CodeBlock) => {
-                if let Some(value) = code.take() {
-                    add(format!("code:{value}"));
+                if let Some((language, value)) = code.take() {
+                    add(format!("code:{language}:{value}"));
                 }
             }
-            Event::Text(value) if code.is_some() => code.as_mut().unwrap().push_str(&value),
+            Event::Text(value) if code.is_some() => code.as_mut().unwrap().1.push_str(&value),
             Event::Code(value) => add(format!("inline:{value}")),
             Event::InlineMath(value) | Event::DisplayMath(value) => add(format!("math:{value}")),
             Event::Start(Tag::Image { dest_url, .. }) => add(format!("image:{dest_url}")),
             Event::Start(Tag::Link { dest_url, .. }) => add(format!("link:{dest_url}")),
-            Event::Start(Tag::FootnoteDefinition(value)) => add(format!("definition:{value}")),
+            Event::Start(Tag::FootnoteDefinition(value)) => {
+                add(format!("definition:{value}:{}", &source[range]))
+            }
             Event::FootnoteReference(value) => add(format!("footnote:{value}")),
             Event::Html(value) | Event::InlineHtml(value) => add(format!("html:{value}")),
             _ => {}

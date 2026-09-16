@@ -124,6 +124,9 @@
   "workbenchHomeEmpty": "Mit einer Notiz oder einem Abo beginnen.",
   "workbenchBoardNavTitle": "Unterseiten",
   "workbenchBoardNavDesc": "Folgt der Journal-Sichtbarkeit. Für alle offen: mindestens eine Seite für alle. Nur für Anmeldung: mindestens eine Seite für angemeldete Nutzer.",
+  "workbenchBoardFeedsDesc": "Wählen Sie, wer den Zugang zu Abonnements mit Feeds und aktuellen Artikeln sieht.",
+  "workbenchBoardNotesDesc": "Wählen Sie, wer den Zugang zu Ihren veröffentlichten Notizen sieht.",
+  "workbenchBoardSitesDesc": "Wählen Sie, wer den Zugang zu verlinkten befreundeten Websites sieht.",
   "workbenchHomeScheduleMissing": "Keine Zeit gesetzt",
   "workbenchHomeScheduleOverdue": "Bereits fällig",
   "workbenchHomeNoteFailed": "Nicht veröffentlicht",
@@ -830,5 +833,10 @@
   "noteAiEmpty": "Schreibe zuerst etwas, bevor du die KI-Formatierung nutzt.",
   "noteAiIncomplete": "Die KI hat kein vollständiges Ergebnis geliefert. Es wurden keine Änderungen angewendet. Versuche es erneut.",
   "noteAiProtected": "Das Ergebnis entfernt oder verändert geschützten Code, Formeln, Links oder andere Inhalte. Es kann nicht angewendet werden. Passe die Anweisungen an und versuche es erneut.",
-  "mediaEditTooLarge": "Das bearbeitete Bild ist größer als 5 MB. Auflösung verringern und Vorschau erneut erstellen."
+  "mediaEditTooLarge": "Das bearbeitete Bild ist größer als 5 MB. Auflösung verringern und Vorschau erneut erstellen.",
+  "noteImageSource": "Bildadresse",
+  "noteImageDestination": "Link beim Anklicken",
+  "noteImageDestinationHint": "Leer lassen, um die Bildverknüpfung zu entfernen.",
+  "noteImageUrlInvalid": "Eine gültige Bildadresse oder ein gültiges Linkziel eingeben.",
+  "noteImageApply": "Bildeinstellungen anwenden"
 }

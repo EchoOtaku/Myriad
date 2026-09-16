@@ -1316,10 +1316,58 @@ export function setImageAlt(root: HTMLElement, img: HTMLImageElement, alt: strin
 }
 
 export function setImageSrc(root: HTMLElement, img: HTMLImageElement, src: string): string {
+  img.removeAttribute('data-linkref')
   const shown = resolveImageSrc(src)
   img.setAttribute('src', shown)
   if (shown === src) img.removeAttribute('data-src')
   else img.dataset.src = src
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+/** Change only this image's click destination, preserving other linked content. */
+export function setImageLink(root: HTMLElement, img: HTMLImageElement, href: string): string {
+  if (!root.contains(img)) return visualHtmlToMarkdown(root.innerHTML)
+  const link = img.closest('a')
+  const next = href.trim()
+  if (link && link.getAttribute('href') === next) return visualHtmlToMarkdown(root.innerHTML)
+  const wrap = () => {
+    if (!next) return img
+    const anchor = root.ownerDocument.createElement('a')
+    anchor.setAttribute('href', next)
+    anchor.append(img)
+    return anchor
+  }
+  if (link && root.contains(link)) {
+    const before = root.ownerDocument.createRange()
+    before.selectNodeContents(link)
+    before.setEndBefore(img)
+    const after = root.ownerDocument.createRange()
+    after.selectNodeContents(link)
+    after.setStartAfter(img)
+    const prefix = before.cloneContents()
+    const suffix = after.cloneContents()
+    const pieces: Node[] = []
+    for (const fragment of [prefix, suffix]) {
+      const part = link.cloneNode(false) as HTMLAnchorElement
+      part.append(fragment)
+      pieces.push(part)
+    }
+    const image = wrap()
+    // The ranges are cloned before moving img, so nested inline markup survives.
+    // Empty side anchors are omitted; an unlinked image remains in the same position.
+    const holder = root.ownerDocument.createDocumentFragment()
+    const left = pieces[0] as HTMLAnchorElement
+    const right = pieces[1] as HTMLAnchorElement
+    if (left.textContent || left.querySelector('img, br')) holder.append(left)
+    holder.append(image)
+    if (right.textContent || right.querySelector('img, br')) holder.append(right)
+    // Replacement is performed below while the original anchor is still attached.
+    link.replaceWith(holder)
+  } else if (next) {
+    const marker = root.ownerDocument.createTextNode('')
+    img.replaceWith(marker)
+    marker.replaceWith(wrap())
+  }
   return visualHtmlToMarkdown(root.innerHTML)
 }
 

@@ -211,7 +211,7 @@ export default function PhantasiNotes({
   }
 
   return (
-    <div className="phantasi-notes-board" aria-busy={loading}>
+    <div data-tour="journal-notes" className="phantasi-notes-board" aria-busy={loading}>
       <div
         className="phantasi-skin phantasi-notes"
         ref={notesViewRef}
