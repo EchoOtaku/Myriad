@@ -45,6 +45,8 @@ export default function PhantasiNotes({
   notes,
   docs,
   category = null,
+  hasMore = false,
+  onLoadMore,
   loading = false,
   failed = false,
   onRetry,
@@ -61,6 +63,8 @@ export default function PhantasiNotes({
   sources: PhantasiSource[]
   notes: HomeBoardNote[]
   docs: PhantasiNoteDoc[]
+  hasMore?: boolean
+  onLoadMore?: () => void
   loading?: boolean
   failed?: boolean
   onRetry?: () => void
@@ -349,6 +353,10 @@ export default function PhantasiNotes({
       ) : loading ? (
         <div className="phantasi-stories__more" role="status">
           {labels.loading}
+        </div>
+      ) : hasMore ? (
+        <div className="phantasi-stories__more">
+          <button type="button" onClick={onLoadMore}>{t.widgetGrid.nextPage}</button>
         </div>
       ) : null}
     </div>

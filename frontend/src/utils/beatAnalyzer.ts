@@ -6,8 +6,8 @@ export interface BeatGrid {
 }
 
 const gridCache = new Map<string, BeatGrid>()
-const MAX_AUDIO_BYTES = 4 * 1024 * 1024
-const MAX_AUDIO_SECONDS = 120
+const MAX_AUDIO_BYTES = 16 * 1024 * 1024
+const MAX_AUDIO_SECONDS = 900
 let analysisTail: Promise<unknown> = Promise.resolve()
 let outstanding = 0
 

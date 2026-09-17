@@ -177,3 +177,18 @@ it('repainting comments keeps text fragments bounded and traverses the text tree
   assert.equal(walks, 100)
   dom.window.close()
 })
+
+it('keeps the selected quote and media element when normalizing old marks', () => {
+  const dom = new JSDOM('<p>before highlighted after</p><video></video>')
+  const root = dom.window.document.body
+  const comments = [{ id: 1, selected_text: 'highlighted' }] as CommentItem[]
+  paintAnchoredComments(root, comments, 'light')
+  const video = root.querySelector('video')
+  const range = dom.window.document.createRange()
+  range.selectNodeContents(root.querySelector('mark'))
+  dom.window.getSelection().addRange(range)
+  paintAnchoredComments(root, [], 'dark')
+  assert.equal(dom.window.getSelection().toString(), 'highlighted')
+  assert.equal(root.querySelector('video'), video)
+  dom.window.close()
+})

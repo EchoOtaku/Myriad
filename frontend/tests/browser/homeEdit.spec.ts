@@ -9,23 +9,24 @@ test.beforeEach(async ({ page }) => {
   )
 })
 
-test('blank clicks never reopen the dock, including after an outside click parks it', async ({
+test('grid blank toggles the dock without making widgets or outside clicks reopen it', async ({
   page,
 }) => {
   const dock = page.locator('.widget-library-island')
   await page.getByTestId('blank').click()
-  await expect(dock).toHaveAttribute('data-library-stage', 'parked')
-  await page.locator('.widget-library-stage-badge').click()
   await expect(dock).not.toHaveAttribute('data-library-stage', 'parked')
   await page.locator('.widget-library-title').click()
   await expect(dock).not.toHaveAttribute('data-library-stage', 'parked')
   await page.getByTestId('blank').click()
   await expect(dock).toHaveAttribute('data-library-stage', 'parked')
-  // Click again after the park animation/suppression period, not just during it.
   await expect(page.locator('.widget-library-stage-hit')).toBeVisible()
   await page.waitForTimeout(700)
-  await page.getByTestId('blank').click({ clickCount: 3 })
+  await page.getByTestId('widget').click()
   await expect(dock).toHaveAttribute('data-library-stage', 'parked')
+  await page.getByTestId('outside').click()
+  await expect(dock).toHaveAttribute('data-library-stage', 'parked')
+  await page.getByTestId('blank').click()
+  await expect(dock).not.toHaveAttribute('data-library-stage', 'parked')
 })
 
 for (const expanded of [false, true]) {
@@ -88,7 +89,7 @@ test('Escape consumed by an inner editor does not ask to exit or open the dock',
   expect(confirmations).toBe(0)
 })
 
-test('drag completion keeps the dock parked until its own entrance is clicked', async ({
+test('drag completion keeps the dock parked until the grid blank is clicked', async ({
   page,
 }) => {
   await page.locator('.widget-library-stage-badge').click()
@@ -100,11 +101,6 @@ test('drag completion keeps the dock parked until its own entrance is clicked', 
   await page.getByRole('button', { name: 'End drag' }).click()
   await page.waitForTimeout(700)
   await page.getByTestId('blank').click()
-  await expect(page.locator('.widget-library-island')).toHaveAttribute(
-    'data-library-stage',
-    'parked',
-  )
-  await page.locator('.widget-library-stage-badge').click()
   await expect(page.locator('.widget-library-island')).not.toHaveAttribute(
     'data-library-stage',
     'parked',

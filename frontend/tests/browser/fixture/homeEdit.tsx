@@ -14,9 +14,34 @@ function Fixture() {
     <>
       <output data-testid="editing">{String(editing)}</output>
       <div
-        data-testid="blank"
+        data-testid="outside"
         style={{ position: 'fixed', right: 0, top: 0, width: 120, height: 120 }}
       />
+      <div
+        className="widget-grid-container edit-mode"
+        style={{
+          position: 'fixed',
+          right: 0,
+          top: 140,
+          width: 240,
+          height: 180,
+        }}
+      >
+        <div data-testid="blank" style={{ position: 'absolute', inset: 0 }} />
+        <button
+          className="widget-grid-item"
+          data-testid="widget"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: 60,
+            height: 60,
+          }}
+        >
+          Widget
+        </button>
+      </div>
       <div
         data-library-dock-chrome
         style={{ position: 'fixed', right: 0, bottom: 0 }}

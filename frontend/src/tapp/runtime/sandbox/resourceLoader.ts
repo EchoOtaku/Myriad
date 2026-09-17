@@ -88,7 +88,7 @@ export class TappResourceLoader {
 
   private widgetCssCache = new BoundedResourceCache<string>(60, 2 * 1024 * 1024)
 
-  private pageCssCache = new BoundedResourceCache<string>(60, 2 * 1024 * 1024)
+  private pageCssCache = new BoundedResourceCache<string>(30, 2 * 1024 * 1024)
 
   private deduplicator = new RequestDeduplicator()
 

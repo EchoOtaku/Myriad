@@ -24,6 +24,7 @@ export function useSandboxSubscriptions(
   const emitShouldRun = (shouldRun: boolean, force = false) => {
     const bridge = bridgeRef.current
     if (!bridge) return
+    bridge.setSurfaceActive(shouldRun)
     if (!force && lastShouldRunRef.current === shouldRun) return
     lastShouldRunRef.current = shouldRun
     bridge.emit(shouldRun ? 'lifecycle:resume' : 'lifecycle:pause', null)
@@ -41,6 +42,7 @@ export function useSandboxSubscriptions(
     if (!shouldRun) {
       emitShouldRun(false, true)
     } else {
+      bridgeRef.current?.setSurfaceActive(true)
       lastShouldRunRef.current = true
     }
   }, [isReady, bridgeRef])

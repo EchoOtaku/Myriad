@@ -19,6 +19,7 @@ import { agentPanelRowWaveMs } from './agentPanelStage'
 import { useConversationHistory } from './conversationHistory'
 import { AgentPresence, AgentPresenceList } from './useAgentPresence'
 import { useConversationPan } from './useConversationPan'
+import { usePersistedHistory } from './usePersistedHistory'
 
 function useHeldView(
   view: AgentPanelFullView,
@@ -171,8 +172,10 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
 }) => {
   const { t } = useI18n()
   const messageIds = useAgentMessageIds()
-  const { visibleIds, onNearStart } = useConversationHistory(messageIds)
+  const { visibleIds, onNearStart, onNewer, hasNewer } =
+    useConversationHistory(messageIds)
   const sessionId = useAgentSessionId()
+  const history = usePersistedHistory(sessionId)
   const sessionCountRef = useRef(0)
   const { held, exiting } = useHeldView(
     view,
@@ -190,9 +193,9 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
     listRef,
     trackRef,
     held === 'messages',
-    sessionId,
+    `${sessionId}:${history.page ?? 'live'}`,
     '.agent-panel-message',
-    onNearStart,
+    history.page ? undefined : onNearStart,
   )
 
   const conversation =
@@ -220,23 +223,43 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
       >
         <div className="agent-panel-messages agent-panel-full" ref={listRef}>
           <div className="agent-panel-messages-track" ref={trackRef}>
-            <AgentPresenceList
-              items={visibleIds}
-              keyOf={(id) => id}
-              kind="row"
-              from="composer"
-            >
-              {(id) => (
-                <SubscribedMessage
-                  id={id}
-                  onSubmit={onSubmit}
-                  onAnswer={dispatchAgentPanelAnswer}
-                  onSuggest={onSubmit}
-                  onWorkOffer={onWorkOffer}
-                  onZoomImage={setZoomed}
-                />
-              )}
-            </AgentPresenceList>
+            {history.page ? (
+              <>
+                {history.loading && <p role="status">{t.common.loading}</p>}
+                {history.error && (
+                  <p role="alert">{t.agentPanel.sessions.loadFailed}</p>
+                )}
+                {history.rows.map((message) => (
+                  <AgentPanelMessage
+                    key={message.id}
+                    message={message}
+                    onAnswer={dispatchAgentPanelAnswer}
+                    onSuggest={onSubmit}
+                    onWorkOffer={onWorkOffer}
+                    onZoomImage={setZoomed}
+                  />
+                ))}
+              </>
+            ) : (
+              <AgentPresenceList
+                items={visibleIds}
+                retainRemoved={false}
+                keyOf={(id) => id}
+                kind="row"
+                from="composer"
+              >
+                {(id) => (
+                  <SubscribedMessage
+                    id={id}
+                    onSubmit={onSubmit}
+                    onAnswer={dispatchAgentPanelAnswer}
+                    onSuggest={onSubmit}
+                    onWorkOffer={onWorkOffer}
+                    onZoomImage={setZoomed}
+                  />
+                )}
+              </AgentPresenceList>
+            )}
           </div>
           <AgentPresence open={!!zoomed} kind="swap" from="self">
             {zoomed ? (
@@ -257,6 +280,69 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   return (
     <>
       {conversation}
+      {held === 'messages' && (sessionId || hasNewer) && (
+        <div className="agent-panel-tag-actions">
+          {history.page ? (
+            <>
+              <button
+                type="button"
+                className="agent-panel-tag"
+                disabled={history.page <= 1 || history.loading}
+                onClick={() => history.select(history.page! - 1)}
+                aria-label={t.common.back}
+              >
+                ←
+              </button>
+              <span>{history.page}</span>
+              <button
+                type="button"
+                className="agent-panel-tag"
+                disabled={!history.hasNext || history.loading}
+                onClick={() => history.select(history.page! + 1)}
+                aria-label={t.common.go}
+              >
+                →
+              </button>
+              {history.error && (
+                <button
+                  type="button"
+                  className="agent-panel-tag"
+                  onClick={() => history.select(history.page)}
+                >
+                  {t.common.retry}
+                </button>
+              )}
+              <button
+                type="button"
+                className="agent-panel-tag"
+                onClick={() => history.select(null)}
+              >
+                {t.common.close}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="agent-panel-tag"
+                onClick={() => history.select(1)}
+              >
+                {t.agentPanel.sessions.title}
+              </button>
+              {hasNewer && (
+                <button
+                  type="button"
+                  className="agent-panel-tag"
+                  onClick={onNewer}
+                  aria-label={t.common.go}
+                >
+                  ↓
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
       {showChrome ? (
         <div className="agent-panel-tag-rail">
           <div className="agent-panel-tag-actions">

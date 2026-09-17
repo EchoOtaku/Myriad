@@ -11,9 +11,9 @@ import { useI18n } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { TappIconBadge } from '../../tapp/components/TappIconBadge'
+import { hiddenWidgetPool } from '../../tapp/runtime/resourceBounds'
 import { loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
-import { hiddenWidgetPool } from '../../tapp/runtime/resourceBounds'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { widgetPerfMark } from '../../tapp/runtime/WidgetLoadPerf'
 import { onTappWidgetInvalidate } from '../../tapp/runtime/WidgetRuntimeSignals'
@@ -369,16 +369,16 @@ function TappWidgetRuntime({
     return onVisibility(setPageVisible)
   }, [])
 
-  // iframe 仅近视口挂载。0×0/未撑开不能当离屏；400ms×3 复查后再判离屏。
+  // 离屏 iframe 原地隐藏并进入有界暂存池。0×0/未撑开不能当离屏；400ms×3 复查。
   const [inViewport, setInViewport] = useState(true)
   const [retained, setRetained] = useState(true)
   const poolKey = useRef({})
   useEffect(() => {
     const key = poolKey.current
-    if (inViewport) setRetained(true)
+    if (inViewport && pageVisible) setRetained(true)
     else if (retained) hiddenWidgetPool.add(key, () => setRetained(false))
     return () => hiddenWidgetPool.remove(key)
-  }, [inViewport, retained])
+  }, [inViewport, pageVisible, retained])
   const viewportObserverRef = useRef<IntersectionObserver | null>(null)
   const viewportNodeRef = useRef<HTMLDivElement | null>(null)
   const viewportRecheckRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -769,7 +769,7 @@ function TappWidgetRuntime({
       pageVisible &&
       !previousPageVisibleRef.current &&
       inViewport &&
-      widget?.config.refreshPolicy?.refreshOnVisible !== false
+      widget?.config.refreshPolicy?.refreshOnVisible === true
     ) {
       requestRefresh()
     }
@@ -974,7 +974,7 @@ function TappWidgetRuntime({
     >
       {/* 隐藏时 iframe 原地保留，只有暂存池淘汰才销毁。 */}
       <div ref={sandboxHostRef} className="w-full h-full">
-        {(inViewport || retained) ? (
+        {((inViewport && pageVisible) || retained) ? (
           <TappWidgetSandbox
             key={refreshGeneration}
             paused={!inViewport}

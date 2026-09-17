@@ -1,5 +1,5 @@
-import type { MediaAsset } from '../../../services/mediaApi'
 import type { PointerEvent, ReactNode } from 'react'
+import type { MediaAsset } from '../../../services/mediaApi'
 import {
   LuCheck,
   LuChevronLeft,

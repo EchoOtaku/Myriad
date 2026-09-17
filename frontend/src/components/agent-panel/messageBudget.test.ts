@@ -1,7 +1,7 @@
 import type { ChatMessage } from './engineTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { boundMessage, retainHotMessages, HOT_MESSAGE_LIMIT } from './messageBudget'
+import { boundMessage, HOT_MESSAGE_LIMIT, retainHotMessages } from './messageBudget'
 
 const row = (i: number): ChatMessage => ({ id: String(i), sessionId: 's', role: 'assistant', content: 'hello', createdAt: new Date() })
 test('hot history stays bounded while retaining an outstanding question', () => {
@@ -20,4 +20,11 @@ test('execution and result payloads have a budget without changing the reply', (
   assert.equal(bounded.content, 'hello')
   assert.ok(JSON.stringify(bounded).length < 100000)
   assert.deepEqual((bounded.data as { workOffer: unknown }).workOffer, { input: 'do this' })
+})
+
+test('large replies exhaust the byte budget before the count budget', () => {
+  const rows = Array.from({ length: 120 }, (_, i) => ({ ...row(i), content: 'x'.repeat(131072) }))
+  const hot = retainHotMessages(rows)
+  assert.ok(JSON.stringify(hot).length * 2 <= 4 * 1024 * 1024)
+  assert.equal(hot.at(-1)?.id, '119')
 })

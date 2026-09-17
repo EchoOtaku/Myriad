@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -54,6 +54,11 @@ function walkStaticImports(entryFiles) {
   while (queue.length > 0) {
     const file = queue.pop()
     if (!file.endsWith('.js') || !existsSync(file)) continue
+    if (/(?:^|\/)Home-[^/]+\.js$/.test(file)) {
+      for (const name of readdirSync(dirname(file))) {
+        if (/^Home-[^/]+\.css$/.test(name)) seen.add(resolve(dirname(file), name))
+      }
+    }
     const source = readFileSync(file, 'utf8')
     for (const match of source.matchAll(importRe)) {
       const spec = match[1] || match[2]
@@ -116,6 +121,20 @@ export async function measureHomeBudget(root = distDir) {
   }
 }
 
+export async function measureVoiceBudget(root = distDir) {
+  const html = findIndexHtml(root)
+  if (!html) throw new Error('voice budget: missing production build')
+  const assetsDir = join(dirname(html), 'assets')
+  const entries = readdirSync(assetsDir)
+    .filter(name => /^(?:AgoraRTC_N-production|agora-rtm)-.*\.js$/.test(name))
+    .map(name => join(assetsDir, name))
+  if (entries.length !== 2) throw new Error('voice budget: expected both Agora SDK chunks')
+  const files = await Promise.all([...walkStaticImports(entries)].map(async file => ({
+    file: displayPath(file, root), gzip: await gzipSize(file),
+  })))
+  return { totalGzipBytes: files.reduce((sum, file) => sum + file.gzip, 0), files }
+}
+
 function loadBaseline() {
   return JSON.parse(readFileSync(baselinePath, 'utf8'))
 }
@@ -132,6 +151,7 @@ async function main() {
     process.exit(2)
   }
   const measured = await measureHomeBudget()
+  const voice = await measureVoiceBudget()
   if (write) {
     writeFileSync(
       baselinePath,
@@ -153,6 +173,7 @@ async function main() {
         jsGzipBytes: measured.jsGzipBytes,
         cssGzipBytes: measured.cssGzipBytes,
         totalGzipBytes: measured.totalGzipBytes,
+        voiceGzipBytes: voice.totalGzipBytes,
         loadsAgora: measured.loadsAgora,
         loadsConfigRoute: measured.loadsConfigRoute,
         top: measured.files.slice(0, 8),
@@ -173,6 +194,9 @@ async function main() {
       failures.push(
         `CSS gzip ${measured.cssGzipBytes} exceeds baseline ${baseline.cssGzipBytes} +15%`,
       )
+    }
+    if (voice.totalGzipBytes > 1_000_000) {
+      failures.push(`Voice SDK gzip ${voice.totalGzipBytes} exceeds 1000000 bytes`)
     }
     if (measured.loadsAgora) {
       failures.push('first-paint JS contains Agora SDK')

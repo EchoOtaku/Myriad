@@ -22,12 +22,11 @@ globalThis.addEventListener('install', (event) => {
   console.log('[SW] Installing Service Worker...')
 
   event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('[SW] Precaching static assets')
-        return cache.addAll(STATIC_ASSETS)
-      })
+    Promise.all(STATIC_ASSETS.map(async (asset) => {
+      const response = await fetch(asset)
+      if (!response.ok) throw new Error(`Precache failed: ${asset}`)
+      await cacheWithTimestamp(STATIC_CACHE, asset, response)
+    }))
       .catch((err) => {
         console.error('[SW] Precache failed:', err)
       }),
@@ -80,9 +79,17 @@ async function limitCacheSize(cacheName, maxSize, maxAge) {
 
 // Serialize writes and eviction per cache so parallel requests cannot exceed the cap.
 const cacheWrites = new Map()
+let cacheGeneration = 0
+let cacheClearing = false
 function scheduleCacheWrite(event, cacheName, request, response, maxSize, maxAge) {
+  if (cacheClearing) {
+    void response.body?.cancel().catch(() => {})
+    return
+  }
+  const generation = cacheGeneration
   const writing = (cacheWrites.get(cacheName) ?? Promise.resolve())
     .then(async () => {
+      if (generation !== cacheGeneration) return
       await cacheWithTimestamp(cacheName, request, response)
       await limitCacheSize(cacheName, maxSize, maxAge)
     })
@@ -253,9 +260,11 @@ globalThis.addEventListener('message', (event) => {
   }
 
   if (event.data && event.data.type === 'CLEAR_CACHE') {
+    const generation = ++cacheGeneration
+    cacheClearing = true
     event.waitUntil(
-      caches
-        .keys()
+      Promise.all([...cacheWrites.values()])
+        .then(() => caches.keys())
         .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
         .then(() => caches.keys())
         .then((remaining) =>
@@ -274,6 +283,9 @@ globalThis.addEventListener('message', (event) => {
           } catch {
             // ignore
           }
+        })
+        .finally(() => {
+          if (generation === cacheGeneration) cacheClearing = false
         }),
     )
   }

@@ -68,6 +68,9 @@ export function useBoardNotes(
   const [loading, setLoading] = useState(board === 'notes')
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [pageLimit, setPageLimit] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const loadMore = useCallback(() => setPageLimit(value => value + 1), [])
   const retry = useCallback(() => setAttempt(value => value + 1), [])
   const flags = useArticleFlags()
   const flagsRevision = flags.getSnapshot()
@@ -76,6 +79,7 @@ export function useBoardNotes(
   const sourcesRef = useRef(sources)
   sourcesRef.current = sources
   const [rawNotes, setNotes] = useState<HomeBoardNote[]>([])
+  useEffect(() => { setPageLimit(1); setHasMore(false) }, [board, key, stamp, epoch])
 
   useEffect(() => {
     if (board !== 'notes') { setLoading(false); return }
@@ -90,7 +94,9 @@ export function useBoardNotes(
     const publish = (next: HomeBoardNote[]) => {
       if (!controller.signal.aborted) startTransition(() => setNotes(next))
     }
-    void loadBoardNotes(sourcesRef.current, controller.signal, publish)
+    void loadBoardNotes(sourcesRef.current, controller.signal, publish, pageLimit, (more) => {
+      if (!controller.signal.aborted) setHasMore(more)
+    })
       .then((next) => {
         if (!controller.signal.aborted) setNotes(next)
       })
@@ -104,13 +110,13 @@ export function useBoardNotes(
       controller.abort()
     }
     // stamp：源集合或抓取结果变了才重拉。epoch：发布后条数可能不变，但缓存已失效。
-  }, [board, key, stamp, epoch, attempt])
+  }, [board, key, stamp, epoch, attempt, pageLimit])
 
   const notes = useMemo(() => {
     if (board !== 'notes') return []
     return rawNotes.map((note) => flags.project(note))
   }, [board, flags, flagsRevision, rawNotes])
-  return { notes, loading, failed, retry }
+  return { notes, loading, failed, retry, hasMore, loadMore }
 }
 
 export function useFeedStories(

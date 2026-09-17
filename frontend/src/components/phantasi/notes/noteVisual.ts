@@ -887,6 +887,30 @@ function serializeList(body: string, ordered: boolean, listAttrs: string, indent
     .join('\n')
 }
 
+/** Reuse unchanged top-level blocks; keep Markdown current on every input. */
+export function createVisualMarkdownSerializer(): (root: HTMLElement) => string {
+  const cache = new WeakMap<Element, { html: string; markdown: string }>()
+  return (root) => {
+    // Loose inline content needs the original whole-document normalization.
+    if ([...root.childNodes].some(node => node.nodeType === 3 && node.textContent?.trim()) ||
+      [...root.children].some(node => !/^(H[1-6]|P|PRE|BLOCKQUOTE|UL|OL|TABLE|HR|LI|DIV)$/.test(node.tagName))) {
+      return visualHtmlToMarkdown(root.innerHTML)
+    }
+    const parts: string[] = []
+    for (const node of root.children) {
+      const html = node.outerHTML
+      let entry = cache.get(node)
+      if (entry?.html !== html) {
+        entry = { html, markdown: visualHtmlToMarkdown(html) }
+        cache.set(node, entry)
+      }
+      if (entry.markdown) parts.push(entry.markdown)
+    }
+    return parts.map((part, index) => index === 0 ? part :
+      (isDefinitionMarkdown(parts[index - 1]) && isDefinitionMarkdown(part) ? '\n' : '\n\n') + part).join('')
+  }
+}
+
 /** 可视层 HTML → Markdown。认编辑器产出的标签，也认工具栏 execCommand。 */
 export function visualHtmlToMarkdown(html: string): string {
   const normalized = collapseMathHosts(html)

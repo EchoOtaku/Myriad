@@ -1,12 +1,12 @@
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useConversationHistory } from '../../../src/components/agent-panel/conversationHistory'
 import { AgentPresenceList } from '../../../src/components/agent-panel/useAgentPresence'
 import { useConversationPan } from '../../../src/components/agent-panel/useConversationPan'
 
-const ids = Array.from({ length: 80 }, (_, i) => String(i))
-
-function History() {
+function History({ initialCount }: { initialCount: number }) {
+  const [count, setCount] = useState(initialCount)
+  const ids = Array.from({ length: count }, (_, i) => String(i))
   const viewport = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const { visibleIds, onNearStart } = useConversationHistory(ids)
@@ -19,9 +19,10 @@ function History() {
     onNearStart,
   )
   return (
+    <><button style={{ position: 'fixed', right: 0, top: 0, zIndex: 10 }} onClick={() => setCount(value => value + 20)}>Append</button>
     <div ref={viewport} style={{ height: 200, overflow: 'hidden' }}>
       <div ref={track} data-testid="track" style={{ position: 'relative' }}>
-        <AgentPresenceList items={visibleIds} keyOf={(id) => id}>
+        <AgentPresenceList retainRemoved={false} items={visibleIds} keyOf={(id) => id}>
           {(id) => (
             <div
               className="agent-panel-message"
@@ -33,10 +34,10 @@ function History() {
           )}
         </AgentPresenceList>
       </div>
-    </div>
+    </div></>
   )
 }
 
-export function mountAgentHistory() {
-  createRoot(document.getElementById('root')!).render(<History />)
+export function mountAgentHistory(initialCount = 80) {
+  createRoot(document.getElementById('root')!).render(<History initialCount={initialCount} />)
 }

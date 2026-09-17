@@ -112,7 +112,7 @@ export default function PhantasiSourceGrid({
     viewerRole,
     scoreNow,
   )
-  const { notes, loading: notesLoading, failed: notesFailed, retry: retryNotes } = useBoardNotes(board, sources, docsEpoch)
+  const { notes, loading: notesLoading, failed: notesFailed, retry: retryNotes, hasMore: notesHasMore, loadMore: loadMoreNotes } = useBoardNotes(board, sources, docsEpoch)
   const [docs, setDocs] = useState<PhantasiNoteDoc[]>([])
   useEffect(() => {
     if (board !== 'notes' || !isAdmin) {
@@ -350,6 +350,8 @@ export default function PhantasiSourceGrid({
       notesLoading={notesLoading}
       notesFailed={notesFailed}
       onRetryNotes={retryNotes}
+      notesHasMore={notesHasMore}
+      onLoadMoreNotes={loadMoreNotes}
       docs={board === 'notes' ? searchedDocs : docs}
       noteCategory={board === 'notes' ? noteCats.filter : null}
       onOpenDoc={onOpenDoc}

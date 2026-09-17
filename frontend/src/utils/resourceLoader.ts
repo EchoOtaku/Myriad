@@ -79,7 +79,7 @@ class ResourceLoader {
   }
 
   addTask(task: LoadTask): void {
-    if (this.isCompleted(task.id) || this.activeLoads.has(task.id)) {
+    if (this.isCompleted(task.id) || (this.activeLoads.has(task.id) && !this.running.get(task.id)?.controller.signal.aborted)) {
       return
     }
 
@@ -113,13 +113,14 @@ class ResourceLoader {
   }
 
   clearPriority(priority: LoadPriority): void {
-    for (const task of this.queue.filter((t) => t.priority === priority)) this.cancelTask(task.id)
+    this.queue = this.queue.filter((task) => task.priority !== priority)
     for (const { task } of this.running.values()) {
-      if (task.priority === priority) this.cancelTask(task.id)
+      if (task.priority === priority) this.running.get(task.id)?.controller.abort()
     }
     if (priority === LoadPriority.IDLE) {
       for (const id of this.scheduledIdleTasks.keys()) this.cancelScheduledIdleTask(id)
     }
+    this.processQueue()
   }
 
   private sortQueue(): void {
@@ -131,13 +132,14 @@ class ResourceLoader {
     this.wakeTimer = null
     while (this.activeLoads.size < this.config.maxConcurrent) {
       const now = Date.now()
-      const index = this.queue.findIndex((task) => task.readyAt <= now)
+      const index = this.queue.findIndex((task) => task.readyAt <= now && !this.activeLoads.has(task.id))
       if (index === -1) break
       const [task] = this.queue.splice(index, 1)
       void this.executeTask(task)
     }
-    if (this.queue.length && this.activeLoads.size < this.config.maxConcurrent) {
-      const next = Math.min(...this.queue.map((task) => task.readyAt))
+    const available = this.queue.filter(task => !this.activeLoads.has(task.id))
+    if (available.length && this.activeLoads.size < this.config.maxConcurrent) {
+      const next = Math.min(...available.map((task) => task.readyAt))
       this.wakeTimer = setTimeout(() => this.processQueue(), Math.max(0, next - Date.now()))
     }
   }

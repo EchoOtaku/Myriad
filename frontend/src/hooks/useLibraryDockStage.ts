@@ -302,8 +302,12 @@ export function useLibraryDockStage(input: {
       const target = event.target
       if (!(target instanceof Element)) return
       if (target.closest(LIBRARY_DOCK_POINTER_CHROME)) return
-      // Outside clicks only dismiss. Reopening belongs to the dock's entrance.
-      if (staged) return
+      if (staged) {
+        const editGrid = target.closest('.widget-grid-container.edit-mode')
+        if (!editGrid || target.closest('.widget-grid-item')) return
+        restore()
+        return
+      }
       parkIgnorePointerRef.current = event.pointerId
       park()
     }
@@ -325,7 +329,7 @@ export function useLibraryDockStage(input: {
       window.removeEventListener('pointerup', onPointerUp, true)
       window.removeEventListener('pointercancel', onPointerUp, true)
     }
-  }, [park, parkable, pausePointer, staged, tourDockPose, visible])
+  }, [park, parkable, pausePointer, restore, staged, tourDockPose, visible])
 
   return {
     parked,

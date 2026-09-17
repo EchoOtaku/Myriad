@@ -74,3 +74,17 @@ test('returned images release source and callbacks immediately', () => {
     assert.equal(item.img.onload, null)
   } finally { imagePool.destroy() }
 })
+
+test('cancelled running IDs accept a replacement after the old operation settles', async () => {
+  const { globalResourceLoader: loader, LoadPriority } = loadModule('./resourceLoader.ts')
+  let finish!: () => void
+  let replacement = false
+  loader.addTask({ id: 'same', priority: LoadPriority.HIGH, loader: () => new Promise<void>((resolve) => { finish = resolve }) })
+  loader.cancelTask('same')
+  loader.addTask({ id: 'same', priority: LoadPriority.HIGH, loader: async () => { replacement = true } })
+  assert.equal(replacement, false)
+  finish()
+  await sleep(0)
+  assert.equal(replacement, true)
+  loader.clear()
+})

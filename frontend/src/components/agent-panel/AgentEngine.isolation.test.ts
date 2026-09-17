@@ -15,7 +15,8 @@ test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () =
     /loadingByModeRef\.current\.work \|\| loadingByModeRef\.current\.chat/,
   )
   assert.match(engine, /restorePendingActionFromMessages/)
-  assert.match(engine, /pendingQuestionFromMetadata/)
+  assert.match(engine, /restoreSessionMessage/)
+  assert.match(readFileSync(new URL('./sessionHistoryMessage.ts', import.meta.url), 'utf8'), /pendingQuestionFromMetadata/)
 
   const api = readFileSync(
     new URL('../../services/agent/agentApi.ts', import.meta.url),

@@ -579,3 +579,19 @@ it('粘贴的原文属性不能替换不同的可见正文', () => {
   const back = visualHtmlToMarkdown('<pre data-raw-markdown="hidden">visible</pre>')
   assert.equal(back, '```\nvisible\n```')
 })
+
+it('incremental visual conversion preserves definitions and updates edited blocks', async () => {
+  const { createVisualMarkdownSerializer } = await import('./noteVisual')
+  const { createRequire } = await import('node:module')
+  const require = createRequire(import.meta.url)
+  const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))
+  const dom = new JSDOM('<div id="editor"><h2>Title</h2><p>First <strong>bold</strong></p><p data-fn="a">definition</p><p data-fn="b">second</p></div>')
+  const root = dom.window.document.getElementById('editor')
+  const serialize = createVisualMarkdownSerializer()
+  assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML))
+  root.querySelector('strong').textContent = 'changed'
+  assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML))
+  root.firstChild.remove()
+  assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML))
+  dom.window.close()
+})

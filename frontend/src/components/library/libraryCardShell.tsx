@@ -986,8 +986,7 @@ export const LibraryCardShell = memo(
       const controller = new AbortController()
       const timeout = window.setTimeout(() => {
         controller.abort()
-        releaseCoverImageElement(imgRef.current)
-        setActiveSrc(null)
+        setActiveSrc(coverFallbackUrl(title))
         setMediaReady(true)
       }, 15000)
       setMediaReady(false)
@@ -1014,7 +1013,7 @@ export const LibraryCardShell = memo(
         releaseCoverImageElement(imgRef.current)
         setActiveSrc(null)
       }
-    }, [cover])
+    }, [cover, title])
 
     const releaseDecodeSlot = useCallback(() => {
       releaseSlotRef.current?.()

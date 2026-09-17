@@ -89,3 +89,39 @@ it('podcast fetches and retains only current and next dialogue across seeks', as
     else Reflect.deleteProperty(globalThis, 'sessionStorage')
   }
 })
+
+it('retries a failed playback window after the network recovers', async () => {
+  const originalFetch = globalThis.fetch
+  const originalAudio = globalThis.Audio
+  const storage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => null, setItem() {}, removeItem() {} } })
+  globalThis.Audio = class {
+    src = ''; preload = ''; currentTime = 0; onended = null; onerror = null
+    load() {} pause() {} async play() {}
+  } as unknown as typeof Audio
+  let fail = false
+  let calls = 0
+  globalThis.fetch = async (input, options) => {
+    if (String(input).includes('csrf-token')) return Response.json({ csrf_token: null })
+    calls++
+    if (fail) throw new Error('offline')
+    const body = JSON.parse(String(options?.body))
+    return Response.json({ success: true, audios: body.dialogues.map((d: { index: number }) => ({ index: d.index, audio: 'AA==' })) })
+  }
+  const player = new CloudPodcastPlayer()
+  try {
+    await player.load(Array.from({ length: 10 }, () => ({ speaker: 'host', text: 'hello' })), { sourceId: 1, articleId: 2 })
+    fail = true
+    await assert.rejects(player.seekTo(5), /offline/)
+    fail = false
+    await player.seekTo(5)
+    assert.equal(calls, 3)
+    assert.equal(player.hasAudio(), true)
+  } finally {
+    player.destroy()
+    globalThis.fetch = originalFetch
+    globalThis.Audio = originalAudio
+    if (storage) Object.defineProperty(globalThis, 'sessionStorage', storage)
+    else Reflect.deleteProperty(globalThis, 'sessionStorage')
+  }
+})

@@ -10,7 +10,7 @@ import {
   pickAdjacentIndex,
   pickShuffleIndex,
 } from '../../utils/musicPlayer'
-import { loadResource } from '../../utils/resourceLoader'
+import { globalResourceLoader, loadResource } from '../../utils/resourceLoader'
 
 export interface MusicPreloadApi {
   preloadAudioRef: MutableRefObject<HTMLAudioElement | null>
@@ -44,6 +44,8 @@ export function usePreload(options: {
   } = options
   const initialVolumeRef = useRef(volume)
 
+  const preloadTaskRef = useRef<string | null>(null)
+  const preloadTaskSequence = useRef(0)
   const preloadAudioRef = useRef<HTMLAudioElement | null>(null)
   const [preloadedSongIndex, setPreloadedSongIndex] = useState(-1)
   const preloadCacheRef = useRef<Map<number, boolean>>(new Map())
@@ -57,6 +59,7 @@ export function usePreload(options: {
     const audio = createPreloadAudioElement(initialVolumeRef.current)
     preloadAudioRef.current = audio
     return () => {
+      if (preloadTaskRef.current) globalResourceLoader.cancelTask(preloadTaskRef.current)
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
@@ -122,12 +125,30 @@ export function usePreload(options: {
 
       preloadTriggeredRef.current = true
 
-      loadResource.low(`music-preload-${nextIndex}`, async () => {
+      if (preloadTaskRef.current) globalResourceLoader.cancelTask(preloadTaskRef.current)
+      const taskId = `music-preload-${nextSong.id}-${++preloadTaskSequence.current}`
+      preloadTaskRef.current = taskId
+      loadResource.low(taskId, async (signal) => {
         const preloadAudio = preloadAudioRef.current
-        if (!preloadAudio) return
+        if (!preloadAudio || signal.aborted) return
 
         return new Promise<void>((resolve, reject) => {
           let usedFallback = false
+          const release = () => {
+            preloadAudio.pause()
+            preloadAudio.removeAttribute('src')
+            preloadAudio.load()
+          }
+          const abort = () => {
+            cleanup()
+            release()
+            reject(signal.reason || new DOMException('Aborted', 'AbortError'))
+          }
+          const timer = setTimeout(() => {
+            cleanup()
+            release()
+            reject(new Error('Preload timed out'))
+          }, 15_000)
 
           const failPreload = () => {
             preloadErrorCountRef.current += 1
@@ -138,6 +159,7 @@ export function usePreload(options: {
             }
 
             cleanup()
+            release()
             reject(new Error('Preload failed'))
           }
 
@@ -185,10 +207,14 @@ export function usePreload(options: {
           }
 
           const cleanup = () => {
+            clearTimeout(timer)
+            signal.removeEventListener('abort', abort)
             preloadAudio.removeEventListener('error', handleError)
             preloadAudio.removeEventListener('canplay', handleCanPlay)
           }
 
+          signal.addEventListener('abort', abort, { once: true })
+          if (signal.aborted) { abort(); return }
           preloadAudio.addEventListener('error', handleError)
           preloadAudio.addEventListener('canplay', handleCanPlay)
 

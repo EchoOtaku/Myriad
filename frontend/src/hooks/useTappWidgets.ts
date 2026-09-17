@@ -108,12 +108,10 @@ function createTappWidgetType(
   previousComponent?: WidgetType['component'],
 ): TappWidgetType {
   const config = widget.config || {}
-  const accent = resolveTappAccent(widget, runtime)
-
   const WrappedComponent = (props: WidgetComponentProps) =>
     createElement(
       Suspense,
-      { fallback: createElement(TappDefaultSkeleton, { accent }) },
+      { fallback: createElement(TappDefaultSkeleton, { accent: resolveTappAccent(widget, runtime) }) },
       createElement(TappWidgetComponent, {
         ...props,
         tappWidgetId: widget.id,

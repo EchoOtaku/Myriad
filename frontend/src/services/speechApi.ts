@@ -558,6 +558,8 @@ export class CloudPodcastPlayer {
       const audio = this.audioElements.get(this.currentIndex)
       if (audio) {
         await audio.play()
+      } else {
+        void this.playNext()
       }
       this.isPlaying = true
       return
@@ -585,6 +587,8 @@ export class CloudPodcastPlayer {
     const audio = this.audioElements.get(this.currentIndex)
     if (audio) {
       await audio.play()
+    } else {
+      void this.playNext()
     }
   }
 
@@ -603,7 +607,7 @@ export class CloudPodcastPlayer {
   }
 
   async seekTo(index: number) {
-    if (index < 0 || index >= this.dialogues.length) return
+    if (this.destroyed || !this.batchRequest || index < 0 || index >= this.dialogues.length) return
 
     const currentAudio = this.audioElements.get(this.currentIndex)
     if (currentAudio) {
@@ -676,7 +680,14 @@ export class CloudPodcastPlayer {
       }
       this.onLoadProgress?.(this.generatedIndices.size, this.dialogues.length)
       return response
-    })()
+    })().catch(error => {
+      // An obsolete window must not clear a newer seek's in-flight request.
+      if (this.windowController === controller) {
+        this.windowPromise = null
+        this.windowIndex = -1
+      }
+      throw error
+    })
     return this.windowPromise
   }
 
@@ -691,7 +702,14 @@ export class CloudPodcastPlayer {
 
     const requestedIndex = this.currentIndex
     try {
-      await this.warmPlaybackWindow(requestedIndex)
+      // Let an overlapping prefetch finish instead of cancelling the next dialogue.
+      if (!this.audioElements.has(requestedIndex) && this.windowIndex === requestedIndex - 1) {
+        await this.windowPromise
+      }
+      if (this.currentIndex !== requestedIndex || !this.isPlaying) return
+      const warming = this.warmPlaybackWindow(requestedIndex)
+      if (!this.audioElements.has(requestedIndex)) await warming
+      else void warming.catch(() => {})
     } catch (error) {
       if (this.destroyed || this.currentIndex !== requestedIndex || !this.isPlaying) return
       this.isPlaying = false
@@ -714,7 +732,7 @@ export class CloudPodcastPlayer {
     const currentIdx = this.currentIndex
 
     audio.onended = () => {
-      if (this.currentIndex !== currentIdx) return
+      if (this.currentIndex !== currentIdx || !this.isPlaying) return
 
       this.currentIndex++
 
@@ -730,6 +748,7 @@ export class CloudPodcastPlayer {
     }
 
     audio.onerror = (e) => {
+      if (this.currentIndex !== currentIdx || !this.isPlaying) return
       console.error('[CloudPodcastPlayer] Audio error:', e)
       this.currentIndex++
       this.onProgress?.(this.currentIndex, this.dialogues.length)
@@ -739,6 +758,7 @@ export class CloudPodcastPlayer {
     try {
       await audio.play()
     } catch (e) {
+      if (this.currentIndex !== currentIdx || !this.isPlaying) return
       console.error('[CloudPodcastPlayer] Play failed:', e)
       this.currentIndex++
       this.onProgress?.(this.currentIndex, this.dialogues.length)

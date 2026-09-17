@@ -23,6 +23,7 @@ export class BoundedResourceCache<T> {
     this.entries.set(key, entry)
     return entry.data
   }
+
   set(key: string, data: T, ttl: number): void {
     this.delete(key)
     const bytes = resourceBytes(data)
@@ -34,6 +35,7 @@ export class BoundedResourceCache<T> {
     }
     this.schedule()
   }
+
   delete(key: string): void {
     const entry = this.entries.get(key)
     if (!entry) return
@@ -41,12 +43,14 @@ export class BoundedResourceCache<T> {
     this.entries.delete(key)
     this.schedule()
   }
+
   clear(): void {
     this.entries.clear()
     this.bytes = 0
     clearTimeout(this.timer)
     this.timer = undefined
   }
+
   private schedule(): void {
     clearTimeout(this.timer)
     this.timer = undefined
@@ -80,6 +84,7 @@ export class HiddenSandboxPool {
       oldest[1]()
     }
   }
+
   remove(key: object | string): void { this.hidden.delete(key) }
 }
 

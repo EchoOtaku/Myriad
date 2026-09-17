@@ -33,6 +33,8 @@ interface PhantasiBoardViewProps {
   onEditSource?: (source: PhantasiSource) => void
   onOpenDoc?: (id: number) => void
   toolbar?: ReactNode
+  notesHasMore?: boolean
+  onLoadMoreNotes?: () => void
   notesLoading?: boolean
   notesFailed?: boolean
   onRetryNotes?: () => void
@@ -68,6 +70,8 @@ export default function PhantasiBoardView({
   onOpenDoc,
   toolbar,
   notes = [],
+  notesHasMore = false,
+  onLoadMoreNotes,
   notesLoading = false,
   notesFailed = false,
   onRetryNotes,
@@ -164,6 +168,8 @@ export default function PhantasiBoardView({
       sources={sources}
       notes={notes}
       loading={notesLoading}
+      hasMore={notesHasMore}
+      onLoadMore={onLoadMoreNotes}
       failed={notesFailed}
       onRetry={onRetryNotes}
       docs={cloudDocs}

@@ -302,11 +302,24 @@ export async function executeSSERequest({
                   tokensSinceYield = 0
                   // A hidden tab may suspend RAF indefinitely. Yield per batch,
                   // not per token, so buffered completion is never frame-gated.
-                  await new Promise<void>(resolve => setTimeout(resolve, 0))
+                  await new Promise<void>((resolve, reject) => {
+                    const abortYield = () => {
+                      requestSignal.removeEventListener('abort', abortYield)
+                      clearTimeout(timer)
+                      reject(requestSignal.reason)
+                    }
+                    const timer = setTimeout(() => {
+                      requestSignal.removeEventListener('abort', abortYield)
+                      resolve()
+                    }, 0)
+                    requestSignal.addEventListener('abort', abortYield, { once: true })
+                    if (requestSignal.aborted) abortYield()
+                  })
                   requestSignal.throwIfAborted()
                 }
                 if (event.type === 'task_completed') {
                   finalResponse = (event as TaskCompletedEvent).response
+                  break
                 } else if (event.type === 'error') {
                   const errorEvent = event as ErrorEvent
                   reject(
@@ -318,13 +331,14 @@ export async function executeSSERequest({
                   return
                 }
               } catch (parseError) {
+                requestSignal.throwIfAborted()
                 console.warn(
                   '[AgentService] Failed to parse SSE event:',
                   parseError,
                 )
               }
             }
-            if (done) break
+            if (done || finalResponse) break
           }
         } catch (error) {
           streamError = error

@@ -373,12 +373,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   // also theme / primary-color subscriptions (shared with widget sandbox).
   useSandboxSubscriptions(bridgeRef, isReady, paused)
 
-  // Host keyboard shortcuts skip minimized / paused surfaces.
-  // Init path also applies pausedRef (this effect may run before bridge exists).
-  useEffect(() => {
-    bridgeRef.current?.setSurfaceActive(!paused)
-  }, [paused, isReady])
-
   useEffect(
     () =>
       bindAllTappKvChanges(() => bridgeRef.current, tappInstance.id),

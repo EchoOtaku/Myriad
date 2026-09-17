@@ -107,6 +107,7 @@ it('a persisted collaborative snapshot does not acknowledge an unsent publicatio
   }, undefined)
   try {
     await act(async () => hook.current.setFields({ ...base, publishedAt: 2 }))
+    await act(async () => window.dispatchEvent(new window.Event('pagehide')))
     assert.equal(readNoteRecovery({ userId: 1, docId: 7 })?.fields.publishedAt, 2)
     await act(async () => sockets[0].onmessage!({ data: JSON.stringify({
       type: 'doc', revision: 2, peer_id: '', user_id: 2,

@@ -80,13 +80,11 @@ export function useConversationPan(
     const maxScroll = () => conversationMaxScroll(trackH, viewH)
 
     const recache = () => {
-      const nextH = track.offsetHeight
-      if (trackH > 0 && nextH > trackH && !nearBottom) {
-        const delta = nextH - trackH
-        current += delta
-        target += delta
-      }
-      trackH = nextH
+      const anchorCard = !nearBottom
+        ? cards.find(card => card.top + card.height > current && card.el.isConnected)
+        : undefined
+      const anchorTop = anchorCard?.top
+      trackH = track.offsetHeight
       cards = Iterator.from(track.querySelectorAll<HTMLElement>(cardSelector))
         .map((el) => {
           const box =
@@ -100,6 +98,14 @@ export function useConversationPan(
           }
         })
         .toArray()
+      if (anchorCard && anchorTop !== undefined) {
+        const retained = cards.find(card => card.el === anchorCard.el)
+        if (retained) {
+          const delta = retained.top - anchorTop
+          current += delta
+          target += delta
+        }
+      }
     }
 
     const measure = () => {
@@ -392,6 +398,14 @@ export function useConversationPan(
       // that offset even when no gesture or animation will schedule a frame.
       write()
     })
+    // Replacing one full window with another can leave the height unchanged.
+    const rowsWatch = new MutationObserver(() => {
+      recache()
+      measure()
+      if (nearBottom) current = target = maxScroll()
+      write()
+    })
+    rowsWatch.observe(track, { childList: true })
     resize.observe(track)
     resize.observe(viewport)
     if (anchor) resize.observe(anchor)
@@ -436,6 +450,7 @@ export function useConversationPan(
     return () => {
       stop()
       resize.disconnect()
+      rowsWatch.disconnect()
       phaseWatch.disconnect()
       modeWatch.disconnect()
       document.removeEventListener('visibilitychange', onVis)

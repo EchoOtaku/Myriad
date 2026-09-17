@@ -110,6 +110,7 @@ export function useNoteCloudSave({
     const id = activeIdRef.current
     const user = activeUserRef.current
     if (recoveryDiscarded.current || !aliveRef.current || id == null || user == null || user !== recoveryOwner.current) return
+    recoveryFlushRef.current = () => {}
     const pending = pendingRef.current
     recoveryWriter.current.write({ userId: user, docId: id }, latestRef.current, baseRef.current, revisionRef.current,
       pending && !pending.confirmed ? { requestId: pending.requestId, fields: pending.fields, ...(pending.expectedFields ? { expectedFields: pending.expectedFields } : {}) } : undefined)
@@ -325,12 +326,22 @@ export function useNoteCloudSave({
     }, 0)
   }, [flush, receiveSnapshot, wakeWaiters])
 
-  recoveryFlushRef.current = () => {
-    if (!loading) persistRecovery()
-  }
+  useEffect(() => () => recoveryFlushRef.current(), [cloudId, userId])
+
   useEffect(() => {
     if (loading || cloudId == null || userId == null || userId !== recoveryOwner.current) return
-    const timer = setTimeout(persistRecovery, 300)
+    const snapshot = fields
+    const base = baseRef.current
+    const revision = revisionRef.current
+    const pending = pendingRef.current
+    const flush = () => {
+      if (recoveryDiscarded.current || recoveryFlushRef.current !== flush) return
+      recoveryFlushRef.current = () => {}
+      recoveryWriter.current.write({ userId, docId: cloudId }, snapshot, base, revision,
+        pending && !pending.confirmed ? { requestId: pending.requestId, fields: pending.fields, ...(pending.expectedFields ? { expectedFields: pending.expectedFields } : {}) } : undefined)
+    }
+    recoveryFlushRef.current = flush
+    const timer = setTimeout(flush, 300)
     return () => clearTimeout(timer)
   }, [loading, cloudId, userId, fields.title, fields.contentMd, fields.topic, fields.cover, fields.publishedAt, persistRecovery])
 

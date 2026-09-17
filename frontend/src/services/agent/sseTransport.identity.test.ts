@@ -17,7 +17,7 @@ function stream(events: unknown[]): Response {
     headers: { 'content-type': 'text/event-stream' },
   })
 }
-function harness(csrf: () => Promise<string>, fetcher: typeof fetch, raf?: (callback: FrameRequestCallback) => number) {
+function harness(csrf: () => Promise<string>, fetcher: typeof fetch, raf?: (callback: FrameRequestCallback) => number, timer = setTimeout) {
   const subject = new AuthSubjectScope()
   const dependencies: Record<string, unknown> = {
     '../../i18n/hostLocaleHeaders': { hostLocaleHeaders: () => ({}) },
@@ -34,7 +34,7 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch, raf?: (call
   runInNewContext(code, {
     exports,
       require: (id: string) => { assert.ok(Object.hasOwn(dependencies, id), id); return dependencies[id] },
-    AbortController, AbortSignal, setTimeout, clearTimeout, TextDecoder, Error, console,
+    AbortController, AbortSignal, setTimeout: timer, clearTimeout, TextDecoder, Error, console,
     fetch: fetcher, requestAnimationFrame: raf,
   })
   const activeControllers = new Set<AbortController>()
@@ -154,7 +154,7 @@ test('a token burst finishes when animation frames are suspended', async () => {
   ]), () => 1)
   const result = await Promise.race([
     h.executeSSERequest(h.options).then(() => 'done'),
-    new Promise(resolve => setTimeout(() => resolve('hung'), 100)),
+    new Promise(resolve => setTimeout(resolve, 100, 'hung')),
   ])
   h.abortSseSubscriptions(h.activeControllers)
   assert.equal(result, 'done')
@@ -168,6 +168,44 @@ test('terminal stream errors cancel and unlock the unread response body', async 
   })
   const h = harness(async () => 'token', async () => new Response(body))
   await assert.rejects(h.executeSSERequest(h.options), /failure/)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(cancelled, true)
+  assert.equal(body.locked, false)
+})
+
+test('completion closes the reader without waiting for the server to close TCP', async () => {
+  let cancelled = false
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: 'task_completed', response: final })}\n\n`)) },
+    cancel() { cancelled = true },
+  })
+  const h = harness(async () => 'token', async () => new Response(body))
+  const result = await Promise.race([
+    h.executeSSERequest(h.options).then(() => 'done', () => 'aborted'),
+    new Promise(resolve => setTimeout(resolve, 100, 'hung')),
+  ])
+  h.abortSseSubscriptions(h.activeControllers)
+  assert.equal(result, 'done')
+  assert.equal(cancelled, true)
+  assert.equal(body.locked, false)
+})
+
+test('abort interrupts a suspended cooperative yield and releases its reader', async () => {
+  const yielding = Promise.withResolvers<void>()
+  let cancelled = false
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new TextEncoder().encode(Array.from({ length: 100 }, () => 'data: {"type":"summary_token","token":"x"}\n\n').join(''))) },
+    cancel() { cancelled = true },
+  })
+  const timer = ((callback: (...args: unknown[]) => void, delay?: number) => {
+    if (delay === 0) { yielding.resolve(); return setTimeout(() => {}, 1000) }
+    return setTimeout(callback, delay)
+  }) as typeof setTimeout
+  const h = harness(async () => 'token', async () => new Response(body), undefined, timer)
+  const pending = h.executeSSERequest(h.options)
+  await yielding.promise
+  h.abortSseSubscriptions(h.activeControllers)
+  await assert.rejects(pending, /interrupted/)
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(cancelled, true)
   assert.equal(body.locked, false)

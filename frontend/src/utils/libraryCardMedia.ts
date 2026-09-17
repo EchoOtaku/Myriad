@@ -26,7 +26,8 @@ export function acquireCoverDecodeSlot(signal?: AbortSignal): Promise<Release> {
       if (released) return
       released = true
       signal?.removeEventListener('abort', abort)
-      if (granted) activeDecodes = Math.max(0, activeDecodes - 1)
+      if (granted) { activeDecodes = Math.max(0, activeDecodes - 1)
+}
       else {
         const index = waitQueue.indexOf(grant)
         if (index !== -1) waitQueue.splice(index, 1)

@@ -101,16 +101,16 @@ type NotePage = Awaited<ReturnType<typeof phantasiApi.getItemPreviews>>
 interface NotePages {
   pages: Map<string, NotePage>
   complete?: HomeBoardNote[]
+  bytes: number
   pending: Map<string, Promise<NotePage>>
 }
 
 function loadNotePage(sourceId: number, cursor?: string): Promise<NotePage> {
-  // One LRU slot per source, regardless of its history length. Otherwise a
-  // wall with >80 pages evicts its own first pages on every sequential visit.
+  // Each source bucket is bounded by page count and UTF-16 payload bytes.
   const key = `${phantasiCacheKeys.boardNotes([sourceId])}:pages`
   let bucket = requestCache.get<NotePages>(key)
   if (!bucket) {
-    bucket = { pages: new Map(), pending: new Map() }
+    bucket = { pages: new Map(), pending: new Map(), bytes: 0 }
     requestCache.set(key, bucket, BOARD_PAGE_TTL)
   }
   const pages = bucket
@@ -127,7 +127,17 @@ function loadNotePage(sourceId: number, cursor?: string): Promise<NotePage> {
       cursor,
     })
     .then((page) => {
-      pages.pages.set(pageKey, page)
+      const bytes = JSON.stringify(page).length * 2
+      if (bytes <= 2 * 1024 * 1024) {
+        pages.pages.set(pageKey, page)
+        pages.bytes += bytes
+        while (pages.pages.size > 128 || pages.bytes > 2 * 1024 * 1024) {
+          const oldest = pages.pages.keys().next().value!
+          pages.bytes -= JSON.stringify(pages.pages.get(oldest)).length * 2
+          pages.pages.delete(oldest)
+          pages.complete = undefined
+        }
+      }
       if (!page.next_cursor?.trim()) {
         const all = new Map<number, HomeBoardNote>()
         const seen = new Set<string>()
@@ -164,6 +174,8 @@ export async function loadBoardNotes(
   sources: Array<{ id: number; source_type: string }>,
   signal?: AbortSignal,
   onPage?: (notes: HomeBoardNote[]) => void,
+  pageLimit = Infinity,
+  onMore?: (hasMore: boolean) => void,
 ): Promise<HomeBoardNote[]> {
   signal?.throwIfAborted()
   const ids = [
@@ -178,7 +190,7 @@ export async function loadBoardNotes(
       requestCache.get<NotePages>(`${phantasiCacheKeys.boardNotes([id])}:pages`)
         ?.complete,
   )
-  if (completed.every((notes) => notes != null)) {
+  if (pageLimit === Infinity && completed.every((notes) => notes != null)) {
     const notes = completed
       .flatMap((notes) => notes ?? [])
       .toSorted(
@@ -193,10 +205,12 @@ export async function loadBoardNotes(
     id,
     cursor: undefined as string | undefined,
     seen: new Set<string>(),
+    loaded: 0,
   }))
   const items = new Map<number, HomeBoardNote>()
   let snapshot: HomeBoardNote[] = []
   let failed = false
+  let hasMore = false
   const load = async () => {
     try {
       while (queue.length > 0) {
@@ -221,7 +235,9 @@ export async function loadBoardNotes(
             )
           }
           source.seen.add(next)
-          queue.push({ ...source, cursor: next })
+          if (source.loaded + 1 < pageLimit)
+            queue.push({ ...source, cursor: next, loaded: source.loaded + 1 })
+          else hasMore = true
         }
         // Cached pages must not form one long microtask chain starving input/paint.
         if (onPage && queue.length > 0)
@@ -234,6 +250,7 @@ export async function loadBoardNotes(
   }
   await Promise.all(Array.from({ length: Math.min(3, queue.length) }, load))
   signal?.throwIfAborted()
+  onMore?.(hasMore)
   return snapshot
 }
 

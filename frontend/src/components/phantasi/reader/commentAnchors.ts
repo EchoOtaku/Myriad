@@ -62,15 +62,43 @@ export function resolveCommentAnchor(
   return candidates.length === 1 ? candidates[0] : null
 }
 
+function preserveTextSelection(root: HTMLElement): () => void {
+  const selection = root.ownerDocument.getSelection()
+  if (!selection?.rangeCount || selection.isCollapsed) return () => {}
+  const selected = selection.getRangeAt(0)
+  if (!root.contains(selected.startContainer) || !root.contains(selected.endContainer)) return () => {}
+  const prefix = root.ownerDocument.createRange()
+  prefix.selectNodeContents(root)
+  prefix.setEnd(selected.startContainer, selected.startOffset)
+  const start = prefix.toString().length
+  prefix.setEnd(selected.endContainer, selected.endOffset)
+  const end = prefix.toString().length
+  return () => {
+    const parts = indexText(root)
+    const first = parts.find(part => part.offset + part.node.length >= start)
+    const last = parts.find(part => part.offset + part.node.length >= end)
+    if (!first || !last) return
+    const range = root.ownerDocument.createRange()
+    range.setStart(first.node, start - first.offset)
+    range.setEnd(last.node, end - last.offset)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+}
+
 export function unwrapTextDecorations(
   root: HTMLElement,
   selector = 'mark.user-comment-highlight, mark.phantasiai-annotation',
 ): void {
+  const restoreSelection = preserveTextSelection(root)
+  const parents = new Set<Node>()
   for (const mark of [...root.querySelectorAll(selector)]) {
     const parent = mark.parentNode
     mark.replaceWith(...mark.childNodes)
-    parent?.normalize()
+    if (parent) parents.add(parent)
   }
+  for (const parent of parents) parent.normalize()
+  restoreSelection()
 }
 
 function commentMarkColors(theme: ThemeKey): { background: string; border: string } {
@@ -176,6 +204,7 @@ export function paintAnchoredComments(
   comments: CommentItem[],
   theme: ThemeKey,
 ): void {
+  const restoreSelection = preserveTextSelection(root)
   unwrapTextDecorations(root, 'mark.user-comment-highlight')
   if (!comments.length) {
     cssHighlightMap()?.delete(COMMENT_HIGHLIGHT)
@@ -208,12 +237,14 @@ export function paintAnchoredComments(
     })
   }
   syncCssCommentHighlights(root)
+  restoreSelection()
 }
 
 export function paintAnchoredAnnotations(
   root: HTMLElement,
   annotations: AnnotationItem[],
 ): void {
+  const restoreSelection = preserveTextSelection(root)
   unwrapTextDecorations(root, 'mark.phantasiai-annotation')
   if (!annotations.length) return
   const text = root.textContent ?? ''
@@ -246,4 +277,5 @@ export function paintAnchoredAnnotations(
       return mark
     })
   }
+  restoreSelection()
 }

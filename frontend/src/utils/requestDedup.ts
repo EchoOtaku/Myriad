@@ -47,7 +47,7 @@ export async function getUIConfigDeduped(): Promise<any> {
   return dedupedFetch(
     `${API_URL}/api/config/ui`,
     async () => {
-      const response = await fetch(`${API_URL}/api/config/ui`)
+      const response = await fetch(`${API_URL}/api/config/ui`, { signal: AbortSignal.timeout(30000) })
       if (!response.ok) {
         throw new ApiError(httpStatusMessage(response.status), response.status)
       }
@@ -66,6 +66,7 @@ export async function getLatestReportDeduped(
     async () => {
       const response = await fetch(`${API_URL}/api/reports/latest`, {
         credentials: 'include',
+        signal: AbortSignal.timeout(30000),
       })
       if (!response.ok) {
         throw new ApiError(httpStatusMessage(response.status), response.status)
@@ -96,7 +97,7 @@ export async function getPublicConfigDeduped(): Promise<any> {
   return dedupedFetch(
     `${API_URL}/api/config/public`,
     async () => {
-      const response = await fetch(`${API_URL}/api/config/public`)
+      const response = await fetch(`${API_URL}/api/config/public`, { signal: AbortSignal.timeout(30000) })
       if (!response.ok) {
         throw new ApiError(httpStatusMessage(response.status), response.status)
       }

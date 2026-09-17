@@ -24,6 +24,7 @@ export function registerMediaHandlers(
   bridge: TappBridge,
   tappInstance: TappInstance,
 ): () => void {
+  const analysisController = new AbortController()
   const HIGH_FREQUENCY_ACTIONS = new Set(['seek', 'volume', 'mute', 'unmute'])
 
   bridge.registerHandler('media.control', async (message) => {
@@ -491,6 +492,7 @@ export function registerMediaHandlers(
     const grid = await analyzeBeatGrid(
       currentSong.url,
       `${currentSong.source || 'netease'}-${currentSong.id}`,
+      analysisController.signal,
     )
     if (!grid || grid.beats.length < 8) {
       return { success: true, data: { available: false } }
@@ -690,7 +692,10 @@ export function registerMediaHandlers(
     }
   })
 
-  return stopSpectrumStream
+  return () => {
+    analysisController.abort()
+    stopSpectrumStream()
+  }
 }
 
 export function registerSpeechHandlers(

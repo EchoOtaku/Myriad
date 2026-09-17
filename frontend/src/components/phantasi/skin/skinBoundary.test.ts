@@ -107,7 +107,7 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /pack\.id\}-\$\{item\.pane\}/)
     assert.match(src, /workbenchDefaultSort/)
     assert.match(src, /layout="horizontal"/)
-    assert.match(src, /onRefreshSources/ )
+    assert.match(src, /onRefreshSources/)
     assert.match(src, /workbench-rsshub-actions/)
     assert.doesNotMatch(src, /description=\{phantasi\.workbenchSourcesHint\}/)
     assert.match(src, /usePhantasiGuides/)

@@ -300,3 +300,20 @@ it('reopening a large note wall reuses every page without evicting global caches
     globalThis.fetch = original
   }
 })
+
+it('oversized note pages are delivered without retaining an unbounded cache bucket', async () => {
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = (async () => {
+    calls++
+    return Response.json({ items: [{ id: 1, source_id: 196, title: 'x'.repeat(1_100_000) }], next_cursor: null })
+  }) as typeof fetch
+  try {
+    const sources = [{ id: 196, source_type: 'note' }]
+    assert.equal((await loadBoardNotes(sources, undefined, undefined, 1)).length, 1)
+    assert.equal((await loadBoardNotes(sources, undefined, undefined, 1)).length, 1)
+    assert.equal(calls, 2)
+  } finally {
+    globalThis.fetch = original
+  }
+})

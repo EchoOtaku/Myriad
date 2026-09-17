@@ -4,6 +4,7 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { authSubject } from '../../utils/authSubject'
+import { restoreSessionMessage } from './sessionHistoryMessage'
 import { SessionLoadScope } from './sessionLoadScope'
 
 const source = ts.createSourceFile('AgentEngine.tsx', readFileSync(new URL('./AgentEngine.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -33,7 +34,7 @@ function harness(getMessages: (...args: unknown[]) => Promise<unknown[]>) {
     sessionTitleSetByModeRef: { current: {} }, setSessionId: noop,
     stopAgoraConversation: noop, agentService: { getSessionMessages: getMessages },
     imageUrlsFromAgentPayload: () => [], executionStepsFromHistory: () => [],
-    pendingQuestionFromMetadata: () => undefined,
+    restoreSessionMessage,
     setMessages: (rows: unknown) => writes.push(rows),
     restorePendingActionFromMessages: () => null, clearAgentPendingAction: noop,
     restoreFollowUpQuestion: () => null,
@@ -138,4 +139,13 @@ test('identity loss during Work window-query preparation prevents the process PO
   await pending
   assert.deepEqual(effects, [])
   authSubject.change('guest', true)
+})
+
+test('opening a long session restores its latest persisted page', async () => {
+  let requested: unknown[] = []
+  const h = harness(async (...args) => { requested = args; return rows('latest') })
+  await h.context.loadSession({ id: 'long', mode: 'work', messageCount: 123 })
+  assert.deepEqual(requested.slice(0, 3), ['long', 3, 50])
+  assert.equal(h.writes.length, 1)
+  h.scope.reset()
 })

@@ -26,6 +26,7 @@ import {
   FaUndo as Undo,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getPhantasiTransition, phantasiAnimationPresets } from '../../../hooks/animation/pages/phantasi'
 import { Spinner } from '../../Spinner'
@@ -68,6 +69,7 @@ import {
   columnsAddColumn,
   columnsRemove,
   columnsRemoveColumn,
+  createVisualMarkdownSerializer,
   insertColumnsMarkdown,
   insertColumnsVisual,
   insertFootnoteMarkdown,
@@ -93,7 +95,6 @@ import {
   toggleVisualTask,
   visualBlockAt,
   visualClosest,
-  visualHtmlToMarkdown,
 } from './noteVisual'
 import { NoteWidgetPicker } from './NoteWidgetPicker'
 import { hydrateVisualMath } from './renderMath'
@@ -237,6 +238,7 @@ export function NoteEditorView({
   paneRef,
   canDelete,
 }: ReturnType<typeof useNoteEditorSession>) {
+  const [serializeVisual] = useState(createVisualMarkdownSerializer)
   const tools = [
     {
       key: 'bold',
@@ -723,7 +725,7 @@ export function NoteEditorView({
                         return
                       }
                     }
-                    commitVisualMd(visualHtmlToMarkdown(root.innerHTML))
+                    commitVisualMd(serializeVisual(root))
                   }}
                 />
               </div>

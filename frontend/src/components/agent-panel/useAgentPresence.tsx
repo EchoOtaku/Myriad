@@ -178,15 +178,18 @@ export function AgentPresenceList<T>({
   keyOf,
   kind = 'row',
   from = 'composer',
+  retainRemoved = true,
   children,
 }: {
   items: readonly T[]
   keyOf: (item: T) => string
   kind?: AgentPresenceKind
   from?: AgentPresenceFrom
+  /** Window eviction releases rows immediately rather than animating offscreen history. */
+  retainRemoved?: boolean
   children: (item: T) => ReactNode
 }) {
-  const entries = useKeyedPresence(items, keyOf, AGENT_ROW_MS)
+  const entries = useKeyedPresence(items, keyOf, retainRemoved ? AGENT_ROW_MS : 0)
   const last = entries.length - 1
   const staggerFor = useRef(new Map<string, number>())
   const live = new Set(entries.map((entry) => entry.key))

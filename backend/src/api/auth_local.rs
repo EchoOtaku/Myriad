@@ -1328,7 +1328,7 @@ mod tests {
         AuthResponse, CREATE_ADMIN_ADVISORY_LOCK_KEY, CreateAdminRequest,
         PASSWORD_HASH_ACQUIRE_TIMEOUT, UserInfo, acquire_password_hash_permit_from,
         admin_already_exists_error, create_admin_gate, hash_password,
-        map_create_admin_insert_error, verify_password,
+        map_create_admin_insert_error, run_password_worker, verify_password,
     };
     use crate::error::{HttpError, app_error_response};
     use axum::body::to_bytes;
