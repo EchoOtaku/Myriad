@@ -51,6 +51,17 @@ pub struct AiVendorSource {
     /// 前端预设 id（openrouter / deepseek / groq …），与 kind 独立。
     #[serde(default)]
     pub preset: String,
+    /// Wire protocol for text generation. Kept separate from vendor branding.
+    /// Values use the analyzer runtime ids (`openai`, `openai_responses`, `anthropic`, `gemini`).
+    #[serde(default)]
+    pub api_format: String,
+    /// Credential ownership for this source: `own`, `shared`, or `none`.
+    /// An empty value is a legacy source and is resolved conservatively.
+    #[serde(default)]
+    pub credential_mode: String,
+    /// Shared key family used when `credential_mode` is `shared`.
+    #[serde(default)]
+    pub shared_key_ref: Option<String>,
     #[serde(default)]
     pub api_key: Option<String>,
     #[serde(default)]
@@ -67,6 +78,25 @@ pub struct AiVendorSource {
 }
 
 impl AiVendorSource {
+    pub fn effective_api_format(&self) -> &str {
+        let explicit = self.api_format.trim();
+        if !explicit.is_empty() {
+            return explicit;
+        }
+        if self.kind.trim().eq_ignore_ascii_case("gemini") {
+            "gemini"
+        } else {
+            "openai"
+        }
+    }
+
+    pub fn has_supported_api_format(&self) -> bool {
+        matches!(
+            self.effective_api_format(),
+            "openai" | "openai_responses" | "anthropic" | "gemini"
+        )
+    }
+
     pub fn is_agora(&self) -> bool {
         let slug = self.slug.trim().to_ascii_lowercase();
         self.kind.trim().eq_ignore_ascii_case("agora")
@@ -79,9 +109,50 @@ impl AiVendorSource {
 /// 解析后的 AI 配置（已根据 tier 确定具体的 provider/key/model）
 pub struct ResolvedAiConfig {
     pub provider: String,
+    pub api_format: String,
     pub api_key: Option<String>,
+    pub credential_origin: AiCredentialOrigin,
     pub model: String,
     pub base_url: String,
+    pub source_enabled: bool,
+    pub requires_explicit_endpoint: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiCredentialOrigin {
+    Own,
+    Shared(String),
+    None,
+    Invalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedAiCredential {
+    pub api_key: Option<String>,
+    pub origin: AiCredentialOrigin,
+}
+
+impl ResolvedAiConfig {
+    pub fn text_ready(&self) -> bool {
+        let credential_ready = match &self.credential_origin {
+            AiCredentialOrigin::None => true,
+            AiCredentialOrigin::Own | AiCredentialOrigin::Shared(_) => self
+                .api_key
+                .as_ref()
+                .is_some_and(|key| !key.trim().is_empty()),
+            AiCredentialOrigin::Invalid => false,
+        };
+        let endpoint_ready = !self.requires_explicit_endpoint || !self.base_url.trim().is_empty();
+
+        self.source_enabled
+            && !self.model.trim().is_empty()
+            && matches!(
+                self.api_format.as_str(),
+                "openai" | "openai_responses" | "anthropic" | "gemini"
+            )
+            && endpoint_ready
+            && credential_ready
+    }
 }
 
 /// 核心应用配置（从环境变量读取）
@@ -1055,12 +1126,9 @@ impl DynamicConfig {
         Self::first_nonempty_key([self.provider_tinyfish_api_key.clone()])
     }
 
-    /// Standard 档解析后是否有可用文本 key（含 vendor / 共享库）。
+    /// Standard 档解析后是否有可用文本端点；新 source 可以明确选择免鉴权。
     pub fn text_ai_available(&self) -> bool {
-        self.resolve_ai_config(ModelTier::Standard)
-            .api_key
-            .as_ref()
-            .is_some_and(|key| !key.trim().is_empty())
+        self.resolve_ai_config(ModelTier::Standard).text_ready()
     }
 
     /// Google Search grounding 只能走 Gemini。
@@ -1106,6 +1174,105 @@ impl DynamicConfig {
         }
     }
 
+    fn shared_api_key_by_ref(&self, key_ref: &str) -> Option<String> {
+        match key_ref.trim() {
+            "openai" => self.shared_openai_api_key(),
+            "openrouter" => self.shared_openrouter_api_key(),
+            "gemini" => self.shared_gemini_api_key(),
+            "volcengine" => self.shared_volcengine_api_key(),
+            _ => None,
+        }
+    }
+
+    fn canonical_source_shared_key_ref(source: &AiVendorSource) -> Option<&'static str> {
+        let kind = source.kind.trim().to_ascii_lowercase();
+        let base_url = source.base_url.trim().trim_end_matches('/');
+        match kind.as_str() {
+            "openai" if base_url.is_empty() || base_url == "https://api.openai.com/v1" => {
+                Some("openai")
+            }
+            "openai_compatible" if base_url == "https://api.openai.com/v1" => Some("openai"),
+            "openrouter" if base_url.is_empty() || base_url == "https://openrouter.ai/api/v1" => {
+                Some("openrouter")
+            }
+            "gemini"
+                if base_url.is_empty()
+                    || base_url == "https://generativelanguage.googleapis.com" =>
+            {
+                Some("gemini")
+            }
+            "volcengine"
+                if base_url.is_empty()
+                    || base_url == "https://ark.cn-beijing.volces.com/api/v3" =>
+            {
+                Some("volcengine")
+            }
+            _ => None,
+        }
+    }
+
+    /// Resolve a source credential without exposing it outside the backend.
+    /// Missing mode is the legacy shape: prefer the source key, then borrow only
+    /// from a matching vendor on its canonical endpoint.
+    pub fn resolve_source_credential(&self, source: &AiVendorSource) -> ResolvedAiCredential {
+        match source.credential_mode.trim() {
+            "own" => ResolvedAiCredential {
+                api_key: Self::nonempty_opt(source.api_key.as_ref()),
+                origin: AiCredentialOrigin::Own,
+            },
+            "shared" => {
+                let Some(key_ref) = source
+                    .shared_key_ref
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                else {
+                    return ResolvedAiCredential {
+                        api_key: None,
+                        origin: AiCredentialOrigin::Invalid,
+                    };
+                };
+                if !matches!(key_ref, "openai" | "openrouter" | "gemini" | "volcengine") {
+                    return ResolvedAiCredential {
+                        api_key: None,
+                        origin: AiCredentialOrigin::Invalid,
+                    };
+                }
+                let api_key = self.shared_api_key_by_ref(key_ref);
+                ResolvedAiCredential {
+                    api_key,
+                    origin: AiCredentialOrigin::Shared(key_ref.to_string()),
+                }
+            }
+            "none" => ResolvedAiCredential {
+                api_key: None,
+                origin: AiCredentialOrigin::None,
+            },
+            "" => {
+                if let Some(api_key) = Self::nonempty_opt(source.api_key.as_ref()) {
+                    return ResolvedAiCredential {
+                        api_key: Some(api_key),
+                        origin: AiCredentialOrigin::Own,
+                    };
+                }
+                let Some(key_ref) = Self::canonical_source_shared_key_ref(source) else {
+                    return ResolvedAiCredential {
+                        api_key: None,
+                        origin: AiCredentialOrigin::None,
+                    };
+                };
+                ResolvedAiCredential {
+                    api_key: self.shared_api_key_by_ref(key_ref),
+                    origin: AiCredentialOrigin::Shared(key_ref.to_string()),
+                }
+            }
+            _ => ResolvedAiCredential {
+                api_key: None,
+                origin: AiCredentialOrigin::Invalid,
+            },
+        }
+    }
+
     pub fn vendor_kind_supports(kind: &str, capability: &str) -> bool {
         match (kind, capability) {
             ("openrouter" | "openai" | "openai_compatible", "text" | "image" | "speech") => true,
@@ -1125,49 +1292,54 @@ impl DynamicConfig {
 
     pub fn synthesize_vendor_sources(&self) -> Vec<AiVendorSource> {
         let mut sources = Vec::new();
-        if let Some(api_key) = self.shared_openrouter_api_key() {
+        if self.shared_openrouter_api_key().is_some() {
             sources.push(AiVendorSource {
                 slug: "openrouter".to_string(),
                 kind: "openrouter".to_string(),
                 display_name: "OpenRouter".to_string(),
                 enabled: true,
                 preset: "openrouter".to_string(),
-                api_key: Some(api_key),
+                credential_mode: "shared".to_string(),
+                shared_key_ref: Some("openrouter".to_string()),
                 base_url: "https://openrouter.ai/api/v1".to_string(),
                 ..AiVendorSource::default()
             });
         }
-        if let Some(api_key) = self.shared_openai_api_key() {
+        if self.shared_openai_api_key().is_some() {
             sources.push(AiVendorSource {
                 slug: "openai".to_string(),
                 kind: "openai".to_string(),
                 display_name: "OpenAI".to_string(),
                 enabled: true,
                 preset: "openai".to_string(),
-                api_key: Some(api_key),
+                credential_mode: "shared".to_string(),
+                shared_key_ref: Some("openai".to_string()),
                 base_url: self.shared_openai_base_url(),
                 ..AiVendorSource::default()
             });
         }
-        if let Some(api_key) = self.shared_gemini_api_key() {
+        if self.shared_gemini_api_key().is_some() {
             sources.push(AiVendorSource {
                 slug: "gemini".to_string(),
                 kind: "gemini".to_string(),
                 display_name: "Gemini".to_string(),
                 enabled: true,
                 preset: "gemini".to_string(),
-                api_key: Some(api_key),
+                api_format: "gemini".to_string(),
+                credential_mode: "shared".to_string(),
+                shared_key_ref: Some("gemini".to_string()),
                 ..AiVendorSource::default()
             });
         }
-        if let Some(api_key) = self.shared_volcengine_api_key() {
+        if self.shared_volcengine_api_key().is_some() {
             sources.push(AiVendorSource {
                 slug: "volcengine".to_string(),
                 kind: "volcengine".to_string(),
                 display_name: "Volcengine".to_string(),
                 enabled: true,
                 preset: "volcengine".to_string(),
-                api_key: Some(api_key),
+                credential_mode: "shared".to_string(),
+                shared_key_ref: Some("volcengine".to_string()),
                 base_url: self.shared_volcengine_base_url(),
                 ..AiVendorSource::default()
             });
@@ -1227,6 +1399,19 @@ impl DynamicConfig {
         } else {
             self.ai_vendor_sources.clone()
         };
+        for source in &mut sources {
+            if source.credential_mode.trim().is_empty() {
+                if Self::nonempty_opt(source.api_key.as_ref()).is_some() {
+                    source.credential_mode = "own".to_string();
+                } else if let Some(key_ref) = Self::canonical_source_shared_key_ref(source) {
+                    source.credential_mode = "shared".to_string();
+                    source.shared_key_ref = Some(key_ref.to_string());
+                } else {
+                    source.credential_mode = "none".to_string();
+                    source.shared_key_ref = None;
+                }
+            }
+        }
         if !sources.iter().any(AiVendorSource::is_agora) {
             if let Some(agora) = self.synthesize_agora_source() {
                 sources.push(agora);
@@ -1260,35 +1445,63 @@ impl DynamicConfig {
         source: &AiVendorSource,
         model: &str,
     ) -> ResolvedAiConfig {
-        match source.kind.as_str() {
+        let credential = self.resolve_source_credential(source);
+        match source.kind.trim().to_ascii_lowercase().as_str() {
             "gemini" => ResolvedAiConfig {
                 provider: "gemini".to_string(),
-                api_key: Self::nonempty_opt(source.api_key.as_ref())
-                    .or_else(|| self.shared_gemini_api_key()),
+                api_format: source.effective_api_format().to_string(),
+                api_key: credential.api_key,
+                credential_origin: credential.origin,
                 model: model.to_string(),
-                base_url: String::new(),
+                base_url: source.base_url.trim().to_string(),
+                source_enabled: source.enabled,
+                requires_explicit_endpoint: false,
             },
             "openrouter" => ResolvedAiConfig {
                 provider: "openai".to_string(),
-                api_key: Self::nonempty_opt(source.api_key.as_ref())
-                    .or_else(|| self.shared_openrouter_api_key()),
+                api_format: source.effective_api_format().to_string(),
+                api_key: credential.api_key,
+                credential_origin: credential.origin,
                 model: model.to_string(),
                 base_url: if source.base_url.trim().is_empty() {
                     "https://openrouter.ai/api/v1".to_string()
                 } else {
                     source.base_url.trim().to_string()
                 },
+                source_enabled: source.enabled,
+                requires_explicit_endpoint: false,
             },
-            _ => ResolvedAiConfig {
-                provider: "openai".to_string(),
-                api_key: Self::nonempty_opt(source.api_key.as_ref())
-                    .or_else(|| self.shared_openai_api_key()),
+            "openai" => ResolvedAiConfig {
+                provider: if source.effective_api_format() == "anthropic" {
+                    "anthropic".to_string()
+                } else {
+                    "openai".to_string()
+                },
+                api_format: source.effective_api_format().to_string(),
+                api_key: credential.api_key,
+                credential_origin: credential.origin,
                 model: model.to_string(),
                 base_url: if source.base_url.trim().is_empty() {
                     self.shared_openai_base_url()
                 } else {
                     source.base_url.trim().to_string()
                 },
+                source_enabled: source.enabled,
+                requires_explicit_endpoint: false,
+            },
+            _ => ResolvedAiConfig {
+                provider: if source.effective_api_format() == "anthropic" {
+                    "anthropic".to_string()
+                } else {
+                    "openai".to_string()
+                },
+                api_format: source.effective_api_format().to_string(),
+                api_key: credential.api_key,
+                credential_origin: credential.origin,
+                model: model.to_string(),
+                base_url: source.base_url.trim().to_string(),
+                source_enabled: source.enabled,
+                requires_explicit_endpoint: true,
             },
         }
     }
@@ -1297,16 +1510,24 @@ impl DynamicConfig {
         if Self::is_openrouter_base(selected_base) {
             ResolvedAiConfig {
                 provider: "openai".to_string(),
+                api_format: "openai".to_string(),
                 api_key: self.shared_openrouter_api_key(),
+                credential_origin: AiCredentialOrigin::Shared("openrouter".to_string()),
                 model: model.to_string(),
                 base_url: "https://openrouter.ai/api/v1".to_string(),
+                source_enabled: true,
+                requires_explicit_endpoint: false,
             }
         } else {
             ResolvedAiConfig {
                 provider: "openai".to_string(),
+                api_format: "openai".to_string(),
                 api_key: self.shared_openai_api_key(),
+                credential_origin: AiCredentialOrigin::Shared("openai".to_string()),
                 model: model.to_string(),
                 base_url: self.shared_openai_base_url(),
+                source_enabled: true,
+                requires_explicit_endpoint: false,
             }
         }
     }
@@ -1432,9 +1653,13 @@ impl DynamicConfig {
         } else {
             ResolvedAiConfig {
                 provider: "gemini".to_string(),
+                api_format: "gemini".to_string(),
                 api_key: self.shared_gemini_api_key(),
+                credential_origin: AiCredentialOrigin::Shared("gemini".to_string()),
                 model,
                 base_url: String::new(),
+                source_enabled: true,
+                requires_explicit_endpoint: false,
             }
         }
     }
@@ -1456,6 +1681,258 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("DATABASE_URL", v) },
             None => unsafe { std::env::remove_var("DATABASE_URL") },
         }
+    }
+
+    #[test]
+    fn vendor_source_api_format_uses_runtime_ids() {
+        let defaulted: AiVendorSource = serde_json::from_value(serde_json::json!({
+            "slug": "legacy",
+            "kind": "custom",
+            "display_name": "Legacy",
+            "enabled": true
+        }))
+        .expect("source without api_format");
+        assert_eq!(defaulted.effective_api_format(), "openai");
+        assert_eq!(AiVendorSource::default().effective_api_format(), "openai");
+        assert_eq!(
+            AiVendorSource {
+                kind: "gemini".to_string(),
+                api_format: String::new(),
+                ..AiVendorSource::default()
+            }
+            .effective_api_format(),
+            "gemini"
+        );
+
+        let explicit: AiVendorSource = serde_json::from_value(serde_json::json!({
+            "slug": "custom-responses",
+            "kind": "custom",
+            "display_name": "Custom Responses",
+            "enabled": true,
+            "api_format": "openai_responses",
+            "base_url": "https://llm.example/v1"
+        }))
+        .expect("explicit source");
+        assert_eq!(explicit.effective_api_format(), "openai_responses");
+        let config = DynamicConfig {
+            provider_openai_api_key: Some("must-not-leak".to_string()),
+            ai_vendor_sources: vec![explicit.clone()],
+            ..DynamicConfig::default()
+        };
+        let resolved = config.resolve_from_vendor_source(&explicit, "gpt-x");
+        assert_eq!(
+            resolved.api_key, None,
+            "custom source must not inherit another source's key"
+        );
+
+        let chat: AiVendorSource = serde_json::from_value(serde_json::json!({
+            "slug": "ollama",
+            "kind": "openai_compatible",
+            "display_name": "Ollama",
+            "enabled": true,
+            "api_format": "openai",
+            "base_url": "http://127.0.0.1:11434/v1"
+        }))
+        .expect("chat-completions source");
+        assert_eq!(chat.effective_api_format(), "openai");
+        assert_eq!(
+            crate::services::analyzer::AiProvider::from_str(chat.effective_api_format())
+                .expect("valid provider"),
+            crate::services::analyzer::AiProvider::OpenAI
+        );
+
+        let invalid = AiVendorSource {
+            api_format: "future_protocol".to_string(),
+            ..AiVendorSource::default()
+        };
+        assert_eq!(invalid.effective_api_format(), "future_protocol");
+        assert!(!invalid.has_supported_api_format());
+    }
+
+    #[test]
+    fn legacy_official_vendor_source_keeps_using_its_shared_key() {
+        let source: AiVendorSource = serde_json::from_value(serde_json::json!({
+            "slug": "openai-work",
+            "kind": "openai",
+            "display_name": "Work OpenAI",
+            "enabled": true,
+            "preset": "openai",
+            "api_format": "openai_responses",
+            "base_url": "https://api.openai.com/v1"
+        }))
+        .expect("legacy official source");
+        let config = DynamicConfig {
+            provider_openai_api_key: Some("shared-openai-key".to_string()),
+            ai_vendor_sources: vec![source.clone()],
+            ..DynamicConfig::default()
+        };
+
+        let resolved = config.resolve_from_vendor_source(&source, "gpt-x");
+
+        assert_eq!(resolved.api_key.as_deref(), Some("shared-openai-key"));
+        let normalized = config.effective_vendor_sources();
+        assert_eq!(normalized[0].credential_mode, "shared");
+        assert_eq!(normalized[0].shared_key_ref.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn source_credential_mode_controls_shared_key_reuse() {
+        let config = DynamicConfig {
+            provider_openai_api_key: Some("shared-openai-key".to_string()),
+            provider_openrouter_api_key: Some("shared-openrouter-key".to_string()),
+            ..DynamicConfig::default()
+        };
+        let custom = AiVendorSource {
+            kind: "custom".to_string(),
+            base_url: "https://gateway.example/v1".to_string(),
+            ..AiVendorSource::default()
+        };
+        assert_eq!(
+            config.resolve_source_credential(&custom),
+            ResolvedAiCredential {
+                api_key: None,
+                origin: AiCredentialOrigin::None,
+            }
+        );
+
+        let customized_openai = AiVendorSource {
+            kind: "openai".to_string(),
+            preset: "openai".to_string(),
+            base_url: "https://proxy.example/v1".to_string(),
+            ..AiVendorSource::default()
+        };
+        assert_eq!(
+            config.resolve_source_credential(&customized_openai).api_key,
+            None,
+            "legacy inference must not send the OpenAI key to a custom endpoint"
+        );
+
+        let explicitly_shared = AiVendorSource {
+            credential_mode: "shared".to_string(),
+            shared_key_ref: Some("openrouter".to_string()),
+            ..customized_openai.clone()
+        };
+        assert_eq!(
+            config
+                .resolve_source_credential(&explicitly_shared)
+                .api_key
+                .as_deref(),
+            Some("shared-openrouter-key")
+        );
+
+        let own = AiVendorSource {
+            credential_mode: "own".to_string(),
+            shared_key_ref: Some("openrouter".to_string()),
+            api_key: Some("source-key".to_string()),
+            ..customized_openai
+        };
+        assert_eq!(
+            config.resolve_source_credential(&own).api_key.as_deref(),
+            Some("source-key")
+        );
+
+        let keyless = AiVendorSource {
+            credential_mode: "none".to_string(),
+            api_key: Some("stale-source-key".to_string()),
+            ..custom
+        };
+        assert_eq!(config.resolve_source_credential(&keyless).api_key, None);
+
+        let invalid_ref = AiVendorSource {
+            credential_mode: "shared".to_string(),
+            shared_key_ref: Some("unknown".to_string()),
+            ..AiVendorSource::default()
+        };
+        assert_eq!(
+            config.resolve_source_credential(&invalid_ref).origin,
+            AiCredentialOrigin::Invalid
+        );
+    }
+
+    #[test]
+    fn text_ai_readiness_requires_a_key_for_own_and_shared_credentials() {
+        let source = AiVendorSource {
+            slug: "custom".to_string(),
+            kind: "custom".to_string(),
+            display_name: "Custom".to_string(),
+            enabled: true,
+            credential_mode: "own".to_string(),
+            base_url: "https://gateway.example/v1".to_string(),
+            ..AiVendorSource::default()
+        };
+        let mut config = DynamicConfig {
+            ai_source: source.slug.clone(),
+            openai_model: "model".to_string(),
+            ai_vendor_sources: vec![source],
+            ..DynamicConfig::default()
+        };
+
+        let resolved = config.resolve_ai_config(ModelTier::Standard);
+        assert_eq!(resolved.credential_origin, AiCredentialOrigin::Own);
+        assert!(!resolved.text_ready());
+        assert!(!config.text_ai_available());
+
+        config.ai_vendor_sources[0].api_key = Some(" source-key ".to_string());
+        assert!(config.resolve_ai_config(ModelTier::Standard).text_ready());
+
+        config.ai_vendor_sources[0].credential_mode = "shared".to_string();
+        config.ai_vendor_sources[0].shared_key_ref = Some("openai".to_string());
+        config.ai_vendor_sources[0].api_key = None;
+        assert!(!config.resolve_ai_config(ModelTier::Standard).text_ready());
+
+        config.provider_openai_api_key = Some(" shared-key ".to_string());
+        assert!(config.resolve_ai_config(ModelTier::Standard).text_ready());
+
+        config.ai_vendor_sources[0].credential_mode = "none".to_string();
+        config.ai_vendor_sources[0].shared_key_ref = None;
+        config.provider_openai_api_key = None;
+        let resolved = config.resolve_ai_config(ModelTier::Standard);
+        assert_eq!(resolved.credential_origin, AiCredentialOrigin::None);
+        assert!(resolved.text_ready());
+        assert!(config.text_ai_available());
+    }
+
+    #[test]
+    fn custom_text_sources_require_an_explicit_endpoint() {
+        let config = DynamicConfig {
+            provider_openai_base_url: "https://shared-openai.example/v1".to_string(),
+            ..DynamicConfig::default()
+        };
+        let source = AiVendorSource {
+            kind: "custom".to_string(),
+            enabled: true,
+            credential_mode: "own".to_string(),
+            api_key: Some("custom-key".to_string()),
+            ..AiVendorSource::default()
+        };
+
+        let resolved = config.resolve_from_vendor_source(&source, "model");
+        assert!(resolved.base_url.is_empty());
+        assert!(!resolved.text_ready());
+
+        let custom_gemini = AiVendorSource {
+            api_format: "gemini".to_string(),
+            ..source.clone()
+        };
+        let resolved = config.resolve_from_vendor_source(&custom_gemini, "model");
+        assert!(resolved.base_url.is_empty());
+        assert!(!resolved.text_ready());
+
+        let compatible = AiVendorSource {
+            kind: "openai_compatible".to_string(),
+            ..source.clone()
+        };
+        let resolved = config.resolve_from_vendor_source(&compatible, "model");
+        assert!(resolved.base_url.is_empty());
+        assert!(!resolved.text_ready());
+
+        let official = AiVendorSource {
+            kind: "openai".to_string(),
+            ..source
+        };
+        let resolved = config.resolve_from_vendor_source(&official, "model");
+        assert_eq!(resolved.base_url, "https://shared-openai.example/v1");
+        assert!(resolved.text_ready());
     }
 
     /// 「我明明开了 Lite」得能被认出来。
@@ -1642,6 +2119,38 @@ mod tests {
             ..DynamicConfig::default()
         };
         assert!(vault_only.text_ai_available());
+
+        let keyless_custom = DynamicConfig {
+            ai_source: "local".to_string(),
+            openai_model: "local-model".to_string(),
+            ai_vendor_sources: vec![AiVendorSource {
+                slug: "local".to_string(),
+                kind: "custom".to_string(),
+                display_name: "Local".to_string(),
+                enabled: true,
+                api_format: String::new(),
+                base_url: "http://127.0.0.1:11434/v1".to_string(),
+                ..AiVendorSource::default()
+            }],
+            ..DynamicConfig::default()
+        };
+        assert!(keyless_custom.text_ai_available());
+
+        let invalid_format = DynamicConfig {
+            ai_source: "invalid".to_string(),
+            openai_model: "model".to_string(),
+            ai_vendor_sources: vec![AiVendorSource {
+                slug: "invalid".to_string(),
+                kind: "custom".to_string(),
+                display_name: "Invalid".to_string(),
+                enabled: true,
+                api_format: "future_protocol".to_string(),
+                base_url: "https://llm.example/v1".to_string(),
+                ..AiVendorSource::default()
+            }],
+            ..DynamicConfig::default()
+        };
+        assert!(!invalid_format.text_ai_available());
     }
 
     #[test]

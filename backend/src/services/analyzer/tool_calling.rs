@@ -73,6 +73,9 @@ pub(crate) fn request_body(
         }
     }
     match provider {
+        AiProvider::OpenAIResponses | AiProvider::Anthropic => {
+            super::tool_protocol::request_body(provider, model, system, history, tools, max_tokens)
+        }
         AiProvider::OpenAI => {
             let mut messages = vec![json!({"role":"system","content":system})];
             for message in history {
@@ -140,6 +143,9 @@ impl Accumulator {
             bail!("Model provider returned an error");
         }
         let counts = match provider {
+            AiProvider::OpenAIResponses | AiProvider::Anthropic => {
+                bail!("Native protocol requires a complete response")
+            }
             AiProvider::OpenAI => value["usage"]["prompt_tokens"]
                 .as_u64()
                 .zip(value["usage"]["completion_tokens"].as_u64()),
@@ -168,6 +174,9 @@ impl Accumulator {
         }
         let mut visible = String::new();
         match provider {
+            AiProvider::OpenAIResponses | AiProvider::Anthropic => {
+                bail!("Native protocol requires a complete response")
+            }
             AiProvider::OpenAI => {
                 let Some(choice) = value["choices"].as_array().and_then(|c| c.first()) else {
                     return Ok(visible);
@@ -305,6 +314,9 @@ impl Accumulator {
             bail!("Model returned no answer or tool calls");
         }
         let native = match provider {
+            AiProvider::OpenAIResponses | AiProvider::Anthropic => {
+                bail!("Native protocol requires a complete response")
+            }
             AiProvider::OpenAI => {
                 let mut message = json!({"role":"assistant","content":self.text});
                 if !calls.is_empty() {
@@ -356,26 +368,50 @@ impl AiAnalyzer {
         let mut acc = Accumulator::default();
         let mut received_bytes = 0usize;
         let result = async {
-            let (url, header, credential) = match self.provider {
-                AiProvider::OpenAI => (
-                    super::openai_chat_completions_url(self.base_url.as_deref()),
-                    "Authorization",
-                    format!("Bearer {}", self.api_key),
-                ),
-                AiProvider::Gemini => (
-                    format!(
-                        "{}/v1beta/models/{}:streamGenerateContent?alt=sse",
-                        crate::services::http_client::GeminiApiUrl::get_base().await,
-                        self.model
-                    ),
-                    "x-goog-api-key",
-                    self.api_key.clone(),
-                ),
+            if matches!(
+                self.provider,
+                AiProvider::OpenAIResponses | AiProvider::Anthropic
+            ) {
+                let url = super::text_protocol::endpoint(self.provider, self.base_url.as_deref());
+                let mut request = self.authenticate(self.client.post(url));
+                if self.provider == AiProvider::Anthropic {
+                    request = request.header("anthropic-version", "2023-06-01");
+                }
+                let response = request
+                    .json(&super::request_budget::prepare(&body, self.provider)?)
+                    .send()
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Model connection failed"))?;
+                if !response.status().is_success() {
+                    bail!(
+                        "Model tool API returned HTTP {}",
+                        response.status().as_u16()
+                    );
+                }
+                let bytes = crate::services::outbound_security::read_limited_body(
+                    response,
+                    MAX_STREAM_BYTES,
+                )
+                .await
+                .map_err(|_| {
+                    anyhow::anyhow!("Model response could not be read within its size limit")
+                })?;
+                received_bytes = bytes.len();
+                let value = serde_json::from_slice(&bytes)
+                    .map_err(|_| anyhow::anyhow!("Invalid model response"))?;
+                let turn = super::tool_protocol::response_turn(self.provider, &self.model, &value)?;
+                if !turn.text.is_empty() {
+                    on_text(turn.text.clone()).await;
+                }
+                return Ok(turn);
+            }
+            let url = match self.provider {
+                AiProvider::OpenAI => super::openai_chat_completions_url(self.base_url.as_deref()),
+                AiProvider::Gemini => self.gemini_url(true).await,
+                _ => unreachable!("native protocols handled above"),
             };
             let mut response = self
-                .client
-                .post(url)
-                .header(header, credential)
+                .authenticate(self.client.post(url))
                 .json(&super::request_budget::prepare(&body, self.provider)?)
                 .send()
                 .await

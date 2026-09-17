@@ -79,13 +79,15 @@ pub(crate) fn prepare(body: &impl Serialize, provider: AiProvider) -> Result<Val
             // not a claim about a provider's tokenizer or monetary billing.
             let input = body.to_string().len() as u64 + 256;
             let requested = match provider {
-                AiProvider::OpenAI => body["max_tokens"].as_u64(),
+                AiProvider::OpenAI | AiProvider::Anthropic => body["max_tokens"].as_u64(),
+                AiProvider::OpenAIResponses => body["max_output_tokens"].as_u64(),
                 AiProvider::Gemini => body["generationConfig"]["maxOutputTokens"].as_u64(),
             }
             .unwrap_or(8192);
             let output = budget.allocate(input, requested)?;
             match provider {
-                AiProvider::OpenAI => body["max_tokens"] = json!(output),
+                AiProvider::OpenAI | AiProvider::Anthropic => body["max_tokens"] = json!(output),
+                AiProvider::OpenAIResponses => body["max_output_tokens"] = json!(output),
                 AiProvider::Gemini => {
                     if body["generationConfig"].is_null() {
                         body["generationConfig"] = json!({});
@@ -102,6 +104,29 @@ pub(crate) fn prepare(body: &impl Serialize, provider: AiProvider) -> Result<Val
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn native_protocols_charge_and_cap_their_output_fields() {
+        for (provider, field) in [
+            (AiProvider::OpenAIResponses, "max_output_tokens"),
+            (AiProvider::Anthropic, "max_tokens"),
+        ] {
+            let budget = RequestBudget::new(1000);
+            budget
+                .scope(async {
+                    let body =
+                        prepare(&json!({"model":"fixture", "input":"hello"}), provider).unwrap();
+                    assert!(
+                        body[field]
+                            .as_u64()
+                            .is_some_and(|limit| limit > 0 && limit < 1000)
+                    );
+                    assert!(prepare(&json!({"input":"again"}), provider).is_err());
+                })
+                .await;
+            assert_eq!(budget.charged(), 1000);
+        }
+    }
+
     #[tokio::test]
     async fn media_estimates_are_debited_before_provider_completion() {
         let budget = RequestBudget::new(100);

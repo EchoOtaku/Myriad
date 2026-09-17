@@ -647,6 +647,13 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           sources={vendorSources}
           onChange={setVendorSources}
           usages={vendorUsages}
+          sharedKeyValues={{
+            openai: getFieldValue('provider_openai_api_key'),
+            openrouter: getFieldValue('provider_openrouter_api_key'),
+            gemini: getFieldValue('provider_gemini_api_key'),
+            volcengine: getFieldValue('provider_volcengine_api_key'),
+          }}
+          onSharedKeyChange={(keyRef, value) => updateValue(`provider_${keyRef}_api_key`, value)}
         />
       </SettingGroup>
 
