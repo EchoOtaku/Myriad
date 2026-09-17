@@ -19,7 +19,7 @@
     var(--chrome-shine, inset 0 1px 0 rgb(255 255 255 / 52%)),
     var(--chrome-hairline, inset 0 -1px 0 rgb(0 0 0 / 5%)),
     var(--chrome-shadow, 0 8px 24px -10px rgb(0 0 0 / 14%));
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(13.6px);
   contain: layout style;
   user-select: none;
 }

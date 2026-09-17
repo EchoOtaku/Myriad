@@ -309,6 +309,15 @@ fn backend_create_allows_only_named_project_volumes() {
 }
 
 fn backend_volume_init_create(user: &str, init_env: &str, host: Value) -> Bytes {
+    backend_volume_init_create_oneoff(user, init_env, host, "True")
+}
+
+fn backend_volume_init_create_oneoff(
+    user: &str,
+    init_env: &str,
+    host: Value,
+    oneoff: &str,
+) -> Bytes {
     Bytes::from(
         serde_json::to_vec(&json!({
             "Image": "docker.io/example/backend:v1",
@@ -320,7 +329,7 @@ fn backend_volume_init_create(user: &str, init_env: &str, host: Value) -> Bytes 
             "Labels": {
                 "com.docker.compose.project": "myriad",
                 "com.docker.compose.service": "backend-volume-init",
-                "com.docker.compose.oneoff": "True",
+                "com.docker.compose.oneoff": oneoff,
             },
             "HostConfig": host,
         }))
@@ -344,6 +353,42 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
         }),
     );
     assert!(validate_container_create(&state(), &allowed).is_ok());
+
+    let compose_service = backend_volume_init_create_oneoff(
+        "0:0",
+        "MYRIAD_VOLUME_INIT_ONLY=true",
+        json!({
+            "AutoRemove": false,
+            "Binds": [
+                "myriad_backend_cache:/app/cache:rw",
+                "myriad_backend_data:/app/data:rw"
+            ],
+            "NetworkMode": "none",
+            "SecurityOpt": ["no-new-privileges:true"]
+        }),
+        "False",
+    );
+    assert!(validate_container_create(&state(), &compose_service).is_ok());
+
+    let garbage_oneoff = backend_volume_init_create_oneoff(
+        "0:0",
+        "MYRIAD_VOLUME_INIT_ONLY=true",
+        json!({
+            "AutoRemove": false,
+            "Binds": [
+                "myriad_backend_cache:/app/cache:rw",
+                "myriad_backend_data:/app/data:rw"
+            ],
+            "NetworkMode": "none",
+            "SecurityOpt": ["no-new-privileges:true"]
+        }),
+        "true",
+    );
+    assert!(
+        validate_container_create(&state(), &garbage_oneoff)
+            .unwrap_err()
+            .contains("narrow root init mode")
+    );
 
     let missing_flag = backend_volume_init_create(
         "0:0",

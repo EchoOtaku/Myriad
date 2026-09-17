@@ -83,8 +83,8 @@ html.dark .tour-hint {
     0 18px 48px -16px rgb(24 28 60 / 16%),
     0 16px 40px -18px color-mix(in srgb, var(--merope-accent) 28%, transparent);
   /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 */
-  -webkit-backdrop-filter: blur(8px) saturate(1.15);
-  backdrop-filter: blur(8px) saturate(1.15);
+  -webkit-backdrop-filter: blur(6.8px) saturate(1.15);
+  backdrop-filter: blur(6.8px) saturate(1.15);
   transition:
     box-shadow var(--sm-dur-slow) var(--sm-ease-standard),
     border-color var(--sm-dur-base) var(--sm-ease-standard);
@@ -252,8 +252,8 @@ html.dark .tour-hint__body {
   appearance: none;
   cursor: pointer;
   /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 */
-  -webkit-backdrop-filter: blur(12px) saturate(1.85) brightness(1.05);
-  backdrop-filter: blur(12px) saturate(1.85) brightness(1.05);
+  -webkit-backdrop-filter: blur(10.2px) saturate(1.85) brightness(1.05);
+  backdrop-filter: blur(10.2px) saturate(1.85) brightness(1.05);
   transition: var(--sm-t-elevate);
 }
 

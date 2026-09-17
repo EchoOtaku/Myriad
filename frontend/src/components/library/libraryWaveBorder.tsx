@@ -60,13 +60,13 @@ injectLibraryStyle(
         .library-playing-wave__band--soft {
             stroke-width: 42;
             opacity: 0;
-            filter: blur(16px);
+            filter: blur(13.6px);
         }
 
         .library-playing-wave__band--mid {
             stroke-width: 26;
             opacity: 0;
-            filter: blur(9px);
+            filter: blur(7.6px);
   `,
 )
 

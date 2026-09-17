@@ -227,8 +227,8 @@ injectLibraryStyle(
                 var(--lib-plat-brand) 18%
             );
             /* 单 blur，无 saturate/brightness —— 采样更省 */
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            backdrop-filter: blur(3.4px);
+            -webkit-backdrop-filter: blur(3.4px);
             border: 1px solid var(--lib-plat-border);
             box-shadow:
                 inset 0 1px 0 rgb(255 255 255 / 45%),
@@ -362,8 +362,8 @@ injectLibraryStyle(
                 rgb(var(--lib-caption-rgb) / var(--lib-caption-alpha)),
                 var(--platform-color, var(--color-primary, #3b82f6)) 4%
             );
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
+            backdrop-filter: blur(4.2px);
+            -webkit-backdrop-filter: blur(4.2px);
             border: 1px solid var(--lib-caption-border);
             box-shadow:
                 inset 0 1px 0 rgb(255 255 255 / 40%),

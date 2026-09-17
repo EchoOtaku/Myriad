@@ -50,7 +50,7 @@ injectLibraryStyle(
         .library-card-lyrics.is-leaving {
             opacity: 0;
             transform: translateY(8px) scale(0.97);
-            filter: blur(1.2px);
+            filter: blur(1px);
             transition:
                 opacity 0.48s cubic-bezier(0.33, 1, 0.68, 1),
                 transform 0.52s cubic-bezier(0.33, 1, 0.68, 1),
@@ -61,7 +61,7 @@ injectLibraryStyle(
         .group:not(.is-hover-locked):hover .library-card-lyrics.is-on {
             opacity: 0;
             transform: translateY(4px) scale(0.99);
-            filter: blur(0.4px);
+            filter: blur(0.3px);
             transition-duration: 0.22s;
         }
 

@@ -106,8 +106,8 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 /* Glass 效果 */
 .glass {
   background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(17px) saturate(180%);
+  -webkit-backdrop-filter: blur(17px) saturate(180%);
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
 .dark .glass {
@@ -140,7 +140,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 .hw-glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
+  filter: blur(51px);
   animation: hw-glow-breathe 6s ease-in-out infinite;
 }
 

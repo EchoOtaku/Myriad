@@ -421,8 +421,9 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(
                 >
                   {opt.id !== 'none' && (
                     <div
-                      className="absolute -right-1 -top-1 w-4 h-4 rounded-full blur-[6px]"
+                      className="absolute -right-1 -top-1 w-4 h-4 rounded-full"
                       style={{
+                        filter: 'blur(5.1px)',
                         background:
                           opt.id === 'primary'
                             ? 'var(--color-primary)'

@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::error::{Result, UpdaterError};
 use crate::probe::compose::ComposeBinary;
@@ -369,28 +369,18 @@ impl ComposeRunner {
         self.run(&args, Duration::from_secs(600)).await
     }
 
-    /// Repair backend named-volume ownership with the target backend image's
-    /// narrowly scoped init mode. The regular backend container remains uid
-    /// 1000; only this disposable container runs as root.
+    /// Repair backend named-volume ownership with the target backend image.
+    /// Recreate the compose service in place so the completed latch tracks the
+    /// current tag; a parallel `compose run` would leave the named container
+    /// pinning the previous image. The regular backend stays uid 1000.
     pub async fn init_backend_volumes(&self) -> Result<ComposeOutput> {
-        let container_name = format!(
-            "{}-backend-volume-init-{}",
-            self.project,
-            uuid::Uuid::new_v4().simple()
-        );
         let started = self
             .run(
                 &[
-                    "run",
-                    "--detach",
+                    "up",
+                    "-d",
                     "--no-deps",
-                    "--no-TTY",
-                    "--name",
-                    &container_name,
-                    "--user",
-                    "0:0",
-                    "-e",
-                    "MYRIAD_VOLUME_INIT_ONLY=true",
+                    "--force-recreate",
                     "backend-volume-init",
                 ],
                 Duration::from_secs(600),
@@ -400,47 +390,22 @@ impl ComposeRunner {
             return Ok(started);
         }
 
-        let container_id = started
-            .stdout_tail
-            .lines()
-            .rev()
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-            .ok_or_else(|| {
-                UpdaterError::Docker(
-                    "backend volume initializer did not return a container id".into(),
-                )
-            })?;
+        let container_id = self.volume_init_service_container_id().await?;
+        info!(%container_id, "backend volume initializer recreated");
         let waited = self
-            .run_docker(&["wait", container_id], Duration::from_secs(600))
-            .await;
-        // Capture the init entrypoint's uid-1000 write-probe diagnostics before
-        // removing the disposable container. Failure to read logs is diagnostic
-        // only; the authoritative result remains `docker wait`.
+            .run_docker(&["wait", &container_id], Duration::from_secs(600))
+            .await?;
+        // Capture the init entrypoint's uid-1000 write-probe diagnostics.
+        // Failure to read logs is diagnostic only; `docker wait` is authoritative.
         let logs = self
             .run_docker(
-                &["logs", "--tail", "10000", container_id],
+                &["logs", "--tail", "10000", &container_id],
                 Duration::from_secs(120),
             )
             .await;
-        let removed = self
-            .run_docker(&["rm", "--force", container_id], Duration::from_secs(120))
-            .await;
-
-        let waited = waited?;
-        let removed = removed?;
-        if !removed.ok() {
-            return Ok(removed);
-        }
         if !waited.ok() {
             return Ok(waited);
         }
-        // Compose `up` leaves `container_name: myriad-backend-volume-init`
-        // (oneoff=False) after first install. The disposable `compose run`
-        // above does not replace it, so that exited container pins the
-        // previous backend image (`docker images` shows `U`) across updates.
-        self.remove_stale_volume_init_containers(container_id)
-            .await;
         let init_exit = waited
             .stdout_tail
             .lines()
@@ -475,11 +440,9 @@ impl ComposeRunner {
         })
     }
 
-    /// Drop the compose-service volume-init container so it cannot pin the
-    /// previous backend image. Best-effort: a miss must not fail the update.
-    async fn remove_stale_volume_init_containers(&self, keep_id: &str) {
+    async fn volume_init_service_container_id(&self) -> Result<String> {
         let project_filter = format!("label=com.docker.compose.project={}", self.project);
-        let listed = match self
+        let listed = self
             .run_docker(
                 &[
                     "ps",
@@ -488,54 +451,23 @@ impl ComposeRunner {
                     &project_filter,
                     "--filter",
                     "label=com.docker.compose.service=backend-volume-init",
+                    "--filter",
+                    "label=com.docker.compose.oneoff=False",
                 ],
                 Duration::from_secs(30),
             )
-            .await
-        {
-            Ok(output) if output.ok() => output,
-            Ok(output) => {
-                warn!(
-                    summary = %output.error_summary(),
-                    "failed to list leftover backend-volume-init containers"
-                );
-                return;
-            }
-            Err(error) => {
-                warn!(
-                    err = %error,
-                    "failed to list leftover backend-volume-init containers"
-                );
-                return;
-            }
-        };
-        for id in leftover_volume_init_ids(&listed.stdout_tail, keep_id) {
-            match self
-                .run_docker(&["rm", "--force", &id], Duration::from_secs(120))
-                .await
-            {
-                Ok(output) if output.ok() => {
-                    info!(
-                        container = %id,
-                        "removed leftover backend-volume-init container"
-                    );
-                }
-                Ok(output) => {
-                    warn!(
-                        container = %id,
-                        summary = %output.error_summary(),
-                        "failed to remove leftover backend-volume-init container"
-                    );
-                }
-                Err(error) => {
-                    warn!(
-                        container = %id,
-                        err = %error,
-                        "failed to remove leftover backend-volume-init container"
-                    );
-                }
-            }
+            .await?;
+        if !listed.ok() {
+            return Err(UpdaterError::Docker(format!(
+                "list backend-volume-init container failed: {}",
+                listed.error_summary()
+            )));
         }
+        first_container_id(&listed.stdout_tail).ok_or_else(|| {
+            UpdaterError::Docker(
+                "backend volume initializer did not create a compose service container".into(),
+            )
+        })
     }
 
     async fn run_docker(&self, args: &[&str], timeout: Duration) -> Result<ComposeOutput> {
@@ -631,17 +563,12 @@ impl ComposeRunner {
     }
 }
 
-fn docker_ids_match(left: &str, right: &str) -> bool {
-    !left.is_empty() && (left == right || left.starts_with(right) || right.starts_with(left))
-}
-
-fn leftover_volume_init_ids(ps_output: &str, keep_id: &str) -> Vec<String> {
+fn first_container_id(ps_output: &str) -> Option<String> {
     ps_output
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty() && !docker_ids_match(line, keep_id))
+        .find(|line| !line.is_empty())
         .map(str::to_string)
-        .collect()
 }
 
 fn tail_string(buf: &[u8], limit: usize) -> String {
@@ -655,34 +582,20 @@ fn tail_string(buf: &[u8], limit: usize) -> String {
 }
 
 #[cfg(test)]
-mod leftover_volume_init_ids_tests {
-    use super::leftover_volume_init_ids;
+mod first_container_id_tests {
+    use super::first_container_id;
 
     #[test]
-    fn skips_blank_lines_and_the_disposable_keep_id() {
-        let ids = leftover_volume_init_ids(
-            "\n8a0903d4f94f\n\nabc123deadbe\n8a0903d4f94f\n",
-            "8a0903d4f94f",
-        );
-        assert_eq!(ids, vec!["abc123deadbe".to_string()]);
-    }
-
-    #[test]
-    fn short_and_long_keep_ids_are_the_same_container() {
-        let long = "8a0903d4f94f0123456789abcdef0123456789abcdef0123456789abcdef01";
+    fn skips_blank_lines() {
         assert_eq!(
-            leftover_volume_init_ids("8a0903d4f94f\nabc123deadbe\n", long),
-            vec!["abc123deadbe".to_string()]
-        );
-        assert_eq!(
-            leftover_volume_init_ids(&format!("{long}\nabc123deadbe\n"), "8a0903d4f94f"),
-            vec!["abc123deadbe".to_string()]
+            first_container_id("\n  \n8a0903d4f94f\nabc123deadbe\n").as_deref(),
+            Some("8a0903d4f94f")
         );
     }
 
     #[test]
-    fn empty_ps_output_is_a_no_op() {
-        assert!(leftover_volume_init_ids("", "keep").is_empty());
-        assert!(leftover_volume_init_ids("\n  \n", "keep").is_empty());
+    fn empty_ps_output_is_none() {
+        assert_eq!(first_container_id(""), None);
+        assert_eq!(first_container_id("\n  \n"), None);
     }
 }

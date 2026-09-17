@@ -353,7 +353,7 @@ html.dark .home-sticker-pick-hint {
 .home-layout-rail {
   --cfg-frost-border: var(--chrome-stroke, rgb(255 255 255 / 50%));
   --cfg-frost-elevated-bg: var(--chrome-elevated, rgb(255 255 255 / 96%));
-  --cfg-frost-filter: blur(20px) saturate(180%);
+  --cfg-frost-filter: blur(17px) saturate(180%);
   --cfg-text-1: var(--text-primary, #1d1d1f);
   --cfg-text-2: var(--text-secondary, rgb(60 60 67 / 72%));
   --cfg-text-3: var(--text-secondary, rgb(60 60 67 / 48%));

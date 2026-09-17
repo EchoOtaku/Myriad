@@ -79,7 +79,7 @@
 
   /*
    * Mobile blur reduction applies only to standard / unset data-perf-mode.
-   * light and exlight already disable blur in performance.css; blur(8px)!important
+   * light and exlight already disable blur in performance.css; blur(6.8px)!important
    * here would bring frosted glass back on some cascade paths.
    */
   html:not([data-perf-mode='light'], [data-perf-mode='exlight'])
@@ -88,7 +88,7 @@
     [class*='backdrop-blur-2xl'],
   html:not([data-perf-mode='light'], [data-perf-mode='exlight'])
     [class*='backdrop-blur-3xl'] {
-    backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(6.8px) !important;
   }
 }
 

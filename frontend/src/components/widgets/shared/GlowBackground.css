@@ -1,14 +1,22 @@
 .glow-orb {
+  --glow-at: center;
   position: absolute;
   border-radius: 9999px;
   pointer-events: none;
-  transform: translate3d(0, 0, 0); /* 强制合成层 */
+  transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
-  background: var(--glow-color);
+  background: radial-gradient(
+    circle at var(--glow-at),
+    var(--glow-color) 0%,
+    color-mix(in srgb, var(--glow-color) 55%, transparent) 22%,
+    color-mix(in srgb, var(--glow-color) 22%, transparent) 48%,
+    color-mix(in srgb, var(--glow-color) 6%, transparent) 72%,
+    transparent 100%
+  );
 }
 
 :root[data-glow='primary'] .glow-orb {
-  background: var(--color-primary);
+  --glow-color: var(--color-primary);
 }
 
 :root[data-glow='none'] .glow-orb {
@@ -16,11 +24,13 @@
 }
 
 .glow-right {
+  --glow-at: 100% 0%;
   right: -2rem;
   top: -2rem;
 }
 
 .glow-left {
+  --glow-at: 0% 100%;
   left: -1.5rem;
   bottom: -1.5rem;
 }
@@ -56,11 +66,24 @@
 }
 
 .glow-blur-sm {
-  filter: blur(24px);
+  background: radial-gradient(
+    circle at var(--glow-at),
+    var(--glow-color) 0%,
+    color-mix(in srgb, var(--glow-color) 70%, transparent) 40%,
+    color-mix(in srgb, var(--glow-color) 22%, transparent) 62%,
+    transparent 82%
+  );
 }
 
 .glow-blur-lg {
-  filter: blur(64px);
+  background: radial-gradient(
+    circle at var(--glow-at),
+    var(--glow-color) 0%,
+    color-mix(in srgb, var(--glow-color) 55%, transparent) 22%,
+    color-mix(in srgb, var(--glow-color) 22%, transparent) 48%,
+    color-mix(in srgb, var(--glow-color) 6%, transparent) 72%,
+    transparent 100%
+  );
 }
 
 .glow-static {
@@ -72,7 +95,7 @@
   opacity: var(--glow-opacity, 0.06);
 }
 
-/* 不挂 will-change：单次淡入类名不摘，挂上会永久占合成层。blur 期间浏览器会自行建层。 */
+/* 不挂 will-change：单次淡入类名不摘，挂上会永久占合成层。 */
 .glow-animate-primary {
   animation: glow-pulse-primary 3s ease-in-out forwards;
 }

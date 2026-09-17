@@ -739,7 +739,7 @@ html.dark .phantasi-note.phantasi-skin .phantasi-note__bubble-btn:hover {
   border: 1px solid var(--cfg-frost-border, var(--chrome-stroke, rgb(255 255 255 / 50%)));
   border-radius: 0.7rem;
   background: var(--cfg-frost-elevated-bg, var(--chrome-elevated, rgb(255 255 255 / 96%)));
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
   box-shadow:
     0 16px 40px -12px rgb(0 0 0 / 28%),
     0 0 0 1px rgb(255 255 255 / 40%) inset;
@@ -973,7 +973,7 @@ html.dark .phantasi-note.phantasi-skin .phantasi-note__bubble-btn:hover {
   border: 1px solid var(--cfg-frost-border, var(--chrome-stroke, rgb(255 255 255 / 50%)));
   border-radius: 0.5rem;
   background: var(--cfg-frost-elevated-bg, var(--chrome-elevated, rgb(255 255 255 / 96%)));
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
   box-shadow:
     0 8px 24px -6px rgb(0 0 0 / 16%),
     0 0 0 1px rgb(255 255 255 / 40%) inset;

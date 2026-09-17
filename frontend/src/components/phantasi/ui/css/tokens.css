@@ -77,7 +77,7 @@ html.dark #phantasi-veil-bloom {
   background-position: inherit;
   background-repeat: inherit;
   background-size: inherit;
-  filter: blur(8px);
+  filter: blur(6.8px);
   mask-image: linear-gradient(
     to right,
     #000 0%,

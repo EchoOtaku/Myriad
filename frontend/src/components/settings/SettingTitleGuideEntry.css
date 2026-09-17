@@ -106,8 +106,8 @@
     var(--cfg-frost-bg, rgb(255 255 255 / 72%)) 88%,
     transparent
   );
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
   box-shadow:
     0 4px 6px -1px rgb(0 0 0 / 8%),
     0 16px 36px -12px
@@ -264,8 +264,8 @@ html.dark .setting-title-guide-float {
     var(--cfg-frost-bg, rgb(28 28 30 / 72%)) 90%,
     transparent
   );
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
   box-shadow:
     0 4px 6px -1px rgb(0 0 0 / 35%),
     0 18px 40px -14px

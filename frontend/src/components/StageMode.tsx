@@ -85,7 +85,7 @@ function applyStageGradient(
 }
 
 function getBlurAmount(easeProgress: number, isEnteringPhase: boolean) {
-  return isEnteringPhase ? easeProgress * 20 : (1 - easeProgress) * 20
+  return isEnteringPhase ? easeProgress * 17 : (1 - easeProgress) * 17
 }
 
 const CURTAIN_MS = 1000
@@ -385,9 +385,9 @@ function SubtitleDisplay({
             <motion.div
               key={line.id}
               layout
-              initial={{ opacity: 0, x: -20, filter: 'blur(10px)' }}
+              initial={{ opacity: 0, x: -20, filter: 'blur(8.5px)' }}
               animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -20, filter: 'blur(5px)' }}
+              exit={{ opacity: 0, y: -20, filter: 'blur(4.2px)' }}
               transition={{
                 duration: 0.8,
                 ease: [0.16, 1, 0.3, 1],

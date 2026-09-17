@@ -131,7 +131,7 @@ html[data-perf-mode='exlight'] .nav-container[data-nav-switch='in'] {
 
 .dynamic-island {
   background: var(--chrome-sheen), var(--chrome-fill);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(17px);
   border-radius: 30px;
   padding: 10px;
   border: 2px solid color-mix(in srgb, var(--color-primary) 15%, transparent);

@@ -333,11 +333,12 @@ fn has_mount_target(value: &Value, host: &Value, expected: &str) -> bool {
     bind_has_target || structured_has_target
 }
 
-/// The updater may run one disposable `backend-volume-init` container as root
-/// solely to repair the two backend named volumes. Keep this exception narrower
-/// than normal Compose service creation: dedicated service label, exact uid,
-/// exact mode flag, one-off label, no network, no-new-privileges, and both
-/// already-allowlisted volume targets are required.
+/// Root is allowed only for `backend-volume-init`: exact uid, init-only env,
+/// Compose oneoff label (`True` for `compose run`, `False` for the named
+/// service), no network, no-new-privileges, and both already-allowlisted
+/// volume targets. `False` is required so the updater can recreate the compose
+/// service in place; a parallel `compose run` would leave the named container
+/// pinning the previous backend image.
 fn is_narrow_backend_volume_init(value: &Value, host: &Value, service: &str) -> bool {
     service == "backend-volume-init"
         && value.get("User").and_then(Value::as_str) == Some("0:0")
@@ -345,7 +346,7 @@ fn is_narrow_backend_volume_init(value: &Value, host: &Value, service: &str) -> 
         && value
             .pointer("/Labels/com.docker.compose.oneoff")
             .and_then(Value::as_str)
-            == Some("True")
+            .is_some_and(|oneoff| oneoff == "True" || oneoff == "False")
         && host.get("AutoRemove").and_then(Value::as_bool) != Some(true)
         && host
             .pointer("/RestartPolicy/Name")

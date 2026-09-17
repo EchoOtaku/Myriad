@@ -7,7 +7,7 @@
   --cfg-subtle-border-hover: rgb(229 231 235 / 75%);
   --cfg-frost-bg: rgb(255 255 255 / 72%);
   --cfg-frost-border: rgb(255 255 255 / 50%);
-  --cfg-frost-filter: blur(20px) saturate(180%);
+  --cfg-frost-filter: blur(17px) saturate(180%);
   --cfg-frost-shadow:
     0 10px 40px -10px rgb(0 0 0 / 8%),
     0 4px 12px -4px rgb(0 0 0 / 5%);
@@ -173,7 +173,7 @@ html.dark {
   --cfg-subtle-border-hover: rgb(255 255 255 / 16%);
   --cfg-frost-bg: rgb(16 16 16 / 58%);
   --cfg-frost-border: rgb(255 255 255 / 12%);
-  --cfg-frost-filter: blur(20px) saturate(140%);
+  --cfg-frost-filter: blur(17px) saturate(140%);
   --cfg-frost-shadow:
     0 10px 40px -10px rgb(0 0 0 / 55%),
     0 4px 12px -4px rgb(0 0 0 / 40%);

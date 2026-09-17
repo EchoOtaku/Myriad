@@ -566,7 +566,7 @@ html.dark .music-control-btn:hover {
   opacity: 0;
   transition: opacity 0.3s ease;
   z-index: -1;
-  filter: blur(8px);
+  filter: blur(6.8px);
   pointer-events: none;
 }
 

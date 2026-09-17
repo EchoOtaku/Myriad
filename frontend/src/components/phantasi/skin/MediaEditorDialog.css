@@ -23,7 +23,7 @@
     0 10px 40px -10px rgb(0 0 0 / 8%),
     0 4px 12px -4px rgb(0 0 0 / 5%)
   );
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
   font-family:
     var(--font-inter, 'Inter'),
     -apple-system,
@@ -43,7 +43,7 @@ html.dark .media-editor {
 
 .media-editor::backdrop {
   background: rgb(0 0 0 / 40%);
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
 }
 
 html.dark .media-editor::backdrop {
@@ -182,7 +182,7 @@ html.dark .media-editor::backdrop {
   border-radius: 999px;
   background: var(--cfg-frost-bg, rgb(255 255 255 / 72%));
   box-shadow: var(--cfg-card-shadow-sm);
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
   color: var(--cfg-text-2);
   font-size: 0.6875rem;
   font-weight: 550;
@@ -249,7 +249,7 @@ html.dark .media-editor__canvas {
   border-radius: 999px;
   background: var(--cfg-frost-bg, rgb(255 255 255 / 72%));
   box-shadow: var(--cfg-frost-shadow);
-  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  backdrop-filter: var(--cfg-frost-filter, blur(17px) saturate(180%));
   color: var(--cfg-text-1);
 }
 

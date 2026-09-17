@@ -1215,7 +1215,7 @@ button.agent-panel-tag:disabled {
   left: 0;
   height: var(--agent-face-fade);
   pointer-events: none;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(8.5px);
   mask-image: linear-gradient(to bottom, transparent, #000 75%);
 }
 
@@ -1641,7 +1641,7 @@ button.agent-panel-tag:disabled {
   position: absolute;
   inset: -55%;
   border-radius: 50%;
-  filter: blur(2.5px);
+  filter: blur(2.1px);
 }
 
 .agent-panel-attach[data-status]:not([data-status='idle'])
@@ -3320,7 +3320,7 @@ html.dark .agent-panel-aurora {
     var(--agent-aurora-0) 100%
   );
   opacity: 0.42;
-  filter: blur(12px);
+  filter: blur(10.2px);
   animation: agent-panel-aurora-ribbon var(--agent-aurora-core-ms) linear
     infinite reverse;
   transition:

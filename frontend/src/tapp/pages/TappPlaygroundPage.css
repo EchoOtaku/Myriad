@@ -127,7 +127,7 @@
     color-mix(in srgb, var(--color-primary) 45%, transparent) 240deg,
     transparent 320deg
   );
-  filter: blur(8px);
+  filter: blur(6.8px);
   animation: playground-aura-spin 3.2s linear infinite;
 }
 

@@ -19,7 +19,7 @@ html.gcp-panel-open [data-tapp-run-shell] {
   display: flex;
   align-items: center;
   background: var(--chrome-sheen), var(--chrome-fill);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(17px);
   border: 1px solid var(--chrome-stroke);
   box-shadow:
     var(--chrome-shine),

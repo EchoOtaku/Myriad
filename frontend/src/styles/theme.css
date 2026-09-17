@@ -344,7 +344,7 @@ html.dark #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
   /* Default fill is slightly more open; glass-60/70/90/95 still override. */
   --surface-alpha: 74%;
   --surface-border: rgb(255 255 255 / 10%);
-  --surface-filter: blur(16px) saturate(180%);
+  --surface-filter: blur(13.6px) saturate(180%);
 
   /* Top sheen: ~1/3 of liquid strength. solid/flat/outline clear --surface-bg. */
   --surface-sheen: linear-gradient(
@@ -436,7 +436,7 @@ html.dark {
 :root[data-surface='outline'] {
   --surface-alpha: 20%;
   --surface-border: var(--border-color);
-  --surface-filter: blur(3px);
+  --surface-filter: blur(2.5px);
   --surface-shadow: none;
   --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
@@ -462,7 +462,7 @@ html.dark {
       100%
   );
   --surface-bg: var(--surface-sheen), var(--surface-tint);
-  --surface-filter: blur(3px) saturate(200%) brightness(1.06);
+  --surface-filter: blur(2.5px) saturate(200%) brightness(1.06);
   --surface-border: rgb(255 255 255 / 60%);
 
   /* Top/bottom hairlines; one drop shadow for lift. */
@@ -488,7 +488,7 @@ html.dark .glass-liquid {
     color-mix(in srgb, rgb(var(--surface-rgb) / 46%), var(--color-primary) 8%)
       100%
   );
-  --surface-filter: blur(3px) saturate(150%) brightness(0.7);
+  --surface-filter: blur(2.5px) saturate(150%) brightness(0.7);
   --surface-border: rgb(255 255 255 / 16%);
   --surface-shadow:
     inset 0 1px 0 rgb(255 255 255 / 12%), inset 0 -1px 0 rgb(0 0 0 / 32%),
@@ -726,12 +726,12 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
 @media (width >= 768px) and (prefers-reduced-motion: no-preference) {
   html.surface-lens:not([data-perf-mode='light'], [data-perf-mode='exlight'])
     [data-liquid-lens] {
-    backdrop-filter: var(--hyalite, blur(2px)) saturate(180%) brightness(1.03);
+    backdrop-filter: var(--hyalite, blur(1.7px)) saturate(180%) brightness(1.03);
   }
 
   html.dark.surface-lens:not([data-perf-mode='light'], [data-perf-mode='exlight'])
     [data-liquid-lens] {
-    backdrop-filter: var(--hyalite, blur(2px)) saturate(140%);
+    backdrop-filter: var(--hyalite, blur(1.7px)) saturate(140%);
   }
 
   /* Keep enough fill in the content area; edges leave a light path. Filter does refraction. */
@@ -985,7 +985,7 @@ html.dark ::placeholder {
 
   /* Mobile downgrade: default-glass tokens only (non-glass surfaces out-specify this). */
   :root {
-    --surface-filter: blur(8px) saturate(180%);
+    --surface-filter: blur(6.8px) saturate(180%);
     --surface-shadow: 0 4px 16px 0 rgb(31 38 135 / 8%);
   }
 
@@ -998,14 +998,14 @@ html.dark ::placeholder {
   html.surface-lens[data-surface='liquid'],
   .glass-liquid,
   html.surface-lens .glass-liquid {
-    --surface-filter: blur(4px) saturate(180%);
+    --surface-filter: blur(3.4px) saturate(180%);
   }
 
   html.dark[data-surface='liquid'],
   html.dark.surface-lens[data-surface='liquid'],
   html.dark .glass-liquid,
   html.dark.surface-lens .glass-liquid {
-    --surface-filter: blur(4px) saturate(150%) brightness(0.7);
+    --surface-filter: blur(3.4px) saturate(150%) brightness(0.7);
   }
 }
 

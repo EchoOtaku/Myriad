@@ -38,6 +38,8 @@
 
 services:
   backend-volume-init:
+    # Completed latch for volume ownership. Updater recreates this
+    # service in place; do not compose-run a second container beside it.
     image: ${BACKEND_IMAGE:-docker.io/somekawahitomi/myriad-backend}:${MYRIAD_TAG}
     container_name: myriad-backend-volume-init
     user: "0:0"

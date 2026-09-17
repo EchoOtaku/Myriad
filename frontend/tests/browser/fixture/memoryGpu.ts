@@ -184,7 +184,7 @@ async function glassCycles(cycles: number) {
     const engine = createHyalite()
     supported = engine.supported()
     const panel = document.createElement('div')
-    panel.style.cssText = 'width: 240px; height: 120px; border-radius: 24px; backdrop-filter: var(--hyalite, blur(6px)); -webkit-backdrop-filter: var(--hyalite, blur(6px))'
+    panel.style.cssText = 'width: 240px; height: 120px; border-radius: 24px; backdrop-filter: var(--hyalite, blur(5.1px)); -webkit-backdrop-filter: var(--hyalite, blur(5.1px))'
     document.body.append(panel)
     engine.attach(panel, { materialize: 0, onBuild: info => { largestMap = Math.max(largestMap, info.mapSize[0] * info.mapSize[1]) } })
     if (!supported) fallbackStyle = getComputedStyle(panel).getPropertyValue('backdrop-filter') || getComputedStyle(panel).getPropertyValue('-webkit-backdrop-filter')

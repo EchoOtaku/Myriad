@@ -200,7 +200,7 @@ jobs:
 # 结构示意。字段与挂载以仓库根 docker-compose.yml 为准，不要照抄本块去部署。
 services:
   postgres:            # bundled only; ./pgdata bind → /var/lib/postgresql
-  backend-volume-init: # 一次性修 named volume 属主；更新器用 disposable compose run 后必须删掉此具名容器，否则它会钉住旧 backend 镜像
+  backend-volume-init: # 一次性修 named volume 属主；更新器用 --force-recreate 原地换新，不另起 disposable
   backend:             # MYRIAD_PROCESS_ROLE=web；双宿 myriad-net + admin-net
   federation-worker:   # 同 backend 镜像；command /app/myriad-federation-worker
   persona-worker:      # 同 backend 镜像；command /app/myriad-persona-worker
