@@ -12,6 +12,7 @@ const sockets: FakeWebSocket[] = []
 
 class FakeWebSocket {
   url: string
+  closed = false
   onopen: ((event: Event) => void) | null = null
   onmessage: ((event: MessageEvent) => void) | null = null
   onclose: (() => void) | null = null
@@ -22,7 +23,9 @@ class FakeWebSocket {
     sockets.push(this)
   }
 
-  close() {}
+  close() {
+    this.closed = true
+  }
 
   send() {}
 }
@@ -114,7 +117,7 @@ async function waitFor(predicate: () => boolean, label: string) {
 }
 
 describe('registerSchedulerHandlers', { concurrency: false }, () => {
-  it('connects the scheduler websocket on first use only', async () => {
+  it('keeps HTTP scheduler calls off the websocket', async () => {
     globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
     installSessionStorage()
     const grants: string[] = []
@@ -143,11 +146,15 @@ describe('registerSchedulerHandlers', { concurrency: false }, () => {
     )
     assert.equal(sockets.length, 0)
     await invoke(bridge, 'scheduler.list')
+    assert.equal(sockets.length, 0)
+    await invoke(bridge, 'scheduler.get', ['daily'])
+    assert.equal(sockets.length, 0)
+    assert.deepEqual(grants, ['scheduler-grant', 'scheduler-grant'])
+    await invoke(bridge, 'scheduler.subscribe', ['daily'])
     assert.equal(sockets.length, 1)
     assert.match(sockets[0]!.url, /\/api\/tapp\/scheduler\/ws/)
-    await invoke(bridge, 'scheduler.get', ['daily'])
-    assert.equal(sockets.length, 1)
-    assert.deepEqual(grants, ['scheduler-grant', 'scheduler-grant'])
+    await invoke(bridge, 'scheduler.unsubscribe', ['daily'])
+    assert.equal(sockets[0]!.closed, true)
     stop()
   })
 
@@ -223,6 +230,81 @@ describe('registerSchedulerHandlers', { concurrency: false }, () => {
       success: true,
       data: { executionId: 42, completed: true },
     })
+    stop()
+  })
+
+  it('does not open websocket for backend-only register', async () => {
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    installSessionStorage()
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/csrf-token')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ csrf_token: null }),
+        } as Response
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, task: { taskId: 'job' } }),
+      } as Response
+    }) as typeof fetch
+
+    const bridge = new FakeBridge()
+    const stop = registerSchedulerHandlers(
+      bridge as unknown as TappBridge,
+      instance,
+    )
+    const result = await invoke(bridge, 'scheduler.register', [
+      {
+        taskId: 'job',
+        name: 'Job',
+        scheduleType: 'interval',
+        schedule: { interval: 60 },
+        executionTarget: 'backend',
+      },
+    ])
+    assert.equal((result as { success: boolean }).success, true)
+    assert.equal(sockets.length, 0)
+    stop()
+  })
+
+  it('opens websocket for frontend register', async () => {
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    installSessionStorage()
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/csrf-token')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ csrf_token: null }),
+        } as Response
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, task: { taskId: 'daily' } }),
+      } as Response
+    }) as typeof fetch
+
+    const bridge = new FakeBridge()
+    const stop = registerSchedulerHandlers(
+      bridge as unknown as TappBridge,
+      instance,
+    )
+    const result = await invoke(bridge, 'scheduler.register', [
+      {
+        taskId: 'daily',
+        name: 'Daily',
+        scheduleType: 'cron',
+        schedule: { cron: '0 9 * * *' },
+      },
+    ])
+    assert.equal((result as { success: boolean }).success, true)
+    assert.equal(sockets.length, 1)
     stop()
   })
 })

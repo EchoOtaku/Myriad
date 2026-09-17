@@ -1,4 +1,4 @@
-/** 首次 scheduler.* 才连 WS。scheduler:register 由服务端强制。 */
+/** HTTP CRUD 只准备 apiBase；首次前端订阅/前端任务才连 WS。scheduler:register 由服务端强制。 */
 
 import type { TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
@@ -100,7 +100,8 @@ export function registerSchedulerHandlers(
         opts,
         await bridge.getRuntimeGrant(),
       )
-      bindTask(opts.taskId)
+      const target = opts.executionTarget ?? 'frontend'
+      if (target !== 'backend') bindTask(opts.taskId)
       return { success: true, data: task }
     } catch (error) {
       return errResult(error)
