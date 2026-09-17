@@ -135,6 +135,13 @@ export function agentPanelCommand(event: Event): AgentPanelCommand | null {
 }
 
 export const AGENT_PANEL_ANSWER_EVENT = 'agent-panel-answer'
+export const AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT = 'agent-panel-history-answer-result'
+
+export function dispatchHistoryAnswerResult(sessionId: string, messageId: string, success: boolean): void {
+  window.dispatchEvent(new CustomEvent(AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT, {
+    detail: { sessionId, messageId, success },
+  }))
+}
 
 export interface AgentPanelAnswerDetail {
   messageId: string

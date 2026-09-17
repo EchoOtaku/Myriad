@@ -120,6 +120,29 @@ pub fn federation_enabled() -> bool {
     STATE.load(Ordering::Relaxed) != DISABLED
 }
 
+/// Installation eligibility uses declarations, independently of approval and grants.
+pub(crate) fn check_tapp_install_permissions(
+    permissions: &[String],
+    enabled: bool,
+) -> Result<(), &'static str> {
+    if !enabled && permissions.iter().any(|p| p.starts_with("federation:")) {
+        return Err("Federation apps cannot be downloaded or installed in this server's region");
+    }
+    Ok(())
+}
+
+/// Await the same startup location probe used by federation delivery before
+/// allowing federation packages to be installed, including Agent-created apps.
+pub(crate) async fn ensure_tapp_install_allowed(
+    permissions: &[String],
+) -> Result<(), &'static str> {
+    if !permissions.iter().any(|p| p.starts_with("federation:")) {
+        return Ok(());
+    }
+    let enabled = wait_until_resolved(Duration::from_secs(10)).await;
+    check_tapp_install_permissions(permissions, enabled)
+}
+
 /// Dedicated `federation-worker` exits after a closed reading.
 /// Web, persona, and combined `all` keep running.
 pub fn should_exit_process() -> bool {

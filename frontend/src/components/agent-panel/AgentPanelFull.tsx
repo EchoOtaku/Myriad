@@ -8,6 +8,7 @@ import {
   useAgentSessionId,
 } from './agentMessages'
 import {
+  AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT,
   dispatchAgentPanelAnswer,
   dispatchAgentPanelCommand,
   dispatchAgentPanelOpenSession,
@@ -176,6 +177,18 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
     useConversationHistory(messageIds)
   const sessionId = useAgentSessionId()
   const history = usePersistedHistory(sessionId)
+  const [historyAnswerError, setHistoryAnswerError] = useState(false)
+  useEffect(() => setHistoryAnswerError(false), [sessionId, history.page])
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId: string; messageId: string; success: boolean }>).detail
+      if (detail?.sessionId !== sessionId || !history.rows.some(row => row.id === detail.messageId)) return
+      if (detail.success) history.select(null)
+      else setHistoryAnswerError(true)
+    }
+    window.addEventListener(AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT, receive)
+    return () => window.removeEventListener(AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT, receive)
+  }, [history, sessionId])
   const sessionCountRef = useRef(0)
   const { held, exiting } = useHeldView(
     view,
@@ -226,7 +239,7 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
             {history.page ? (
               <>
                 {history.loading && <p role="status">{t.common.loading}</p>}
-                {history.error && (
+                {(history.error || historyAnswerError) && (
                   <p role="alert">{t.agentPanel.sessions.loadFailed}</p>
                 )}
                 {history.rows.map((message) => (

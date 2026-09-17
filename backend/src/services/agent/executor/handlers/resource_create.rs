@@ -64,6 +64,9 @@ async fn persist_agent_tapp(
     let manifest =
         normalize_agent_tapp_manifest(manifest, tapp_id, name, description.as_deref(), &author)?;
     let requested_permissions = manifest_permission_strings(&manifest);
+    crate::services::federation_gate::ensure_tapp_install_allowed(&requested_permissions)
+        .await
+        .map_err(str::to_owned)?;
     let approved_permissions = select_install_approved_permissions(&requested_permissions, &[]);
     let role = if crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
         UserRole::Admin

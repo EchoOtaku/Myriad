@@ -7,14 +7,8 @@ use axum::http::StatusCode;
 use serde::Serialize;
 use std::time::Duration;
 
-fn check_permissions(permissions: &[String], federation_enabled: bool) -> Result<(), HttpError> {
-    if !federation_enabled && permissions.iter().any(|p| p.starts_with("federation:")) {
-        return Err(api_http_error(
-            StatusCode::FORBIDDEN,
-            "Federation apps cannot be downloaded or installed in this server's region",
-        ));
-    }
-    Ok(())
+fn policy_error(message: &str) -> HttpError {
+    api_http_error(StatusCode::FORBIDDEN, message)
 }
 
 #[derive(Serialize)]
@@ -34,17 +28,19 @@ pub(super) async fn get_store_policy() -> impl axum::response::IntoResponse {
 /// Uses declarations, never the caller's selected approval subset. This is
 /// installation eligibility; runtime grants remain independently filtered.
 pub(super) async fn ensure_permissions_allowed(permissions: &[String]) -> Result<(), HttpError> {
-    if !permissions.iter().any(|p| p.starts_with("federation:")) {
-        return Ok(());
-    }
-    let enabled = federation_gate::wait_until_resolved(Duration::from_secs(10)).await;
-    check_permissions(permissions, enabled)
+    federation_gate::ensure_tapp_install_allowed(permissions)
+        .await
+        .map_err(policy_error)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::response::IntoResponse;
+
+    fn check_permissions(permissions: &[String], enabled: bool) -> Result<(), HttpError> {
+        federation_gate::check_tapp_install_permissions(permissions, enabled).map_err(policy_error)
+    }
 
     #[test]
     fn closed_gate_rejects_declared_federation_even_without_approval() {

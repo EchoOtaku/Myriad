@@ -183,6 +183,7 @@ export async function prepareMessageBody(content: string, signal = authSubject.s
   } finally { writer.finish() }
 }
 export async function readBodyPage(body: MessageBodyRef, page: number, signal = authSubject.signal): Promise<string> {
+  signal = AbortSignal.any([signal, authSubject.signal])
   signal.throwIfAborted()
   if (body.owner !== owner()) throw new Error('Body identity changed')
   const db = await database()

@@ -109,7 +109,7 @@ import {
   agentPanelOpenSessionCount,
   agentPanelOpenSessionId,
   agentPanelSubmitDetail,
-  dispatchAgentPanelOpen,
+  dispatchAgentPanelOpen, dispatchHistoryAnswerResult,
 } from './agentPanelEvents'
 import { getAgentPanelMode, useAgentPanelMode } from './agentPanelMode'
 import { turnSelectionText } from './agentSelection'
@@ -2033,18 +2033,28 @@ export const AgentEngine: React.FC = () => {
   const answerQuestion = useCallback(
     async (messageId: string, answer: string, history?: HistoryAnswerSource) => {
       let msg = findMessage(messageId)
-      if (msg?.selectedAnswer && msg.taskExecution?.status !== 'error') return
+      if (msg?.selectedAnswer && msg.taskExecution?.status !== 'error') {
+        if (history && history.sessionId === sessionIdsByModeRef.current.work)
+          dispatchHistoryAnswerResult(history.sessionId, messageId, true)
+        return
+      }
       const subject = sessionLoads.capture('work')
       if (history) {
         if (historyAnswerBusy.current || history.sessionId !== sessionIdsByModeRef.current.work) return
         historyAnswerBusy.current = true
         try {
           const restored = await restoreHistoryAnswer(messageId, history, subject, agentService)
-          if (!restored || subject.aborted || history.sessionId !== sessionIdsByModeRef.current.work) return
+          if (subject.aborted || history.sessionId !== sessionIdsByModeRef.current.work) return
+          if (!restored) {
+            dispatchHistoryAnswerResult(history.sessionId, messageId, false)
+            return
+          }
           msg = restored
           // Appending promotes exactly one control through the existing 120-row budget.
           setMessages(rows => [...rows.filter(row => row.id !== messageId), restored], 'work')
+          dispatchHistoryAnswerResult(history.sessionId, messageId, true)
         } catch {
+          if (!subject.aborted) dispatchHistoryAnswerResult(history.sessionId, messageId, false)
           return
         } finally {
           historyAnswerBusy.current = false

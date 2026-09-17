@@ -664,7 +664,7 @@ it('the DOM serializer keeps the existing Markdown contract for rich inline and 
     'inline $x^2$ math\n\n$$\na+b\n$$',
     'reference[^1]\n\n[^1]: footnote\n[^2]: another',
     '```text\n  code\n\n```',
-    '```text\nleft\u00a0right & <literal> ```ticks\n```',
+    '```text\nleft\u00A0right & <literal> ```ticks\n```',
   ]) {
     root.innerHTML = markdownToVisualHtml(md)
     assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML), md)

@@ -144,11 +144,12 @@ export function useMessageState(visibleMode: AgentPanelMode) {
       let thought: Awaited<ReturnType<typeof prepareAssistantBody>>['thought'] | undefined
       const originalContent = updates.content
       if (hasContent) pendingBodies.current.set(messageId, controller)
-      if (updates.content !== undefined && updates.content.length > BODY_INLINE_CHARS && !updates.body) {
+      if (updates.content !== undefined && (updates.content.length > BODY_INLINE_CHARS || /<think>|\[\[(?:wear|music):|⟦wear:/i.test(updates.content)) && !updates.body) {
         try {
           const existing = [...messagesRef.current.work, ...messagesRef.current.chat].find(message => message.id === messageId)
-          const result = existing?.role !== 'user' && updates.role !== 'user' ? await prepareAssistantBody(updates.content, subject) : await prepareMessageBody(updates.content, subject)
-          if ('thought' in result) thought = result.thought
+          const assistantBody = existing?.role !== 'user' && updates.role !== 'user' ? await prepareAssistantBody(updates.content, subject) : null
+          const result = assistantBody ?? await prepareMessageBody(updates.content, subject)
+          thought = assistantBody?.thought
           prepared = result.body
           updates = { ...updates, content: result.content, body: result.body, bodyUnavailable: false }
         } catch {

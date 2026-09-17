@@ -14,7 +14,7 @@ function boundedPayload(value: unknown, limit = TEXT_LIMIT): unknown {
   const visit = (item: unknown, depth: number): unknown => {
     if (remaining <= 0 || depth > 8) return undefined
     if (typeof item === 'string') {
-      const text = item.slice(0, Math.min(remaining, TEXT_LIMIT))
+      const text = detachedPrefix(item, Math.min(remaining, TEXT_LIMIT))
       remaining -= text.length
       return text
     }
@@ -53,7 +53,7 @@ export function boundMessage(message: ChatMessage): ChatMessage {
                 ...step,
                 message: step.message?.slice(0, 2000),
               })),
-            reasoning: execution.reasoning?.slice(0, BODY_INLINE_CHARS),
+            reasoning: execution.reasoning === undefined ? undefined : detachedPrefix(execution.reasoning, BODY_INLINE_CHARS),
             statusMessage: execution.statusMessage?.slice(0, 2000),
             debugTrace: execution.debugTrace
               ? {

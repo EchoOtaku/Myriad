@@ -141,7 +141,7 @@ describe('Tapp store transport strategy', () => {
       downloads++
       throw new Error('Unexpected fallback')
     }
-    await assert.rejects(installTappFromStore({
+    await assert.rejects(installFromStore({
       source: 'https://store.example/index.json',
       tappId: 'com.example.federated',
       permissions: [],

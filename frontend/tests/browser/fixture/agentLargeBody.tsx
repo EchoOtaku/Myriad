@@ -12,6 +12,15 @@ function App() {
   const state = useMessageState('work')
   const [body, setBody] = useState<{ content: string; body?: MessageBodyRef } | null>(null)
   Object.assign(window, { agentBody: {
+    async stoppedReply() {
+      const controller = new AbortController()
+      const writer = new BodyWriter(crypto.randomUUID(), controller.signal)
+      const snapshot = await writer.append('visible partial reply '.repeat(1000))
+      controller.abort()
+      const result = await readCompleteBody(snapshot.content, snapshot.body)
+      await releaseMessageBody(snapshot.body!)
+      return result
+    },
     async normalized() {
       const content = `<think>${'private'.repeat(3000)}</think>${'visible'.repeat(3000)}[[wear:stage]]`
       const message = await prepareChatBody({ id: 'history', sessionId: 's', role: 'assistant', content, createdAt: new Date() }, authSubject.signal)

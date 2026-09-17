@@ -22,6 +22,7 @@ test('replacement, eviction, cancellation, and identity destruction release old 
   test.setTimeout(90_000)
   await page.goto('/agentLargeBody.html')
   await page.waitForFunction(() => !!(window as any).agentBody)
+  expect(await page.evaluate(() => (window as any).agentBody.stoppedReply())).toBe('visible partial reply '.repeat(1000))
   await page.evaluate(() => (window as any).agentBody.race())
   await expect(page.locator('#message-state')).toHaveText('newest')
   await page.evaluate(() => (window as any).agentBody.evict())

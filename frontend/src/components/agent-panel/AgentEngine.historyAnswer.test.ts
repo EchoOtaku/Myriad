@@ -23,9 +23,11 @@ function harness(probe = async () => task) {
   const scope = new SessionLoadScope()
   let rows: ChatMessage[] = Array.from({ length: 120 }, (_, i) => ({ id: `hot_${i}`, sessionId: 's', role: 'assistant', content: '', createdAt: new Date(), taskExecution: { taskId: `t${i}`, status: 'waiting', steps: [], progress: 50 } }))
   const posts: unknown[] = []
+  const results: unknown[] = []
   const noop = () => {}
   const ctx: Record<string, any> = {
     historyAnswerBusy: { current: false }, sessionLoads: scope, restoreHistoryAnswer,
+    dispatchHistoryAnswerResult: (...args: unknown[]) => results.push(args),
     sessionIdsByModeRef: { current: { work: 's' } },
     findMessage: (id: string) => rows.find(row => row.id === id),
     setMessages: (update: (rows: ChatMessage[]) => ChatMessage[]) => { rows = retainHotMessages(update(rows)) },
@@ -41,7 +43,7 @@ function harness(probe = async () => task) {
     userFacingError: String, t: { errors: {}, agentPanel: {} }, format: String,
   }
   runInNewContext(script, ctx)
-  return { ctx, scope, posts, rows: () => rows }
+  return { ctx, scope, posts, results, rows: () => rows }
 }
 const history = { sessionId: 's', page: 1, questionId: 'q' }
 
@@ -51,6 +53,7 @@ test('real answer callback restores one evicted control and submits its validate
   assert.deepEqual(h.posts, [['t', 'q', 'yes']])
   assert.equal(h.rows().length, 120)
   assert.equal(h.rows().at(-1)?.id, 'loaded_1')
+  assert.deepEqual(h.results, [['s', 'loaded_1', true]])
   await h.ctx.answerQuestion('loaded_1', 'yes', history)
   assert.equal(h.posts.length, 1)
   h.scope.reset()
@@ -63,6 +66,7 @@ test('wrong session, changed question, and identity loss cannot submit historica
   const changed = harness(async () => ({ ...task, pendingQuestion: { ...task.pendingQuestion, questionId: 'new' } }))
   await changed.ctx.answerQuestion('loaded_1', 'yes', history)
   assert.equal(changed.posts.length, 0)
+  assert.deepEqual(changed.results, [['s', 'loaded_1', false]])
   const held = Promise.withResolvers<typeof task>()
   const entered = Promise.withResolvers<void>()
   const stale = harness(() => { entered.resolve(); return held.promise })
@@ -75,4 +79,25 @@ test('wrong session, changed question, and identity loss cannot submit historica
   assert.equal(stale.rows().some(row => row.id === 'loaded_1'), false)
   for (const h of [wrong, changed, stale]) h.scope.reset()
   authSubject.change('guest', true)
+})
+
+test('history result handling returns to live progress on success and exposes failure feedback', () => {
+  const full = ts.createSourceFile('AgentPanelFull.tsx', readFileSync(new URL('./AgentPanelFull.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let receive = ''
+  function find(node: ts.Node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(full) === 'receive') receive = node.initializer!.getText(full)
+    ts.forEachChild(node, find)
+  }
+  find(full)
+  assert.ok(receive)
+  const selections: unknown[] = []
+  const errors: boolean[] = []
+  const ctx: Record<string, any> = { sessionId: 's', history: { rows: [{ id: 'loaded_1' }], select: (page: unknown) => selections.push(page) }, setHistoryAnswerError: (value: boolean) => errors.push(value) }
+  runInNewContext(ts.transpileModule(`globalThis.receive = ${receive}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, ctx)
+  ctx.receive({ detail: { sessionId: 'other', messageId: 'loaded_1', success: true } })
+  assert.equal(selections.length, 0)
+  ctx.receive({ detail: { sessionId: 's', messageId: 'loaded_1', success: false } })
+  assert.deepEqual(errors, [true])
+  ctx.receive({ detail: { sessionId: 's', messageId: 'loaded_1', success: true } })
+  assert.deepEqual(selections, [null])
 })
