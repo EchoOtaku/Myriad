@@ -446,7 +446,7 @@ impl Worker {
     }
 
     /// Persist the running binary version. Identity is the image stamp, not
-    /// `UPDATER_TAG` — that key only selects a first-install tag fallback.
+    /// `UPDATER_TAG` — that key selects the deployment target, not runtime identity.
     fn heal_running_updater_identity(&self, st: &mut crate::state::UpdaterStateFile) -> bool {
         let running = MyriadVersion::parse(crate::self_version()).ok();
         if st.updater_version == running {

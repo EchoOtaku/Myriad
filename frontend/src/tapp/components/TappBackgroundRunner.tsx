@@ -1,14 +1,18 @@
 import type { TappCodeStructure, TappInstance } from '../types'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
 import { getTappRuntime } from '../runtime'
+import {
+  clearBackgroundResidents,
+  publishBackgroundResidents,
+  registerBackgroundResidentStopHandler,
+} from '../runtime/backgroundResidentStore'
 import { loadCoreResources } from '../runtime/sandbox/resourceLoader'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
 
 export const TappBackgroundRunner: React.FC = () => {
-  const { t } = useI18n()
   const disabledRef = useRef(new Set<string>())
   const mountedRef = useRef(false)
+  const backgroundTappsRef = useRef<TappInstance[]>([])
   const [backgroundTapps, setBackgroundTapps] = useState<TappInstance[]>([])
   const [tappCodes, setTappCodes] = useState<Map<string, TappCodeStructure>>(
     new Map(),
@@ -16,6 +20,17 @@ export const TappBackgroundRunner: React.FC = () => {
   const loadingRef = useRef(false)
   const reloadPendingRef = useRef(false)
   const runtime = getTappRuntime()
+
+  const commitBackgroundTapps = useCallback(
+    (next: TappInstance[]) => {
+      backgroundTappsRef.current = next
+      setBackgroundTapps(next)
+      publishBackgroundResidents(next, (tappId) =>
+        runtime.getBackgroundRequirements(tappId),
+      )
+    },
+    [runtime],
+  )
 
   const loadBackgroundTapps = useCallback(async (): Promise<void> => {
     // 合并并发加载，但不丢加载期间的 start/stop/background 变化。
@@ -29,7 +44,9 @@ export const TappBackgroundRunner: React.FC = () => {
       await runtime.waitForSync()
 
       if (!mountedRef.current) return
-      const tappsToRun = runtime.getBackgroundTapps().filter(tapp => !disabledRef.current.has(tapp.id))
+      const tappsToRun = runtime
+        .getBackgroundTapps()
+        .filter((tapp) => !disabledRef.current.has(tapp.id))
 
       const codes = new Map<string, TappCodeStructure>()
       for (const tapp of tappsToRun) {
@@ -56,7 +73,7 @@ export const TappBackgroundRunner: React.FC = () => {
       }
 
       if (!mountedRef.current || reloadPendingRef.current) return
-      setBackgroundTapps(tappsToRun.filter(tapp => codes.has(tapp.id)))
+      commitBackgroundTapps(tappsToRun.filter((tapp) => codes.has(tapp.id)))
       setTappCodes(codes)
     } catch (error) {
       console.error(
@@ -70,31 +87,48 @@ export const TappBackgroundRunner: React.FC = () => {
         void loadBackgroundTapps()
       }
     }
-  }, [runtime])
+  }, [runtime, commitBackgroundTapps])
 
   useEffect(() => {
     mountedRef.current = true
     loadBackgroundTapps()
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      backgroundTappsRef.current = []
+      clearBackgroundResidents()
+    }
   }, [loadBackgroundTapps])
 
   useEffect(() => {
     const handleTappEvent = () => {
       // Remove revoked / uninstalled instances immediately, before awaiting code.
-      const allowed = runtime.getBackgroundTapps().filter(tapp => !disabledRef.current.has(tapp.id))
-      setBackgroundTapps(current => current.flatMap(tapp => {
-        const next = allowed.find(candidate => candidate.id === tapp.id)
-        return next ? [next] : []
-      }))
+      const allowed = runtime
+        .getBackgroundTapps()
+        .filter((tapp) => !disabledRef.current.has(tapp.id))
+      commitBackgroundTapps(
+        backgroundTappsRef.current.flatMap((tapp) => {
+          const next = allowed.find((candidate) => candidate.id === tapp.id)
+          return next ? [next] : []
+        }),
+      )
       loadBackgroundTapps()
     }
 
     const handleSubjectChanged = () => {
       disabledRef.current.clear()
-      setBackgroundTapps([])
+      commitBackgroundTapps([])
       setTappCodes(new Map())
       loadBackgroundTapps()
     }
+    const unsubResidentStop = registerBackgroundResidentStopHandler(
+      (tappId) => {
+        disabledRef.current.add(tappId)
+        commitBackgroundTapps(
+          backgroundTappsRef.current.filter((tapp) => tapp.id !== tappId),
+        )
+        void loadBackgroundTapps()
+      },
+    )
     window.addEventListener('tapp-subject-ready', handleSubjectChanged)
     const unsubStarted = runtime.on('tapp:started', handleTappEvent)
     const unsubStopped = runtime.on('tapp:stopped', handleTappEvent)
@@ -113,56 +147,36 @@ export const TappBackgroundRunner: React.FC = () => {
       unsubUpdated()
       unsubSync()
       unsubBackground()
+      unsubResidentStop()
     }
-  }, [runtime, loadBackgroundTapps])
+  }, [runtime, loadBackgroundTapps, commitBackgroundTapps])
 
-  // A visible escape hatch accompanies the bounded headless surfaces.
   return (
-    <>
-      {backgroundTapps.length > 0 && (
-        <details className="fixed bottom-4 right-4 z-50 rounded-lg bg-[var(--color-bg)] p-2 shadow">
-          <summary>{t.tapp.apps} · {t.tapp.running} ({backgroundTapps.length})</summary>
-          {backgroundTapps.map(tapp => (
-            <div key={tapp.id} className="flex items-center gap-3 p-2">
-              <span>{tapp.manifest.name}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  disabledRef.current.add(tapp.id)
-                  setBackgroundTapps(current => current.filter(item => item.id !== tapp.id))
-                  void loadBackgroundTapps()
-                }}
-              >{t.tapp.stop}</button>
-            </div>
-          ))}
-        </details>
-      )}
-      <div
-        className="fixed top-0 left-0 w-0 h-0 overflow-hidden invisible pointer-events-none"
-        aria-hidden="true"
-      >
-        {backgroundTapps.map((tapp) => {
-          const code = tappCodes.get(tapp.id)
-          if (!code) return null
+    <div
+      className="fixed top-0 left-0 w-0 h-0 overflow-hidden invisible pointer-events-none"
+      aria-hidden="true"
+    >
+      {backgroundTapps.map((tapp) => {
+        const code = tappCodes.get(tapp.id)
+        if (!code) return null
 
-          return (
-            <TappPageSandbox
-              key={`${tapp.id}:${tapp.manifest.version}`}
-              tappInstance={tapp}
-              code={code}
-              headless
-              onError={(error) => {
-                console.error(
-                  `[TappBackgroundRunner] Tapp ${tapp.id} error:`,
-                  error,
-                )
-              }}
-              className="w-px h-px"
-            />
-          )
-        })}
-      </div>
-    </>
+        return (
+          <TappPageSandbox
+            key={`${tapp.id}:${tapp.manifest.version}`}
+            tappInstance={tapp}
+            code={code}
+            headless
+            onError={(error) => {
+              console.error(
+                `[TappBackgroundRunner] Tapp ${tapp.id} error:`,
+                error,
+              )
+            }}
+            className="w-px h-px"
+          />
+        )
+      })}
+    </div>
   )
 }
 

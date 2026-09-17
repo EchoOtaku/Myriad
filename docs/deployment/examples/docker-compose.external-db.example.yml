@@ -18,8 +18,8 @@
 #   JWT_SECRET / CORS_ORIGINS / MYRIAD_SETUP_SECRET
 #   UPDATE_TOKEN / UPDATER_GATEWAY_SECRET
 #   COMPOSE_PROJECT_NAME=myriad
-# .env 必须含 digest 钉死的 DOCKER_GUARD_IMAGE 与 GUARD_SELF_UPDATE_TOKEN。
-# 有 pin 后 compose 以 UPDATER_IMAGE_REF 为准，不要把 UPDATER_TAG 当成正在运行的 TCB。
+# .env 必须含 UPDATER_TAG 与 GUARD_SELF_UPDATE_TOKEN。
+# TAG 决定部署目标；旧摘要记录只供核验/恢复，不覆盖 TAG，也不代表实际运行版本。
 # Guard 首次启动写入 ./guard-policy/docker-guard.env。
 #
 # 可选：
@@ -284,7 +284,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   docker-guard:
-    image: ${DOCKER_GUARD_IMAGE:?Set DOCKER_GUARD_IMAGE in .env to an exact repo@sha256 digest}
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
     container_name: myriad-docker-guard
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -299,7 +299,7 @@ services:
       MYRIAD_DOCKER_GUARD_NETWORK: ${GUARD_MYRIAD_DOCKER_GUARD_NETWORK:-myriad-docker-guard-net}
       DOCKER_GUARD_COMPOSE_DIR: /host/compose
       DOCKER_GUARD_STATE_DIR: /host/state
-      DOCKER_GUARD_EXPECTED_IMAGE: ${DOCKER_GUARD_IMAGE}
+      DOCKER_GUARD_EXPECTED_IMAGE: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
       DOCKER_GUARD_HOST_POLICY_PATH: /guard-policy/docker-guard.env
       DOCKER_GUARD_SELF_UPDATE_TOKEN: ${GUARD_SELF_UPDATE_TOKEN:?Host Guard self-update token is required}
       RUST_LOG: ${DOCKER_GUARD_LOG:-info}
@@ -331,7 +331,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   updater:
-    image: ${UPDATER_IMAGE_REF:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG}}
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
     container_name: myriad-updater
     environment:
       UPDATE_TOKEN: ${UPDATE_TOKEN}
@@ -386,7 +386,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   updater-gateway:
-    image: ${UPDATER_IMAGE_REF:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG}}
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
     container_name: myriad-updater-gateway
     entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/myriad-updater-gateway"]
     environment:

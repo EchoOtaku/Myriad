@@ -2,6 +2,17 @@ import type { AppNotification } from '../services/notificationApi'
 import { currentCopy, formatCurrent } from '../i18n/localeCopy'
 import { isUselessErrorText, userFacingError } from './userFacingError'
 
+const DEFAULT_TAPP_TITLES = new Set([
+  'App notification',
+  'Tapp notification',
+  'Tapp 通知',
+  'Tapp 알림',
+  'Notification Tapp',
+  'Tapp-Benachrichtigung',
+])
+
+const SCHEDULED_TAPP_TITLE = /^(?:定时任务失败|Scheduled task failed|A scheduled task failed)$/i
+
 function fill(
   template: string,
   params: Record<string, string | number>,
@@ -60,8 +71,6 @@ export function notificationFacingTitle(notification: AppNotification): string {
       return fill(t.noticeMcpFailed, { name: name || 'MCP' })
     case 'mcp.connected':
       return fill(t.noticeMcpConnected, { name: name || 'MCP' })
-    case 'tapp.error':
-      return t.noticeScheduleFailed
     case 'agent.task_failed':
       return t.noticeAgentTaskFailed
     case 'agent.task_completed':
@@ -119,6 +128,12 @@ export function notificationFacingTitle(notification: AppNotification): string {
   }
 
   const raw = notification.title || ''
+  if (notification.notification_type === 'tapp_notification') {
+    if (!raw || DEFAULT_TAPP_TITLES.has(raw)) return t.noticeTapp
+    if (SCHEDULED_TAPP_TITLE.test(raw)) return t.noticeScheduleFailed
+    return raw
+  }
+  if (notification.notification_type === 'federation_message') return raw
   const leftoverPhantasiNew = raw.match(/^(.+) · (\d+) 篇新内容$/)
   if (leftoverPhantasiNew) {
     return fill(t.noticePhantasiNewItems, {
@@ -291,9 +306,18 @@ export function notificationFacingBody(notification: AppNotification): string {
   if (/^新消息$|^New message$/.test(notification.body)) {
     return t.noticePreviewNew
   }
+  if (notification.notification_type === 'federation_message') {
+    return notification.body
+  }
+  if (notification.notification_type === 'tapp_notification') {
+    return SCHEDULED_TAPP_TITLE.test(notification.title)
+      ? userFacingError(notification.body, notification.body)
+      : notification.body
+  }
   const leftoverPhantasiBody = notification.body.match(/^发现 (\d+) 篇新内容$/)
   if (leftoverPhantasiBody) {
     return fill(t.noticePhantasiNewItemsBody, { n: Number(leftoverPhantasiBody[1]) })
   }
+  if (!notification.body.trim()) return ''
   return userFacingError(notification.body, notification.body)
 }

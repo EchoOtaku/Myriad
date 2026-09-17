@@ -191,7 +191,7 @@ pub(crate) fn schedule_reconciliation(state: super::GuardState, recovery_exhaust
                     return Err(anyhow!("could not clear recovered startup marker"));
                 }
             }
-            tracing::info!(version = %identity.version, image = %identity.image, "reconciled healthy host deployment identity");
+            tracing::info!(version = %identity[1].version, image = %identity[1].image, guard_image = %identity[0].image, gateway_image = %identity[2].image, "reconciled healthy host deployment identity");
             Ok::<(), anyhow::Error>(())
         }.await;
         let recovered = result.is_ok();
@@ -229,29 +229,37 @@ pub(crate) fn schedule_reconciliation(state: super::GuardState, recovery_exhaust
     });
 }
 
-async fn healthy_stack(config: &super::GuardConfig) -> Result<RuntimeIdentity> {
+pub(crate) async fn healthy_stack(config: &super::GuardConfig) -> Result<[RuntimeIdentity; 3]> {
     let guard = inspect_identity(config, "myriad-docker-guard", "docker-guard", true).await?;
-    for service in ["updater", "updater-gateway"] {
-        let actual = inspect_identity(config, &format!("myriad-{service}"), service, true).await?;
-        if actual != guard {
-            return Err(anyhow!(
-                "{service} and Guard are running different images or versions"
-            ));
-        }
-    }
     if guard.image != config.expected_guard_image {
         return Err(anyhow!("Guard was replaced during startup reconciliation"));
     }
-    Ok(guard)
+    let updater = inspect_identity(config, "myriad-updater", "updater", true).await?;
+    let gateway =
+        inspect_identity(config, "myriad-updater-gateway", "updater-gateway", true).await?;
+    Ok([guard, updater, gateway])
 }
 
-fn policy_matches(state: &super::GuardState, identity: &RuntimeIdentity) -> Result<bool> {
+fn policy_matches(state: &super::GuardState, stack: &[RuntimeIdentity; 3]) -> Result<bool> {
     let app = crate::env_file::EnvFile::load(&state.config.compose_dir.join(".env"))?;
     let guard = crate::env_file::EnvFile::load(std::path::Path::new(super::POLICY_CONTAINER_FILE))?;
-    Ok(app.get("UPDATER_TAG") == Some(identity.version.as_str())
-        && app.get("UPDATER_IMAGE_REF") == Some(identity.image.as_str())
-        && app.get("DOCKER_GUARD_IMAGE") == Some(identity.image.as_str())
-        && guard.get("DOCKER_GUARD_IMAGE") == Some(identity.image.as_str()))
+    if let Some(tag) = app.get("UPDATER_TAG")
+        && !crate::version::DeployTag::parse(tag)
+            .is_ok_and(|target| target.matches_runtime_version(&stack[1].version))
+    {
+        tracing::warn!(requested_tag = %tag, running_version = %stack[1].version,
+            "deployment tag differs from running updater; reconciliation preserves the requested tag and does not replace images");
+    }
+    Ok(
+        app.get("UPDATER_IMAGE_REF") == Some(stack[1].image.as_str())
+            && app
+                .get("UPDATER_GATEWAY_IMAGE_REF")
+                .filter(|value| !value.is_empty())
+                .or_else(|| app.get("UPDATER_IMAGE_REF"))
+                == Some(stack[2].image.as_str())
+            && app.get("DOCKER_GUARD_IMAGE") == Some(stack[0].image.as_str())
+            && guard.get("DOCKER_GUARD_IMAGE") == Some(stack[0].image.as_str()),
+    )
 }
 
 #[cfg(test)]
@@ -298,6 +306,18 @@ mod tests {
                 "c".repeat(64)
             )
         );
+    }
+
+    #[test]
+    fn changing_container_tag_does_not_upgrade_a_pinned_old_image() {
+        let (mut container, mut image) = fixture();
+        container["Config"]["Image"] = image["RepoDigests"][0].clone();
+        container["Config"]["Env"] = json!(["UPDATER_TAG=v0.4.13", "MYRIAD_VERSION=v0.4.13"]);
+        image["Config"]["Env"] = json!(["MYRIAD_VERSION=v0.4.6"]);
+
+        let actual = runtime_identity(&container, &image, "myriad", "updater", true).unwrap();
+        assert_eq!(actual.version, "v0.4.6");
+        assert_eq!(actual.image_id, container["Image"].as_str().unwrap());
     }
 
     #[test]

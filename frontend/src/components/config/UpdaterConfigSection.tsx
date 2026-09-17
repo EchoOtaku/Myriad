@@ -51,8 +51,7 @@ import {
   formatBytes,
   INFRA_OUTCOME_MAX_TRIES,
   INFRA_OUTCOME_POLL_MS,
-  infraComponentBehind,
-  infraLatestTip,
+  infraCompatibility,
   isDismissedLastFailed,
   isFreshInfraOutcome,
   isTransientUpdaterError,
@@ -1033,13 +1032,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     status?.maintenance_phase !== 'needs_manual'
   const showMaintenance =
     (mood === 'maintenance' || mood === 'needsManual') && !showProgress
-  const requiresSelfUpdate =
-    !!status?.requires_self_update && !!status.latest_available
-  const infraTip = infraLatestTip(status)
-  const updaterHasUpdate =
-    requiresSelfUpdate || infraComponentBehind(status?.updater_version, infraTip)
-  const proxyHasUpdate = infraComponentBehind(status?.proxy_version, infraTip)
-  const infraUpdateCue = updaterHasUpdate || proxyHasUpdate
+  const { requiresSelfUpdate, minUpdaterVersion } = infraCompatibility(status)
   return (
     <div className="updater-panel">
       {heading && <h3 className="updater-panel-heading">{heading}</h3>}
@@ -1233,24 +1226,15 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
             requiresSelfUpdate ? (
               <SettingTitleTag
                 title={
-                  infraTip
+                  status?.latest_available
                     ? format(u.updaterSelfUpdateNeeded, {
-                        version: infraTip,
-                        minVersion:
-                          status?.latest_available?.min_updater_version ??
-                          infraTip,
+                        version: status.latest_available.version,
+                        minVersion: minUpdaterVersion ?? '—',
                       })
                     : u.updaterInfraRequired
                 }
               >
-                {infraTip ?? u.updaterInfraRequired}
-              </SettingTitleTag>
-            ) : infraUpdateCue && infraTip ? (
-              <SettingTitleTag
-                variant="muted"
-                title={u.updaterInfraUpdateAvailableHint}
-              >
-                {infraTip}
+                {minUpdaterVersion ?? u.updaterInfraRequired}
               </SettingTitleTag>
             ) : null
           }
@@ -1270,21 +1254,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               className={
                 requiresSelfUpdate
                   ? 'updater-infra-card is-attention'
-                  : updaterHasUpdate
-                    ? 'updater-infra-card is-update-cue'
-                    : 'updater-infra-card'
+                  : 'updater-infra-card'
               }
               titleExtra={
                 requiresSelfUpdate ? (
                   <SettingTitleTag title={u.updaterInfraRequired}>
-                    {infraTip ?? u.updaterInfraRequired}
-                  </SettingTitleTag>
-                ) : updaterHasUpdate && infraTip ? (
-                  <SettingTitleTag
-                    variant="muted"
-                    title={u.updaterInfraUpdateAvailableHint}
-                  >
-                    {infraTip}
+                    {minUpdaterVersion ?? u.updaterInfraRequired}
                   </SettingTitleTag>
                 ) : null
               }
@@ -1344,21 +1319,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               title={u.updaterInfraProxyTitle}
               description={u.updaterInfraProxyDesc}
               icon={<FaServer />}
-              className={
-                proxyHasUpdate
-                  ? 'updater-infra-card is-update-cue'
-                  : 'updater-infra-card'
-              }
-              titleExtra={
-                proxyHasUpdate && infraTip ? (
-                  <SettingTitleTag
-                    variant="muted"
-                    title={u.updaterInfraUpdateAvailableHint}
-                  >
-                    {infraTip}
-                  </SettingTitleTag>
-                ) : null
-              }
+              className="updater-infra-card"
             >
               <div className="updater-infra-card-body">
                 <p className="updater-infra-current">

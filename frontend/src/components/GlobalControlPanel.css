@@ -1107,6 +1107,45 @@ html.gcp-widget-edit .control-panel-overlay.visible {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.dynamic-status-indicators {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.tapp-resident-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 9px;
+  background: #10b981;
+  color: #fff;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease;
+}
+
+.tapp-resident-indicator:hover {
+  background: #059669;
+  transform: scale(1.08);
+}
+
+.tapp-resident-indicator:focus-visible {
+  outline: 2px solid color-mix(in srgb, #10b981 65%, white);
+  outline-offset: 2px;
+}
+
 @media (hover: hover) {
   .control-bar-trigger:not(.expanded, .gcp-animating):hover
     .dynamic-arrow-badge {
@@ -1240,6 +1279,21 @@ html.dark .notif-tab.active {
   padding: 0.05rem 0.35rem;
   border-radius: 999px;
   background: color-mix(in srgb, #ef4444 88%, transparent);
+  color: #fff;
+  font-size: 0.68em;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.tapp-resident-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #10b981 88%, transparent);
   color: #fff;
   font-size: 0.68em;
   font-weight: 650;

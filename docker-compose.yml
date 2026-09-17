@@ -27,7 +27,9 @@
 # ============================================================================
 # MYRIAD_TAG             业务镜像版本（选图用，不覆盖容器 MYRIAD_VERSION）
 # PROXY_TAG              代理镜像版本（选图用）
-# UPDATER_IMAGE_REF      TCB digest pin（有则优先于 UPDATER_TAG）
+# UPDATER_TAG            更新器、Guard、网关的部署目标；手动改 TAG 后重建即可换版本
+# UPDATER_IMAGE_REF / DOCKER_GUARD_IMAGE / UPDATER_GATEWAY_IMAGE_REF
+#                       实际镜像摘要记录，供核验/恢复使用，不覆盖手动部署 TAG
 # UPDATER_TAG            无 pin 时的首次安装回退 tag
 # COMPOSE_PROJECT_NAME=myriad  （compose/updater 使用这个定位同一套 stack）
 #
@@ -383,7 +385,9 @@ services:
 
   docker-guard:
     # Writes ./guard-policy/docker-guard.env on first start.
-    image: ${DOCKER_GUARD_IMAGE:?Set DOCKER_GUARD_IMAGE in .env to an exact repo@sha256 digest}
+    # Normal host deployment follows TAG. Trusted handoffs use a temporary,
+    # operation-scoped Compose override with freshly verified exact digests.
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
     container_name: myriad-docker-guard
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -398,7 +402,7 @@ services:
       MYRIAD_DOCKER_GUARD_NETWORK: ${GUARD_MYRIAD_DOCKER_GUARD_NETWORK:-myriad-docker-guard-net}
       DOCKER_GUARD_COMPOSE_DIR: /host/compose
       DOCKER_GUARD_STATE_DIR: /host/state
-      DOCKER_GUARD_EXPECTED_IMAGE: ${DOCKER_GUARD_IMAGE}
+      DOCKER_GUARD_EXPECTED_IMAGE: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
       DOCKER_GUARD_HOST_POLICY_PATH: /guard-policy/docker-guard.env
       # Dedicated capability from the host-owned policy file. It is separate
       # from UPDATE_TOKEN and prevents unrelated guard-net peers from invoking
@@ -433,9 +437,8 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   updater:
-    # Self-update pins this full reference to repo@sha256:digest. The tag form is
-    # retained only for first install and developer deployments.
-    image: ${UPDATER_IMAGE_REF:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG}}
+    # Cached pins never override an operator's deployment target.
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
     container_name: myriad-updater
     environment:
       UPDATE_TOKEN: ${UPDATE_TOKEN}
@@ -467,7 +470,7 @@ services:
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
       MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
       # Identity is baked into the image (Dockerfile ENV). Do not overlay
-      # UPDATER_TAG here: the digest pin in UPDATER_IMAGE_REF is what runs.
+      # MYRIAD_VERSION with UPDATER_TAG: a target is not a running identity.
       TZ: Asia/Shanghai
     volumes:
       # Deployment definitions are immutable to a compromised updater. Overlay
@@ -511,7 +514,7 @@ services:
     # Same image/tag as updater; thin binary injects UPDATE_TOKEN for backend.
     # Requires UPDATER_GATEWAY_SECRET from backend hop. Not created via docker-guard
     # create API — managed business services only; TCB upgrades use Guard's dedicated handoff.
-    image: ${UPDATER_IMAGE_REF:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG}}
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
     container_name: myriad-updater-gateway
     entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/myriad-updater-gateway"]
     environment:

@@ -244,26 +244,18 @@ export function isDismissedLastFailed(jobId: string | undefined): boolean {
   return dismissedLastFailedJobId() === jobId
 }
 
-export function infraLatestTip(
-  status: UpdaterStatus | null | undefined,
-): string | null {
-  const tip = status?.latest_available?.version?.trim()
-  return tip || null
-}
-
-function normalizeDeployTag(tag: string): string {
-  return tag.trim().replaceAll(/^v/gi, '').toLowerCase()
-}
-
-export function infraComponentBehind(
-  current: string | null | undefined,
-  tip: string | null | undefined,
-): boolean {
-  const target = tip?.trim()
-  if (!target) return false
-  const running = current?.trim()
-  if (!running) return true
-  return normalizeDeployTag(running) !== normalizeDeployTag(target)
+export function infraCompatibility(status: UpdaterStatus | null | undefined): {
+  requiresSelfUpdate: boolean
+  minUpdaterVersion: string | null
+} {
+  // latest_available describes the application release, not an updater/proxy
+  // release. Only its explicit compatibility requirement applies across tracks.
+  return {
+    requiresSelfUpdate:
+      !!status?.requires_self_update && !!status.latest_available,
+    minUpdaterVersion:
+      status?.latest_available?.min_updater_version?.trim() || null,
+  }
 }
 
 export function rememberDismissedLastFailed(jobId: string): void {

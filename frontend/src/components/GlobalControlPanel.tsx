@@ -45,6 +45,7 @@ import {
   shouldEmitNotificationToast,
   shouldSurfaceNotification,
 } from '../services/notificationDelivery'
+import { useBackgroundResidents } from '../tapp/runtime/backgroundResidentStore'
 import {
   getGreeting,
   getRandomQuote,
@@ -180,7 +181,8 @@ const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   useLayoutEffect(() => { resetMeropeState() }, [user?.id])
-  const { locale, setLocale, t } = useI18n()
+  const { locale, setLocale, t, format } = useI18n()
+  const backgroundResidents = useBackgroundResidents()
   const navLayout = useSyncExternalStore(
     subscribeNavLayout,
     getNavLayoutSnapshot,
@@ -1530,7 +1532,7 @@ const GlobalControlPanel: React.FC = () => {
   const hasValidContent = validContents.length > 0
 
   const notifCount = notifCenter.items.length
-  const collapsedIndicator =
+  const notificationIndicator =
     notifCount > 0 ? (
       <span className="dynamic-arrow-badge">
         {notifCount > 99 ? '99+' : notifCount}
@@ -1550,6 +1552,28 @@ const GlobalControlPanel: React.FC = () => {
         />
       </svg>
     )
+  const residentLabel = format(t.tapp.residentRunning, {
+    count: backgroundResidents.length,
+  })
+  const collapsedIndicator = (
+    <span className="dynamic-status-indicators">
+      {backgroundResidents.length > 0 && (
+        <button
+          type="button"
+          className="tapp-resident-indicator"
+          aria-label={residentLabel}
+          title={residentLabel}
+          onClick={(event) => {
+            event.stopPropagation()
+            handleTogglePanel('notifications')
+          }}
+        >
+          {backgroundResidents.length}
+        </button>
+      )}
+      {notificationIndicator}
+    </span>
+  )
 
   return (
     <React.Fragment>
@@ -1689,6 +1713,15 @@ const GlobalControlPanel: React.FC = () => {
                   {notifCount > 0 && (
                     <span className="notif-tab-badge">
                       {notifCount > 99 ? '99+' : notifCount}
+                    </span>
+                  )}
+                  {backgroundResidents.length > 0 && (
+                    <span
+                      className="tapp-resident-tab-badge"
+                      aria-label={residentLabel}
+                      title={residentLabel}
+                    >
+                      {backgroundResidents.length}
                     </span>
                   )}
                 </button>

@@ -16,14 +16,18 @@ test(`background runner admits four successful instances serially after ${failed
   const updates: unknown[] = []
   const events = new Map<string, () => void>()
   const calls: string[] = []
+  const published: Array<Array<{ id: string }>> = []
+  let stopResident: ((tappId: string) => void) | undefined
   const first = Promise.withResolvers<void>()
   const tapps = Array.from({ length: 20 }, (_, i) => ({ id: String(i), manifest: { version: '1', name: String(i) } }))
   const dependencies = {
     window: { addEventListener() {}, removeEventListener() {} },
     React, useRef: (current: unknown) => ({ current }), useState: (initial: unknown) => [initial, (value: unknown) => updates.push(value)],
     useCallback: (callback: unknown) => callback, useEffect: (effect: () => (() => void) | undefined) => effects.push(effect),
-    useI18n: () => ({ t: { tapp: {} } }),
-    getTappRuntime: () => ({ waitForSync: async () => {}, getBackgroundTapps: () => tapps, on: (event: string, callback: () => void) => { events.set(event, callback); return () => {} } }),
+    getTappRuntime: () => ({ waitForSync: async () => {}, getBackgroundTapps: () => tapps, getBackgroundRequirements: () => ['sync'], on: (event: string, callback: () => void) => { events.set(event, callback); return () => {} } }),
+    publishBackgroundResidents: (next: Array<{ id: string }>) => published.push(next),
+    clearBackgroundResidents: () => {},
+    registerBackgroundResidentStopHandler: (handler: (tappId: string) => void) => { stopResident = handler; return () => { stopResident = undefined } },
     loadCoreResources: async (tapp: { id: string }) => { calls.push(tapp.id); if (tapp.id === '0') await first.promise; if (Number(tapp.id) < failed) throw new Error('fixture package unavailable'); return { modules: {} } },
     TappPageSandbox: () => null,
   }
@@ -36,11 +40,13 @@ test(`background runner admits four successful instances serially after ${failed
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(calls, Array.from({ length: failed + 4 }, (_, i) => String(i)))
   assert.deepEqual((updates[0] as Array<{ id: string }>).map(tapp => tapp.id), Array.from({ length: 4 }, (_, i) => String(i + failed)))
+  assert.deepEqual(published.at(-1)?.map(tapp => tapp.id), Array.from({ length: 4 }, (_, i) => String(i + failed)))
   const installed = updates[0] as Array<{ id: string }>
   const nextUpdate = updates.length
   events.get('sync:complete')!()
-  const retain = updates[nextUpdate] as (current: typeof installed) => typeof installed
-  assert.deepEqual(retain(installed).map(tapp => tapp.id), installed.map(tapp => tapp.id), 'sync must retain admitted apps beyond failed candidates')
+  assert.deepEqual((updates[nextUpdate] as typeof installed).map(tapp => tapp.id), installed.map(tapp => tapp.id), 'sync must retain admitted apps beyond failed candidates')
+  stopResident!(installed[0].id)
+  assert.deepEqual(published.at(-1)?.map(tapp => tapp.id), installed.slice(1).map(tapp => tapp.id))
   cleanups.forEach(cleanup => cleanup?.())
 })
 }

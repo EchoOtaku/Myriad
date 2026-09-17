@@ -114,6 +114,33 @@ test('要用户回话时带上问题本身', () => {
   })
 })
 
+test('任务内容即使碰到错误关键词也保持原文', () => {
+  const created = run(runStarted, {
+    type: 'task_created',
+    taskId: 't1',
+    message: 'Failed',
+    totalSteps: 1,
+  })
+  assert.equal(created.detail, 'Failed')
+
+  const working = reduceAgentStatus(created, {
+    ...stepStarted,
+    description: 'Data',
+  })
+  assert.equal(working.detail, 'Data')
+
+  const asking = reduceAgentStatus(working, {
+    type: 'waiting_for_input',
+    taskId: 't1',
+    questionId: 'q1',
+    questionType: 'text',
+    question: 'Failed',
+    required: true,
+  })
+  assert.equal(asking.detail, 'Failed')
+  assert.equal(awaitingConfirmation('Write').detail, 'Write')
+})
+
 test('收尾分成完成与出错两档', () => {
   const done = run(runStarted, stepStarted, {
     type: 'task_completed',

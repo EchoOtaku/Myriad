@@ -3,7 +3,8 @@
 //! The running Guard starts this binary only from an image whose official
 //! repository and immutable digest it has independently verified. The helper
 //! has one operation: converge `docker-guard`, `updater`, and
-//! `updater-gateway` on that exact image, or restore the previous exact image.
+//! `updater-gateway` on that exact image, or restore each service's previous
+//! exact image from the Guard-verified recovery snapshot.
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
@@ -20,6 +21,10 @@ use crate::error::{Result, UpdaterError};
 use crate::state::atomic;
 
 pub const ENV_PREVIOUS_IMAGE: &str = "MYRIAD_SELF_UPDATE_PREVIOUS_IMAGE";
+// Fixed order: Guard, updater, gateway. Stored in the trusted helper's immutable
+// container configuration so recovery survives Guard restarts.
+pub const ENV_PREVIOUS_IMAGES: &str = "MYRIAD_SELF_UPDATE_PREVIOUS_IMAGES";
+pub const MIXED_RECOVERY_LABEL: &str = "io.myriad.updater.mixed-recovery";
 pub const ENV_TARGET_IMAGE: &str = "MYRIAD_SELF_UPDATE_TARGET_IMAGE";
 pub const ENV_PREVIOUS_TAG: &str = "MYRIAD_SELF_UPDATE_PREVIOUS_TAG";
 pub const ENV_TARGET_TAG: &str = "MYRIAD_SELF_UPDATE_TARGET_TAG";
@@ -131,6 +136,7 @@ impl SelfUpdateLastStatus {
 #[derive(Debug, Clone)]
 struct HelperConfig {
     previous_image: String,
+    previous_images: Option<[String; 3]>,
     target_image: String,
     previous_tag: String,
     target_tag: String,
@@ -151,6 +157,10 @@ impl HelperConfig {
     fn from_env() -> Result<Self> {
         let cfg = Self {
             previous_image: required_env(ENV_PREVIOUS_IMAGE)?,
+            previous_images: std::env::var(ENV_PREVIOUS_IMAGES)
+                .ok()
+                .map(|value| parse_previous_images(&value))
+                .transpose()?,
             target_image: required_env(ENV_TARGET_IMAGE)?,
             previous_tag: required_env(ENV_PREVIOUS_TAG)?,
             target_tag: required_env(ENV_TARGET_TAG)?,
@@ -175,6 +185,15 @@ impl HelperConfig {
             },
         };
         validate_exact_image(&cfg.previous_image)?;
+        if cfg
+            .previous_images
+            .as_ref()
+            .is_some_and(|images| images[0] != cfg.previous_image)
+        {
+            return Err(UpdaterError::Precondition(
+                "previous Guard image differs from recovery snapshot".into(),
+            ));
+        }
         validate_exact_image(&cfg.target_image)?;
         crate::version::DeployTag::parse(&cfg.previous_tag)?;
         crate::version::DeployTag::parse(&cfg.target_tag)?;
@@ -193,6 +212,15 @@ impl HelperConfig {
         }
         Ok(cfg)
     }
+}
+
+pub(crate) fn parse_previous_images(value: &str) -> Result<[String; 3]> {
+    let images: [String; 3] = serde_json::from_str(value)
+        .map_err(|_| UpdaterError::Precondition("invalid previous TCB images".into()))?;
+    for image in &images {
+        validate_exact_image(image)?;
+    }
+    Ok(images)
 }
 
 pub fn main_from_env() -> Result<()> {
@@ -270,6 +298,19 @@ fn run_recovery(cfg: &HelperConfig) -> Result<()> {
 }
 
 fn run_handoff(cfg: &HelperConfig) -> Result<()> {
+    // Validate the exact recovery model before writing pins or stopping any
+    // service. The transient override also works with older Compose layouts.
+    if let Some(images) = &cfg.previous_images {
+        let files = find_compose_files(&cfg.compose_dir)?;
+        let model = run_compose(
+            cfg,
+            &files,
+            images,
+            &cfg.previous_tag,
+            &["config", "--format", "json"],
+        )?;
+        validate_stack_compose_model(&model, images, cfg)?;
+    }
     let app_before = std::fs::read(&cfg.app_env_file)?;
     let guard_before = std::fs::read(&cfg.guard_env_file)?;
 
@@ -373,20 +414,18 @@ fn ensure_status_writable(path: &Path) -> Result<()> {
 }
 
 fn install(cfg: &HelperConfig, exact_image: &str, tag: &str) -> Result<()> {
-    update_policy_files(cfg, exact_image, tag)?;
+    install_images(cfg, &std::array::from_fn(|_| exact_image.to_owned()), tag)
+}
+
+fn install_images(cfg: &HelperConfig, images: &[String; 3], tag: &str) -> Result<()> {
+    write_stack_policy_files(cfg, images, Some(tag), false)?;
     let files = find_compose_files(&cfg.compose_dir)?;
-    let config = run_compose(
-        cfg,
-        &files,
-        exact_image,
-        tag,
-        &["config", "--format", "json"],
-    )?;
-    validate_compose_model(&config, exact_image, cfg)?;
+    let config = run_compose(cfg, &files, images, tag, &["config", "--format", "json"])?;
+    validate_stack_compose_model(&config, images, cfg)?;
     run_compose(
         cfg,
         &files,
-        exact_image,
+        images,
         tag,
         &[
             "up",
@@ -398,13 +437,17 @@ fn install(cfg: &HelperConfig, exact_image: &str, tag: &str) -> Result<()> {
             SERVICES[2],
         ],
     )?;
-    wait_for_running_services(exact_image, SERVICE_HEALTH_TIMEOUT)?;
+    wait_for_running_services(images, SERVICE_HEALTH_TIMEOUT)?;
     Ok(())
 }
 
 fn rollback_previous(cfg: &HelperConfig) -> Result<()> {
+    let images = cfg
+        .previous_images
+        .clone()
+        .unwrap_or_else(|| std::array::from_fn(|_| cfg.previous_image.clone()));
     for attempt in 1..=2 {
-        match install(cfg, &cfg.previous_image, &cfg.previous_tag) {
+        match install_images(cfg, &images, &cfg.previous_tag) {
             Ok(()) => return Ok(()),
             Err(error) if attempt == 2 => return Err(error),
             Err(_) => std::thread::sleep(Duration::from_secs(2)),
@@ -486,8 +529,20 @@ fn persist_reconciled_policy(
             "missing running stack identity".into(),
         ));
     };
+    let expected = cfg
+        .previous_images
+        .clone()
+        .unwrap_or_else(|| std::array::from_fn(|_| cfg.target_image.clone()));
     if identities.len() != SERVICES.len()
-        || identities.iter().any(|identity| identity != actual)
+        || identities
+            .iter()
+            .zip(&expected)
+            .any(|(identity, image)| &identity.image != image)
+        || identities.iter().any(|left| {
+            identities
+                .iter()
+                .any(|right| left.image == right.image && left != right)
+        })
         || actual.image != cfg.target_image
         || actual.version != cfg.target_tag
     {
@@ -498,26 +553,46 @@ fn persist_reconciled_policy(
     // Parse both before writing either; retries converge if a later write fails.
     EnvFile::load(&cfg.app_env_file)?;
     EnvFile::load(&cfg.guard_env_file)?;
-    write_policy_files(cfg, &actual.image, &actual.version, true)
+    // UPDATER_TAG is the operator's deployment intent. Recording the observed
+    // image must not erase a pending manual TAG change (nor claim it was applied).
+    write_stack_policy_files(cfg, &expected, None, true)
 }
 
+#[cfg(test)]
 fn update_policy_files(cfg: &HelperConfig, exact_image: &str, tag: &str) -> Result<()> {
-    write_policy_files(cfg, exact_image, tag, false)
+    write_stack_policy_files(
+        cfg,
+        &std::array::from_fn(|_| exact_image.to_owned()),
+        Some(tag),
+        false,
+    )
 }
 
-fn write_policy_files(
+fn write_stack_policy_files(
     cfg: &HelperConfig,
-    exact_image: &str,
-    tag: &str,
+    images: &[String; 3],
+    deployment_tag: Option<&str>,
     preserve_inode: bool,
 ) -> Result<()> {
     let mut app = EnvFile::load(&cfg.app_env_file)?;
-    app.set("UPDATER_TAG", tag)?;
-    app.set("UPDATER_IMAGE_REF", exact_image)?;
-    app.set("DOCKER_GUARD_IMAGE", exact_image)?;
+    if let Some(tag) = deployment_tag {
+        app.set("UPDATER_TAG", tag)?;
+    }
+    app.set("UPDATER_IMAGE_REF", &images[1])?;
+    if images[2] != images[1] || app.get("UPDATER_GATEWAY_IMAGE_REF").is_some() {
+        app.set(
+            "UPDATER_GATEWAY_IMAGE_REF",
+            if images[2] == images[1] {
+                ""
+            } else {
+                &images[2]
+            },
+        )?;
+    }
+    app.set("DOCKER_GUARD_IMAGE", &images[0])?;
 
     let mut guard = EnvFile::load(&cfg.guard_env_file)?;
-    guard.set("DOCKER_GUARD_IMAGE", exact_image)?;
+    guard.set("DOCKER_GUARD_IMAGE", &images[0])?;
     guard.set("MYRIAD_GUARD_ENV_FILE", "guard-policy/docker-guard.env")?;
     if preserve_inode {
         app.save_preserving_inode()?;
@@ -539,13 +614,34 @@ pub(super) fn write_status(path: &Path, status: &SelfUpdateLastStatus) -> Result
     atomic::write_atomic_json(path, status)
 }
 
+fn exact_image_override(images: &[String; 3]) -> Result<Value> {
+    for image in images {
+        validate_exact_image(image)?;
+    }
+    Ok(serde_json::json!({"services": {
+        "docker-guard": {
+            "image": images[0],
+            "environment": {"DOCKER_GUARD_EXPECTED_IMAGE": images[0]}
+        },
+        "updater": {"image": images[1]},
+        "updater-gateway": {"image": images[2]}
+    }}))
+}
+
 fn run_compose(
     cfg: &HelperConfig,
     files: &[PathBuf],
-    exact_image: &str,
+    images: &[String; 3],
     tag: &str,
     tail: &[&str],
 ) -> Result<Vec<u8>> {
+    // Pins in .env are observations, not deployment selectors. Only this
+    // authenticated, fixed-service handoff may select per-service exact images
+    // for its current transaction. Never leave an override in the project: a
+    // subsequent host `compose up` must honor UPDATER_TAG again.
+    let mut override_file = tempfile::Builder::new().suffix(".json").tempfile()?;
+    serde_json::to_writer(override_file.as_file_mut(), &exact_image_override(images)?)?;
+    override_file.as_file_mut().flush()?;
     let mut command = Command::new("docker");
     command.args([
         "compose",
@@ -559,16 +655,19 @@ fn run_compose(
     for file in files {
         command.arg("-f").arg(file);
     }
+    command.arg("-f").arg(override_file.path());
     command
         .arg("--env-file")
         .arg(&cfg.app_env_file)
         .arg("--env-file")
         .arg(&cfg.guard_env_file)
         .args(tail)
-        // These values are authoritative and override every mutable .env key.
-        .env("UPDATER_IMAGE_REF", exact_image)
+        // Keep old Compose files compatible; the temporary override above is
+        // authoritative even when the base file selects images solely by TAG.
+        .env("UPDATER_IMAGE_REF", &images[1])
+        .env("UPDATER_GATEWAY_IMAGE_REF", &images[2])
         .env("UPDATER_TAG", tag)
-        .env("DOCKER_GUARD_IMAGE", exact_image)
+        .env("DOCKER_GUARD_IMAGE", &images[0])
         .env("MYRIAD_GUARD_ENV_FILE", "guard-policy/docker-guard.env")
         .env("MYRIAD_COMPOSE_HOST_ROOT", &cfg.host_compose_root)
         .env("COMPOSE_PROJECT_NAME", &cfg.project)
@@ -670,7 +769,16 @@ fn command_output_with_timeout(
     })
 }
 
+#[cfg(test)]
 fn validate_compose_model(bytes: &[u8], exact_image: &str, cfg: &HelperConfig) -> Result<()> {
+    validate_stack_compose_model(bytes, &std::array::from_fn(|_| exact_image.to_owned()), cfg)
+}
+
+fn validate_stack_compose_model(
+    bytes: &[u8],
+    images: &[String; 3],
+    cfg: &HelperConfig,
+) -> Result<()> {
     let model: Value = serde_json::from_slice(bytes).map_err(|error| {
         UpdaterError::Precondition(format!("compose config is not valid JSON: {error}"))
     })?;
@@ -678,7 +786,7 @@ fn validate_compose_model(bytes: &[u8], exact_image: &str, cfg: &HelperConfig) -
         .get("services")
         .and_then(Value::as_object)
         .ok_or_else(|| UpdaterError::Precondition("compose config has no services".into()))?;
-    for service in SERVICES {
+    for (service, exact_image) in SERVICES.into_iter().zip(images) {
         let value = services.get(service).ok_or_else(|| {
             UpdaterError::Precondition(format!("compose config is missing {service}"))
         })?;
@@ -934,10 +1042,10 @@ fn require_updater_mount_targets(service: &Value) -> Result<()> {
     ))
 }
 
-fn wait_for_running_services(exact_image: &str, timeout: Duration) -> Result<()> {
+fn wait_for_running_services(images: &[String; 3], timeout: Duration) -> Result<()> {
     let deadline = Instant::now() + timeout;
     loop {
-        let error = match verify_running_services(exact_image) {
+        let error = match verify_running_services(images) {
             Ok(()) => return Ok(()),
             Err(error) => error,
         };
@@ -948,12 +1056,15 @@ fn wait_for_running_services(exact_image: &str, timeout: Duration) -> Result<()>
     }
 }
 
-fn verify_running_services(exact_image: &str) -> Result<()> {
-    for container in [
+fn verify_running_services(images: &[String; 3]) -> Result<()> {
+    for (container, exact_image) in [
         "myriad-docker-guard",
         "myriad-updater",
         "myriad-updater-gateway",
-    ] {
+    ]
+    .into_iter()
+    .zip(images)
+    {
         let mut inspect = Command::new("docker");
         inspect.args(["container", "inspect", container]);
         let output = command_output_with_timeout(
@@ -992,7 +1103,7 @@ fn verify_running_services(exact_image: &str) -> Result<()> {
             .get("Image")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        if configured != exact_image || !image_id.starts_with("sha256:") {
+        if !digest_matches(configured, exact_image) || !image_id.starts_with("sha256:") {
             return Err(UpdaterError::Precondition(format!(
                 "{container} did not start from the Guard-verified digest"
             )));
@@ -1136,6 +1247,7 @@ fn display_result(result: Result<()>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn exact_image() -> String {
         format!("{TRUSTED_UPDATER_REPOSITORY}@sha256:{}", "a".repeat(64))
@@ -1143,6 +1255,7 @@ mod tests {
 
     fn config() -> HelperConfig {
         HelperConfig {
+            previous_images: None,
             previous_image: exact_image(),
             target_image: exact_image(),
             previous_tag: "v1.2.2".into(),
@@ -1225,13 +1338,217 @@ mod tests {
     }
 
     #[test]
+    fn mixed_stack_reconciliation_preserves_actual_images_and_pending_deployment_tag() {
+        use crate::docker::guard::startup::RuntimeIdentity;
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = config();
+        cfg.app_env_file = dir.path().join(".env");
+        cfg.guard_env_file = dir.path().join("guard.env");
+        std::fs::write(&cfg.app_env_file, "MYRIAD_TAG=v0.4.14\nPROXY_TAG=v0.3.32\nUPDATER_TAG=v9.9.9\nUPDATER_IMAGE_REF=stale\nDOCKER_GUARD_IMAGE=stale\n").unwrap();
+        std::fs::write(&cfg.guard_env_file, "DOCKER_GUARD_IMAGE=stale\n").unwrap();
+        let images: [String; 3] = std::array::from_fn(|i| {
+            format!(
+                "{TRUSTED_UPDATER_REPOSITORY}@sha256:{}",
+                ["a", "b", "c"][i].repeat(64)
+            )
+        });
+        cfg.previous_images = Some(images.clone());
+        let identities: Vec<_> = images
+            .iter()
+            .enumerate()
+            .map(|(i, image)| RuntimeIdentity {
+                image: image.clone(),
+                image_id: format!("sha256:{}", ["d", "e", "f"][i].repeat(64)),
+                version: ["v1.2.3", "v0.4.6", "v0.4.8"][i].into(),
+            })
+            .collect();
+        let mut live = std::fs::File::open(&cfg.app_env_file).unwrap();
+        persist_reconciled_policy(&cfg, &identities).unwrap();
+        let mut text = String::new();
+        live.read_to_string(&mut text).unwrap();
+        assert!(text.contains("UPDATER_TAG=v9.9.9"));
+        let app = EnvFile::load(&cfg.app_env_file).unwrap();
+        assert_eq!(app.get("MYRIAD_TAG"), Some("v0.4.14"));
+        assert_eq!(app.get("PROXY_TAG"), Some("v0.3.32"));
+        for (key, image) in [
+            "DOCKER_GUARD_IMAGE",
+            "UPDATER_IMAGE_REF",
+            "UPDATER_GATEWAY_IMAGE_REF",
+        ]
+        .into_iter()
+        .zip(&images)
+        {
+            assert_eq!(app.get(key), Some(image.as_str()));
+        }
+        assert_eq!(
+            EnvFile::load(&cfg.guard_env_file)
+                .unwrap()
+                .get("DOCKER_GUARD_IMAGE"),
+            Some(images[0].as_str())
+        );
+
+        let before = std::fs::read(&cfg.app_env_file).unwrap();
+        let mut changed = identities.clone();
+        changed[1].image = exact_image();
+        assert!(persist_reconciled_policy(&cfg, &changed).is_err());
+        assert_eq!(std::fs::read(&cfg.app_env_file).unwrap(), before);
+    }
+
+    #[test]
+    #[ignore = "requires Docker Compose CLI; no Docker daemon or network needed"]
+    fn compose_handoff_and_rollback_use_temporary_exact_images_without_shadowing_manual_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = config();
+        cfg.compose_dir = dir.path().to_owned();
+        cfg.project_directory = dir.path().to_owned();
+        cfg.app_env_file = dir.path().join(".env");
+        cfg.guard_env_file = dir.path().join("guard.env");
+        std::fs::write(&cfg.app_env_file, "UPDATER_TAG=v0.4.14\nUPDATER_IMAGE_REF=stale-updater\nUPDATER_GATEWAY_IMAGE_REF=stale-gateway\nDOCKER_GUARD_IMAGE=stale-guard\n").unwrap();
+        std::fs::write(&cfg.guard_env_file, "DOCKER_GUARD_IMAGE=stale-host-pin\n").unwrap();
+        let compose = dir.path().join("compose.json");
+        let tag_image = "docker.io/somekawahitomi/myriad-updater:${UPDATER_TAG}";
+        let base = serde_json::json!({"services": {
+            "docker-guard": {"image": tag_image, "environment": {"DOCKER_GUARD_EXPECTED_IMAGE": tag_image}},
+            "updater": {"image": tag_image},
+            "updater-gateway": {"image": tag_image},
+            "proxy": {"image": "docker.io/somekawahitomi/myriad-proxy:v0.3.32"}
+        }});
+        std::fs::write(&compose, serde_json::to_vec(&base).unwrap()).unwrap();
+        let files = vec![compose.clone()];
+        let previous: [String; 3] = std::array::from_fn(|i| {
+            format!(
+                "{TRUSTED_UPDATER_REPOSITORY}@sha256:{}",
+                ["a", "b", "c"][i].repeat(64)
+            )
+        });
+        let target = std::array::from_fn(|_| {
+            format!("{TRUSTED_UPDATER_REPOSITORY}@sha256:{}", "d".repeat(64))
+        });
+        for images in [&target, &previous] {
+            let bytes = run_compose(
+                &cfg,
+                &files,
+                images,
+                "v0.4.14",
+                &["config", "--format", "json"],
+            )
+            .unwrap();
+            let model: Value = serde_json::from_slice(&bytes).unwrap();
+            for (service, image) in SERVICES.into_iter().zip(images) {
+                assert_eq!(model["services"][service]["image"], *image);
+            }
+            assert_eq!(
+                model["services"]["docker-guard"]["environment"]["DOCKER_GUARD_EXPECTED_IMAGE"],
+                images[0]
+            );
+            assert_eq!(
+                model["services"]["proxy"]["image"],
+                base["services"]["proxy"]["image"]
+            );
+        }
+        // A later ordinary host invocation has no handoff override, even though
+        // all three stale pins still exist in its two env files.
+        let output = Command::new("docker")
+            .args(["compose", "-p", "myriad-tag-test", "-f"])
+            .arg(&compose)
+            .arg("--env-file")
+            .arg(&cfg.app_env_file)
+            .arg("--env-file")
+            .arg(&cfg.guard_env_file)
+            .args(["config", "--format", "json"])
+            .env_remove("UPDATER_TAG")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let model: Value = serde_json::from_slice(&output.stdout).unwrap();
+        for service in SERVICES {
+            assert_eq!(
+                model["services"][service]["image"],
+                "docker.io/somekawahitomi/myriad-updater:v0.4.14"
+            );
+        }
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 3);
+    }
+
+    #[test]
+    fn transaction_image_override_rejects_untrusted_refs() {
+        let mut images = std::array::from_fn(|_| exact_image());
+        assert!(exact_image_override(&images).is_ok());
+        for bad in [
+            "evil.example/updater:v1.2.3",
+            "docker.io/somekawahitomi/myriad-updater:v1.2.3",
+        ] {
+            images[2] = bad.into();
+            assert!(exact_image_override(&images).is_err());
+        }
+    }
+
+    #[test]
+    fn per_service_rollback_model_keeps_images_distinct_and_checks_each_digest() {
+        let cfg = config();
+        let images: [String; 3] = std::array::from_fn(|i| {
+            format!(
+                "{TRUSTED_UPDATER_REPOSITORY}@sha256:{}",
+                ["a", "b", "c"][i].repeat(64)
+            )
+        });
+        let mut model = compose_model(&exact_image());
+        for (service, image) in SERVICES.into_iter().zip(&images) {
+            model["services"][service]["image"] = json!(image);
+        }
+        assert!(
+            validate_stack_compose_model(&serde_json::to_vec(&model).unwrap(), &images, &cfg)
+                .is_ok()
+        );
+        for service in SERVICES {
+            let mut wrong = model.clone();
+            wrong["services"][service]["image"] = json!(format!(
+                "{TRUSTED_UPDATER_REPOSITORY}@sha256:{}",
+                "f".repeat(64)
+            ));
+            assert!(
+                validate_stack_compose_model(&serde_json::to_vec(&wrong).unwrap(), &images, &cfg)
+                    .is_err()
+            );
+        }
+        assert!(parse_previous_images(&serde_json::to_string(&images).unwrap()).is_ok());
+        for bad in [
+            json!([images[0]]),
+            json!([images[0], images[1], "evil.example/updater@sha256:bad"]),
+        ] {
+            assert!(parse_previous_images(&bad.to_string()).is_err());
+        }
+    }
+
+    #[test]
+    fn uniform_upgrade_clears_old_gateway_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = config();
+        cfg.app_env_file = dir.path().join(".env");
+        cfg.guard_env_file = dir.path().join("guard.env");
+        std::fs::write(&cfg.app_env_file, "UPDATER_GATEWAY_IMAGE_REF=old\n").unwrap();
+        std::fs::write(&cfg.guard_env_file, "").unwrap();
+        update_policy_files(&cfg, &exact_image(), "v1.2.3").unwrap();
+        assert_eq!(
+            EnvFile::load(&cfg.app_env_file)
+                .unwrap()
+                .get("UPDATER_GATEWAY_IMAGE_REF"),
+            Some("")
+        );
+    }
+
+    #[test]
     fn reconciliation_preserves_files_when_stack_is_mixed_or_changed() {
         use crate::docker::guard::startup::RuntimeIdentity;
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = config();
         cfg.app_env_file = dir.path().join(".env");
         cfg.guard_env_file = dir.path().join("guard.env");
-        let original = "UPDATER_TAG=v0.4.6\nDOCKER_GUARD_IMAGE=old\n";
+        let original = "MYRIAD_TAG=v0.4.14\nPROXY_TAG=v0.3.32\nUPDATER_TAG=v0.4.6\nUPDATER_IMAGE_REF=old\nDOCKER_GUARD_IMAGE=old\n";
         std::fs::write(&cfg.app_env_file, original).unwrap();
         std::fs::write(&cfg.guard_env_file, original).unwrap();
         let identity = RuntimeIdentity {
@@ -1268,11 +1585,13 @@ mod tests {
         let mut live_text = String::new();
         live_updater_view.read_to_string(&mut live_text).unwrap();
         assert!(
-            live_text.contains("UPDATER_TAG=v1.2.3"),
-            "live file bind must observe the synchronized version"
+            live_text.contains(&format!("UPDATER_IMAGE_REF={}", exact_image())),
+            "live file bind must observe the synchronized digest"
         );
         let app = EnvFile::load(&cfg.app_env_file).unwrap();
-        assert_eq!(app.get("UPDATER_TAG"), Some(cfg.target_tag.as_str()));
+        assert_eq!(app.get("MYRIAD_TAG"), Some("v0.4.14"));
+        assert_eq!(app.get("PROXY_TAG"), Some("v0.3.32"));
+        assert_eq!(app.get("UPDATER_TAG"), Some("v0.4.6"));
         assert_eq!(app.get("UPDATER_IMAGE_REF"), Some(exact_image().as_str()));
         assert_eq!(app.get("DOCKER_GUARD_IMAGE"), Some(exact_image().as_str()));
     }

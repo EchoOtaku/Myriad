@@ -20,8 +20,8 @@
 
 ```bash
 cd /path/to/myriad
-# .env 填入独立验证过的 DOCKER_GUARD_IMAGE（repo@sha256）。
-# Guard 首次启动会写入 ./guard-policy/docker-guard.env。
+# .env 填入各自目标 MYRIAD_TAG / PROXY_TAG / UPDATER_TAG。
+# 脚本从 UPDATER_TAG 解析 Guard 摘要；启动核验后同步实际镜像记录。
 bash scripts/extra/deploy.sh up
 ```
 
@@ -29,7 +29,7 @@ bash scripts/extra/deploy.sh up
 
 - 如缺少 `.env`，从 `.env.production.example` 复制
 - 创建 `./pgdata`、`./state`、`./backups`
-- 补齐 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad` 等当前布局 key。生产 TCB 以 `UPDATER_IMAGE_REF` / `DOCKER_GUARD_IMAGE` digest 为准
+- 补齐 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad` 等当前布局 key。普通编排由 TAG 选镜像；`UPDATER_IMAGE_REF` / `DOCKER_GUARD_IMAGE` 是实际摘要记录，不覆盖 TAG
 - 若 `UPDATE_TOKEN` / `UPDATER_GATEWAY_SECRET` / `MYRIAD_SETUP_SECRET` / `PERSONA_DB_PASSWORD` / `FEDERATION_DB_PASSWORD` 为空则随机生成
 - 若 `.env` / `./guard-policy/docker-guard.env` 缺少 `GUARD_SELF_UPDATE_TOKEN` 则随机生成
 - 未认领的首次安装可直接用浏览器经 proxy 做完向导；编排预置了安装暗号则要对上。官方 compose 没有暗号会拒绝启动；`deploy.sh` 会在空值时生成
@@ -174,8 +174,11 @@ audit: update_request job=… target=… mode=… allow_downgrade=… allow_dive
 
 Commit 模式成功后 **只写入 `dev-<shortsha>`** 到 `MYRIAD_TAG`。  
 业务更新只换 **`MYRIAD_TAG`**（web + federation-worker + persona-worker 共用 backend 镜像，加上 frontend）；proxy 独立更新；Guard/updater TCB 可在 UI 中一键升级。
-成功后 `.env` 的 `UPDATER_IMAGE_REF` 固化为官方 `repo@sha256`，后续不能只改
-`UPDATER_TAG` 手工换版本；请继续使用 UI，或同时清除/更新该 digest 引用。
+成功后 `.env` 的 `UPDATER_IMAGE_REF` 等字段记录实际官方 `repo@sha256`，供核验和恢复。
+手动换版本只需修改 `UPDATER_TAG`，再执行 `deploy.sh upgrade`，或拉取并重建
+`docker-guard updater updater-gateway`；无需清除旧 pin。需要使用本版 Compose 文件，
+旧编排中 pin 优先的 `image:` 表达式不会因更新镜像而自行改变。
+自动升级使用仅本次事务有效的精确摘要覆盖文件；普通重建仍由 TAG 决定。
 
 `.env` 必须包含 `BACKEND_IMAGE` / `FRONTEND_IMAGE`。
 

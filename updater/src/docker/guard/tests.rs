@@ -589,6 +589,36 @@ fn persisted_helper_identity_recovers_only_guard_created_handoff_intent() {
     assert_eq!(attempt.previous_tag, "v1.2.2");
     assert_eq!(attempt.target_tag, "v1.2.3");
     assert!(!attempt.recovery_only);
+    assert!(attempt.previous_images.is_none());
+
+    let images = [previous.clone(), target.clone(), previous.clone()];
+    let mut mixed = inspect.clone();
+    mixed["Config"]["Env"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!(format!(
+            "{}={}",
+            super::super::self_update_helper::ENV_PREVIOUS_IMAGES,
+            serde_json::to_string(&images).unwrap()
+        )));
+    assert_eq!(
+        handoff_attempt_from_inspect(&mixed)
+            .unwrap()
+            .previous_images,
+        Some(images)
+    );
+
+    let last = mixed["Config"]["Env"]
+        .as_array_mut()
+        .unwrap()
+        .last_mut()
+        .unwrap();
+    *last = json!(format!(
+        "{}=[\"evil.example/updater@sha256:{}\"]",
+        super::super::self_update_helper::ENV_PREVIOUS_IMAGES,
+        "a".repeat(64)
+    ));
+    assert!(handoff_attempt_from_inspect(&mixed).is_err());
 
     let mut recovery = inspect.clone();
     recovery["Config"]["Env"]
@@ -644,6 +674,7 @@ fn recovery_retry_budget_survives_guard_restart() {
     let mut state = state();
     Arc::make_mut(&mut state.config).state_dir = root.path().to_path_buf();
     let attempt = HandoffAttempt {
+        previous_images: None,
         previous_image: format!(
             "docker.io/somekawahitomi/myriad-updater@sha256:{}",
             "a".repeat(64)
@@ -1383,6 +1414,101 @@ fn persona_worker_has_fixed_command_resources_and_first_party_mounts() {
         let mut invalid = request.clone();
         *invalid.pointer_mut(path).unwrap() = value;
         assert!(validate(&invalid).is_err(), "accepted {path}");
+    }
+}
+
+#[tokio::test]
+async fn healthy_mixed_deployment_is_accepted_and_stale_pending_does_not_lock_it() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let dir = tempfile::Builder::new()
+        .prefix("myriad-mixed-")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let socket = dir.path().join("docker.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let images: [String; 3] = std::array::from_fn(|i| {
+        format!(
+            "{TRUSTED_GUARD_REPOSITORY}@sha256:{}",
+            ["a", "b", "c"][i].repeat(64)
+        )
+    });
+    let expected_images = images.clone();
+    let daemon = tokio::spawn(async move {
+        for _ in 0..3 {
+            for (i, service) in ["docker-guard", "updater", "updater-gateway"]
+                .iter()
+                .enumerate()
+            {
+                let id = format!("sha256:{}", ["d", "e", "f"][i].repeat(64));
+                let container = json!({"Image": id, "Config": {"Image": images[i], "Labels": {
+                    "com.docker.compose.project": "myriad", "com.docker.compose.service": service
+                }}, "State": {"Running": true, "Health": {"Status": "healthy"}}});
+                let image = json!({"Id": id, "RepoDigests": [images[i]], "Config": {"Env": [format!("MYRIAD_VERSION=v0.4.{}", 6 + i)]}});
+                for (path, value) in [
+                    (format!("/containers/myriad-{service}/json"), container),
+                    (format!("/images/{id}/json"), image),
+                ] {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let mut request = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                        let read = stream.read(&mut buf).await.unwrap();
+                        assert!(read > 0);
+                        request.extend_from_slice(&buf[..read]);
+                    }
+                    assert!(String::from_utf8_lossy(&request).starts_with(&format!("GET {path} ")));
+                    let body = value.to_string();
+                    stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+                }
+            }
+        }
+    });
+    let mut state = state();
+    let cfg = Arc::make_mut(&mut state.config);
+    cfg.socket_path = socket;
+    cfg.state_dir = dir.path().to_path_buf();
+    let stack = super::startup::healthy_stack(&state.config).await.unwrap();
+    assert_eq!(
+        super::self_update::recovery_images(&stack),
+        Some(expected_images.clone())
+    );
+    assert_eq!(stack[1].version, "v0.4.7");
+    let attempt = HandoffAttempt {
+        previous_image: expected_images[0].clone(),
+        previous_images: Some(expected_images),
+        target_image: format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{}", "9".repeat(64)),
+        previous_tag: "v0.4.7".into(),
+        target_tag: "v0.4.14".into(),
+        recovery_only: false,
+    };
+    assert!(super::self_update::previous_stack_is_healthy(&state, &attempt).await);
+
+    let pending = super::super::self_update_helper::SelfUpdateLastStatus::pending_before_handoff(
+        "v0.4.14".into(),
+        "v0.4.6".into(),
+    );
+    let path = dir.path().join("self-update-last.json");
+    super::super::self_update_helper::write_status(&path, &pending).unwrap();
+    assert!(finalize_or_fail_orphaned_pending_handoff(&state).await);
+    assert_eq!(state.mutation_gate.load(Ordering::SeqCst), 0);
+    let last: super::super::self_update_helper::SelfUpdateLastStatus =
+        serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(
+        last.status,
+        super::super::self_update_helper::SelfUpdateOutcome::Failed
+    );
+    daemon.await.unwrap();
+}
+
+#[test]
+fn mixed_recovery_uses_an_explicit_helper_capability_not_version_equality() {
+    let supported = json!({"Config": {"Labels": {"io.myriad.updater.mixed-recovery": "1"}}});
+    assert!(super::self_update::require_mixed_recovery_support(&supported).is_ok());
+    for image in [
+        json!({}),
+        json!({"Config": {"Labels": {"io.myriad.updater.mixed-recovery": "2"}}}),
+    ] {
+        assert!(super::self_update::require_mixed_recovery_support(&image).is_err());
     }
 }
 

@@ -26,6 +26,16 @@ function notice(
   }
 }
 
+function typedNotice(
+  notification_type: AppNotification['notification_type'],
+  title: string,
+  body: string,
+  event_key?: string,
+  extra?: Record<string, unknown>,
+): AppNotification {
+  return { ...notice(title, body, event_key, extra), notification_type }
+}
+
 describe('notificationFacing', () => {
   it('maps leftover phantasi Chinese titles', () => {
     const text = notificationFacingTitle(
@@ -42,6 +52,59 @@ describe('notificationFacing', () => {
       notice('Steam auto-refresh failed', '获取失败: error sending request'),
     )
     assert.equal(/error sending request/i.test(text), false)
+  })
+
+  it('keeps title-only Tapp notification bodies empty', () => {
+    const text = notificationFacingBody(
+      typedNotice('tapp_notification', 'Sticker saved', '', 'tapp.message', {
+        tapp_id: 'com.myriad.aro',
+      }),
+    )
+    assert.equal(text, '')
+  })
+
+  it('preserves Tapp-authored titles and bodies as content', () => {
+    const notification = typedNotice(
+      'tapp_notification',
+      'Upload failed',
+      '前端任务执行失败',
+      'tapp.error',
+    )
+    assert.equal(notificationFacingTitle(notification), 'Upload failed')
+    assert.equal(notificationFacingBody(notification), '前端任务执行失败')
+  })
+
+  it('localizes the backend default Tapp title', () => {
+    const notification = typedNotice(
+      'tapp_notification',
+      'App notification',
+      'Saved',
+      'tapp.message',
+    )
+    assert.equal(notificationFacingTitle(notification), currentCopy().errors.noticeTapp)
+  })
+
+  it('preserves federation message previews as user content', () => {
+    const notification = typedNotice(
+      'federation_message',
+      '任务失败',
+      'Unauthorized',
+      'federation.channel_message',
+      { message_type: 'text' },
+    )
+    assert.equal(notificationFacingTitle(notification), '任务失败')
+    assert.equal(notificationFacingBody(notification), 'Unauthorized')
+  })
+
+  it('still localizes scheduled Tapp failures', () => {
+    const notification = typedNotice(
+      'tapp_notification',
+      'Scheduled task failed',
+      'Unauthorized',
+      'tapp.error',
+    )
+    assert.equal(notificationFacingTitle(notification), currentCopy().errors.noticeScheduleFailed)
+    assert.equal(notificationFacingBody(notification), currentCopy().errors.unauthorized)
   })
 
   it('pluralizes federation revoked queued items in English', () => {

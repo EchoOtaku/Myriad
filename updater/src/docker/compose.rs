@@ -128,7 +128,8 @@ pub struct ComposeRunner {
     /// Path to .env. Passed as --env-file so compose sees the same set as we do.
     env_file: PathBuf,
     /// Host-owned Guard TCB policy, mounted read-only into the updater. Passed
-    /// after `.env` so updater-controlled values cannot select Guard identity.
+    /// after `.env` to preserve host-owned network policy. Normal image selection
+    /// follows TAG; the generic Docker API still cannot recreate TCB services.
     guard_env_file: PathBuf,
     /// Working directory for compose, so relative bind mounts resolve correctly.
     workdir: PathBuf,

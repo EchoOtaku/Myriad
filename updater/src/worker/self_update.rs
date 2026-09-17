@@ -26,7 +26,6 @@ use tracing::{info, warn};
 
 use crate::config::Channel;
 use crate::docker::self_update_helper::{SelfUpdateLastStatus, SelfUpdateOutcome};
-use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::release::{CosignPolicy, GithubClient};
 use crate::version::{
@@ -50,7 +49,8 @@ struct SelfUpdateTarget {
 /// there is no updater-controlled helper container anymore.
 pub async fn run(worker: Arc<Worker>, actor: Option<String>) -> Result<SelfUpdateReport> {
     let resolved = resolve_self_update_target(worker.as_ref()).await?;
-    let previous_tag = read_previous_updater_tag(worker.as_ref());
+    // UPDATER_TAG can already contain a pending manual deployment target.
+    let previous_tag = crate::self_version().to_string();
     let status_path = worker.state().root().join("self-update-last.json");
     let previous_status_at = read_self_update_status(&status_path).map(|status| status.at);
 
@@ -272,17 +272,6 @@ async fn resolve_self_update_via_dockerhub(worker: &Worker) -> Result<SelfUpdate
         tag,
         trust_path: "dockerhub_tag",
     })
-}
-
-/// Read the currently configured tag for the compatibility report only.  This
-/// value is never sent to Guard and never participates in target selection or
-/// image trust decisions.
-fn read_previous_updater_tag(worker: &Worker) -> String {
-    EnvFile::load(&worker.cli().env_file)
-        .ok()
-        .and_then(|env| env.get("UPDATER_TAG").map(str::trim).map(str::to_owned))
-        .filter(|tag| !tag.is_empty())
-        .unwrap_or_else(|| "unknown".into())
 }
 
 /// Docker Hub tags accepted by the Guard protocol.  Branch tips and `latest`

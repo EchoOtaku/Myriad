@@ -50,9 +50,9 @@ Commands:
 
 Notes:
   - This script only handles bootstrap. Normal updates run through the admin UI.
-  - To switch business versions, edit MYRIAD_TAG / PROXY_TAG in .env then
-    run \`$0 upgrade\`. TCB is digest-pinned (\`UPDATER_IMAGE_REF\`);
-    \`UPDATER_TAG\` is only an unpinned fallback.
+  - Edit MYRIAD_TAG / PROXY_TAG / UPDATER_TAG independently in .env, then
+    run \`$0 upgrade\`. TAG selects the image; stored digest records never
+    override it. Guard verifies actual images and refreshes those records.
 
 Examples:
   $0                 # Start
@@ -134,12 +134,35 @@ env_file_value() {
     grep -E "^${key}=" "$file" 2>/dev/null | head -1 | cut -d= -f2- || true
 }
 
+guard_image_matches_selection() {
+    local selected="$1" running_id="$2" selected_id
+    printf '%s' "$selected" | grep -Eq '^(docker\.io/)?somekawahitomi/myriad-updater(@sha256:[0-9a-fA-F]{64}|:v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?|:dev-[0-9a-fA-F]{7,40})$' || return 1
+    printf '%s' "$running_id" | grep -Eq '^sha256:[0-9a-fA-F]{64}$' || return 1
+    selected_id="$(docker image inspect --format '{{.Id}}' "$selected" 2>/dev/null)" || return 1
+    [ "$selected_id" = "$running_id" ] || return 1
+    docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$running_id" 2>/dev/null \
+        | grep -Eq '^(docker\.io/)?somekawahitomi/myriad-updater@sha256:[0-9a-fA-F]{64}$'
+}
+
 seed_guard_policy_from_env() {
-    local image token project net admin gnet
-    image="$(env_file_value DOCKER_GUARD_IMAGE)"
-    if ! printf '%s' "$image" | grep -Eq '^docker\.io/somekawahitomi/myriad-updater@sha256:[0-9a-fA-F]{64}$'; then
-        err "✗ .env must contain digest-pinned DOCKER_GUARD_IMAGE (repo@sha256)"
-        err "  so Guard can write ./guard-policy/docker-guard.env. Mutable tags are forbidden."
+    local image token project net admin gnet repo tag reference
+    repo="$(env_file_value UPDATER_IMAGE)"
+    [ -z "$repo" ] && repo="docker.io/somekawahitomi/myriad-updater"
+    tag="$(env_file_value UPDATER_TAG)"
+    if { [ "$repo" != "docker.io/somekawahitomi/myriad-updater" ] && [ "$repo" != "somekawahitomi/myriad-updater" ]; } \
+        || ! printf '%s' "$tag" | grep -Eq '^(v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?|dev-[0-9a-fA-F]{7,40})$'; then
+        err "✗ Guard bootstrap requires the official updater repository and an immutable UPDATER_TAG"
+        exit 2
+    fi
+    reference="${repo}:${tag}"
+    # Resolve the selected TAG, never seed a new policy from a stale .env pin.
+    docker pull "$reference" >/dev/null
+    image="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$reference" \
+        | sed 's|^somekawahitomi/|docker.io/somekawahitomi/|' \
+        | grep -E '^docker\.io/somekawahitomi/myriad-updater@sha256:[0-9a-fA-F]{64}$' \
+        | sort | head -1)"
+    if [ -z "$image" ]; then
+        err "✗ selected updater image has no official repository digest"
         exit 2
     fi
     token="$(env_file_value GUARD_SELF_UPDATE_TOKEN)"
@@ -182,7 +205,7 @@ ensure_guard_policy() {
         local existing_image
         existing_image="$(grep '^DOCKER_GUARD_IMAGE=' "$GUARD_ENV_FILE" | head -1 | cut -d= -f2- || true)"
         if ! printf '%s' "$existing_image" | grep -Eq '^docker\.io/somekawahitomi/myriad-updater@sha256:[0-9a-fA-F]{64}$'; then
-            warn "  ! $GUARD_ENV_FILE is not digest-pinned; rewriting from .env"
+            warn "  ! $GUARD_ENV_FILE has no valid digest; resolving UPDATER_TAG to rebuild it"
             seed_guard_policy_from_env
         fi
     fi
@@ -651,12 +674,12 @@ cmd_doctor() {
         else
             ok "PASS  docker-guard is not on business net $business_net"
         fi
-        local expected_guard_image running_guard_image
+        local expected_guard_image running_guard_image running_guard_id
         expected_guard_image="$(container_env_value myriad-docker-guard DOCKER_GUARD_EXPECTED_IMAGE)"
         running_guard_image="$(docker inspect -f '{{.Config.Image}}' myriad-docker-guard 2>/dev/null || true)"
-        if printf '%s' "$expected_guard_image" | grep -Eq '^docker\.io/somekawahitomi/myriad-updater@sha256:[0-9a-fA-F]{64}$' \
-            && [ "$running_guard_image" = "$expected_guard_image" ]; then
-            ok "PASS  docker-guard runs the host-pinned trusted image digest"
+        running_guard_id="$(docker inspect -f '{{.Image}}' myriad-docker-guard 2>/dev/null || true)"
+        if guard_image_matches_selection "$expected_guard_image" "$running_guard_id"; then
+            ok "PASS  docker-guard actual image matches the selected tag/digest and official repository"
         else
             err "FAIL  docker-guard identity mismatch (running=$running_guard_image expected=$expected_guard_image)"
             fail=$((fail + 1))

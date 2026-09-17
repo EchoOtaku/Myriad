@@ -406,7 +406,6 @@ export const AgentOptionsPanel: React.FC = () => {
       if (!q) return true
       return (
         task.name.toLowerCase().includes(q) ||
-        userFacingError(task.name).toLowerCase().includes(q) ||
         task.action.toLowerCase().includes(q)
       )
     })
@@ -417,7 +416,7 @@ export const AgentOptionsPanel: React.FC = () => {
       filteredTasks.map((task) => {
         const expanded = expandedTaskId === task.id
         const result = task.lastResult?.trim()
-        const displayName = userFacingError(task.name)
+        const displayName = task.name
         return {
           id: task.id,
           title: displayName,

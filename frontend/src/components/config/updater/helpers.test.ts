@@ -1,7 +1,8 @@
+import type { UpdaterStatus } from '../../../services/updaterApi.ts'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  infraComponentBehind,
+  infraCompatibility,
   isDismissedLastFailed,
   isFreshInfraOutcome,
 } from './helpers.ts'
@@ -19,7 +20,10 @@ describe('isFreshInfraOutcome', () => {
   })
 
   it('accepts a new terminal outcome when no schedule tag is known', () => {
-    assert.equal(isFreshInfraOutcome(last, '2026-08-17T01:00:00Z', ''), 'succeeded')
+    assert.equal(
+      isFreshInfraOutcome(last, '2026-08-17T01:00:00Z', ''),
+      'succeeded',
+    )
     assert.equal(
       isFreshInfraOutcome(
         { ...last, status: 'failed' },
@@ -53,20 +57,73 @@ describe('isFreshInfraOutcome', () => {
   })
 })
 
-describe('infraComponentBehind', () => {
-  it('treats a missing current tag as behind when a tip exists', () => {
-    assert.equal(infraComponentBehind(null, 'v0.3.33'), true)
-    assert.equal(infraComponentBehind('', 'v0.3.33'), true)
+describe('infraCompatibility', () => {
+  const status: UpdaterStatus = {
+    schema_version: 1,
+    current_version: 'v0.4.13',
+    updater_version: 'v0.4.6',
+    proxy_version: 'v0.3.32',
+    channel: 'stable',
+    maintenance_active: false,
+    maintenance_phase: 'idle',
+    job_in_flight: null,
+    requires_self_update: false,
+    latest_available: {
+      version: 'v0.4.14',
+      channel: 'stable',
+      seen_at: '',
+      notes_url: '',
+      requires_self_update: false,
+      min_updater_version: 'v0.4.5',
+    },
+  }
+
+  it('allows different compatible application, updater and proxy versions', () => {
+    assert.deepEqual(infraCompatibility(status), {
+      requiresSelfUpdate: false,
+      minUpdaterVersion: 'v0.4.5',
+    })
   })
 
-  it('ignores a missing tip', () => {
-    assert.equal(infraComponentBehind('v0.3.32', null), false)
+  it('uses the explicit minimum instead of the application target for a required update', () => {
+    assert.deepEqual(
+      infraCompatibility({
+        ...status,
+        requires_self_update: true,
+        latest_available: {
+          ...status.latest_available!,
+          requires_self_update: true,
+          min_updater_version: 'v0.4.7',
+        },
+      }),
+      {
+        requiresSelfUpdate: true,
+        minUpdaterVersion: 'v0.4.7',
+      },
+    )
   })
 
-  it('compares tags without requiring a matching v prefix', () => {
-    assert.equal(infraComponentBehind('v0.3.32', 'v0.3.33'), true)
-    assert.equal(infraComponentBehind('0.3.33', 'v0.3.33'), false)
-    assert.equal(infraComponentBehind('v0.3.33', 'v0.3.33'), false)
+  it('does not infer an update from unknown running versions or missing release information', () => {
+    assert.equal(
+      infraCompatibility({
+        ...status,
+        updater_version: '',
+        proxy_version: null,
+      }).requiresSelfUpdate,
+      false,
+    )
+    assert.deepEqual(infraCompatibility(null), {
+      requiresSelfUpdate: false,
+      minUpdaterVersion: null,
+    })
+    assert.equal(
+      infraCompatibility({
+        ...status,
+        requires_self_update: true,
+        latest_available: null,
+      }).requiresSelfUpdate,
+      false,
+    )
   })
 })
 

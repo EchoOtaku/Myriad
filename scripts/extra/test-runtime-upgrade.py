@@ -33,7 +33,7 @@ project = "myriad-upgrade-" + secrets.token_hex(4)
 with socket.socket() as port:
     port.bind(("127.0.0.1", 0))
     http_port = port.getsockname()[1]
-env = {**os.environ, "MYRIAD_TAG": args.legacy, "PROXY_TAG": "current",
+env = {**os.environ, "MYRIAD_TAG": args.legacy, "PROXY_TAG": "current", "UPDATER_TAG": args.legacy,
        "COMPOSE_PROJECT_NAME": project,
        "BACKEND_IMAGE": "docker.io/somekawahitomi/myriad-backend",
        "FRONTEND_IMAGE": "docker.io/somekawahitomi/myriad-frontend",

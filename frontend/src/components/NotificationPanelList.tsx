@@ -13,6 +13,7 @@ import {
 } from '../utils/notificationFacing'
 import { userFacingError } from '../utils/userFacingError'
 import { NotificationSourceIcon } from './notifications/NotificationIcons'
+import { TappResidentNotice } from './TappResidentNotice'
 
 interface NotifAction {
   id: string
@@ -346,6 +347,8 @@ function NotificationPanelList({
             ))}
         </div>
       </div>
+
+      <TappResidentNotice />
 
       <div
         className={`flex-1 overflow-y-auto overscroll-contain ${

@@ -97,7 +97,7 @@ must be upgraded first; see [external DB setup](./EXTERNAL_POSTGRES.md).
 cp .env.production.example .env
 # Edit at minimum:
 # POSTGRES_PASSWORD, JWT_SECRET, CORS_ORIGINS
-# DOCKER_GUARD_IMAGE = independently verified release repo@sha256 digest
+# MYRIAD_TAG / PROXY_TAG / UPDATER_TAG = independently selected release tags
 # deploy.sh fills UPDATE_TOKEN / UPDATER_GATEWAY_SECRET / MYRIAD_SETUP_SECRET /
 # PERSONA_DB_PASSWORD / FEDERATION_DB_PASSWORD and GUARD_SELF_UPDATE_TOKEN if
 # empty, then writes ./guard-policy/docker-guard.env.
@@ -131,12 +131,13 @@ database outage.
 | `FRONTEND_URL` | no | Public frontend origin for redirects/profile links; usually the same as `BASE_URL` |
 | `MYRIAD_TAG` | yes | Backend/frontend image tag, maintained by updater. Selects the image; compose does **not** overlay it as container `MYRIAD_VERSION`. |
 | `PROXY_TAG` | yes | Proxy image tag (image selector only). |
-| `UPDATER_IMAGE_REF` | after TCB pin | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>`. When set, compose runs this instead of `UPDATER_TAG`. Written by Guard self-update. |
-| `UPDATER_TAG` | yes | First-install / dev fallback tag. After a digest pin exists, this is not the running TCB identity. |
+| `UPDATER_IMAGE_REF` | recorded automatically | Observed updater `repo@sha256` for verification/recovery. Never overrides the deployment TAG. |
+| `UPDATER_GATEWAY_IMAGE_REF` | recorded when different | Observed gateway digest for a mixed deployment; not a normal Compose image selector. |
+| `UPDATER_TAG` | yes | Deployment target for updater, Guard and gateway. Changing it and recreating services selects the new image even when old digest records exist. Running identity still comes from the image. |
 | `COMPOSE_PROJECT_NAME` | yes | Compose project name, default `myriad` |
 | `UPDATE_TOKEN` | yes | Updater token for updater/gateway; deploy script fills it if empty; **not** injected into backend, workers, or docker-guard |
 | `GUARD_SELF_UPDATE_TOKEN` | yes | Dedicated self-update capability; lives in `.env` and is copied to `./guard-policy/docker-guard.env` on first start; deploy generates it if empty; Guard + updater only |
-| `DOCKER_GUARD_IMAGE` | yes | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>` identity for Guard; first boot source is `.env`, live TCB copy is `./guard-policy/docker-guard.env` |
+| `DOCKER_GUARD_IMAGE` | recorded automatically | Observed Guard `repo@sha256`, also stored in `./guard-policy/docker-guard.env`. Bootstrap resolves the selected TAG; stale records do not select the image. |
 | `MYRIAD_GUARD_ENV_FILE` | no | Fixed Compose-relative path `guard-policy/docker-guard.env` |
 | `UPDATER_GATEWAY_SECRET` | yes | Shared secret for backend→gateway (`X-Updater-Gateway-Secret`); deploy fills if empty; backend + gateway only |
 | `MYRIAD_SETUP_SECRET` | yes\* | Passphrase for setup writes **when the stack already has a real DATABASE_URL**. Official compose refuses to start if unset. `deploy.sh` fills it if empty. Wizard-only native DB setup does not require it. \*Required until an owner exists on orchestrated installs. Never expose it in the UI. See [SETUP_BOOTSTRAP.md](./SETUP_BOOTSTRAP.md). |
@@ -184,9 +185,9 @@ out-of-scope items live in:
 
 - Keep **`COSIGN_VERIFY=strict`**, **`PROXY_ALLOW_DIRECT_UPDATER=false`**, and do **not**
   publish updater `1101`, updater-gateway `1104`, or docker-guard `2375` on the host.
-- Put a digest-pinned `DOCKER_GUARD_IMAGE` in `.env`. Guard writes
+- Choose an immutable release/dev `UPDATER_TAG`. Guard writes
   `./guard-policy/docker-guard.env` on first start (mode 0600). The deploy
-  scripts seed that file from `.env` when missing and pass it as a second
+  script seeds the digest from that target image when missing and passes it as a second
   env-file; updater mounts the directory read-only and cannot rewrite it.
 - `COSIGN_VERIFY=off` alone is refused: set `UPDATER_ALLOW_INSECURE_COSIGN=true`
   (or `COSIGN_INSECURE_OK=true`) only when you intentionally accept that risk.
@@ -242,10 +243,16 @@ bash scripts/extra/deploy.sh down
 Manual tag upgrade path:
 
 ```bash
-# Edit MYRIAD_TAG / PROXY_TAG in .env first (business images).
-# TCB is digest-pinned: use admin self-update or UPDATER_IMAGE_REF / DOCKER_GUARD_IMAGE.
+# Edit MYRIAD_TAG / PROXY_TAG / UPDATER_TAG independently in .env first.
+# Stored digest records do not override TAG; no manual pin cleanup is needed.
 bash scripts/extra/deploy.sh upgrade
 ```
+
+This requires the current Compose file: older `image:` expressions that prefer
+pins remain pin-first until the host composition is updated. Guard refreshes
+records after inspecting the healthy deployment. Automated self-updates and
+rollbacks use a temporary exact-image Compose override for that transaction only;
+they do not leave a persistent override that could defeat the next manual TAG change.
 
 Day-to-day updates should be started from the admin UI:
 

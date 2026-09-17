@@ -1,10 +1,14 @@
 import type { ProgressEvent } from '../../services/agent'
 import { userFacingError } from '../../utils/userFacingError'
 
-function facingDetail(raw: string | undefined): string | undefined {
+function contentDetail(raw: string | undefined): string | undefined {
   const text = raw?.trim()
-  if (!text) return undefined
-  return userFacingError(text)
+  return text || undefined
+}
+
+function errorDetail(raw: string | undefined): string | undefined {
+  const text = contentDetail(raw)
+  return text ? userFacingError(text) : undefined
 }
 
 export type AgentStatus =
@@ -49,19 +53,19 @@ export function reduceAgentStatus(
       return { status: 'thinking', detail: state.detail }
 
     case 'task_created':
-      return { status: 'thinking', detail: facingDetail(event.message) }
+      return { status: 'thinking', detail: contentDetail(event.message) }
 
     case 'step_started':
       return {
         status: 'working',
-        detail: facingDetail(event.description),
+        detail: contentDetail(event.description),
         progress: state.progress,
       }
 
     case 'step_retrying':
       return {
         status: 'working',
-        detail: facingDetail(event.reason),
+        detail: errorDetail(event.reason),
         progress: state.progress,
       }
 
@@ -78,10 +82,10 @@ export function reduceAgentStatus(
       return { ...state, status: 'working' }
 
     case 'waiting_for_input':
-      return { status: 'needsInput', detail: facingDetail(event.question) }
+      return { status: 'needsInput', detail: contentDetail(event.question) }
 
     case 'error':
-      return { status: 'error', detail: facingDetail(event.message) }
+      return { status: 'error', detail: errorDetail(event.message) }
 
     case 'task_completed':
       return event.success
@@ -94,7 +98,7 @@ export function reduceAgentStatus(
 }
 
 export function awaitingConfirmation(prompt: string): AgentStatusState {
-  return { status: 'needsInput', detail: facingDetail(prompt) }
+  return { status: 'needsInput', detail: contentDetail(prompt) }
 }
 
 /** Occupy thinking before `run_started` so the mic does not flash back. */

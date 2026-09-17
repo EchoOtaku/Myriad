@@ -45,6 +45,7 @@ impl std::error::Error for HandoffCleanupUnconfirmed {}
 #[derive(Debug, Clone)]
 pub(crate) struct HandoffAttempt {
     pub(crate) previous_image: String,
+    pub(crate) previous_images: Option<[String; 3]>,
     pub(crate) target_image: String,
     pub(crate) previous_tag: String,
     pub(crate) target_tag: String,
@@ -89,27 +90,14 @@ pub(crate) async fn finalize_or_fail_orphaned_pending_handoff(state: &GuardState
     ) {
         return false;
     }
-    let updater_consistent = verify_managed_tcb_container(
-        &state.config.socket_path,
-        "myriad-updater",
-        "updater",
-        &state.config.project,
-        &state.config.expected_guard_image,
-    )
-    .await
-    .is_ok();
-    let gateway_consistent = verify_managed_tcb_container(
-        &state.config.socket_path,
-        "myriad-updater-gateway",
-        "updater-gateway",
-        &state.config.project,
-        &state.config.expected_guard_image,
-    )
-    .await
-    .is_ok();
-    let running_tag = running_updater_tag(&state.config.socket_path).await.ok();
-    let tcb_consistent = updater_consistent && gateway_consistent;
-    let status = if tcb_consistent && running_tag.as_deref() == Some(pending.target_tag.as_str()) {
+    let stack = super::startup::healthy_stack(&state.config).await;
+    let tcb_consistent = stack.is_ok();
+    let target_active = stack.as_ref().is_ok_and(|stack| {
+        stack.iter().all(|identity| {
+            identity.image == stack[0].image && identity.version == pending.target_tag
+        })
+    });
+    let status = if target_active {
         crate::docker::self_update_helper::SelfUpdateLastStatus::succeeded_after_handoff(
             pending.target_tag,
             pending.previous_tag,
@@ -367,56 +355,78 @@ pub(crate) fn monitor_handoff(
                 Some("trusted TCB handoff exceeded its total deadline".into())
             }
         };
-        if let (Some(failure), Some(attempt)) = (failure.as_deref(), attempt.as_ref())
-            && !recovery_only {
-                warn!(%failure, "starting fixed previous-digest recovery handoff");
-                match launch_trusted_handoff(
-                    &state,
-                    &attempt.previous_image,
-                    &attempt.target_image,
-                    &attempt.previous_tag,
-                    &attempt.target_tag,
-                    true,
-                )
+        // The helper may reject before changing anything, or may already have
+        // rolled back successfully. Do not replace a healthy original mixed
+        // deployment again merely because the requested upgrade failed.
+        let restored = if failure.is_some()
+            && helper_container_exit_code(&state.config.socket_path, &helper_id)
                 .await
-                {
-                    Ok(recovery_id) => {
-                        let old_stopped = stop_helper(&docker_host, &helper_id).await;
-                        let old_removed = old_stopped
-                            && cleanup_helper(&docker_host, &helper_id).await
-                            && wait_for_helper_absence(
-                                &state.config.socket_path,
-                                &helper_id,
-                                Duration::from_secs(30),
-                            )
-                            .await;
-                        if !old_removed {
-                            error!(
-                                %helper_id,
-                                %recovery_id,
-                                "old helper cleanup is unconfirmed; recovery remains staged"
-                            );
-                            resume_staged_recovery(state, attempt.clone(), 0);
-                            return;
-                        }
-                        if !restart_helper(&docker_host, &recovery_id).await {
-                            error!(
-                                %recovery_id,
-                                "staged previous-digest recovery could not be started"
-                            );
-                            resume_staged_recovery(state, attempt.clone(), 0);
-                            return;
-                        }
-                        monitor_handoff(state, recovery_id, Some(attempt.clone()), true, 0);
-                        return;
-                    }
-                    Err(error) => {
-                        error!(%error, "could not launch fixed previous-digest recovery handoff");
+                .ok()
+                .flatten()
+                .is_some()
+        {
+            if let Some(attempt) = &attempt {
+                previous_stack_is_healthy(&state, attempt).await
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        let failure = if restored { None } else { failure };
+        let recovery_only = recovery_only || restored;
+        if let (Some(failure), Some(attempt)) = (failure.as_deref(), attempt.as_ref())
+            && !recovery_only
+        {
+            warn!(%failure, "starting fixed previous-digest recovery handoff");
+            match launch_trusted_handoff(
+                &state,
+                &attempt.previous_image,
+                &attempt.target_image,
+                &attempt.previous_tag,
+                &attempt.target_tag,
+                true,
+                attempt.previous_images.as_ref(),
+            )
+            .await
+            {
+                Ok(recovery_id) => {
+                    let old_stopped = stop_helper(&docker_host, &helper_id).await;
+                    let old_removed = old_stopped
+                        && cleanup_helper(&docker_host, &helper_id).await
+                        && wait_for_helper_absence(
+                            &state.config.socket_path,
+                            &helper_id,
+                            Duration::from_secs(30),
+                        )
+                        .await;
+                    if !old_removed {
+                        error!(
+                            %helper_id,
+                            %recovery_id,
+                            "old helper cleanup is unconfirmed; recovery remains staged"
+                        );
                         resume_staged_recovery(state, attempt.clone(), 0);
                         return;
                     }
+                    if !restart_helper(&docker_host, &recovery_id).await {
+                        error!(
+                            %recovery_id,
+                            "staged previous-digest recovery could not be started"
+                        );
+                        resume_staged_recovery(state, attempt.clone(), 0);
+                        return;
+                    }
+                    monitor_handoff(state, recovery_id, Some(attempt.clone()), true, 0);
+                    return;
+                }
+                Err(error) => {
+                    error!(%error, "could not launch fixed previous-digest recovery handoff");
+                    resume_staged_recovery(state, attempt.clone(), 0);
+                    return;
                 }
             }
+        }
         if failure.is_some() && recovery_only && recovery_retries < 2 {
             let next_attempt = recovery_retries + 1;
             let retry_persisted = attempt
@@ -504,6 +514,10 @@ pub(crate) fn monitor_handoff(
         }
         release_gate_when_helpers_absent(state.clone()).await;
         if let Some(attempt) = attempt {
+            if restored && failed_status_matches_attempt(&state, &attempt) {
+                // Keep the helper's actionable rejection / rollback detail.
+                return;
+            }
             let status = if recovery_only {
                 crate::docker::self_update_helper::SelfUpdateLastStatus::failed_before_handoff(
                     attempt.target_tag,
@@ -524,6 +538,35 @@ pub(crate) fn monitor_handoff(
             }
         }
     });
+}
+
+pub(crate) async fn previous_stack_is_healthy(
+    state: &GuardState,
+    attempt: &HandoffAttempt,
+) -> bool {
+    let images = attempt
+        .previous_images
+        .clone()
+        .unwrap_or_else(|| std::array::from_fn(|_| attempt.previous_image.clone()));
+    for (i, service) in ["docker-guard", "updater", "updater-gateway"]
+        .iter()
+        .enumerate()
+    {
+        let Ok(actual) = super::startup::inspect_identity(
+            &state.config,
+            &format!("myriad-{service}"),
+            service,
+            true,
+        )
+        .await
+        else {
+            return false;
+        };
+        if actual.image != images[i] || (i == 1 && actual.version != attempt.previous_tag) {
+            return false;
+        }
+    }
+    true
 }
 
 fn resume_unidentified_handoff(state: GuardState, helper_id: String) {
@@ -599,6 +642,7 @@ pub(crate) fn resume_staged_recovery(
                     &attempt.previous_tag,
                     &attempt.target_tag,
                     true,
+                    attempt.previous_images.as_ref(),
                 )
                 .await
                 .is_err()
@@ -980,12 +1024,32 @@ pub(crate) fn handoff_attempt_from_inspect(inspect: &Value) -> Result<HandoffAtt
     };
     let attempt = HandoffAttempt {
         previous_image: required(crate::docker::self_update_helper::ENV_PREVIOUS_IMAGE)?,
+        previous_images: env
+            .iter()
+            .filter_map(Value::as_str)
+            .find_map(|entry| {
+                entry.strip_prefix(&format!(
+                    "{}=",
+                    crate::docker::self_update_helper::ENV_PREVIOUS_IMAGES
+                ))
+            })
+            .map(crate::docker::self_update_helper::parse_previous_images)
+            .transpose()?,
         target_image: required(crate::docker::self_update_helper::ENV_TARGET_IMAGE)?,
         previous_tag: required(crate::docker::self_update_helper::ENV_PREVIOUS_TAG)?,
         target_tag: required(crate::docker::self_update_helper::ENV_TARGET_TAG)?,
         recovery_only,
     };
     validate_guard_image_ref(&attempt.previous_image, false)?;
+    if attempt
+        .previous_images
+        .as_ref()
+        .is_some_and(|images| images[0] != attempt.previous_image)
+    {
+        return Err(anyhow!(
+            "previous Guard image differs from recovery snapshot"
+        ));
+    }
     validate_guard_image_ref(&attempt.target_image, false)?;
     validate_self_update_tag(&attempt.previous_tag).map_err(anyhow::Error::msg)?;
     validate_self_update_tag(&attempt.target_tag).map_err(anyhow::Error::msg)?;
@@ -1005,25 +1069,13 @@ async fn prepare_trusted_self_update(
     state: &GuardState,
     requested_tag: &str,
 ) -> Result<(String, HandoffAttempt)> {
-    let previous_image = state.config.expected_guard_image.clone();
-    verify_managed_tcb_container(
-        &state.config.socket_path,
-        "myriad-updater",
-        "updater",
-        &state.config.project,
-        &previous_image,
-    )
-    .await?;
-    verify_managed_tcb_container(
-        &state.config.socket_path,
-        "myriad-updater-gateway",
-        "updater-gateway",
-        &state.config.project,
-        &previous_image,
-    )
-    .await?;
-    let previous_tag = running_updater_tag(&state.config.socket_path).await?;
-    prevent_release_downgrade(&previous_tag, requested_tag)?;
+    let stack = super::startup::healthy_stack(&state.config).await?;
+    let previous_image = stack[0].image.clone();
+    let previous_tag = stack[1].version.clone();
+    for identity in &stack {
+        prevent_release_downgrade(&identity.version, requested_tag)?;
+    }
+    let previous_images = recovery_images(&stack);
 
     // Record intent before the pull so a long Hub fetch is not an invisible
     // "confirming result" gap, and a post-pull rejection can replace it.
@@ -1041,13 +1093,35 @@ async fn prepare_trusted_self_update(
     // repository; Guard then converts the result to repo@sha256 before handoff.
     let (exact_image, target_created_at) =
         pull_trusted_tag_and_resolve(&state.config.socket_path, requested_tag).await?;
-    let current_created_at =
-        managed_container_image_created_at(&state.config.socket_path, "myriad-updater").await?;
-    if target_created_at < current_created_at {
-        return Err(anyhow!("TCB image creation-time downgrade is forbidden"));
+    if previous_images.is_some() {
+        let target = daemon_json(
+            &state.config.socket_path,
+            &format!("/images/{exact_image}/json"),
+        )
+        .await?;
+        require_mixed_recovery_support(&target)?;
+    }
+    for container in [
+        "myriad-docker-guard",
+        "myriad-updater",
+        "myriad-updater-gateway",
+    ] {
+        let current_created_at =
+            managed_container_image_created_at(&state.config.socket_path, container).await?;
+        if target_created_at < current_created_at {
+            return Err(anyhow!(
+                "TCB image creation-time downgrade is forbidden for {container}"
+            ));
+        }
+    }
+    if super::startup::healthy_stack(&state.config).await? != stack {
+        return Err(anyhow!(
+            "running TCB changed while preparing self-update; retry"
+        ));
     }
     let attempt = HandoffAttempt {
         previous_image: previous_image.clone(),
+        previous_images,
         target_image: exact_image.clone(),
         previous_tag,
         target_tag: requested_tag.to_owned(),
@@ -1060,9 +1134,33 @@ async fn prepare_trusted_self_update(
         &attempt.previous_tag,
         &attempt.target_tag,
         false,
+        attempt.previous_images.as_ref(),
     )
     .await?;
     Ok((helper_id, attempt))
+}
+
+pub(crate) fn recovery_images(stack: &[super::startup::RuntimeIdentity; 3]) -> Option<[String; 3]> {
+    let images = std::array::from_fn(|i| stack[i].image.clone());
+    if images.iter().all(|image| image == &images[0]) {
+        None
+    } else {
+        Some(images)
+    }
+}
+
+pub(crate) fn require_mixed_recovery_support(image: &Value) -> Result<()> {
+    if image
+        .pointer("/Config/Labels")
+        .and_then(|labels| labels.get(crate::docker::self_update_helper::MIXED_RECOVERY_LABEL))
+        .and_then(Value::as_str)
+        != Some("1")
+    {
+        return Err(anyhow!(
+            "target updater image lacks mixed-deployment recovery protocol v1; choose a release that supports per-service rollback"
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_self_update_tag(tag: &str) -> std::result::Result<(), String> {
@@ -1076,9 +1174,10 @@ pub(crate) fn validate_self_update_tag(tag: &str) -> std::result::Result<(), Str
 pub(crate) fn prevent_release_downgrade(previous: &str, target: &str) -> Result<()> {
     if let (Ok(previous), Ok(target)) =
         (MyriadVersion::parse(previous), MyriadVersion::parse(target))
-        && target.older_than(&previous) {
-            return Err(anyhow!("TCB release downgrade is forbidden"));
-        }
+        && target.older_than(&previous)
+    {
+        return Err(anyhow!("TCB release downgrade is forbidden"));
+    }
     Ok(())
 }
 
@@ -1086,7 +1185,13 @@ async fn running_updater_tag(socket: &Path) -> Result<String> {
     // Image-baked ENV (Dockerfile), not Compose ${UPDATER_TAG}. Overlaying the
     // tag made digest-pinned TCB advertise a version it was not running.
     let inspect = daemon_json(socket, "/containers/myriad-updater/json").await?;
-    inspect
+    let image_id = inspect
+        .get("Image")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("running updater has no image id"))?;
+    super::startup::validate_image_id(image_id)?;
+    let image = daemon_json(socket, &format!("/images/{image_id}/json")).await?;
+    image
         .pointer("/Config/Env")
         .and_then(Value::as_array)
         .into_iter()
@@ -1099,53 +1204,6 @@ async fn running_updater_tag(socket: &Path) -> Result<String> {
             validate_self_update_tag(&tag).map_err(anyhow::Error::msg)?;
             Ok(tag)
         })
-}
-
-async fn verify_managed_tcb_container(
-    socket: &Path,
-    container: &str,
-    service: &str,
-    project: &str,
-    expected_image: &str,
-) -> Result<()> {
-    let inspect = daemon_json(socket, &format!("/containers/{container}/json")).await?;
-    if inspect
-        .pointer("/Config/Labels/com.docker.compose.project")
-        .and_then(Value::as_str)
-        != Some(project)
-        || inspect
-            .pointer("/Config/Labels/com.docker.compose.service")
-            .and_then(Value::as_str)
-            != Some(service)
-    {
-        return Err(anyhow!("{container} is outside the fixed Compose identity"));
-    }
-    if inspect.pointer("/State/Running").and_then(Value::as_bool) != Some(true)
-        || inspect
-            .pointer("/State/Health/Status")
-            .and_then(Value::as_str)
-            != Some("healthy")
-    {
-        return Err(anyhow!("{container} is not running and healthy"));
-    }
-    let image_id = inspect
-        .get("Image")
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("{container} has no immutable image id"))?;
-    let image = daemon_json(socket, &format!("/images/{image_id}/json")).await?;
-    let matches = image
-        .get("RepoDigests")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .any(|actual| digest_reference_matches(actual, expected_image));
-    if !matches {
-        return Err(anyhow!(
-            "{container} does not match the currently host-pinned Guard digest"
-        ));
-    }
-    Ok(())
 }
 
 async fn pull_trusted_tag_and_resolve(
@@ -1231,6 +1289,7 @@ async fn launch_trusted_handoff(
     previous_tag: &str,
     target_tag: &str,
     recovery_only: bool,
+    previous_images: Option<&[String; 3]>,
 ) -> Result<String> {
     launch_trusted_helper(
         state,
@@ -1240,6 +1299,7 @@ async fn launch_trusted_handoff(
         target_tag,
         recovery_only,
         false,
+        previous_images,
     )
     .await
 }
@@ -1265,8 +1325,10 @@ pub(crate) async fn wait_for_stopped_helper(state: &GuardState, name: &str) -> R
 
 pub(crate) async fn reconcile_runtime_policy(
     state: &GuardState,
-    identity: &super::startup::RuntimeIdentity,
+    stack: &[super::startup::RuntimeIdentity; 3],
 ) -> Result<()> {
+    let identity = &stack[0];
+    let images = std::array::from_fn(|i| stack[i].image.clone());
     let name = super::STARTUP_RECONCILE_NAME;
     let host = format!("unix://{}", state.config.socket_path.display());
     if helper_container_exists(&state.config.socket_path, name).await? {
@@ -1285,6 +1347,7 @@ pub(crate) async fn reconcile_runtime_policy(
         &identity.version,
         false,
         true,
+        Some(&images),
     )
     .await?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
@@ -1313,6 +1376,7 @@ async fn launch_trusted_helper(
     target_tag: &str,
     recovery_only: bool,
     reconcile_only: bool,
+    previous_images: Option<&[String; 3]>,
 ) -> Result<String> {
     let helper_name = if reconcile_only {
         super::STARTUP_RECONCILE_NAME
@@ -1444,6 +1508,13 @@ async fn launch_trusted_helper(
         command.arg("-e").arg(format!(
             "{}=1",
             crate::docker::self_update_helper::ENV_RECONCILE_ONLY
+        ));
+    }
+    if let Some(images) = previous_images {
+        command.arg("-e").arg(format!(
+            "{}={}",
+            crate::docker::self_update_helper::ENV_PREVIOUS_IMAGES,
+            serde_json::to_string(images)?
         ));
     }
     command.arg(target_image);

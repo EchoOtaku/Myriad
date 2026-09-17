@@ -42,11 +42,11 @@ Related:
 
 Must follow on every production self-hosted install:
 
-1. **Pin Guard in `.env` before starting or upgrading.** Set
-   `DOCKER_GUARD_IMAGE` to the exact updater image `repo@sha256` from
-   independently verified signed release metadata. Guard writes
+1. **Select an immutable `UPDATER_TAG` before starting or upgrading.** Normal
+   Compose deployment follows this TAG; persisted digest records cannot override it.
+   Guard verifies the actual official image identity and writes
    `./guard-policy/docker-guard.env` on first start (`0600` on Unix). The deploy
-   script seeds that file from `.env` when missing and generates
+   script resolves the selected TAG to seed that file when missing and generates
    `GUARD_SELF_UPDATE_TOKEN` if empty; do not reuse `UPDATE_TOKEN`.
 2. **Existing installs / topology drift:** remove legacy Guard entries
    (`UPDATE_TOKEN`, `DOCKER_GUARD_ALLOWED_IMAGES`, self-update URL/env-file
@@ -108,8 +108,8 @@ the future signed `expected_digest` binding; current docs and UI must not call
 the `dockerhub_tag` path Cosign-verified.
 
 For recovery when the UI/Guard path cannot run, a host administrator may still
-verify a digest independently, update `DOCKER_GUARD_IMAGE`, recreate the three
-services with the deploy script, and run `deploy.sh doctor`. Keep a copy of the
+select the required `UPDATER_TAG`, recreate the three services with the current
+Compose file and deploy script, and run `deploy.sh doctor`. Keep a copy of the
 previous policy/digest as the manual recovery point; updater-writable state is
 never the source of repository or digest identity.
 
