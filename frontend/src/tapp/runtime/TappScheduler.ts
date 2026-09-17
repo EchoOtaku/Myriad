@@ -174,8 +174,21 @@ export class TappScheduler {
   initialize(apiBaseUrl: string, authToken: string): void {
     this.apiBaseUrl = apiBaseUrl.replaceAll(/\/$/g, '')
     this.authToken = authToken
+    if (this.shouldStayConnected()) this.ensureConnected()
+  }
 
+  private shouldStayConnected(): boolean {
+    return this.taskCallbacks.size > 0 || this.globalCallbacks.size > 0
+  }
+
+  private ensureConnected(): void {
+    if (this.ws) return
     this.connect()
+  }
+
+  private releaseSocketIfIdle(): void {
+    if (this.shouldStayConnected()) return
+    this.disconnect()
   }
 
   destroy(): void {
@@ -218,9 +231,10 @@ export class TappScheduler {
       this.ws.onclose = () => {
         console.log('[TappScheduler] WebSocket disconnected')
         this.connected = false
+        this.ws = null
         this.stopHeartbeat()
         this.notifyConnectionChange(false)
-        this.scheduleReconnect()
+        if (this.shouldStayConnected()) this.scheduleReconnect()
       }
 
       this.ws.onerror = (error) => {
@@ -228,7 +242,7 @@ export class TappScheduler {
       }
     } catch (error) {
       console.error('[TappScheduler] Failed to create WebSocket:', error)
-      this.scheduleReconnect()
+      if (this.shouldStayConnected()) this.scheduleReconnect()
     }
   }
 
@@ -250,6 +264,7 @@ export class TappScheduler {
   }
 
   private scheduleReconnect(): void {
+    if (!this.shouldStayConnected()) return
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.warn('[TappScheduler] Max reconnect attempts reached')
       return
@@ -528,6 +543,7 @@ export class TappScheduler {
     const registrations = this.taskCallbacks.get(key) ?? []
     registrations.push(registration)
     this.taskCallbacks.set(key, registrations)
+    this.ensureConnected()
     return () => {
       const current = this.taskCallbacks.get(key)
       if (!current) return
@@ -536,13 +552,16 @@ export class TappScheduler {
       const next = current.toSpliced(index, 1)
       if (next.length === 0) this.taskCallbacks.delete(key)
       else this.taskCallbacks.set(key, next)
+      this.releaseSocketIfIdle()
     }
   }
 
   onAnyTask(callback: TaskCallback): () => void {
     this.globalCallbacks.add(callback)
+    this.ensureConnected()
     return () => {
       this.globalCallbacks.delete(callback)
+      this.releaseSocketIfIdle()
     }
   }
 

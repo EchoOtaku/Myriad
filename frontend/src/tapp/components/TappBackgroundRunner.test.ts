@@ -50,3 +50,8 @@ test(`background runner admits four successful instances serially after ${failed
   cleanups.forEach(cleanup => cleanup?.())
 })
 }
+
+test('headless sandbox does not read t.tapp (background runner is outside I18nNamespace)', () => {
+  const sandbox = readFileSync(new URL('../runtime/TappPageSandbox.tsx', import.meta.url), 'utf8')
+  assert.match(sandbox, /headless \? undefined : t\.tapp\.cannotLoadApp/)
+})

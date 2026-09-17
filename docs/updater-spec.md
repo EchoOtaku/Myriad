@@ -221,7 +221,7 @@ services:
 `.env` 必须包含（完整键以 `.env.production.example` 为准）：
 
 ```
-MYRIAD_TAG=v0.4.15
+MYRIAD_TAG=v0.4.17
 PROXY_TAG=v0.4.6
 UPDATER_TAG=v0.4.6
 UPDATER_IMAGE_REF=docker.io/somekawahitomi/myriad-updater@sha256:<64hex>
