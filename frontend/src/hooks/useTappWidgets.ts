@@ -21,9 +21,11 @@ import { currentCopy } from '../i18n/localeCopy'
 import { userFacingError } from '../utils/userFacingError'
 
 // Tapp runtime/沙箱按需加载：布局没有 Tapp 小组件时不进 Home 首屏。
+// 必须取 default 导出：它包了 I18nNamespace names={['tapp']}，直接渲染具名
+// TappWidgetComponent 会绕过 tapp 语言包边界，渲染期读 t.tapp 即为 undefined。
 const TappWidgetComponent = lazy(() =>
   import('../components/widgets/TappWidget').then((m) => ({
-    default: m.TappWidgetComponent,
+    default: m.default,
   })),
 )
 

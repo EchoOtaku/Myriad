@@ -15,10 +15,11 @@ import {
 } from 'react-router-dom'
 import CustomScrollbar from './components/CustomScrollbar'
 import RouteLoader from './components/RouteLoader'
+import { WidgetErrorBoundary } from './components/widgets/shared/WidgetErrorBoundary'
 import { AgentGlobalActions } from './contexts/AgentGlobalActions'
 import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { I18nNamespace, I18nProvider } from './contexts/I18nContext'
+import { I18nNamespace, I18nProvider, useI18n } from './contexts/I18nContext'
 
 import { LocaleAccountSync } from './contexts/LocaleAccountSync'
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
@@ -306,6 +307,33 @@ function NamespacedPage({
     <I18nNamespace names={names}>
       <SuspensePage>{children}</SuspensePage>
     </I18nNamespace>
+  )
+}
+
+/** 路由级兜底：页面渲染抛错时保留 AppLayout 外壳，不再整站白屏。 */
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n()
+  const location = useLocation()
+  return (
+    <WidgetErrorBoundary
+      resetKey={location.pathname}
+      fallback={
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {t.errors.unknown}
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-lg bg-black/5 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-black/10 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/15"
+          >
+            {t.common.retry}
+          </button>
+        </div>
+      }
+    >
+      {children}
+    </WidgetErrorBoundary>
   )
 }
 
@@ -706,7 +734,9 @@ export function App() {
                     )}
                     <TappDataExchangeConsentHost />
                     <AppLayout>
-                      <AppRoutes />
+                      <RouteErrorBoundary>
+                        <AppRoutes />
+                      </RouteErrorBoundary>
                     </AppLayout>
                     {import.meta.env.DEV && (
                       <Suspense fallback={null}>

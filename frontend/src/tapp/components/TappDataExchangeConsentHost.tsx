@@ -53,15 +53,20 @@ export function TappDataExchangeConsentHost() {
   if (!prepared || typeof document === 'undefined') return null
   return (
     <I18nNamespace names={['tapp']}>
-      <TappDataExchangeConsentDialog prepared={prepared} />
+      <TappDataExchangeConsentDialog
+        prepared={prepared}
+        queuedCount={current.queuedCount}
+      />
     </I18nNamespace>
   )
 }
 
 function TappDataExchangeConsentDialog({
   prepared,
+  queuedCount,
 }: {
   prepared: PreparedDataExchange
+  queuedCount: number
 }) {
   const { t, format } = useI18n()
   const denyButtonRef = useRef<HTMLButtonElement>(null)
@@ -204,10 +209,10 @@ function TappDataExchangeConsentDialog({
           </div>
         </dl>
 
-        {current.queuedCount > 0 && (
+        {queuedCount > 0 && (
           <p className="tapp-data-consent-queued">
             {format(t.tapp.dataExchangeQueued, {
-              count: current.queuedCount,
+              count: queuedCount,
             })}
           </p>
         )}

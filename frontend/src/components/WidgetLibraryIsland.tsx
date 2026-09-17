@@ -51,6 +51,7 @@ import {
   widgetTypeMatchesLibrarySearch,
 } from './widgetLibrarySearch'
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
+import { WidgetErrorBoundary } from './widgets/shared/WidgetErrorBoundary'
 import './WidgetLibraryIsland.css'
 
 function libraryFilterLabel(
@@ -139,6 +140,7 @@ const WidgetLibraryTile = React.memo(
     onDragStart: (event: WidgetLibraryDragStartEvent, id: string) => void
   }) => {
     const WidgetComponent = widgetType.component
+    const { t } = useI18n()
     const tileRef = useRef<HTMLDivElement>(null)
     const span = widgetSizeSpan(widgetType.defaultSize)
     const standard = {
@@ -180,11 +182,20 @@ const WidgetLibraryTile = React.memo(
             renderHeight={renderHeight}
             displayScale={displayScale}
           >
-            <WidgetComponent
-              config={previewConfig}
-              isEditMode={false}
-              isPreview={true}
-            />
+            <WidgetErrorBoundary
+              resetKey={`${widgetType.id}:preview`}
+              fallback={
+                <div className="flex h-full w-full items-center justify-center rounded-xl bg-black/5 px-2 text-center text-[10px] leading-tight text-gray-500 dark:bg-white/10 dark:text-gray-400">
+                  {t.errors.widgetsLoadFailed}
+                </div>
+              }
+            >
+              <WidgetComponent
+                config={previewConfig}
+                isEditMode={false}
+                isPreview={true}
+              />
+            </WidgetErrorBoundary>
           </LibraryPreviewSlot>
           <div className="widget-library-tile-frame" />
         </div>

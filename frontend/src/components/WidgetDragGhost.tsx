@@ -7,6 +7,7 @@ import {
   dragGhostContentSize,
   widgetDragGhostBox,
 } from './widgetPlacementPreview'
+import { WidgetErrorBoundary } from './widgets/shared/WidgetErrorBoundary'
 
 export const WidgetDragGhost = React.memo(({
   active,
@@ -104,11 +105,13 @@ export const WidgetDragGhost = React.memo(({
         style={{ width, height }}
       >
         <Suspense fallback={null}>
-          <WidgetComponent
-            config={dragPreview.widgetConfig}
-            isEditMode={false}
-            isPreview={true}
-          />
+          <WidgetErrorBoundary resetKey={dragPreview.widgetType.id}>
+            <WidgetComponent
+              config={dragPreview.widgetConfig}
+              isEditMode={false}
+              isPreview={true}
+            />
+          </WidgetErrorBoundary>
         </Suspense>
       </div>
     </div>,

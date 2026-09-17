@@ -39,6 +39,7 @@ import { HomeStickerCrop } from './home/HomeStickerCrop'
 import { HomeStickerCropTip } from './home/HomeStickerCropTip'
 import { widgetDisplayLabel } from './widgetLibraryModel'
 import { shouldSkipWidgetEntrance } from './widgetPlacementPreview'
+import { WidgetErrorBoundary } from './widgets/shared/WidgetErrorBoundary'
 import { WidgetLongPressHint } from './widgets/shared/WidgetLongPressHint'
 import StickerWidget, {
   stickerFloatMode,
@@ -450,13 +451,22 @@ export const WidgetGridItem = React.memo(
             onMouseEnter={() => isEditMode && onMouseEnter(widget.id)}
             onMouseLeave={onMouseLeave}
           >
-            <WidgetGridItemBody
-              widget={widget}
-              widgetType={widgetType}
-              isEditMode={isEditMode}
-              isPreview={isPreview}
-              onConfigChange={onConfigChange}
-            />
+            <WidgetErrorBoundary
+              resetKey={`${widget.id}:${widget.size}:${isPreview ? 'preview' : 'live'}`}
+              fallback={
+                <div className="flex h-full w-full items-center justify-center rounded-xl bg-black/5 px-2 text-center text-[10px] leading-tight text-gray-500 dark:bg-white/10 dark:text-gray-400">
+                  {t.errors.widgetsLoadFailed}
+                </div>
+              }
+            >
+              <WidgetGridItemBody
+                widget={widget}
+                widgetType={widgetType}
+                isEditMode={isEditMode}
+                isPreview={isPreview}
+                onConfigChange={onConfigChange}
+              />
+            </WidgetErrorBoundary>
             {isEditMode && isHomeStickerItem(widget) && stickerSrc ? (
               <WidgetLongPressHint
                 title={t.home.stickerLongPressEdit}

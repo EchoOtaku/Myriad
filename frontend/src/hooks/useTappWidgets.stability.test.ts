@@ -18,3 +18,11 @@ test('registry metadata refresh preserves React component identity and updates m
   assert.equal(refreshed.name, 'New')
   assert.equal(refreshed.component({}).props.children.props.tappWidgetId, 'test.card')
 })
+
+test('lazy-loads the default TappWidget export so the tapp namespace boundary stays', () => {
+  const raw = readFileSync(new URL('./useTappWidgets.ts', import.meta.url), 'utf8')
+  // The named TappWidgetComponent is the raw component; only the default export
+  // wraps it in I18nNamespace names={['tapp']}. Bypassing it makes t.tapp undefined.
+  assert.match(raw, /default:\s*m\.default/)
+  assert.doesNotMatch(raw, /default:\s*m\.TappWidgetComponent/)
+})
