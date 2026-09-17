@@ -260,6 +260,7 @@ async fn install_prepared_package(
 ) -> Result<Json<ApiResponse<TappListItem>>, HttpError> {
     // Bound concurrent installs early so overload fails 503 without staging work.
     let _install_permit = acquire_install_permit().await?;
+    super::store_policy::ensure_permissions_allowed(&package.manifest.permissions).await?;
     package.validate_for_http(None).map_err(api_response_err)?;
     let manifest = package.manifest.clone();
 
@@ -730,6 +731,7 @@ pub(super) async fn update_tapp(
             (package, true)
         }
     };
+    super::store_policy::ensure_permissions_allowed(&package.manifest.permissions).await?;
     package
         .validate_for_http(Some(&tapp_id))
         .map_err(api_response_err)?;

@@ -28,3 +28,17 @@ test('large replies exhaust the byte budget before the count budget', () => {
   assert.ok(JSON.stringify(hot).length * 2 <= 4 * 1024 * 1024)
   assert.equal(hot.at(-1)?.id, '119')
 })
+
+test('active long bodies never bypass the hot budget and preserve confirmation state', () => {
+  const rows = Array.from({ length: 120 }, (_, i) => ({
+    ...row(i), content: 'x'.repeat(5 * 1024 * 1024),
+    body: { id: `body-${i}`, owner: 'test', chars: 5 * 1024 * 1024 },
+    pendingQuestion: { questionId: `confirm-${i}`, questionType: 'confirmation', question: 'Continue?' },
+    taskExecution: { taskId: `task-${i}`, status: 'waiting' as const, progress: 50, steps: [], reasoning: 'why'.repeat(10000) },
+  }))
+  const hot = retainHotMessages(rows)
+  assert.equal(hot.length, 120)
+  assert.ok(JSON.stringify(hot).length * 2 <= 4 * 1024 * 1024)
+  assert.equal(hot[0].pendingQuestion?.questionId, 'confirm-0')
+  assert.equal(hot[0].body?.chars, 5 * 1024 * 1024)
+})

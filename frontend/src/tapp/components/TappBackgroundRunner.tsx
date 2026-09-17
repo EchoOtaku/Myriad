@@ -29,10 +29,11 @@ export const TappBackgroundRunner: React.FC = () => {
       await runtime.waitForSync()
 
       if (!mountedRef.current) return
-      const tappsToRun = runtime.getBackgroundTapps().filter(tapp => !disabledRef.current.has(tapp.id)).slice(0, 4)
+      const tappsToRun = runtime.getBackgroundTapps().filter(tapp => !disabledRef.current.has(tapp.id))
 
       const codes = new Map<string, TappCodeStructure>()
       for (const tapp of tappsToRun) {
+        if (codes.size >= 4) break
         if (!mountedRef.current || reloadPendingRef.current) return
         try {
           // 后台只加载 core，不生成 Page HTML/CSS。
@@ -55,7 +56,7 @@ export const TappBackgroundRunner: React.FC = () => {
       }
 
       if (!mountedRef.current || reloadPendingRef.current) return
-      setBackgroundTapps(tappsToRun)
+      setBackgroundTapps(tappsToRun.filter(tapp => codes.has(tapp.id)))
       setTappCodes(codes)
     } catch (error) {
       console.error(
@@ -80,7 +81,7 @@ export const TappBackgroundRunner: React.FC = () => {
   useEffect(() => {
     const handleTappEvent = () => {
       // Remove revoked / uninstalled instances immediately, before awaiting code.
-      const allowed = runtime.getBackgroundTapps().filter(tapp => !disabledRef.current.has(tapp.id)).slice(0, 4)
+      const allowed = runtime.getBackgroundTapps().filter(tapp => !disabledRef.current.has(tapp.id))
       setBackgroundTapps(current => current.flatMap(tapp => {
         const next = allowed.find(candidate => candidate.id === tapp.id)
         return next ? [next] : []

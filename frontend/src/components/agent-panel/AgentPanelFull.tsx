@@ -208,7 +208,7 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
         onNearStart={sessionList.onNearStart}
         removeSession={sessionList.removeSession}
         onSelect={(id) => {
-          dispatchAgentPanelOpenSession(id)
+          dispatchAgentPanelOpenSession(id, sessionList.sessions?.find(session => session.id === id)?.messageCount)
           onView('messages')
         }}
       />
@@ -233,7 +233,10 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
                   <AgentPanelMessage
                     key={message.id}
                     message={message}
-                    onAnswer={dispatchAgentPanelAnswer}
+                    onAnswer={(messageId, answer) => {
+                      if (sessionId && history.page && message.question)
+                        dispatchAgentPanelAnswer(messageId, answer, { sessionId, page: history.page, questionId: message.question.id })
+                    }}
                     onSuggest={onSubmit}
                     onWorkOffer={onWorkOffer}
                     onZoomImage={setZoomed}

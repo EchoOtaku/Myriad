@@ -29,6 +29,37 @@ test('grid blank toggles the dock without making widgets or outside clicks reope
   await expect(dock).not.toHaveAttribute('data-library-stage', 'parked')
 })
 
+test('stationary widget long press opens component settings without starting drag', async ({
+  page,
+}) => {
+  const box = await page.getByTestId('widget').boundingBox()
+  if (!box) throw new Error('settings widget has no layout box')
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(550)
+  await expect(page.getByTestId('settings-opens')).toHaveText('1')
+  await expect(page.getByTestId('drag-starts')).toHaveText('0')
+  await page.mouse.up()
+})
+
+test('moving a settings widget past the hold threshold starts drag', async ({
+  page,
+}) => {
+  const box = await page.getByTestId('widget').boundingBox()
+  if (!box) throw new Error('settings widget has no layout box')
+
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 12, y)
+  await page.mouse.up()
+  await expect(page.getByTestId('drag-starts')).toHaveText('1')
+  await page.waitForTimeout(550)
+  await expect(page.getByTestId('settings-opens')).toHaveText('0')
+})
+
 for (const expanded of [false, true]) {
   test(`Escape confirms exit with the dock ${expanded ? 'expanded' : 'parked'}`, async ({
     page,

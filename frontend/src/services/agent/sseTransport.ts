@@ -252,6 +252,13 @@ export async function executeSSERequest({
         if (!reader) throw new Error(currentCopy().errors.streamUnreadable)
 
         const decoder = new TextDecoder()
+        // Limit retained UTF-16 text before split/JSON parsing, including a
+        // server that never terminates its frame. A UTF-8 chunk can require up
+        // to three bytes per UTF-16 code unit; reject larger chunks before decode.
+        const maxBufferChars = 8 * 1024 * 1024
+        const bufferLimitError = () => new AgentStreamError(
+          'Agent response exceeded the streaming size limit', 'SSE_BUFFER_LIMIT',
+        )
         let buffer = ''
         let finalResponse: AgentResponse | null = null
         let streamError: unknown = null
@@ -266,7 +273,12 @@ export async function executeSSERequest({
           while (true) {
             const { done, value } = await reader.read()
             requestSignal.throwIfAborted()
-            if (value) buffer += decoder.decode(value, { stream: !done })
+            if (value) {
+              if (value.byteLength > maxBufferChars * 3) throw bufferLimitError()
+              const decoded = decoder.decode(value, { stream: !done })
+              if (buffer.length + decoded.length > maxBufferChars) throw bufferLimitError()
+              buffer += decoded
+            }
 
             const lines = buffer.split('\n')
             buffer = done ? '' : lines.pop() || ''
@@ -297,7 +309,12 @@ export async function executeSSERequest({
                   continue
                 }
 
-                onProgress?.(event)
+                try {
+                  await onProgress?.(event)
+                } catch (error) {
+                  reject(error)
+                  return
+                }
                 if (shouldYieldSsePaint(event.type) && ++tokensSinceYield >= 64) {
                   tokensSinceYield = 0
                   // A hidden tab may suspend RAF indefinitely. Yield per batch,
@@ -341,6 +358,9 @@ export async function executeSSERequest({
             if (done || finalResponse) break
           }
         } catch (error) {
+          // Recovery would admit the same oversized response through resume or
+          // polling. This is a terminal protocol limit, not a transport drop.
+          if (error instanceof AgentStreamError && error.code === 'SSE_BUFFER_LIMIT') throw error
           streamError = error
         } finally {
           requestSignal.removeEventListener('abort', cancelReader)

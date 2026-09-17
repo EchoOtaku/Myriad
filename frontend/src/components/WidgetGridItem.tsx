@@ -293,7 +293,9 @@ export const WidgetGridItem = React.memo(
                 isEditMode &&
                 instanceSettings.length > 0 &&
                 Boolean(onConfigChange)
-              if (!holdSticker && !holdSettings) {
+              const componentLongPress =
+                isEditMode && Boolean(widgetType.componentLongPress)
+              if (!holdSticker && !holdSettings && !componentLongPress) {
                 onDragStart(event, widget.id)
                 return
               }
@@ -333,6 +335,7 @@ export const WidgetGridItem = React.memo(
               const up = () => clearPress()
               const timer = window.setTimeout(() => {
                 clearPress()
+                if (componentLongPress) return
                 if (holdSticker) {
                   setStickerCropDraft(
                     parseStickerCrop(widget.config?.crop) ??
@@ -359,7 +362,8 @@ export const WidgetGridItem = React.memo(
                 isHomeStickerItem(widget) && Boolean(stickerSrc)
               const holdSettings =
                 instanceSettings.length > 0 && Boolean(onConfigChange)
-              if (!holdSticker && !holdSettings) return
+              const componentLongPress = Boolean(widgetType.componentLongPress)
+              if (!holdSticker && !holdSettings && !componentLongPress) return
               const touch = event.touches[0]
               if (!touch) return
               event.stopPropagation()
@@ -398,10 +402,10 @@ export const WidgetGridItem = React.memo(
               const up = () => clearPress()
               const timer = window.setTimeout(() => {
                 clearPress()
+                if (componentLongPress) return
                 if (holdSticker) {
                   setStickerCropDraft(
-                    parseStickerCrop(widget.config?.crop) ??
-                      defaultStickerCrop(),
+                    parseStickerCrop(widget.config?.crop) ?? defaultStickerCrop(),
                   )
                   setStickerCropOpen(true)
                   return
@@ -434,7 +438,8 @@ export const WidgetGridItem = React.memo(
                 visible={!stickerCropOpen}
                 onClick={() => {
                   setStickerCropDraft(
-                    parseStickerCrop(widget.config?.crop) ?? defaultStickerCrop(),
+                    parseStickerCrop(widget.config?.crop) ??
+                      defaultStickerCrop(),
                   )
                   setStickerCropOpen(true)
                 }}

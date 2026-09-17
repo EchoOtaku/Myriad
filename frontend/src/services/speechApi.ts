@@ -451,6 +451,7 @@ export class CloudPodcastPlayer {
   private windowIndex = -1
   private windowPromise: Promise<BatchTTSResponse> | null = null
   private generatedIndices = new Set<number>()
+  private playbackEpoch = 0
   private currentIndex = 0
   private isPlaying = false
   private isPaused = false
@@ -550,49 +551,28 @@ export class CloudPodcastPlayer {
   }
 
   async play(): Promise<void> {
-    if (this.destroyed || this.dialogues.length === 0) return
-    if (this.isLoading) return
-
-    if (this.isPaused) {
-      this.isPaused = false
-      const audio = this.audioElements.get(this.currentIndex)
-      if (audio) {
-        await audio.play()
-      } else {
-        void this.playNext()
-      }
-      this.isPlaying = true
-      return
-    }
-
+    if (this.destroyed || this.dialogues.length === 0 || this.isLoading) return
+    const resumePosition = this.isPaused
+    this.playbackEpoch++
     this.isPlaying = true
     this.isPaused = false
-    this.playNext()
+    void this.playNext(resumePosition)
   }
 
   pause() {
     if (!this.isPlaying) return
+    this.playbackEpoch++
     this.isPaused = true
-
-    const audio = this.audioElements.get(this.currentIndex)
-    if (audio) {
-      audio.pause()
-    }
+    this.audioElements.get(this.currentIndex)?.pause()
   }
 
   async resume() {
     if (!this.isPaused) return
-    this.isPaused = false
-
-    const audio = this.audioElements.get(this.currentIndex)
-    if (audio) {
-      await audio.play()
-    } else {
-      void this.playNext()
-    }
+    await this.play()
   }
 
   stop() {
+    this.playbackEpoch++
     this.isPlaying = false
     this.isPaused = false
     if (this.dialogueGapTimer !== null) {
@@ -609,6 +589,7 @@ export class CloudPodcastPlayer {
   async seekTo(index: number) {
     if (this.destroyed || !this.batchRequest || index < 0 || index >= this.dialogues.length) return
 
+    const epoch = ++this.playbackEpoch
     const currentAudio = this.audioElements.get(this.currentIndex)
     if (currentAudio) {
       currentAudio.pause()
@@ -618,8 +599,13 @@ export class CloudPodcastPlayer {
     this.currentIndex = index
     this.onProgress?.(this.currentIndex, this.dialogues.length)
 
-    await this.warmPlaybackWindow(index)
-    if (this.currentIndex === index && this.isPlaying && !this.isPaused) {
+    try {
+      await this.warmPlaybackWindow(index)
+    } catch (error) {
+      if (epoch !== this.playbackEpoch) return
+      throw error
+    }
+    if (epoch === this.playbackEpoch && this.currentIndex === index && this.isPlaying && !this.isPaused) {
       void this.playNext()
     }
   }
@@ -691,7 +677,7 @@ export class CloudPodcastPlayer {
     return this.windowPromise
   }
 
-  private async playNext() {
+  private async playNext(resumePosition = false) {
     if (!this.isPlaying || this.isPaused) return
 
     if (this.currentIndex >= this.dialogues.length) {
@@ -701,22 +687,25 @@ export class CloudPodcastPlayer {
     }
 
     const requestedIndex = this.currentIndex
+    const epoch = this.playbackEpoch
+    const active = () => epoch === this.playbackEpoch && !this.destroyed && this.isPlaying && !this.isPaused
+    const current = () => active() && this.currentIndex === requestedIndex
     try {
       // Let an overlapping prefetch finish instead of cancelling the next dialogue.
       if (!this.audioElements.has(requestedIndex) && this.windowIndex === requestedIndex - 1) {
         await this.windowPromise
       }
-      if (this.currentIndex !== requestedIndex || !this.isPlaying) return
+      if (!current()) return
       const warming = this.warmPlaybackWindow(requestedIndex)
       if (!this.audioElements.has(requestedIndex)) await warming
       else void warming.catch(() => {})
     } catch (error) {
-      if (this.destroyed || this.currentIndex !== requestedIndex || !this.isPlaying) return
+      if (!current()) return
       this.isPlaying = false
       console.error('[CloudPodcastPlayer] Load failed:', error)
       return
     }
-    if (!this.isPlaying || this.isPaused || this.currentIndex !== requestedIndex) return
+    if (!current()) return
 
     const audio = this.audioElements.get(this.currentIndex)
     if (!audio) {
@@ -727,12 +716,10 @@ export class CloudPodcastPlayer {
       return
     }
 
-    audio.currentTime = 0
-
-    const currentIdx = this.currentIndex
+    if (!resumePosition) audio.currentTime = 0
 
     audio.onended = () => {
-      if (this.currentIndex !== currentIdx || !this.isPlaying) return
+      if (!current()) return
 
       this.currentIndex++
 
@@ -741,14 +728,14 @@ export class CloudPodcastPlayer {
       }
       this.dialogueGapTimer = setTimeout(() => {
         this.dialogueGapTimer = null
-        if (!this.isPlaying || this.isPaused) return
+        if (!active()) return
         this.onProgress?.(this.currentIndex, this.dialogues.length)
         this.playNext()
       }, this.config.dialogueGap)
     }
 
     audio.onerror = (e) => {
-      if (this.currentIndex !== currentIdx || !this.isPlaying) return
+      if (!current()) return
       console.error('[CloudPodcastPlayer] Audio error:', e)
       this.currentIndex++
       this.onProgress?.(this.currentIndex, this.dialogues.length)
@@ -758,7 +745,7 @@ export class CloudPodcastPlayer {
     try {
       await audio.play()
     } catch (e) {
-      if (this.currentIndex !== currentIdx || !this.isPlaying) return
+      if (!current()) return
       console.error('[CloudPodcastPlayer] Play failed:', e)
       this.currentIndex++
       this.onProgress?.(this.currentIndex, this.dialogues.length)

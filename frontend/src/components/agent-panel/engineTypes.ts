@@ -86,6 +86,8 @@ export interface ChatMessage {
   sessionId: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  body?: import('./messageBody').MessageBodyRef
+  bodyUnavailable?: boolean
   createdAt: Date
   attachments?: AgentAttachment[]
   taskExecution?: TaskExecution
@@ -114,6 +116,7 @@ export interface TaskExecution {
   statusMessage?: string
   /** Same text as debugTrace; UI must not read the debug channel. */
   reasoning?: string
+  reasoningBody?: import('./messageBody').MessageBodyRef
   planStepDescriptions?: string[]
   debugTrace?: DebugTrace
 }

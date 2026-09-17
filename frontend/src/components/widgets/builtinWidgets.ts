@@ -82,6 +82,13 @@ const GithubReposWidget = lazyWidget(
   'GithubReposWidget',
 )
 
+const COMPONENT_LONG_PRESS_WIDGETS = new Set<unknown>([
+  ReportCardHost,
+  SocialNetworkWidget,
+  TappShortcutWidget,
+  GamePresenceWidget,
+])
+
 type WidgetsI18n = TranslationKeys['widgets']
 
 export const BUILTIN_WIDGET_BASE_CONFIG = {
@@ -337,6 +344,8 @@ export function getBuiltinWidgets(
       defaultSize: base.defaultSize,
       component: base.component,
       supportedSizes: Iterator.from(base.supportedSizes).toArray(),
+      componentLongPress:
+        COMPONENT_LONG_PRESS_WIDGETS.has(base.component) || undefined,
       settings:
         id === 'github-repos'
           ? [

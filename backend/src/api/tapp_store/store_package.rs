@@ -185,6 +185,17 @@ pub(super) async fn fetch_from_store(
         api_http_error(status, err.message())
     })?;
 
+    // Reject from catalog metadata before any package resource download.
+    let declared_permissions: Vec<String> = app_info
+        .get("permissions")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    super::store_policy::ensure_permissions_allowed(&declared_permissions).await?;
+
     if let Err(error) = parse_store_preview_descriptor(app_info) {
         tracing::warn!(tapp_id, %error, "ignoring invalid optional store preview metadata");
     }
@@ -207,6 +218,8 @@ pub(super) async fn fetch_from_store(
         tracing::error!(error = %e, "upstream fetch failed");
         api_http_error(StatusCode::BAD_GATEWAY, "Upstream fetch failed")
     })?;
+    // The manifest is authoritative even when the index omits permissions.
+    super::store_policy::ensure_permissions_allowed(&manifest.permissions).await?;
     validate_store_manifest_category(app_info, &manifest)
         .map_err(|error| api_http_error(StatusCode::BAD_GATEWAY, error))?;
 

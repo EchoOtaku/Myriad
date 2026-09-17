@@ -191,6 +191,8 @@ describe('RemoteStoreService.fetchAllApps', () => {
       ) => Promise<RemoteStoreIndex>
       fetchAllApps: typeof RemoteStoreService.fetchAllApps
     }
+    const originalFetchPolicy = RemoteStoreService.fetchPolicy
+    RemoteStoreService.fetchPolicy = async () => ({ federationEnabled: true })
     const originalGetEnabledSources = service.getEnabledSources
     const originalFetchStoreIndex = service.fetchStoreIndex
     const sources: RemoteStoreSource[] = [
@@ -270,8 +272,76 @@ describe('RemoteStoreService.fetchAllApps', () => {
         ],
       )
     } finally {
+      RemoteStoreService.fetchPolicy = originalFetchPolicy
       service.getEnabledSources = originalGetEnabledSources
       service.fetchStoreIndex = originalFetchStoreIndex
+    }
+  })
+})
+
+describe('server federation store policy', () => {
+  it('filters all sources and refreshes policy even when the index is cached', async () => {
+    const originalPolicy = RemoteStoreService.fetchPolicy
+    const originalSources = RemoteStoreService.getEnabledSources
+    const originalIndex = RemoteStoreService.fetchStoreIndex
+    let enabled = false
+    const local = { ...previewApp(), id: 'local' }
+    const federated = { ...previewApp(), id: 'federated', permissions: ['federation:room'] }
+    RemoteStoreService.fetchPolicy = async () => ({ federationEnabled: enabled })
+    RemoteStoreService.getEnabledSources = async () => [
+      { name: 'Custom', url: 'https://store.example/index.json', enabled: true },
+    ]
+    RemoteStoreService.fetchStoreIndex = async () => ({
+      name: 'Store', description: '', api_version: 1, last_updated: '',
+      base_url: 'https://store.example/', apps: [local, federated],
+    })
+    try {
+      assert.deepEqual((await RemoteStoreService.fetchAllApps()).apps.map(app => app.id), ['local'])
+      enabled = true
+      assert.deepEqual((await RemoteStoreService.fetchAllApps()).apps.map(app => app.id), ['local', 'federated'])
+    } finally {
+      RemoteStoreService.fetchPolicy = originalPolicy
+      RemoteStoreService.getEnabledSources = originalSources
+      RemoteStoreService.fetchStoreIndex = originalIndex
+    }
+  })
+
+  it('blocks browser fallback before downloading a federation package', async () => {
+    const originalPolicy = RemoteStoreService.fetchPolicy
+    const originalFetch = globalThis.fetch
+    let downloads = 0
+    RemoteStoreService.fetchPolicy = async () => ({ federationEnabled: false })
+    globalThis.fetch = async () => { downloads++; throw new Error('Unexpected download') }
+    try {
+      await assert.rejects(RemoteStoreService.downloadAppPackage(
+        { ...previewApp(), permissions: ['federation:read'] },
+        { name: 'Store', description: '', api_version: 1, last_updated: '', base_url: 'https://store.example/', apps: [] },
+      ))
+      assert.equal(downloads, 0)
+    } finally {
+      RemoteStoreService.fetchPolicy = originalPolicy
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('checks the actual manifest when a catalog omits federation permissions', async () => {
+    const originalPolicy = RemoteStoreService.fetchPolicy
+    const originalFetch = globalThis.fetch
+    const paths: string[] = []
+    RemoteStoreService.fetchPolicy = async () => ({ federationEnabled: false })
+    globalThis.fetch = async (input) => {
+      paths.push(new URL(String(input)).pathname)
+      return Response.json({ id: 'com.example.preview', version: '1.0.0', permissions: ['federation:message'] })
+    }
+    try {
+      await assert.rejects(RemoteStoreService.downloadAppPackage(
+        previewApp(),
+        { name: 'Store', description: '', api_version: 1, last_updated: '', base_url: 'https://store.example/', apps: [] },
+      ))
+      assert.deepEqual(paths, ['/apps/com.example.preview/manifest.json'])
+    } finally {
+      RemoteStoreService.fetchPolicy = originalPolicy
+      globalThis.fetch = originalFetch
     }
   })
 })

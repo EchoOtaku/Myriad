@@ -4,6 +4,9 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { authSubject } from '../../utils/authSubject'
+import { prepareMessageBody, releaseMessageBody } from './messageBody'
+import { retainHotMessages } from './messageBudget'
+import { prepareChatBody } from './prepareChatBody'
 import { restoreSessionMessage } from './sessionHistoryMessage'
 import { SessionLoadScope } from './sessionLoadScope'
 
@@ -29,12 +32,12 @@ function harness(getMessages: (...args: unknown[]) => Promise<unknown[]>) {
   const scope = new SessionLoadScope()
   const noop = () => {}
   const context: Record<string, any> = {
-    authSubject, console, sessionLoads: scope,
+    authSubject, console, sessionLoads: scope, bodyScopes: new SessionLoadScope(),
     sessionIdsByModeRef: { current: { work: null, chat: null } },
     sessionTitleSetByModeRef: { current: {} }, setSessionId: noop,
     stopAgoraConversation: noop, agentService: { getSessionMessages: getMessages },
     imageUrlsFromAgentPayload: () => [], executionStepsFromHistory: () => [],
-    restoreSessionMessage,
+    restoreSessionMessage, prepareMessageBody, releaseMessageBody, retainHotMessages, prepareChatBody,
     setMessages: (rows: unknown) => writes.push(rows),
     restorePendingActionFromMessages: () => null, clearAgentPendingAction: noop,
     restoreFollowUpQuestion: () => null,

@@ -121,7 +121,7 @@ describe('note editor abort', () => {
     assert.match(editor, /commitVisualMd\(toggleVisualHeading/)
     assert.match(editor, /commitVisualMd\(insertImage/)
     assert.match(editor, /commitVisualMd\(serializeVisual/)
-    assert.match(editor, /el\.dataset\.noteVisual === contentMd/)
+    assert.match(editor, /visualMarkdownStamp\.get\(el\) === contentMd/)
     assert.match(editor, /closest<HTMLElement>\('\.note-widget'\)/)
     assert.match(editor, /!widget && caret && block\.contains\(caret\.node\)/)
     assert.match(editor, /getArticleProseClass\(/)

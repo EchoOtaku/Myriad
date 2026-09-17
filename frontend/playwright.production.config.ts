@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests/production',
+  testMatch: 'homeBudget.spec.ts',
   outputDir: '/tmp/myriad-production-browser',
   timeout: 60_000,
   workers: 1,
@@ -11,7 +12,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'PORT=4188 HOST=127.0.0.1 node scripts/spa-server.mjs',
+    command: 'cross-env PORT=4188 HOST=127.0.0.1 node scripts/spa-server.mjs',
     url: 'http://127.0.0.1:4188',
     reuseExistingServer: false,
   },

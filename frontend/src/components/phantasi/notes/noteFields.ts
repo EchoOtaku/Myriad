@@ -9,7 +9,12 @@ type NoteFieldError = 'empty-title' | 'title-too-long' | 'body-too-long'
 type NoteScheduleError = 'missing-time' | 'already-due'
 
 export function countNoteChars(value: string): number {
-  return [...value].length
+  // Spreading the string materializes one array entry per character. Count only
+  // surrogate pairs instead, so large ASCII/CJK drafts allocate no such array.
+  let count = value.length
+  const pairs = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g
+  while (pairs.test(value)) count--
+  return count
 }
 
 export function noteFieldError(

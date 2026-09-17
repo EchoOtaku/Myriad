@@ -5,6 +5,11 @@ import { authSubject } from '../../utils/authSubject'
 export class SessionLoadScope {
   private readonly lanes = new Map<AgentPanelMode, AbortController>()
 
+  capture(mode: AgentPanelMode): AbortSignal {
+    const lane = this.lanes.get(mode)
+    return lane ? AbortSignal.any([authSubject.signal, lane.signal]) : this.begin(mode)
+  }
+
   begin(mode: AgentPanelMode, subject = authSubject.signal): AbortSignal {
     this.reset(mode)
     const controller = new AbortController()

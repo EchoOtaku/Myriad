@@ -9,6 +9,7 @@ import React, {
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { AgentMarkdown } from './AgentMarkdown'
+import { AgentMessageBody } from './AgentMessageBody'
 import { useAgentPanelMode } from './agentPanelMode'
 import { AgentPanelThinking } from './AgentPanelThinking'
 import {
@@ -19,6 +20,7 @@ import {
   THINKING_FOLD_MS,
 } from './agentThinking'
 import { invalidateComposerFavorites } from './composerFavorites'
+import { readCompleteBody } from './messageBody'
 
 export interface AgentPanelMessageProps {
   message: AgentMessage
@@ -201,8 +203,9 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
     const [workOfferSent, setWorkOfferSent] = useState(false)
 
     const copy = useCallback(() => {
-      void navigator.clipboard
-        ?.writeText(message.content)
+      if (message.bodyUnavailable) return
+      void readCompleteBody(message.content, message.body)
+        .then(text => navigator.clipboard?.writeText(text))
         .then(() => {
           setCopied(true)
           setTimeout(setCopied, 1600, false)
@@ -210,25 +213,26 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
         .catch(() => {
           /* clipboard blocked */
         })
-    }, [message.content])
+    }, [message.content, message.body, message.bodyUnavailable])
 
     const [saved, setSaved] = useState(false)
 
     const save = useCallback(() => {
       setSaved(true)
-      void agentService
-        .addToFavorites(message.content)
+      if (message.bodyUnavailable) { setSaved(false); return }
+      void readCompleteBody(message.content, message.body)
+        .then(text => agentService.addToFavorites(text))
         .then(() => {
           invalidateComposerFavorites()
         })
         .catch(() => {
           setSaved(false)
         })
-    }, [message.content])
+    }, [message.content, message.body, message.bodyUnavailable])
 
     const isAssistant = message.role === 'assistant'
     const question = message.question
-    const hasAnswer = messageHasAnswer(message)
+    const hasAnswer = !!message.body || messageHasAnswer(message)
     const showsFooter = message.state !== 'streaming' && hasAnswer
     const showsThinking = messageShowsThinking({
       role: message.role,
@@ -274,6 +278,7 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
                       plan={message.workPlan}
                       steps={message.steps ?? []}
                       thought={message.thought}
+                      body={message.thoughtBody}
                       live={message.state === 'streaming'}
                     />
                   </div>
@@ -281,7 +286,8 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
               ) : null}
               {hasAnswer ? (
                 <div className="agent-panel-message-answer">
-                  {message.role === 'user' ? (
+                  {message.bodyUnavailable && <p role="alert">{t.agentPanel.sessions.loadFailed}</p>}
+                  {message.body ? <AgentMessageBody body={message.body} preview={message.content} /> : message.role === 'user' ? (
                     <>
                       {message.attachments && message.attachments.length > 0 ? (
                         <div className="agent-panel-message-attach">

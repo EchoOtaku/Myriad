@@ -16,6 +16,9 @@ export interface AgentMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  body?: import('./messageBody').MessageBodyRef
+  bodyUnavailable?: boolean
+  thoughtBody?: import('./messageBody').MessageBodyRef
   state?: 'streaming' | 'error'
   imageUrls?: string[]
   attachments?: AgentAttachment[]
@@ -65,6 +68,9 @@ function sameMessage(x: AgentMessage, y: AgentMessage): boolean {
     x.id === y.id &&
     x.role === y.role &&
     x.content === y.content &&
+    x.body?.id === y.body?.id && x.body?.chars === y.body?.chars &&
+    x.bodyUnavailable === y.bodyUnavailable &&
+    x.thoughtBody?.id === y.thoughtBody?.id && x.thoughtBody?.chars === y.thoughtBody?.chars &&
     x.state === y.state &&
     x.imageUrls?.length === y.imageUrls?.length &&
     x.attachments?.length === y.attachments?.length &&

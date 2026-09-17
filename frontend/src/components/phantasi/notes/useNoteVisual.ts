@@ -3,6 +3,7 @@ import { useCallback, useEffect } from 'react'
 import {
   markdownToVisualHtml,
   runVisualCommand,
+  visualMarkdownStamp,
 } from './noteVisual'
 import { trimVisualHistory } from './noteVisualHistory'
 import { replaceNoteHtml } from './noteWidgetMount'
@@ -68,7 +69,7 @@ export function useNoteVisual({
     if (paneRef.current === 'visual' && el) {
       replaceNoteHtml(el, markdownToVisualHtml(next))
       hydrateVisualMath(el)
-      el.dataset.noteVisual = next
+      visualMarkdownStamp.set(el, next)
     }
   }, [paneRef, setContentMd, visualRef])
 

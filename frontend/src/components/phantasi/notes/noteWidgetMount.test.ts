@@ -63,7 +63,7 @@ describe('hasNoteWidgetMarkup', () => {
     assert.match(reader, /noteWidgets\.portals/)
     assert.doesNotMatch(editor, /mountNoteWidgets/)
     assert.match(editor, /visualWidgets\.refresh\(\)/)
-    assert.match(editor, /el\.dataset\.noteVisual === contentMd/)
+    assert.match(editor, /visualMarkdownStamp\.get\(el\) === contentMd/)
     assert.match(editor, /pane !== 'preview'/)
     assert.match(editor, /preloadNoteWidgets\(/)
     assert.match(reader, /preloadNoteWidgets\(/)

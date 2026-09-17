@@ -98,6 +98,9 @@ export function projectAgentMessage(message: ChatMessage): AgentMessage {
     id: message.id,
     role: message.role,
     content,
+    body: message.body,
+    bodyUnavailable: message.bodyUnavailable,
+    thoughtBody: message.taskExecution?.reasoningBody,
     state: projectState(message),
     ...(message.imageUrls?.length ? { imageUrls: message.imageUrls } : {}),
     ...(message.attachments?.length

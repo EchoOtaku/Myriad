@@ -220,7 +220,7 @@ class ResourceLoader {
     if (
       this.scheduledIdleTasks.has(id) ||
       this.isCompleted(id) ||
-      this.activeLoads.has(id) ||
+      (this.activeLoads.has(id) && !this.running.get(id)?.controller.signal.aborted) ||
       this.queue.some((task) => task.id === id)
     ) {
       return

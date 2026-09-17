@@ -887,28 +887,123 @@ function serializeList(body: string, ordered: boolean, listAttrs: string, indent
     .join('\n')
 }
 
-/** Reuse unchanged top-level blocks; keep Markdown current on every input. */
-export function createVisualMarkdownSerializer(): (root: HTMLElement) => string {
-  const cache = new WeakMap<Element, { html: string; markdown: string }>()
-  return (root) => {
+/** The editor fingerprint stays in JS; avoid copying whole drafts into DOM attributes. */
+export const visualMarkdownStamp = new WeakMap<HTMLElement, string>()
+
+export interface VisualMarkdownSerializer {
+  (root: HTMLElement): string
+  dispose: () => void
+}
+
+/** Cache DOM subtrees, invalidating only the edited node and its ancestors. */
+export function createVisualMarkdownSerializer(): VisualMarkdownSerializer {
+  let blocks = new WeakMap<Node, string>()
+  let inlines = new WeakMap<Node, string>()
+  let root: HTMLElement | null = null
+  let observer: MutationObserver | null = null
+  const invalidate = (records: MutationRecord[]) => {
+    for (const record of records) {
+      let node: Node | null = record.target
+      while (node) {
+        blocks.delete(node)
+        inlines.delete(node)
+        if (node === root) break
+        node = node.parentNode
+      }
+    }
+  }
+  const cached = (cache: WeakMap<Node, string>, node: Node, read: () => string) => {
+    const previous = cache.get(node)
+    if (previous !== undefined) return previous
+    const value = read()
+    cache.set(node, value)
+    return value
+  }
+  const text = (value: string) => value.replaceAll('\u00A0', ' ')
+  const inlineChildren = (node: Node): string => [...node.childNodes].map(inline).join('')
+  const inline = (node: Node): string => cached(inlines, node, () => {
+    if (node.nodeType === 3) return text(node.textContent ?? '')
+    if (node.nodeType !== 1) return ''
+    const el = node as HTMLElement
+    if (el.tagName === 'BR') return '  \n'
+    if (el.tagName === 'SPAN' && !el.hasAttribute('data-esc') &&
+      !/note-math|math-inline|math-display/.test(el.className)) {
+      return inlineChildren(el)
+    }
+    if (!el.attributes.length) {
+      const marker = ({ STRONG: '**', B: '**', EM: '*', I: '*', DEL: '~~', S: '~~', STRIKE: '~~' } as Record<string, string>)[el.tagName]
+      if (marker) return marker + inlineChildren(el) + marker
+    }
+    return inlineHtml(collapseMathHosts(el.outerHTML))
+  })
+  const codeFence = (code: string) => {
+    let width = 3
+    const runs = /`+/g
+    for (let run = runs.exec(code); run; run = runs.exec(code)) width = Math.max(width, run[0].length + 1)
+    return '`'.repeat(width)
+  }
+  const cell = (el: HTMLTableCellElement) => cached(blocks, el, () => inlineChildren(el)
+    .trim().replace(/ *\r?\n/g, '<br>')
+    .replace(/(\\*)\|/g, (_m, slashes: string) => `${slashes.length % 2 ? slashes : `${slashes}\\`}|`))
+  const table = (el: HTMLTableElement) => {
+    const rows = [...el.rows]
+    if (!rows.length) return ''
+    const lines = rows.map(row => cached(blocks, row, () => `| ${[...row.cells].map(cell).join(' | ')} |`))
+    const separator = `| ${[...rows[0].cells].map(header => {
+      const align = header.getAttribute('align')?.toLowerCase() || header.style.textAlign
+      return align === 'center' ? ':---:' : align === 'right' ? '---:' : align === 'left' ? ':---' : '---'
+    }).join(' | ')} |`
+    return [lines[0], separator, ...lines.slice(1)].join('\n')
+  }
+  const block = (el: Element): string => cached(blocks, el, () => {
+    if (el.tagName === 'P' || /^H[1-6]$/.test(el.tagName)) {
+      if (el.hasAttribute('data-linkdef')) return visualHtmlToMarkdown(el.outerHTML)
+      const content = inlineChildren(el)
+      if (el.tagName !== 'P') return `${'#'.repeat(Number(el.tagName.slice(1)))} ${content}`
+      const footnote = el.getAttribute('data-fn')
+      return footnote ? `[^${footnote}]: ${content}` : content
+    }
+    if (el.tagName === 'PRE') {
+      const code = el.children.length === 1 && el.firstElementChild?.tagName === 'CODE' ? el.firstElementChild : el
+      if (!code.children.length) {
+        const content = text(code.textContent ?? '')
+        const raw = el.getAttribute('data-raw-markdown')
+        if (code === el && raw != null) {
+          try { const source = decodeURIComponent(raw); if (source === content) return source } catch { /* malformed paste metadata */ }
+        }
+        const fence = codeFence(content)
+        return `${fence}${el.getAttribute('data-lang') ?? ''}\n${content}\n${fence}`
+      }
+    }
+    if (el.tagName === 'TABLE') return table(el as HTMLTableElement)
+    return visualHtmlToMarkdown(el.outerHTML)
+  })
+  const serialize: VisualMarkdownSerializer = Object.assign((nextRoot: HTMLElement) => {
+    if (nextRoot !== root) {
+      observer?.disconnect()
+      root = nextRoot
+      blocks = new WeakMap()
+      inlines = new WeakMap()
+      const Observer = root.ownerDocument.defaultView?.MutationObserver
+      observer = Observer ? new Observer(invalidate) : null
+      observer?.observe(root, { subtree: true, childList: true, characterData: true, attributes: true })
+    }
+    if (observer) {
+      invalidate(observer.takeRecords())
+    } else {
+      blocks = new WeakMap()
+      inlines = new WeakMap()
+    }
     // Loose inline content needs the original whole-document normalization.
     if ([...root.childNodes].some(node => node.nodeType === 3 && node.textContent?.trim()) ||
       [...root.children].some(node => !/^(H[1-6]|P|PRE|BLOCKQUOTE|UL|OL|TABLE|HR|LI|DIV)$/.test(node.tagName))) {
       return visualHtmlToMarkdown(root.innerHTML)
     }
-    const parts: string[] = []
-    for (const node of root.children) {
-      const html = node.outerHTML
-      let entry = cache.get(node)
-      if (entry?.html !== html) {
-        entry = { html, markdown: visualHtmlToMarkdown(html) }
-        cache.set(node, entry)
-      }
-      if (entry.markdown) parts.push(entry.markdown)
-    }
+    const parts = [...root.children].map(block).filter(Boolean)
     return parts.map((part, index) => index === 0 ? part :
       (isDefinitionMarkdown(parts[index - 1]) && isDefinitionMarkdown(part) ? '\n' : '\n\n') + part).join('')
-  }
+  }, { dispose: () => { observer?.disconnect(); observer = null; root = null; blocks = new WeakMap(); inlines = new WeakMap() } })
+  return serialize
 }
 
 /** 可视层 HTML → Markdown。认编辑器产出的标签，也认工具栏 execCommand。 */

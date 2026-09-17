@@ -104,7 +104,7 @@ for (const kind of ['json', 'blob'] as const) {
     const pending = kind === 'json'
       ? api.get('/slow', { timeout: 5 })
       : api.getBlob('/slow', { timeout: 5 })
-    const result = await Promise.race([pending.catch(error => error.code), new Promise(resolve => setTimeout(() => resolve('hung'), 50))])
+    const result = await Promise.race([pending.catch(error => error.code), new Promise(resolve => setTimeout(resolve, 50, 'hung'))])
     assert.equal(result, 'TIMEOUT')
   })
 }

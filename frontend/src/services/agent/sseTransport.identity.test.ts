@@ -210,3 +210,22 @@ test('abort interrupts a suspended cooperative yield and releases its reader', a
   assert.equal(cancelled, true)
   assert.equal(body.locked, false)
 })
+
+test('async progress storage backpressures token delivery and completion', async () => {
+  const held = Promise.withResolvers<void>()
+  const entered = Promise.withResolvers<void>()
+  const events: string[] = []
+  const h = harness(async () => 'token', async () => stream([
+    { type: 'summary_token', token: 'one' }, { type: 'summary_token', token: 'two' }, { type: 'task_completed', response: final },
+  ]))
+  const pending = h.executeSSERequest({ ...h.options, onProgress: async event => {
+    events.push(event.type)
+    if (events.length === 1) { entered.resolve(); await held.promise }
+  } })
+  await entered.promise
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(events, ['summary_token'])
+  held.resolve()
+  await pending
+  assert.deepEqual(events, ['summary_token', 'summary_token', 'task_completed'])
+})

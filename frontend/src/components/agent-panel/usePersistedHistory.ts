@@ -2,7 +2,9 @@ import type { AgentMessage } from './agentMessages'
 import { useEffect, useState } from 'react'
 import { agentService } from '../../services/agent'
 import { authSubject } from '../../utils/authSubject'
+import { releaseMessageBody } from './messageBody'
 import { boundMessage } from './messageBudget'
+import { prepareChatBody } from './prepareChatBody'
 import { projectAgentMessage } from './projectAgentMessage'
 import { restoreSessionMessage } from './sessionHistoryMessage'
 
@@ -28,6 +30,7 @@ export function usePersistedHistory(sessionId: string | null) {
     const controller = new AbortController()
     const signal = AbortSignal.any([controller.signal, authSubject.signal])
     setResult(null)
+    const stored: import('./messageBody').MessageBodyRef[] = []
     void agentService
       .getSessionMessages(
         selected.sessionId,
@@ -35,23 +38,30 @@ export function usePersistedHistory(sessionId: string | null) {
         PERSISTED_HISTORY_PAGE,
         signal,
       )
-      .then((rows) => {
-        if (signal.aborted) return
-        setResult({
-          selection: selected,
-          rows: rows.map((row) =>
-            projectAgentMessage(
-              boundMessage(restoreSessionMessage(row, selected.sessionId)),
-            ),
-          ),
-          error: false,
-        })
+      .then(async rows => {
+        const restored: AgentMessage[] = []
+        for (const row of rows) {
+          const message = await prepareChatBody(restoreSessionMessage(row, selected.sessionId), signal)
+          for (const body of [message.body, message.taskExecution?.reasoningBody]) { if (body) stored.push(body)
+}
+          if (signal.aborted) {
+            for (const body of stored) void releaseMessageBody(body).catch(() => {})
+            return
+          }
+          restored.push(projectAgentMessage(boundMessage(message)))
+        }
+        if (!signal.aborted) setResult({ selection: selected, rows: restored, error: false })
       })
       .catch(() => {
+        for (const body of stored) void releaseMessageBody(body).catch(() => {})
+        stored.length = 0
         if (!signal.aborted)
           setResult({ selection: selected, rows: [], error: true })
       })
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      for (const body of stored) void releaseMessageBody(body).catch(() => {})
+    }
   }, [selected])
   const current = result?.selection === selected ? result : null
   return {

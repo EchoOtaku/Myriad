@@ -22,6 +22,7 @@ mod package_files;
 mod prepared_package;
 mod storage;
 mod store_package;
+mod store_policy;
 mod store_sources;
 mod store_stats;
 mod types;
@@ -173,6 +174,7 @@ pub fn create_tapp_routes(app_state: crate::state::AppState) -> Router<crate::st
         .route("/details", get(list_tapp_details))
         .route("/widgets", get(list_all_widgets))
         .route("/store/sources", get(list_store_sources))
+        .route("/store/policy", get(store_policy::get_store_policy))
         // Public list layout: guests read site-owner card sizes (no auth required)
         .route("/list-card-sizes", get(get_list_card_sizes))
         .route("/{tapp_id}", get(get_tapp))

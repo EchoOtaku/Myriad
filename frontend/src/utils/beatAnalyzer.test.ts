@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { getEventListeners } from 'node:events'
 import test from 'node:test'
 import { analyzeBeatGrid } from './beatAnalyzer'
 
@@ -62,4 +63,61 @@ test('long media is rejected at metadata stage before Web Audio decoding', async
     assert.equal(contexts, 0)
     assert.equal(released, true)
   } finally { globalThis.fetch = originalFetch; globalThis.Audio = originalAudio; globalThis.window = originalWindow }
+})
+
+test('aborted callers settle promptly while an uncancellable decode retains the serial slot', async () => {
+  const originalFetch = globalThis.fetch
+  const originalAudio = globalThis.Audio
+  const originalWindow = globalThis.window
+  const originalAny = AbortSignal.any
+  const combinedSignals: AbortSignal[] = []
+  AbortSignal.any = signals => {
+    const combined = originalAny(signals)
+    combinedSignals.push(combined)
+    return combined
+  }
+  const decoding = Promise.withResolvers<void>()
+  const decoded = Promise.withResolvers<AudioBuffer>()
+  let fetches = 0
+  globalThis.fetch = async () => { fetches++; return new Response(new Uint8Array(4)) }
+  globalThis.Audio = class {
+    duration = 15; onloadedmetadata?: () => void; onerror = null; preload = ''; src = ''
+    load() { if (this.src) queueMicrotask(() => this.onloadedmetadata?.()) }
+  } as unknown as typeof Audio
+  globalThis.window = { AudioContext: class {
+    decodeAudioData() { decoding.resolve(); return decoded.promise }
+    async close() {}
+  } } as unknown as Window & typeof globalThis
+  const active = new AbortController()
+  const queued = new AbortController()
+  const later = new AbortController()
+  try {
+    const first = analyzeBeatGrid('decode-held', 'decode-held', active.signal)
+    await decoding.promise
+    const second = analyzeBeatGrid('queued-cancelled', 'queued-cancelled', queued.signal)
+    active.abort()
+    queued.abort()
+    const settled = await Promise.race([
+      Promise.all([first, second]).then(results => results.every(result => result === null)),
+      new Promise<boolean>(resolve => setTimeout(resolve, 30, false)),
+    ])
+    assert.equal(settled, true, 'cancellation must not await a different decode')
+    const third = analyzeBeatGrid('must-wait', 'must-wait', later.signal)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(fetches, 1, 'an aborted decode still owns the execution slot')
+    later.abort()
+    assert.equal(await third, null)
+    for (const signal of combinedSignals) assert.equal(getEventListeners(signal, 'abort').length, 0)
+    decoded.resolve({ duration: 15 } as AudioBuffer)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(fetches, 1, 'cancelled queue entries never fetch')
+  } finally {
+    active.abort(); queued.abort(); later.abort()
+    decoded.resolve({ duration: 15 } as AudioBuffer)
+    await new Promise(resolve => setImmediate(resolve))
+    globalThis.fetch = originalFetch
+    globalThis.Audio = originalAudio
+    globalThis.window = originalWindow
+    AbortSignal.any = originalAny
+  }
 })

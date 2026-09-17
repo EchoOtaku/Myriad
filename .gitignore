@@ -213,3 +213,20 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/fixture/phantasiFeeds.tsx
 !/frontend/tests/browser/fixture/phantasiFeeds.html
 !/frontend/tests/browser/fixture/phantasiProduction.css
+
+# TAPP real-browser lifecycle regression
+!/frontend/tests/browser/tappLifecycle.spec.ts
+!/frontend/tests/browser/fixture/tappLifecycle.tsx
+
+# Read-only production performance checks against an explicit live backend.
+!/frontend/tests/production/livePerformance.spec.ts
+
+# Large journal editing, composition and persistence regressions.
+!/frontend/tests/browser/noteLargeDocument.spec.ts
+!/frontend/tests/browser/fixture/noteLargeDocument.html
+!/frontend/tests/browser/fixture/noteLargeDocument.tsx
+
+# Agent large-body IndexedDB, pagination and identity regressions.
+!/frontend/tests/browser/agentLargeBody.spec.ts
+!/frontend/tests/browser/fixture/agentLargeBody.html
+!/frontend/tests/browser/fixture/agentLargeBody.tsx

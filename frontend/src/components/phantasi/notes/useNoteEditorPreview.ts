@@ -24,6 +24,7 @@ import {
   markdownToVisualHtml,
   placeCaretAtTextOffset,
   setNoteWidgetConfig,
+  visualMarkdownStamp,
 } from './noteVisual'
 import { preloadNoteWidgets } from './noteWidgetCatalog'
 import { noteWidgetTypesInHtml } from './noteWidgetHtml'
@@ -139,10 +140,10 @@ export function useNoteEditorPreview(host: {
     if (!el) return
     // 水合后 face 会改 innerHTML。用原文指纹，打字 / 失焦 / 写栏往返都不整树重挂。
     if (visualEditing.current) {
-      el.dataset.noteVisual = contentMd
+      visualMarkdownStamp.set(el, contentMd)
       return
     }
-    if (el.dataset.noteVisual === contentMd) return
+    if (visualMarkdownStamp.get(el) === contentMd) return
     const selection = captureNoteSelection(el)
     replaceNoteHtml(el, markdownToVisualHtml(contentMd))
     hydrateVisualMath(el)
@@ -151,7 +152,7 @@ export function useNoteEditorPreview(host: {
       block.setAttribute('aria-label', t.phantasi.noteEditInMarkdown)
     })
     restoreNoteSelection(el, selection)
-    el.dataset.noteVisual = contentMd
+    visualMarkdownStamp.set(el, contentMd)
   }, [contentMd, pane, visualEditing, visualRef, t.phantasi.noteEditInMarkdown])
 
   useLayoutEffect(() => {

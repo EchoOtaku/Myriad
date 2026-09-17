@@ -595,3 +595,80 @@ it('incremental visual conversion preserves definitions and updates edited block
   assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML))
   dom.window.close()
 })
+
+it('serializes changed giant paragraphs, code, and table cells without reading whole block HTML', async () => {
+  const { createVisualMarkdownSerializer } = await import('./noteVisual')
+  const { createRequire } = await import('node:module')
+  const require = createRequire(import.meta.url)
+  const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))
+  const dom = new JSDOM('<div id="editor"></div>')
+  const root = dom.window.document.getElementById('editor')
+  const serialize = createVisualMarkdownSerializer()
+  for (const html of [
+    `<p>${'plain'.repeat(40_000)}<strong>bold</strong></p>`,
+    `<pre data-lang="text"><code>${'code '.repeat(40_000)}\n\`\`\`literal</code></pre>`,
+    `<table><tr><th align="right">Header</th></tr><tr><td>${'cell '.repeat(40_000)}<em>end</em></td></tr></table>`,
+  ]) {
+    root.innerHTML = html
+    const expected = visualHtmlToMarkdown(root.innerHTML)
+    const block = root.firstElementChild
+    Object.defineProperty(block, 'outerHTML', { get() { throw new Error('whole block serialization') } })
+    assert.equal(serialize(root), expected)
+    const text = block.tagName === 'TABLE' ? block.rows[1].cells[0].firstChild : block.tagName === 'PRE' ? block.firstChild.firstChild : block.firstChild
+    text.appendData('新😀')
+    assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML))
+    text.replaceData(text.length - 3, 3, 'changed')
+    assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML))
+  }
+  serialize.dispose()
+  dom.window.close()
+})
+
+it('incremental DOM caches handle removed nodes, attribute edits, and a different document root', async () => {
+  const { createVisualMarkdownSerializer } = await import('./noteVisual')
+  const { createRequire } = await import('node:module')
+  const require = createRequire(import.meta.url)
+  const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))
+  const dom = new JSDOM('<div id="a"><p>first <em>one</em></p><table><tr><th>x</th></tr><tr><td>a|b</td></tr></table></div><div id="b"><p>other</p></div>')
+  const root = dom.window.document.getElementById('a')
+  const serialize = createVisualMarkdownSerializer()
+  const check = () => assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML))
+  check()
+  root.querySelector('th').setAttribute('align', 'center')
+  root.querySelector('em').remove()
+  check()
+  root.querySelector('th').removeAttribute('align')
+  root.querySelector('th').style.textAlign = 'right'
+  check()
+  root.querySelector('td').innerHTML = 'line<br>two <strong>bold</strong>'
+  check()
+  assert.equal(serialize(dom.window.document.getElementById('b')), 'other')
+  serialize.dispose()
+  dom.window.close()
+})
+
+it('the DOM serializer keeps the existing Markdown contract for rich inline and block content', async () => {
+  const { createVisualMarkdownSerializer } = await import('./noteVisual')
+  const { createRequire } = await import('node:module')
+  const require = createRequire(import.meta.url)
+  const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))
+  const dom = new JSDOM('<main></main>')
+  const root = dom.window.document.querySelector('main')
+  const serialize = createVisualMarkdownSerializer()
+  for (const md of [
+    'plain & <literal> 新😀\n\n**bold *nested*** and ` code `',
+    '# Heading\n\n[link **bold**](https://example.test "title") ![alt](image.png)',
+    '> quote\n>\n> - list\n> - another',
+    '- [x] done\n- [ ] pending\n\n1. ordered\n2. second',
+    '| left | right |\n| :--- | ---: |\n| a\\|b | line<br>two |',
+    'inline $x^2$ math\n\n$$\na+b\n$$',
+    'reference[^1]\n\n[^1]: footnote\n[^2]: another',
+    '```text\n  code\n\n```',
+    '```text\nleft\u00a0right & <literal> ```ticks\n```',
+  ]) {
+    root.innerHTML = markdownToVisualHtml(md)
+    assert.equal(serialize(root), visualHtmlToMarkdown(root.innerHTML), md)
+  }
+  serialize.dispose()
+  dom.window.close()
+})

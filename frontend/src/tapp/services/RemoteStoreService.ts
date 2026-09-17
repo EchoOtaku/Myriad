@@ -14,6 +14,7 @@ import {
   storeAssetStorePath,
   storePackageRoot,
 } from '../utils/storePackagePaths'
+import { isStoreAppAvailable } from '../utils/storePolicy'
 import { parseStorePreview } from '../utils/storePreview'
 import { maxDeclaredAssets } from '../utils/tappPackageLimits'
 
@@ -492,6 +493,15 @@ class RemoteStoreServiceImpl {
     }
   }
 
+  async fetchPolicy(): Promise<{ federationEnabled: boolean }> {
+    const response = await api.get('/api/tapps/store/policy')
+    const policy = response.data?.data
+    if (!response.data?.success || typeof policy?.federationEnabled !== 'boolean') {
+      throw new Error(currentCopy().tapp.loadRemoteFailed)
+    }
+    return policy
+  }
+
   async fetchAllApps(forceRefresh = false): Promise<{
     apps: Array<
       RemoteApp & {
@@ -502,7 +512,9 @@ class RemoteStoreServiceImpl {
       }
     >
     sources: Array<{ source: RemoteStoreSource; error?: string }>
+    federationEnabled: boolean
   }> {
+    const { federationEnabled } = await this.fetchPolicy()
     const enabledSources = await this.getEnabledSources()
     const prioritizedSources = enabledSources
       .map((source, configuredIndex) => ({ source, configuredIndex }))
@@ -548,6 +560,7 @@ class RemoteStoreServiceImpl {
         for (const app of result.index.apps) {
           if (!app?.id || seenIds.has(app.id)) continue
           seenIds.add(app.id)
+          if (!isStoreAppAvailable(app, federationEnabled)) continue
           apps.push({
             ...app,
             sourceUrl: result.source.url,
@@ -577,6 +590,7 @@ class RemoteStoreServiceImpl {
     return {
       apps,
       sources: results.map((r) => ({ source: r.source, error: r.error })),
+      federationEnabled,
     }
   }
 
@@ -753,6 +767,10 @@ class RemoteStoreServiceImpl {
     modules?: Record<string, string>
     assets?: Record<string, string>
   }> {
+    const { federationEnabled } = await this.fetchPolicy()
+    if (!isStoreAppAvailable(app, federationEnabled)) {
+      throw new Error(currentCopy().tapp.storeFederationUnavailable)
+    }
     const baseUrl = storeIndex.base_url || this.deriveBaseUrl(storeIndex)
     const { clampInstallPercent } = await import('../utils/tappInstallProgress')
     const report = options?.onProgress
@@ -839,6 +857,9 @@ class RemoteStoreServiceImpl {
       downloadSessionId,
     )
     const manifest: TappManifest = downloadedManifest
+    if (!isStoreAppAvailable(manifest, federationEnabled)) {
+      throw new Error(currentCopy().tapp.storeFederationUnavailable)
+    }
 
     // catalog version 必须等于刚拉到的包。
     if (

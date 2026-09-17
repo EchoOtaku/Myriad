@@ -341,8 +341,19 @@ export function useNoteCloudSave({
         pending && !pending.confirmed ? { requestId: pending.requestId, fields: pending.fields, ...(pending.expectedFields ? { expectedFields: pending.expectedFields } : {}) } : undefined)
     }
     recoveryFlushRef.current = flush
-    const timer = setTimeout(flush, 300)
-    return () => clearTimeout(timer)
+    let idle: number | undefined
+    const timer = setTimeout(() => {
+      // Composition can remain open for seconds. Its durable emergency copy
+      // still flushes on pagehide; ordinary writes wait for committed text.
+      if (composingRef.current) return
+      if (typeof window.requestIdleCallback === 'function')
+        idle = window.requestIdleCallback(() => { if (!composingRef.current) flush() }, { timeout: 1000 })
+      else flush()
+    }, 300)
+    return () => {
+      clearTimeout(timer)
+      if (idle !== undefined) window.cancelIdleCallback?.(idle)
+    }
   }, [loading, cloudId, userId, fields.title, fields.contentMd, fields.topic, fields.cover, fields.publishedAt, persistRecovery])
 
   useEffect(() => {

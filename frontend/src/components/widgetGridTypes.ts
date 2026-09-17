@@ -32,6 +32,8 @@ export interface WidgetType {
   component: ComponentType<WidgetComponentProps>
   supportedSizes?: WidgetSize[]
   settings?: TappSettingItem[]
+  /** The component owns its long-press settings UI; the grid only arbitrates drag. */
+  componentLongPress?: boolean
   isTappWidget?: boolean
   tappId?: string
   category?: string

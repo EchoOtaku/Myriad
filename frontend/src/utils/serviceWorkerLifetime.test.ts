@@ -84,11 +84,12 @@ test('clearing caches invalidates queued writes before acknowledging completion'
   })
   const writes: Promise<unknown>[] = []
   const responses: Promise<Response>[] = []
-  for (let i = 0; i < 3; i++) listeners.get('fetch')!({
+  for (let i = 0; i < 3; i++) { listeners.get('fetch')!({
     request: { url: `https://example.test/${i}.js`, method: 'GET' },
     respondWith: (value: Promise<Response>) => responses.push(value),
     waitUntil: (value: Promise<unknown>) => writes.push(value),
   })
+}
   await Promise.all(responses)
   let cleared!: Promise<void>
   let acknowledged = false

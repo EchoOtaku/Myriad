@@ -20,6 +20,22 @@ test('github repos widget is in the home catalog', () => {
   assert.equal(config.defaultSize, '2x2')
 })
 
+test('component-owned settings defer drag for their long press', () => {
+  const widgets = getBuiltinWidgets(widgetsI18n, 'home')
+  const byId = new Map(widgets.map((widget) => [widget.id, widget]))
+
+  for (const id of [
+    'social-network',
+    'tapp-shortcut',
+    'game-presence',
+    'report-github',
+  ]) {
+    assert.equal(byId.get(id)?.componentLongPress, true, id)
+  }
+  assert.equal(byId.get('weather')?.componentLongPress, undefined)
+  assert.equal(byId.get('github-repos')?.componentLongPress, undefined)
+})
+
 test('agent persona widget is available on Home only', () => {
   const homeIds = getBuiltinWidgets(widgetsI18n, 'home').map(({ id }) => id)
   const controlPanelIds = getBuiltinWidgets(widgetsI18n, 'control-panel').map(

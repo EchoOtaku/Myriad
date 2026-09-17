@@ -26,7 +26,7 @@ import {
   FaUndo as Undo,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getPhantasiTransition, phantasiAnimationPresets } from '../../../hooks/animation/pages/phantasi'
 import { Spinner } from '../../Spinner'
@@ -239,6 +239,7 @@ export function NoteEditorView({
   canDelete,
 }: ReturnType<typeof useNoteEditorSession>) {
   const [serializeVisual] = useState(createVisualMarkdownSerializer)
+  useEffect(() => () => serializeVisual.dispose(), [serializeVisual])
   const tools = [
     {
       key: 'bold',

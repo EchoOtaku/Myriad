@@ -1,6 +1,10 @@
+import { writeFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 
 const empty = { Buffer: 0, Texture: 0, Program: 0, Shader: 0, VertexArray: 0 }
+const noBytes = { buffers: 0, textures: 0 }
+
+test.describe.configure({ timeout: 90_000 })
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/memoryGpu.html')
@@ -14,14 +18,72 @@ for (const failure of ['', 'upload', 'constructor']) {
     expect(result.unchanged).toBe(true)
     expect(result.glError).toBe(0)
     expect(result.final).toEqual(empty)
+    expect(result.finalBytes).toEqual(noBytes)
     for (const snapshot of result.snapshots) {
-      if ('active' in snapshot) expect(snapshot.afterReplacement).toEqual(snapshot.active)
-      else expect(snapshot).toEqual(empty)
+      if ('active' in snapshot) {
+        expect(snapshot.afterReplacement).toEqual(snapshot.active)
+        expect(snapshot.afterReplacementBytes).toEqual(snapshot.activeBytes)
+      }
+      else {
+        expect(snapshot).toEqual(empty)
+      }
     }
   })
 }
 
-test('repeated glass and avatar lifecycles release DOM and stabilize collected heap', async ({ page }, testInfo) => {
+test('repeated glass and avatar lifecycles release DOM and GPU resources across engines', async ({ page }, testInfo) => {
+  const samples = []
+  for (let batch = 0; batch < 4; batch++) {
+    const result = await page.evaluate(async () => {
+      const glass = await window.memoryGpu.glassCycles(20)
+      for (let i = 0; i < 5; i++) {
+        await window.memoryGpu.mountCharacter()
+        window.memoryGpu.unmountCharacter()
+      }
+      return { glass, resources: window.memoryGpu.characterResources(), canvases: document.querySelectorAll('canvas').length, rigs: document.querySelectorAll('.merope-rig').length }
+    })
+    if (result.glass.supported) {
+      expect(result.glass.largestMap).toBeGreaterThan(0)
+    }
+    else {
+      expect(result.glass.largestMap).toBe(0)
+      expect(result.glass.fallbackStyle).toContain('blur(')
+    }
+    expect(result.glass.filters).toBe(0)
+    expect(result.canvases).toBe(0)
+    expect(result.rigs).toBe(0)
+    expect(result.resources.counts).toEqual(empty)
+    expect(result.resources.bytes).toEqual(noBytes)
+    samples.push(result)
+  }
+  const path = testInfo.outputPath('dom-gpu-release.json')
+  await writeFile(path, JSON.stringify(samples, null, 2))
+  await testInfo.attach('dom-gpu-release', { path, contentType: 'application/json' })
+})
+
+test('4096px atlas replacement bounds estimated upload bytes and releases them', async ({ page, browserName }, testInfo) => {
+  const result = await page.evaluate(() => window.memoryGpu.gpuCycles(3, '', 4096))
+  expect(result.renderer.maxTextureSize).toBeGreaterThanOrEqual(4096)
+  expect(result.glError).toBe(0)
+  expect(result.final).toEqual(empty)
+  expect(result.finalBytes).toEqual(noBytes)
+  expect(result.peakBytes.textures).toBe(2 * 4096 * 4096 * 4)
+  let steadyBuffers = 0
+  for (const snapshot of result.snapshots) {
+    if (!('active' in snapshot)) continue
+    expect(snapshot.activeBytes.textures).toBe(4096 * 4096 * 4)
+    expect(snapshot.afterReplacementBytes).toEqual(snapshot.activeBytes)
+    steadyBuffers = Math.max(steadyBuffers, snapshot.activeBytes.buffers)
+  }
+  expect(steadyBuffers).toBeGreaterThan(0)
+  expect(result.peakBytes.buffers).toBeLessThanOrEqual(steadyBuffers * 2)
+  const path = testInfo.outputPath('atlas-upload-estimates.json')
+  await writeFile(path, JSON.stringify({ browserName, ...result }, null, 2))
+  await testInfo.attach('atlas-upload-estimates', { path, contentType: 'application/json' })
+})
+
+test('Chromium-only collected heap stabilizes after repeated lifecycles', async ({ page, browserName }, testInfo) => {
+  test.skip(browserName !== 'chromium', 'CDP heap collection is Chromium-only; WebKit is covered by DOM and GL release checks')
   test.setTimeout(90_000)
   const cdp = await page.context().newCDPSession(page)
   const samples = []
@@ -41,14 +103,16 @@ test('repeated glass and avatar lifecycles release DOM and stabilize collected h
     await cdp.send('HeapProfiler.collectGarbage')
     samples.push({ heap: await cdp.send('Runtime.getHeapUsage'), dom: await cdp.send('Memory.getDOMCounters') })
   }
-  await testInfo.attach('memory-samples', { body: JSON.stringify(samples, null, 2), contentType: 'application/json' })
+  const path = testInfo.outputPath('chromium-collected-heap.json')
+  await writeFile(path, JSON.stringify(samples, null, 2))
+  await testInfo.attach('memory-samples', { path, contentType: 'application/json' })
   expect(samples[3].dom.nodes).toBeLessThanOrEqual(samples[1].dom.nodes + 5)
   expect(samples[3].dom.jsEventListeners).toBe(samples[1].dom.jsEventListeners)
   // A broad retained-growth guard after warm-up, not a platform-independent heap budget.
   expect(samples[3].heap.usedSize - samples[1].heap.usedSize).toBeLessThan(1024 * 1024)
 })
 
-test('the mounted character stops offscreen, resumes, recovers context loss and stops on unmount', async ({ page }) => {
+test('the mounted character stops offscreen, resumes, recovers context loss and stops on unmount', async ({ page }, testInfo) => {
   await page.evaluate(() => window.memoryGpu.mountCharacter())
   const start = await page.evaluate(() => window.memoryGpu.ticks())
   await expect.poll(() => page.evaluate(() => window.memoryGpu.ticks())).toBeGreaterThan(start + 2)
@@ -67,9 +131,18 @@ test('the mounted character stops offscreen, resumes, recovers context loss and 
   })
   await expect(page.locator('canvas[data-old-context]')).toHaveCount(0)
   await expect(page.locator('.merope-rig.is-ready')).toHaveCount(1)
+  const recovered = await page.evaluate(() => window.memoryGpu.characterResources())
+  expect(recovered.contexts).toBe(2)
+  expect(recovered.counts.Texture).toBeGreaterThan(0)
   await page.evaluate(() => window.memoryGpu.unmountCharacter())
   const stopped = await page.evaluate(() => window.memoryGpu.ticks())
   await page.waitForTimeout(150)
   expect(await page.evaluate(() => window.memoryGpu.ticks())).toBe(stopped)
   await expect(page.locator('canvas')).toHaveCount(0)
+  const final = await page.evaluate(() => window.memoryGpu.characterResources())
+  expect(final.counts).toEqual(empty)
+  expect(final.bytes).toEqual(noBytes)
+  const path = testInfo.outputPath('context-recovery-release.json')
+  await writeFile(path, JSON.stringify({ recovered, final }, null, 2))
+  await testInfo.attach('context-recovery-release', { path, contentType: 'application/json' })
 })

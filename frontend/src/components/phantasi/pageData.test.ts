@@ -317,3 +317,33 @@ it('oversized note pages are delivered without retaining an unbounded cache buck
     globalThis.fetch = original
   }
 })
+
+it('finite note batches publish one complete sorted snapshot without replaying cached pages', async () => {
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    calls++
+    const cursor = new URL(String(input), 'https://test.invalid').searchParams.get('cursor')
+    const id = cursor === 'second' ? 3 : cursor === 'third' ? 2 : 1
+    return Response.json({
+      items: [{ id, source_id: 197, title: 'note', published_at: id }],
+      next_cursor: cursor === 'second' ? 'third' : cursor === 'third' ? 'fourth' : 'second',
+    })
+  }) as typeof fetch
+  try {
+    const sources = [{ id: 197, source_type: 'note' }]
+    await loadBoardNotes(sources, undefined, undefined, 2)
+    const snapshots: number[][] = []
+    let hasMore = false
+    const notes = await loadBoardNotes(sources, undefined,
+      next => snapshots.push(next.map(note => note.id)), 3,
+      more => { hasMore = more },
+    )
+    assert.deepEqual(snapshots, [[3, 2, 1]])
+    assert.deepEqual(notes.map(note => note.id), [3, 2, 1])
+    assert.equal(calls, 3)
+    assert.equal(hasMore, true)
+  } finally {
+    globalThis.fetch = original
+  }
+})

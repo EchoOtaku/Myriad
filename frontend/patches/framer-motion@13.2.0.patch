@@ -7,7 +7,7 @@ diff --git a/dist/cjs/index-BuO47Yrm.js b/dist/cjs/index-BuO47Yrm.js
           */
 -        return (jsxRuntime.jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsxRuntime.jsx(MeasureLayout, { visualElement: context.visualElement, ...configAndProps })) : null, useRender(Component, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG, isValidProp)] }));
 +        const rendered = useRender(Component, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG, isValidProp);
-+        return (jsxRuntime.jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsxRuntime.jsx(MeasureLayout, { key: "measure-layout", visualElement: context.visualElement, ...configAndProps })) : null, React.isValidElement(rendered) ? React.cloneElement(rendered, { key: "html" }) : rendered] }));
++        return (jsxRuntime.jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsxRuntime.jsx(MeasureLayout, { visualElement: context.visualElement, ...configAndProps }, "measure-layout")) : null, React.isValidElement(rendered) ? React.cloneElement(rendered, { key: "html" }) : rendered] }));
      }
      MotionDOMComponent.displayName = `motion.${typeof Component === "string"
          ? Component
@@ -29,7 +29,7 @@ diff --git a/dist/es/motion/index.mjs b/dist/es/motion/index.mjs
           */
 -        return (jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsx(MeasureLayout, { visualElement: context.visualElement, ...configAndProps })) : null, useRender(Component, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG, isValidProp)] }));
 +        const rendered = useRender(Component, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG, isValidProp);
-+        return (jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsx(MeasureLayout, { key: "measure-layout", visualElement: context.visualElement, ...configAndProps })) : null, isValidElement(rendered) ? cloneElement(rendered, { key: "html" }) : rendered] }));
++        return (jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsx(MeasureLayout, { visualElement: context.visualElement, ...configAndProps }, "measure-layout")) : null, isValidElement(rendered) ? cloneElement(rendered, { key: "html" }) : rendered] }));
      }
      MotionDOMComponent.displayName = `motion.${typeof Component === "string"
          ? Component
@@ -42,7 +42,7 @@ diff --git a/dist/framer-motion.dev.js b/dist/framer-motion.dev.js
               */
 -            return (jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsx(MeasureLayout, { visualElement: context.visualElement, ...configAndProps })) : null, useRender(Component, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG, isValidProp)] }));
 +            const rendered = useRender(Component, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG, isValidProp);
-+            return (jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsx(MeasureLayout, { key: "measure-layout", visualElement: context.visualElement, ...configAndProps })) : null, React$1.isValidElement(rendered) ? React$1.cloneElement(rendered, { key: "html" }) : rendered] }));
++            return (jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout && context.visualElement ? (jsx(MeasureLayout, { visualElement: context.visualElement, ...configAndProps }, "measure-layout")) : null, React$1.isValidElement(rendered) ? React$1.cloneElement(rendered, { key: "html" }) : rendered] }));
          }
          MotionDOMComponent.displayName = `motion.${typeof Component === "string"
          ? Component

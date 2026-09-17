@@ -28,6 +28,8 @@ describe('noteFieldError', () => {
 
   it('正文超 20 万字', () => {
     assert.equal(MAX_NOTE_BODY_CHARS, 200_000)
+    assert.equal(noteFieldError('标题', '😀'.repeat(200_000)), null)
+    assert.equal(noteFieldError('标题', '😀'.repeat(200_001)), 'body-too-long')
     assert.equal(noteFieldError('标题', '正'.repeat(200_001)), 'body-too-long')
   })
 

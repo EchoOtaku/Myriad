@@ -17,7 +17,7 @@ overrides:
   ua-parser-js: 0.7.41
 
 patchedDependencies:
-  framer-motion@13.2.0: 3e3daccdcca8fb62553b236d57308474b22cbd0e8fe0c7b0be5cf7429a126587
+  framer-motion@13.2.0: f8f3a32844849e72511733099f2945bc6d6be92048aed73220f274f72aa3a769
 
 importers:
 
@@ -7181,7 +7181,7 @@ snapshots:
     dependencies:
       fetch-blob: 3.2.0
 
-  framer-motion@13.2.0(patch_hash=3e3daccdcca8fb62553b236d57308474b22cbd0e8fe0c7b0be5cf7429a126587)(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  framer-motion@13.2.0(patch_hash=f8f3a32844849e72511733099f2945bc6d6be92048aed73220f274f72aa3a769)(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
       motion-dom: 13.2.0
       motion-utils: 13.0.0
@@ -8066,7 +8066,7 @@ snapshots:
 
   motion@13.2.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
-      framer-motion: 13.2.0(patch_hash=3e3daccdcca8fb62553b236d57308474b22cbd0e8fe0c7b0be5cf7429a126587)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      framer-motion: 13.2.0(patch_hash=f8f3a32844849e72511733099f2945bc6d6be92048aed73220f274f72aa3a769)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       tslib: 2.8.1
     optionalDependencies:
       react: 19.3.0

@@ -55,7 +55,8 @@ test('production home downloads and retained resources stay bounded', async ({ p
     await page.evaluate(() => { history.pushState(null, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')) })
     await expect(page.locator('.home-shell__inner')).toBeVisible()
   }
-  await page.getByRole('link', { name: 'Back to Home', exact: true }).click()
+  await page.getByRole('link', { name: 'Back to Home', exact: true }).focus()
+  await page.keyboard.press('Enter')
   await page.waitForTimeout(500)
   await session.send('HeapProfiler.collectGarbage')
   const after = await session.send('Runtime.getHeapUsage')

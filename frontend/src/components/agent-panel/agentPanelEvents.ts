@@ -79,11 +79,11 @@ export function agentPanelActionDetail(
 
 export const AGENT_PANEL_OPEN_SESSION_EVENT = 'agent-panel-open-session'
 
-export function dispatchAgentPanelOpenSession(sessionId: string): void {
+export function dispatchAgentPanelOpenSession(sessionId: string, messageCount = 0): void {
   if (!sessionId) return
   window.dispatchEvent(
-    new CustomEvent<{ sessionId: string }>(AGENT_PANEL_OPEN_SESSION_EVENT, {
-      detail: { sessionId },
+    new CustomEvent<{ sessionId: string; messageCount: number }>(AGENT_PANEL_OPEN_SESSION_EVENT, {
+      detail: { sessionId, messageCount },
     }),
   )
 }
@@ -139,16 +139,18 @@ export const AGENT_PANEL_ANSWER_EVENT = 'agent-panel-answer'
 export interface AgentPanelAnswerDetail {
   messageId: string
   answer: string
+  history?: import('./restoreHistoryAnswer').HistoryAnswerSource
 }
 
 export function dispatchAgentPanelAnswer(
   messageId: string,
   answer: string,
+  history?: import('./restoreHistoryAnswer').HistoryAnswerSource,
 ): void {
   if (!messageId || !answer.trim()) return
   window.dispatchEvent(
     new CustomEvent<AgentPanelAnswerDetail>(AGENT_PANEL_ANSWER_EVENT, {
-      detail: { messageId, answer },
+      detail: { messageId, answer, ...(history ? { history } : {}) },
     }),
   )
 }
@@ -159,4 +161,9 @@ export function agentPanelAnswerDetail(
   const detail = (event as CustomEvent<AgentPanelAnswerDetail>).detail
   if (!detail?.messageId || !detail.answer) return null
   return detail
+}
+
+export function agentPanelOpenSessionCount(event: Event): number {
+  const value = (event as CustomEvent<{ messageCount?: number }>).detail?.messageCount
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
 }

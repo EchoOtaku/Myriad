@@ -1,0 +1,42 @@
+import { expect, test } from '@playwright/test'
+
+test('large streamed Agent text is paged on disk and in the DOM, and survives bfcache suspension', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.goto('/agentLargeBody.html')
+  await page.waitForFunction(() => !!(window as any).agentBody)
+  const result = await page.evaluate(() => (window as any).agentBody.stream())
+  expect(result).toEqual({ retained: 4096, chars: 8 * 1024 * 1024 })
+  await expect(page.locator('[data-agent-body-page="0"] p')).toHaveText('A'.repeat(8192))
+  expect(await page.locator('#root').evaluate(node => node.textContent!.length)).toBeLessThan(8300)
+  const disk = await page.evaluate(() => (window as any).agentBody.snapshot())
+  expect(disk).toEqual({ count: 1024, largest: 8192, bytes: 16 * 1024 * 1024, bodies: 1 })
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })))
+  await page.locator('[data-agent-body-page] button').last().click()
+  await expect(page.locator('[data-agent-body-page="1"] p')).toHaveText('A'.repeat(8192))
+  expect(await page.evaluate(() => (window as any).agentBody.complete())).toBe(8 * 1024 * 1024)
+  await page.evaluate(() => (window as any).agentBody.release())
+  await expect.poll(() => page.evaluate(() => (window as any).agentBody.snapshot())).toEqual({ count: 0, largest: 0, bytes: 0, bodies: 0 })
+})
+
+test('replacement, eviction, cancellation, and identity destruction release old body pages', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.goto('/agentLargeBody.html')
+  await page.waitForFunction(() => !!(window as any).agentBody)
+  await page.evaluate(() => (window as any).agentBody.race())
+  await expect(page.locator('#message-state')).toHaveText('newest')
+  await page.evaluate(() => (window as any).agentBody.evict())
+  expect(await page.evaluate(() => (window as any).agentBody.cancelled())).toBe('cancelled')
+  await expect.poll(() => page.evaluate(async () => (await (window as any).agentBody.snapshot()).bytes)).toBe(0)
+  await page.evaluate(() => (window as any).agentBody.stream())
+  await page.evaluate(() => (window as any).agentBody.changeIdentity())
+  expect(await page.evaluate(() => (window as any).agentBody.oldRead())).toBe('denied')
+  await expect.poll(() => page.evaluate(async () => (await (window as any).agentBody.snapshot()).bytes)).toBe(0)
+})
+
+test('history and final responses separate oversized thought markup before storing visible text', async ({ page }) => {
+  await page.goto('/agentLargeBody.html')
+  await page.waitForFunction(() => !!(window as any).agentBody)
+  const result = await page.evaluate(() => (window as any).agentBody.normalized())
+  expect(result).toEqual({ reply: 'visible'.repeat(3000), thought: 'private'.repeat(3000) })
+  await expect(page.locator('#message-state')).toHaveText('visible'.repeat(600).slice(0, 4096))
+})

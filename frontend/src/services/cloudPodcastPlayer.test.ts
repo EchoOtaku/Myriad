@@ -125,3 +125,60 @@ it('retries a failed playback window after the network recovers', async () => {
     else Reflect.deleteProperty(globalThis, 'sessionStorage')
   }
 })
+
+it('an aborted old prefetch cannot stop playback after seeking away and back', async () => {
+  const originalFetch = globalThis.fetch
+  const originalAudio = globalThis.Audio
+  const storage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => null, setItem() {}, removeItem() {} } })
+  const audios: Array<{ onended: (() => void) | null; plays: number }> = []
+  globalThis.Audio = class {
+    src = ''; preload = ''; currentTime = 0; onended = null; onerror = null; plays = 0
+    constructor() { audios.push(this) }
+    load() {} pause() {} async play() { this.plays++ }
+  } as unknown as typeof Audio
+  const pending: Array<{ ids: number[]; resolve: (response: Response) => void }> = []
+  const response = (ids: number[]) => Response.json({ success: true, audios: ids.map(index => ({ index, audio: 'AA==' })) })
+  globalThis.fetch = async (input, options) => {
+    if (String(input).includes('csrf-token')) return Response.json({ csrf_token: null })
+    const ids = JSON.parse(String(options?.body)).dialogues.map((d: { index: number }) => d.index)
+    if (ids[0] === 0) return response(ids)
+    return new Promise<Response>((resolve, reject) => {
+      pending.push({ ids, resolve })
+      options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true })
+    })
+  }
+  const player = new CloudPodcastPlayer()
+  const turn = () => new Promise(resolve => setTimeout(resolve, 10))
+  try {
+    player.setConfig({ dialogueGap: 0 })
+    await player.load(Array.from({ length: 10 }, () => ({ speaker: 'host', text: 'hello' })), { sourceId: 1, articleId: 2 })
+    await player.play()
+    audios[0].onended?.()
+    await turn()
+    audios[1].onended?.()
+    await turn()
+    const oldSeek = player.seekTo(3).catch(() => {})
+    const latestSeek = player.seekTo(2)
+    await turn()
+    assert.equal(player.getState().isPlaying, true)
+    pending.at(-1)!.resolve(response([2, 3]))
+    await Promise.all([oldSeek, latestSeek])
+    assert.equal(audios.at(-2)?.plays, 1)
+    const oldEnded = audios.at(-2)!.onended
+    player.stop()
+    await player.play()
+    oldEnded?.()
+    assert.equal(player.getState().currentIndex, 2)
+    player.pause()
+    await player.resume()
+    assert.equal(player.getState().isPaused, false)
+    assert.equal(audios.at(-2)?.plays, 3)
+  } finally {
+    player.destroy()
+    globalThis.fetch = originalFetch
+    globalThis.Audio = originalAudio
+    if (storage) Object.defineProperty(globalThis, 'sessionStorage', storage)
+    else Reflect.deleteProperty(globalThis, 'sessionStorage')
+  }
+})

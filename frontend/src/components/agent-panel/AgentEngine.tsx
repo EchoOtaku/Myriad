@@ -1,5 +1,4 @@
 import type React from 'react'
-
 import type {
   AgentResponse,
   FrontendAction,
@@ -18,6 +17,7 @@ import type {
   ThinkingTokenEvent,
 } from '../../services/agent'
 import type { AgentAttachment } from './agentAttachments'
+
 import type { AgentPanelMode } from './agentPanelMode'
 import type {
   ChatMessage,
@@ -26,6 +26,7 @@ import type {
   PendingQuestion,
   TaskExecution,
 } from './engineTypes'
+import type { HistoryAnswerSource } from './restoreHistoryAnswer'
 import {
   useCallback,
   useEffect,
@@ -42,7 +43,6 @@ import { usePageContentOptional } from '../../contexts/PageContentContext'
 import {
   clearChatOutfitOverlay,
   setChatOutfitOverlay,
-  stripChatWearMarker,
 } from '../../features/merope/chatOutfitOverlay'
 import {
   attachLiveBody,
@@ -106,6 +106,7 @@ import {
   agentPanelActionDetail,
   agentPanelAnswerDetail,
   agentPanelCommand,
+  agentPanelOpenSessionCount,
   agentPanelOpenSessionId,
   agentPanelSubmitDetail,
   dispatchAgentPanelOpen,
@@ -122,22 +123,23 @@ import {
   setAgentStatusThinking,
   setAgentUndoOffer,
 } from './agentStatusStore'
-import {
-  nonemptyContent,
-  peelThoughtFromContent,
-  splitThinkContent,
-} from './agentThinking'
+
 import { planAgentUndo } from './agentUndo'
 import { executionStepsFromHistory } from './engineTypes'
 import { FrontendActionQueue } from './frontendActionQueue'
+import { BODY_INLINE_CHARS, BodyWriter, prepareMessageBody, releaseMessageBody } from './messageBody'
+import { retainHotMessages } from './messageBudget'
+import { prepareChatBody } from './prepareChatBody'
 import { syncProjectedMessages } from './projectAgentMessage'
-
+import { restoreHistoryAnswer } from './restoreHistoryAnswer'
 import { restoreSessionMessage } from './sessionHistoryMessage'
+
 import { SessionLoadScope } from './sessionLoadScope'
 import {
   restoreFollowUpQuestion,
   restorePendingActionFromMessages,
 } from './sessionPendingRestore'
+import { SummaryTextStream } from './summaryTextStream'
 import { useMessageState } from './useMessageState'
 
 function currentPath(): string {
@@ -230,6 +232,8 @@ export const AgentEngine: React.FC = () => {
     chat: null,
   })
   const [sessionLoads] = useState(() => new SessionLoadScope())
+  const [bodyScopes] = useState(() => new SessionLoadScope())
+  useEffect(() => () => bodyScopes.reset(), [bodyScopes])
   useEffect(() => () => sessionLoads.reset(), [sessionLoads])
   const loadingByModeRef = useRef<Record<AgentPanelMode, boolean>>({
     work: false,
@@ -292,7 +296,7 @@ export const AgentEngine: React.FC = () => {
     [frontendActionQueue],
   )
   const answerQuestionRef =
-    useRef<(messageId: string, answer: string) => void>(null)
+    useRef<(messageId: string, answer: string, history?: HistoryAnswerSource) => void>(null)
   const sessionTitleSetByModeRef = useRef<Record<AgentPanelMode, boolean>>({
     work: false,
     chat: false,
@@ -314,6 +318,7 @@ export const AgentEngine: React.FC = () => {
   const startNewSession = useCallback(async () => {
     const current = getAgentPanelMode()
     sessionLoads.reset(current)
+    bodyScopes.reset(current)
     if (current === 'chat') void stopAgoraConversation()
     const loadingId = loadingMessageIdByModeRef.current[current]
     if (loadingId) {
@@ -459,6 +464,7 @@ export const AgentEngine: React.FC = () => {
       reattachHints?: { runId?: string; taskId?: string },
       requestedMode: AgentPanelMode = session.mode ?? getAgentPanelMode(),
     ) => {
+      bodyScopes.reset(requestedMode)
       const subject = sessionLoads.begin(requestedMode)
       if (requestedMode === 'chat' && sessionIdsByModeRef.current.chat !== session.id) {
         void stopAgoraConversation()
@@ -467,16 +473,31 @@ export const AgentEngine: React.FC = () => {
       setSessionId(session.id, requestedMode)
       sessionTitleSetByModeRef.current[requestedMode] = !!session.title
 
+      const preparedBodies: import('./messageBody').MessageBodyRef[] = []
+      let installed = false
       try {
         const sessionMessages = await agentService.getSessionMessages(
           session.id,
-          Math.max(1, Math.ceil(session.messageCount / 50)),
+          Math.max(1, Math.ceil((session.messageCount || 0) / 50)),
           50,
           subject,
         )
         if (subject.aborted) return
-        const loaded = sessionMessages.map(m => restoreSessionMessage(m, session.id))
-        setMessages(loaded, requestedMode)
+        const loaded: ChatMessage[] = []
+        for (const row of sessionMessages) {
+          const restored = restoreSessionMessage(row, session.id)
+          const message = await prepareChatBody(restored, subject)
+          for (const body of [message.body, message.taskExecution?.reasoningBody]) { if (body) preparedBodies.push(body)
+}
+          if (subject.aborted) return
+          loaded.push(message)
+        }
+        const retained = retainHotMessages(loaded)
+        const retainedBodyIds = new Set(retained.flatMap(message => [message.body?.id, message.taskExecution?.reasoningBody?.id]))
+        await Promise.all(preparedBodies.filter(body => !retainedBodyIds.has(body.id)).map(body => releaseMessageBody(body)))
+        if (subject.aborted) return
+        setMessages(retained, requestedMode)
+        installed = true
         if (requestedMode === 'work') {
           const action = restorePendingActionFromMessages(loaded, Date.now())
           if (action) {
@@ -491,6 +512,8 @@ export const AgentEngine: React.FC = () => {
       } catch (error) {
         if (subject.aborted) return
         console.error('[AgentEngine] 加载会话消息失败:', error)
+      } finally {
+        if (!installed) await Promise.all(preparedBodies.map(body => releaseMessageBody(body).catch(() => {})))
       }
     },
     [reattachLiveWork, sessionLoads],
@@ -592,7 +615,7 @@ export const AgentEngine: React.FC = () => {
     const handleAnswer = (event: Event) => {
       const detail = agentPanelAnswerDetail(event)
       if (!detail) return
-      answerQuestionRef.current?.(detail.messageId, detail.answer)
+      answerQuestionRef.current?.(detail.messageId, detail.answer, detail.history)
     }
     window.addEventListener(AGENT_PANEL_ANSWER_EVENT, handleAnswer)
     return () =>
@@ -636,7 +659,7 @@ export const AgentEngine: React.FC = () => {
         id,
         mode,
         title: null,
-        messageCount: 0,
+        messageCount: agentPanelOpenSessionCount(event),
         lastActiveAt: '',
       })
     }
@@ -656,6 +679,7 @@ export const AgentEngine: React.FC = () => {
     const current = getAgentPanelMode()
     // Work and Chat can be in flight together
     agentService.abortCurrentRequest(current)
+    bodyScopes.reset(current)
     if (current === 'chat') {
       void interruptAgoraConversation()
       const sessionId = sessionIdsByModeRef.current.chat
@@ -733,6 +757,10 @@ export const AgentEngine: React.FC = () => {
       subject = authSubject.signal,
     ) => {
       if (subject.aborted) return () => {}
+      subject = bodyScopes.begin(mode, subject)
+      let summaryBody = new BodyWriter(crypto.randomUUID(), subject)
+      const thinkingBody = new BodyWriter(crypto.randomUUID(), subject)
+      let summaryText = new SummaryTextStream()
       let streamedSummary = ''
       let streamedThinking = ''
       let performancePlanCount = 0
@@ -747,12 +775,14 @@ export const AgentEngine: React.FC = () => {
         speechOutput,
       )
 
-      const publishThinking = (text: string) => {
-        streamedThinking = text
-        updateMessageExecution(assistantMessageId, { reasoning: text })
+      const publishThinking = async (text: string, body?: import('./messageBody').MessageBodyRef) => {
+        const snapshot = body ? { content: text, body } : await prepareMessageBody(text, subject)
+        if (subject.aborted) return
+        streamedThinking = snapshot.content.slice(0, BODY_INLINE_CHARS)
+        updateMessageExecution(assistantMessageId, { reasoning: streamedThinking, reasoningBody: snapshot.body })
       }
 
-      return (event: ProgressEvent) => {
+      return async (event: ProgressEvent) => {
         if (subject.aborted) return
         if (
           mode === 'chat' &&
@@ -766,6 +796,10 @@ export const AgentEngine: React.FC = () => {
         }
         if (loadingMessageIdByModeRef.current[mode] !== assistantMessageId) {
           return
+        }
+        if (event.type === 'task_completed' || event.type === 'error') {
+          summaryBody.finish()
+          thinkingBody.finish()
         }
         pushAgentStatusEvent(event)
         switch (event.type) {
@@ -835,6 +869,9 @@ export const AgentEngine: React.FC = () => {
           case 'step_started': {
             utterance.end()
             streamedSummary = ''
+            summaryBody.finish()
+            summaryBody = new BodyWriter(crypto.randomUUID(), subject)
+            summaryText = new SummaryTextStream()
             const stepEvent = event as StepStartedEvent
             addExecutionStep(assistantMessageId, {
               id: stepEvent.stepId,
@@ -995,50 +1032,39 @@ export const AgentEngine: React.FC = () => {
           case 'thinking_token': {
             const tokenEvent = event as ThinkingTokenEvent
             if (!tokenEvent.done && tokenEvent.token) {
-              publishThinking(streamedThinking + tokenEvent.token)
+              const snapshot = await thinkingBody.append(tokenEvent.token)
+              if (subject.aborted) return
+              await publishThinking(snapshot.content, snapshot.body)
             }
             break
           }
 
           case 'summary_token': {
             const tokenEvent = event as SummaryTokenEvent
+            const text = summaryText.push(tokenEvent.token || '', tokenEvent.done)
+            if (text.thought) {
+              const thought = await thinkingBody.append(text.thought)
+              if (subject.aborted) return
+              await publishThinking(thought.content, thought.body)
+            }
+            if (text.content) {
+              markTurnTraceOnce('llm_first_token')
+              const snapshot = await summaryBody.append(text.content)
+              if (subject.aborted) return
+              streamedSummary = snapshot.content
+              // SummaryTextStream applies stripChatWearMarker semantics incrementally.
+              // The disk body already contains only visible reply text. Never
+              // re-parse a bounded prefix as if it were the complete transcript.
+              await updateMessage(assistantMessageId, snapshot)
+              const sealed = speech.push(text.content)
+              if (sealed == null) utterance.chunk(text.content)
+              else if (sealed > 0) markTurnTraceOnce('first_sentence')
+            }
             if (tokenEvent.done) {
-              const split = splitThinkContent(streamedSummary)
-              if (split.thought && split.thought !== streamedThinking) {
-                publishThinking(split.thought)
-              }
-              const body = nonemptyContent(
-                stripChatWearMarker(
-                  peelThoughtFromContent(split.content, streamedThinking),
-                ),
-              )
-              if (body) {
-                updateMessageExecution(assistantMessageId, {
-                  statusMessage: body,
-                })
-                updateMessage(assistantMessageId, { content: body })
-              }
+              if (streamedSummary) updateMessageExecution(assistantMessageId, { statusMessage: streamedSummary })
               if (speech.end()) markTurnTraceOnce('first_sentence')
               utterance.end()
               if (mode === 'chat') playbackDirection.textEnded(assistantMessageId)
-            } else {
-              if (tokenEvent.token) markTurnTraceOnce('llm_first_token')
-              streamedSummary += tokenEvent.token
-              const split = splitThinkContent(streamedSummary)
-              if (split.thought && split.thought !== streamedThinking) {
-                publishThinking(split.thought)
-              }
-              const body = nonemptyContent(
-                stripChatWearMarker(
-                  peelThoughtFromContent(split.content, streamedThinking),
-                ),
-              )
-              if (body) {
-                const sealed = speech.push(tokenEvent.token)
-                if (sealed == null) utterance.chunk(tokenEvent.token)
-                else if (sealed > 0) markTurnTraceOnce('first_sentence')
-                updateMessage(assistantMessageId, { content: body })
-              }
             }
             break
           }
@@ -1135,7 +1161,7 @@ export const AgentEngine: React.FC = () => {
           case 'planner_decision': {
             const pdEvent = event as PlannerDecisionEvent
             if (pdEvent.reasoning && !streamedThinking) {
-              publishThinking(pdEvent.reasoning)
+              await publishThinking(pdEvent.reasoning)
             }
             setMessages(
               (prev) =>
@@ -1301,6 +1327,24 @@ export const AgentEngine: React.FC = () => {
         return
       }
 
+      const prepareUserBody = async () => {
+        try {
+          const body = await prepareMessageBody(messageText, subject)
+          if (subject.aborted) {
+            if (body.body) await releaseMessageBody(body.body)
+            return null
+          }
+          return body
+        } catch {
+          if (!subject.aborted) { setMessages(prev => [...prev, {
+            id: nextAgentMessageId('assistant'), sessionId: modeSessionId || '', role: 'assistant',
+            content: t.agentPanel.sessions.loadFailed, createdAt: new Date(),
+          }], mode)
+}
+          return null
+        }
+      }
+
       if (loadingByModeRef.current[mode] && mode !== 'chat') {
         const activeTaskMessage = messages.findLast(
           (message) =>
@@ -1310,11 +1354,14 @@ export const AgentEngine: React.FC = () => {
         )
         if (!activeTaskMessage?.taskExecution?.taskId) return
 
+        const userBody = await prepareUserBody()
+        if (!userBody) return
+        if (subject.aborted) { if (userBody.body) await releaseMessageBody(userBody.body); return }
         const userMessage: ChatMessage = {
           id: nextAgentMessageId('user'),
           sessionId: modeSessionId || '',
           role: 'user',
-          content: messageText,
+          ...userBody,
           createdAt: new Date(),
           ...(attachments.length ? { attachments: Iterator.from(attachments).toArray() } : {}),
         }
@@ -1354,12 +1401,15 @@ export const AgentEngine: React.FC = () => {
         return
       }
 
+      const userBody = await prepareUserBody()
+      if (!userBody) return
+      if (subject.aborted) { if (userBody.body) await releaseMessageBody(userBody.body); return }
       const userMsgId = nextAgentMessageId('user')
       const userMessage: ChatMessage = {
         id: userMsgId,
         sessionId: modeSessionId || '',
         role: 'user',
-        content: messageText,
+        ...userBody,
         createdAt: new Date(),
         ...(attachments.length ? { attachments: Iterator.from(attachments).toArray() } : {}),
       }
@@ -1661,7 +1711,7 @@ export const AgentEngine: React.FC = () => {
         if (!pendingQuestion.confirmationId) {
           setAgentStatusAwaitingConfirmation(pendingQuestion.question)
         }
-        updateMessage(messageId, {
+        await updateMessage(messageId, {
           pendingQuestion,
           selectedAnswer: undefined,
         })
@@ -1749,10 +1799,10 @@ export const AgentEngine: React.FC = () => {
 
       console.log('[AgentEngine] handleAgentResponse:', {
         responseType: response.responseType,
-        message: response.message,
+        messageChars: response.message.length,
         isMultiStep,
         dataKeys: responseData ? Object.keys(responseData) : [],
-        displayMessage,
+        displayMessageChars: displayMessage.length,
       })
 
       const fallbackImageUrls = imageUrlsFromAgentPayload(
@@ -1771,7 +1821,7 @@ export const AgentEngine: React.FC = () => {
         }
       }
 
-      updateMessage(messageId, {
+      await updateMessage(messageId, {
         content:
           displayMessage || response.message || t.agentPanel.taskCompleted,
         suggestions: response.suggestions?.length
@@ -1911,7 +1961,7 @@ export const AgentEngine: React.FC = () => {
           0,
           4000,
         )
-        updateMessage(messageId, {
+        await updateMessage(messageId, {
           content: `${displayMessage || response.message}\n\n\`\`\`json\n${serialized}\n\`\`\``,
           data: {
             ...(responseData ?? {}),
@@ -1944,13 +1994,15 @@ export const AgentEngine: React.FC = () => {
       beginTurnTrace(messageId)
       markTurnTraceOnce('input_final')
       setSessionId(notice.sessionId, 'chat')
+      const userMessageId = nextAgentMessageId('user')
       setMessages((rows) => [...rows, {
-        id: nextAgentMessageId('user'), sessionId: notice.sessionId, role: 'user',
-        content: notice.input, createdAt: new Date(),
+        id: userMessageId, sessionId: notice.sessionId, role: 'user',
+        content: notice.input.length > BODY_INLINE_CHARS ? '' : notice.input, createdAt: new Date(),
       }, {
         id: messageId, sessionId: notice.sessionId, role: 'assistant', content: '', createdAt: new Date(),
         taskExecution: { taskId: '', runId: notice.runId, status: 'processing', progress: 0, steps: [] },
       }], 'chat')
+      void updateMessage(userMessageId, { content: notice.input, role: 'user' })
       loadingMessageIdByModeRef.current.chat = messageId
       loadingByModeRef.current.chat = true
       setAgentLaneLoading('chat', true)
@@ -1977,10 +2029,29 @@ export const AgentEngine: React.FC = () => {
     },
   }), [createProgressHandler, handleAgentResponse, setMessages, setSessionId, t, updateMessage, updateMessageExecution])
 
+  const historyAnswerBusy = useRef(false)
   const answerQuestion = useCallback(
-    async (messageId: string, answer: string) => {
-      const msg = findMessage(messageId)
+    async (messageId: string, answer: string, history?: HistoryAnswerSource) => {
+      let msg = findMessage(messageId)
+      if (msg?.selectedAnswer && msg.taskExecution?.status !== 'error') return
+      const subject = sessionLoads.capture('work')
+      if (history) {
+        if (historyAnswerBusy.current || history.sessionId !== sessionIdsByModeRef.current.work) return
+        historyAnswerBusy.current = true
+        try {
+          const restored = await restoreHistoryAnswer(messageId, history, subject, agentService)
+          if (!restored || subject.aborted || history.sessionId !== sessionIdsByModeRef.current.work) return
+          msg = restored
+          // Appending promotes exactly one control through the existing 120-row budget.
+          setMessages(rows => [...rows.filter(row => row.id !== messageId), restored], 'work')
+        } catch {
+          return
+        } finally {
+          historyAnswerBusy.current = false
+        }
+      }
       if (!msg?.taskExecution?.taskId || !msg.pendingQuestion) return
+      if (subject.aborted || msg.sessionId !== sessionIdsByModeRef.current.work) return
 
       const pq = msg.pendingQuestion
       if (
@@ -2023,16 +2094,18 @@ export const AgentEngine: React.FC = () => {
               msg.pendingQuestion.confirmationId,
               answer === 'confirm',
               undefined,
-              createProgressHandler(messageId, 'work'),
+              createProgressHandler(messageId, 'work', 0, 'local', undefined, subject),
             )
           : await agentService.answerQuestionWithProgress(
               msg.taskExecution.taskId,
               msg.pendingQuestion.questionId,
               answer,
-              createProgressHandler(messageId, 'work'),
+              createProgressHandler(messageId, 'work', 0, 'local', undefined, subject),
             )
+        if (subject.aborted) return
         await handleAgentResponseRef.current?.(messageId, response, 'work')
       } catch (error) {
+        if (subject.aborted) return
         stopTurnSpeech(messageId)
         finishTurnTrace()
         if (isUserInterruptError(error) || isStreamSupersededError(error)) {
@@ -2057,6 +2130,8 @@ export const AgentEngine: React.FC = () => {
     },
     [
       findMessage,
+      sessionLoads,
+      setMessages,
       updateMessage,
       updateMessageExecution,
       createProgressHandler,

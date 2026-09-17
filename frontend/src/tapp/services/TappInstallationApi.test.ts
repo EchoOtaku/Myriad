@@ -130,6 +130,26 @@ describe('Tapp store transport strategy', () => {
     })
   })
 
+  it('does not fall back to browser downloads after a server policy rejection', async () => {
+    let requests = 0
+    let downloads = 0
+    globalThis.fetch = async () => {
+      requests++
+      return Response.json({ error: 'Federation apps are unavailable' }, { status: 403 })
+    }
+    RemoteStoreService.downloadAppPackage = async () => {
+      downloads++
+      throw new Error('Unexpected fallback')
+    }
+    await assert.rejects(installTappFromStore({
+      source: 'https://store.example/index.json',
+      tappId: 'com.example.federated',
+      permissions: [],
+    }), /Federation apps are unavailable/)
+    assert.equal(requests, 1)
+    assert.equal(downloads, 0)
+  })
+
   it('uses the browser package proxy only after a backend 502', async () => {
     const manifest = {
       id: 'com.example.fallback',

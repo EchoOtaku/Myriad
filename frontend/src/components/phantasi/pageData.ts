@@ -209,6 +209,11 @@ export async function loadBoardNotes(
   }))
   const items = new Map<number, HomeBoardNote>()
   let snapshot: HomeBoardNote[] = []
+  const sortedSnapshot = () => [...items.values()].toSorted(
+    (left, right) =>
+      (right.published_at ?? 0) - (left.published_at ?? 0) ||
+      right.id - left.id,
+  )
   let failed = false
   let hasMore = false
   const load = async () => {
@@ -221,12 +226,10 @@ export async function loadBoardNotes(
         signal?.throwIfAborted()
         if (failed) return
         for (const item of page.items) items.set(item.id, toHomeBoardNote(item))
-        snapshot = [...items.values()].toSorted(
-          (left, right) =>
-            (right.published_at ?? 0) - (left.published_at ?? 0) ||
-            right.id - left.id,
-        )
-        onPage?.(snapshot)
+        if (pageLimit === Infinity) {
+          snapshot = sortedSnapshot()
+          onPage?.(snapshot)
+        }
         const next = page.next_cursor?.trim()
         if (next) {
           if (source.seen.has(next)) {
@@ -250,6 +253,12 @@ export async function loadBoardNotes(
   }
   await Promise.all(Array.from({ length: Math.min(3, queue.length) }, load))
   signal?.throwIfAborted()
+  // A demand-driven batch may revisit cached pages. Publish it atomically,
+  // without repeatedly sorting or replacing the wall with partial history.
+  if (pageLimit !== Infinity) {
+    snapshot = sortedSnapshot()
+    onPage?.(snapshot)
+  }
   onMore?.(hasMore)
   return snapshot
 }

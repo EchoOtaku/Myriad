@@ -299,6 +299,17 @@ export function analyzeBeatGrid(
       return null
     }
   }).finally(() => { outstanding-- })
+  // Keep the execution slot until the underlying decoder really finishes.
+  // The caller can stop waiting immediately, independently of that resource.
   analysisTail = task
-  return task
+  return new Promise<BeatGrid | null>((resolve) => {
+    const finish = (grid: BeatGrid | null) => {
+      combined.removeEventListener('abort', abort)
+      resolve(grid)
+    }
+    const abort = () => finish(null)
+    combined.addEventListener('abort', abort, { once: true })
+    if (combined.aborted) abort()
+    void task.then(finish)
+  })
 }

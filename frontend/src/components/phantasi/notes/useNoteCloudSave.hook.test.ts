@@ -491,3 +491,43 @@ it('coalesces typing recovery writes and flushes the latest edit on pagehide', a
   await act(async () => window.dispatchEvent(new window.Event('pagehide')))
   assert.equal(readNoteRecovery({ userId: 1, docId: 1 })?.fields.contentMd, 'ab')
 })
+
+it('uses idle time for ordinary recovery serialization but pagehide flushes the newest text immediately', async () => {
+  const idle = new Map<number, () => void>()
+  let nextId = 0
+  const requestIdle = window.requestIdleCallback
+  const cancelIdle = window.cancelIdleCallback
+  window.requestIdleCallback = callback => { const id = ++nextId; idle.set(id, () => callback({ didTimeout: false, timeRemaining: () => 50 })); return id }
+  window.cancelIdleCallback = id => { idle.delete(id) }
+  try {
+    const h = await harness()
+    await h.edit('large draft'.repeat(10_000))
+    await act(async () => mock.timers.tick(300))
+    assert.equal(idle.size, 1)
+    assert.equal(readNoteRecovery({ userId: 1, docId: 1 }), null)
+    const stale = [...idle.values()][0]
+    await h.edit('latest 新😀')
+    assert.equal(idle.size, 0)
+    await act(async () => window.dispatchEvent(new window.Event('pagehide')))
+    assert.equal(readNoteRecovery({ userId: 1, docId: 1 })?.fields.contentMd, 'latest 新😀')
+    stale()
+    assert.equal(readNoteRecovery({ userId: 1, docId: 1 })?.fields.contentMd, 'latest 新😀')
+  } finally {
+    window.requestIdleCallback = requestIdle
+    window.cancelIdleCallback = cancelIdle
+  }
+})
+
+it('defers ordinary recovery during IME but preserves composition text on pagehide', async () => {
+  const h = await harness()
+  h.cloud.compositionStart()
+  await h.edit('入力中😀')
+  await act(async () => mock.timers.tick(300))
+  assert.equal(readNoteRecovery({ userId: 1, docId: 1 }), null)
+  await act(async () => window.dispatchEvent(new window.Event('pagehide')))
+  assert.equal(readNoteRecovery({ userId: 1, docId: 1 })?.fields.contentMd, '入力中😀')
+  await h.edit('入力完了😀')
+  h.cloud.compositionEnd()
+  await act(async () => mock.timers.tick(0))
+  assert.equal(h.requests[0].input.content_md, '入力完了😀')
+})

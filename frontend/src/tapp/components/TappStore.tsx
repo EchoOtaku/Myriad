@@ -48,6 +48,7 @@ import { RemoteStoreService } from '../services/RemoteStoreService'
 import { resolveManifestText } from '../utils/manifestLocale'
 import { selectFeaturedStoreApps } from '../utils/storeCatalogState'
 import { resolveStoreMerchandising } from '../utils/storeLocale'
+import { isStoreAppAvailable } from '../utils/storePolicy'
 import {
   normalizeTappCategory,
   TAPP_CATEGORIES,
@@ -105,6 +106,7 @@ export function TappStore({
         { percent: number; phase: string; detail?: string }
       >(),
   )
+  const [federationEnabled, setFederationEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
@@ -211,6 +213,7 @@ export function TappStore({
     try {
       const result = await RemoteStoreService.fetchAllApps(forceRefresh)
       if (gen !== loadRemoteGenRef.current) return
+      setFederationEnabled(result.federationEnabled)
       setRemoteApps(result.apps)
 
       const errors = result.sources.filter((s) => s.error)
@@ -329,8 +332,9 @@ export function TappStore({
         updatedAt: info.installedAt,
       })
     }
-    return merged
+    return merged.filter(app => isStoreAppAvailable(app, federationEnabled))
   }, [
+    federationEnabled,
     remoteAppsUnified,
     localApps,
     installedTapps,

@@ -29,11 +29,15 @@ it('notes expose early pages, retain them on failure, and retry the failed page'
   }
   const original = globalThis.fetch
   const second = Promise.withResolvers<Response>()
+  const secondStarted = Promise.withResolvers<void>()
   let state!: ReturnType<typeof useBoardNotes>
   let calls = 0
   globalThis.fetch = (async () => {
     calls++
-    if (calls === 2) return second.promise
+    if (calls === 2) {
+      secondStarted.resolve()
+      return second.promise
+    }
     return Response.json({
       items: [
         {
@@ -64,6 +68,9 @@ it('notes expose early pages, retain them on failure, and retry the failed page'
     assert.equal(calls, 1)
     assert.equal(state.hasMore, true)
     await act(async () => state.loadMore())
+    // The cached first page yields before page two starts. Reject only once
+    // the hook owns the request, rather than creating an unhandled rejection.
+    await act(async () => { await secondStarted.promise })
     await act(async () => {
       second.reject(new Error('offline'))
     })

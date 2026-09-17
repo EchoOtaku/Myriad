@@ -1,4 +1,5 @@
 import type { ChatMessage } from './engineTypes'
+import { BODY_INLINE_CHARS, detachedPrefix } from './messageBody'
 
 export const HOT_MESSAGE_LIMIT = 120
 const TEXT_LIMIT = 32768
@@ -39,6 +40,8 @@ export function boundMessage(message: ChatMessage): ChatMessage {
   const execution = message.taskExecution
   const result: ChatMessage = {
     ...message,
+    content: detachedPrefix(message.content, BODY_INLINE_CHARS),
+    ...(message.content.length > BODY_INLINE_CHARS && !message.body ? { bodyUnavailable: true } : {}),
     data: boundedPayload(message.data),
     ...(execution
       ? {
@@ -50,7 +53,7 @@ export function boundMessage(message: ChatMessage): ChatMessage {
                 ...step,
                 message: step.message?.slice(0, 2000),
               })),
-            reasoning: execution.reasoning?.slice(0, TEXT_LIMIT),
+            reasoning: execution.reasoning?.slice(0, BODY_INLINE_CHARS),
             statusMessage: execution.statusMessage?.slice(0, 2000),
             debugTrace: execution.debugTrace
               ? {
@@ -134,17 +137,31 @@ export function boundMessage(message: ChatMessage): ChatMessage {
       : {}),
   }
   bounded.add(result)
-  retainedBytes.set(result, JSON.stringify(result).length * 2)
+  retainedBytes.set(result, estimateMessageBytes(result))
   return result
 }
 
 /** Backend session history remains the cold store. Keep outstanding interactions hot. */
 export function retainHotMessages(messages: ChatMessage[]): ChatMessage[] {
   const rows = messages.map(boundMessage)
-  const active = rows.filter(message => {
+  let active = rows.filter(message => {
     const status = message.taskExecution?.status
     return status === 'processing' || status === 'waiting' || status === 'cancelling'
   }).slice(-HOT_MESSAGE_LIMIT)
+  if (active.reduce((sum, message) => sum + (retainedBytes.get(message) ?? 0), 0) > HOT_MESSAGE_BYTES) {
+    active = active.map(message => {
+      const execution = message.taskExecution!
+      const compact = { ...message, data: undefined, dataDisplay: undefined, taskExecution: {
+        taskId: execution.taskId, runId: execution.runId, status: execution.status, progress: execution.progress,
+        steps: [], reasoning: execution.reasoning, reasoningBody: execution.reasoningBody,
+      } }
+      retainedBytes.set(compact, estimateMessageBytes(compact))
+      bounded.add(compact)
+      const index = rows.indexOf(message)
+      rows[index] = compact
+      return compact
+    })
+  }
   const keep = new Set(active)
   let bytes = active.reduce((sum, message) => sum + (retainedBytes.get(message) ?? 0), 0)
   for (let i = rows.length - 1; i >= 0 && keep.size < HOT_MESSAGE_LIMIT; i--) {
@@ -156,4 +173,21 @@ export function retainHotMessages(messages: ChatMessage[]): ChatMessage[] {
     bytes += size + 2
   }
   return rows.filter(message => keep.has(message))
+}
+
+/** Count bounded state without allocating a JSON copy of the original text. */
+export function estimateMessageBytes(value: unknown): number {
+  const seen = new WeakSet<object>()
+  const size = (item: unknown): number => {
+    if (typeof item === 'string') return item.length * 2
+    if (!item || typeof item !== 'object') return 16
+    if (seen.has(item)) return 0
+    seen.add(item)
+    if (Array.isArray(item)) return item.reduce((sum, child) => sum + size(child), 16)
+    let bytes = 16
+    for (const key in item) { if (Object.hasOwn(item, key)) bytes += key.length * 2 + size((item as Record<string, unknown>)[key])
+}
+    return bytes
+  }
+  return size(value)
 }

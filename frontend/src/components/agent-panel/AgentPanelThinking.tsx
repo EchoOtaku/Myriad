@@ -1,6 +1,8 @@
 import type { AgentMessageStep } from './agentThinking'
+import type { MessageBodyRef } from './messageBody'
 import React, { useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import { AgentMessageBody } from './AgentMessageBody'
 import {
   formatStepDuration,
   stepsWorthShowing,
@@ -47,7 +49,8 @@ export const AgentPanelThinking: React.FC<{
   steps: AgentMessageStep[]
   live?: boolean
   thought?: string
-}> = ({ steps, live = false, thought, plan }) => {
+  body?: MessageBodyRef
+}> = ({ steps, live = false, thought, plan, body }) => {
   const { t, format } = useI18n()
   const summary = summarizeAgentSteps(steps)
   const [userOpen, setUserOpen] = useState<boolean | null>(null)
@@ -78,7 +81,7 @@ export const AgentPanelThinking: React.FC<{
     return (
       <div className="agent-panel-thinking" data-live="true">
         {checklist}
-        {note ? (
+        {body ? <AgentMessageBody body={body} preview={thought ?? ''} /> : note ? (
           <p className="agent-panel-thinking-thought" data-live="true">
             <span className="agent-panel-thinking-sweep">{note}</span>
           </p>
@@ -101,7 +104,7 @@ export const AgentPanelThinking: React.FC<{
       data-failed={summary.failed ? 'true' : 'false'}
     >
       {checklist}
-      {note ? <p className="agent-panel-thinking-thought">{note}</p> : null}
+      {body ? <AgentMessageBody body={body} preview={thought ?? ''} /> : note ? <p className="agent-panel-thinking-thought">{note}</p> : null}
       {showsStepList ? (
         <>
           <button
