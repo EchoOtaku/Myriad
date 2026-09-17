@@ -16,7 +16,8 @@ use std::fs;
 // Platform refresh / site owner live in services (scheduler must not depend on HTTP).
 use crate::services::platform_refresh::{
     PLATFORM_CACHE_HOURS, fetch_fresh_platform_data, load_platform_data_cache,
-    platform_data_warning_for, resolve_platform_fetch_message_for, save_platform_data_cache,
+    platform_data_warning_for, platform_fetch_details, platform_has_usable_data,
+    resolve_platform_fetch_message_for, save_platform_data_cache,
 };
 pub use crate::services::site_owner::site_owner_user_id;
 
@@ -216,7 +217,8 @@ pub async fn fetch_single_platform_data(
                         "success": false,
                         "message": message,
                         "data": outcome.data,
-                        "error": remote_err,
+                        "partial": platform_has_usable_data(&req.platform, outcome.data.get(&req.platform)),
+                        "issues": platform_fetch_details(remote_err),
                         "fetched_at": chrono::Utc::now().to_rfc3339()
                     })),
                 );

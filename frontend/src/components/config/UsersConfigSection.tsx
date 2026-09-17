@@ -28,6 +28,8 @@ import adminUsersApi from '../../services/adminUsersApi'
 import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import { messageForAdminUserError } from '../../utils/authErrorMessages'
 import { getOAuthIconAsset } from '../../utils/oauthIcons'
+import { passwordValidationCode } from '../../utils/passwordValidation'
+import { userFacingError } from '../../utils/userFacingError'
 import { Avatar } from '../Avatar'
 import { AvatarSourcePicker } from '../AvatarSourcePicker'
 import OAuthIconImage from '../OAuthIconImage'
@@ -214,6 +216,10 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
     email: '',
     is_admin: false,
   })
+  const createPasswordCode = passwordValidationCode(createDraft.password)
+  const createPasswordError = createDraft.password && createPasswordCode
+    ? userFacingError({ code: createPasswordCode })
+    : undefined
   const [formOpen, setFormOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [rowBusyId, setRowBusyId] = useState<number | null>(null)
@@ -442,7 +448,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
   )
 
   const handleCreate = useCallback(async () => {
-    if (!createDraft.username.trim() || !createDraft.password) return
+    if (!createDraft.username.trim() || passwordValidationCode(createDraft.password)) return
     setBusy(true)
     try {
       const createAsAdmin = isPrimaryAdmin && createDraft.is_admin
@@ -1085,6 +1091,8 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
               <InputItem
                 itemKey="users-create-password"
                 label={c.usersCreatePassword}
+                description={c.usersCreatePasswordRule}
+                error={createPasswordError}
                 value={createDraft.password}
                 onChange={(password) =>
                   setCreateDraft((d) => ({ ...d, password }))
@@ -1132,7 +1140,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                   disabled={
                     busy ||
                     !createDraft.username.trim() ||
-                    !createDraft.password
+                    Boolean(createPasswordCode)
                   }
                   loading={busy && formOpen}
                   onClick={() => void handleCreate()}

@@ -1,10 +1,15 @@
-import type { MouseEvent as ReactMouseEvent, RefObject } from 'react'
-import type { WidgetConfig, WidgetType } from './widgetGridTypes'
+import type { RefObject } from 'react'
+import type {
+  WidgetConfig,
+  WidgetDragStart,
+  WidgetType,
+} from './widgetGridTypes'
 import type { WidgetDragSession } from './widgetPlacementPreview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getPerformanceProfileSync } from '../hooks/usePerformanceProfile'
+import { isHomeStickerItem } from '../utils/homeLayout'
 import { setWidgetDragCursor } from '../utils/widgetDragCursor'
-import { widgetSizeSpan } from '../utils/widgetSizeScale'
+import { GRID_WIDGET_PAD_PX, widgetSizeSpan } from '../utils/widgetSizeScale'
 import {
   beginExistingWidgetDrag,
   beginLibraryWidgetDrag,
@@ -17,6 +22,8 @@ import {
   shouldClearDragOnEditExit,
 } from './widgetGridDrag'
 import {
+  dragCenterFromGrab,
+  dragGhostContentSize,
   dragGhostHandoffDelays,
   gridCellFromPoint,
   placementHasCommitted,
@@ -24,6 +31,39 @@ import {
 
 function getIsMobile(): boolean {
   return getPerformanceProfileSync().isMobile
+}
+
+function dragPosition(input: {
+  point: { x: number; y: number }
+  grab: { x: number; y: number }
+  size: { w: number; h: number }
+  padded: boolean
+  gridRect: DOMRect
+  gridWidth: number
+  gridHeight: number
+}): { center: { x: number; y: number }; cell: { x: number; y: number } } {
+  const content = dragGhostContentSize(
+    input.gridRect.width / input.gridWidth,
+    input.gridRect.height / input.gridHeight,
+    input.size,
+    input.padded ? GRID_WIDGET_PAD_PX : 0,
+  )
+  const center = dragCenterFromGrab({
+    point: input.point,
+    grab: input.grab,
+    width: content.width,
+    height: content.height,
+  })
+  return {
+    center,
+    cell: gridCellFromPoint({
+      point: center,
+      gridRect: input.gridRect,
+      gridWidth: input.gridWidth,
+      gridHeight: input.gridHeight,
+      size: input.size,
+    }),
+  }
 }
 
 export function useWidgetGridDrag(input: {
@@ -77,7 +117,11 @@ export function useWidgetGridDrag(input: {
   )
 
   const startNewWidgetDrag = useCallback(
-    (widgetTypeId: string, point: { x: number; y: number }) => {
+    (
+      widgetTypeId: string,
+      point: { x: number; y: number },
+      grab = { x: 0.5, y: 0.5 },
+    ) => {
       const latest = latestRef.current
       const widgetType = latest.widgetTypeById.get(widgetTypeId)
       if (
@@ -90,47 +134,49 @@ export function useWidgetGridDrag(input: {
         return
       }
       latest.updateGridRectCache()
-      setWidgetDragCursor(point)
       const gridRect = latest.gridRectRef.current
-      const cell =
+      const position =
         gridRect && widgetType
-          ? gridCellFromPoint({
+          ? dragPosition({
               point,
+              grab,
+              size: widgetSizeSpan(widgetType.defaultSize),
+              padded: true,
               gridRect,
               gridWidth: latest.currentGridWidth,
               gridHeight: latest.currentGridHeight,
-              size: widgetSizeSpan(widgetType.defaultSize),
             })
           : null
-      applySession(beginLibraryWidgetDrag(widgetTypeId, cell))
+      setWidgetDragCursor(position?.center ?? point)
+      applySession(
+        beginLibraryWidgetDrag(widgetTypeId, position?.cell ?? null, grab),
+      )
     },
     [applySession],
   )
 
   const handleWidgetDragStart = useCallback(
-    (event: ReactMouseEvent, widgetId: string) => {
+    (start: WidgetDragStart, widgetId: string) => {
       const latest = latestRef.current
       if (!latest.isEditMode || latest.stickerPickActive) return
-      event.stopPropagation()
-      event.preventDefault()
       const widget = latest.widgets.find((item) => item.id === widgetId)
       if (!widget) return
       latest.updateGridRectCache()
-      setWidgetDragCursor({ x: event.clientX, y: event.clientY })
       const gridRect = latest.gridRectRef.current
+      const position = gridRect
+        ? dragPosition({
+            point: start.point,
+            grab: start.grab,
+            size: widgetSizeSpan(widget.size),
+            padded: !isHomeStickerItem(widget),
+            gridRect,
+            gridWidth: latest.currentGridWidth,
+            gridHeight: latest.currentGridHeight,
+          })
+        : null
+      setWidgetDragCursor(position?.center ?? start.point)
       applySession(
-        beginExistingWidgetDrag(
-          widgetId,
-          gridRect
-            ? gridCellFromPoint({
-                point: { x: event.clientX, y: event.clientY },
-                gridRect,
-                gridWidth: latest.currentGridWidth,
-                gridHeight: latest.currentGridHeight,
-                size: widgetSizeSpan(widget.size),
-              })
-            : null,
-        ),
+        beginExistingWidgetDrag(widgetId, position?.cell ?? null, start.grab),
       )
     },
     [applySession],
@@ -151,19 +197,26 @@ export function useWidgetGridDrag(input: {
           'touches' in event ? event.touches[0].clientX : event.clientX
         const clientY =
           'touches' in event ? event.touches[0].clientY : event.clientY
-        setWidgetDragCursor({ x: clientX, y: clientY })
-        const size = draggedWidget.type === 'existing' && draggedWidget.widgetId
-          ? latest.widgets.find((item) => item.id === draggedWidget.widgetId)
-              ?.size || '1x1'
-          : latest.widgetTypeById.get(draggedWidget.widgetTypeId ?? '')
-              ?.defaultSize || '1x1'
-        const nextCell = gridCellFromPoint({
+        const existing =
+          draggedWidget.type === 'existing' && draggedWidget.widgetId
+            ? latest.widgets.find((item) => item.id === draggedWidget.widgetId)
+            : undefined
+        const size =
+          existing?.size ??
+          latest.widgetTypeById.get(draggedWidget.widgetTypeId ?? '')
+            ?.defaultSize ??
+          '1x1'
+        const position = dragPosition({
           point: { x: clientX, y: clientY },
+          grab: draggedWidget.grab ?? { x: 0.5, y: 0.5 },
+          padded: existing ? !isHomeStickerItem(existing) : true,
+          size: widgetSizeSpan(size),
           gridRect,
           gridWidth: latest.currentGridWidth,
           gridHeight: latest.currentGridHeight,
-          size: widgetSizeSpan(size),
         })
+        setWidgetDragCursor(position.center)
+        const nextCell = position.cell
         setHoveredCell((prev) =>
           prev?.x === nextCell.x && prev?.y === nextCell.y ? prev : nextCell,
         )
@@ -224,7 +277,9 @@ export function useWidgetGridDrag(input: {
         latest.onWidgetsChange?.(drop.widgets)
         latest.saveToHistory(drop.widgets)
         settleStartedAtRef.current = performance.now()
-        applySession(settleWidgetDrag(draggedWidget, drop.pendingId, hoveredCell))
+        applySession(
+          settleWidgetDrag(draggedWidget, drop.pendingId, hoveredCell),
+        )
         return
       }
     }
@@ -294,7 +349,13 @@ export function useWidgetGridDrag(input: {
       window.clearTimeout(exitTimer)
       window.clearTimeout(clearTimer)
     }
-  }, [applyIdle, dragSettling, handoffCommitted, handoffId, input.reducedMotion])
+  }, [
+    applyIdle,
+    dragSettling,
+    handoffCommitted,
+    handoffId,
+    input.reducedMotion,
+  ])
 
   const dragPreview = useMemo(
     () =>

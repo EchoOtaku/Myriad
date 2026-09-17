@@ -517,6 +517,7 @@
   "usersCreateUserDesc": "ローカルアカウントを作成",
   "usersCreateUsername": "ユーザー名",
   "usersCreatePassword": "初期パスワード",
+  "usersCreatePasswordRule": "8〜128文字で、文字と数字をそれぞれ1つ以上含めてください。",
   "usersCreateIsAdmin": "管理者権限を付与",
   "usersCreateSubmit": "作成",
   "usersRefresh": "更新",

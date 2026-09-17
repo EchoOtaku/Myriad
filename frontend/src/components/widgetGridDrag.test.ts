@@ -31,14 +31,18 @@ const occupied = [
 describe('widget drag session', () => {
   it('starts a move without leftover settle flags', () => {
     assert.deepEqual(beginExistingWidgetDrag('a', { x: 2, y: 0 }), {
-      dragged: { type: 'existing', widgetId: 'a' },
+      dragged: { type: 'existing', widgetId: 'a', grab: { x: 0.5, y: 0.5 } },
       settling: false,
       previewUncovered: false,
       previewExiting: false,
       hoveredCell: { x: 2, y: 0 },
     })
     assert.deepEqual(beginLibraryWidgetDrag('weather', null), {
-      dragged: { type: 'new', widgetTypeId: 'weather' },
+      dragged: {
+        type: 'new',
+        widgetTypeId: 'weather',
+        grab: { x: 0.5, y: 0.5 },
+      },
       settling: false,
       previewUncovered: false,
       previewExiting: false,
@@ -54,11 +58,10 @@ describe('widget drag session', () => {
   })
 
   it('settles onto the committed cell and drops the hover', () => {
-    const settled = settleWidgetDrag(
-      { type: 'existing', widgetId: 'a' },
-      'a',
-      { x: 4, y: 1 },
-    )
+    const settled = settleWidgetDrag({ type: 'existing', widgetId: 'a' }, 'a', {
+      x: 4,
+      y: 1,
+    })
     assert.equal(settled.settling, true)
     assert.deepEqual(settled.hoveredCell, null)
     assert.equal(settled.dragged?.pendingId, 'a')

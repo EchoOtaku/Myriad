@@ -26,7 +26,10 @@ import {
   isHomeStickerItem,
 } from '../utils/homeLayout'
 import { widgetSizeSpan } from '../utils/widgetSizeScale'
-import { useHomeGridMotionMode, useRowCountMorphing } from './useHomeGridGeometry'
+import {
+  useHomeGridMotionMode,
+  useRowCountMorphing,
+} from './useHomeGridGeometry'
 import { useWidgetGridBand } from './useWidgetGridBand'
 import { useWidgetGridDrag } from './useWidgetGridDrag'
 import { useWidgetGridHistory } from './useWidgetGridHistory'
@@ -40,10 +43,7 @@ import {
   resolveHomeGridMetrics,
 } from './widgetGridMetrics'
 import { homeSlotAnchor } from './widgetGridStickerPick'
-import {
-  coveringWidgetId,
-  heldWidgetId,
-} from './widgetPlacementPreview'
+import { coveringWidgetId, heldWidgetId } from './widgetPlacementPreview'
 import './WidgetGrid.css'
 
 export function startGridLibraryDrag(
@@ -53,19 +53,24 @@ export function startGridLibraryDrag(
 ): void {
   event.stopPropagation()
   event.preventDefault()
+  const stage = event.currentTarget.querySelector('.widget-library-tile-stage')
+  const rect = stage?.getBoundingClientRect()
+  const start = (x: number, y: number) => {
+    const grab = rect
+      ? {
+          x: Math.max(0, Math.min(1, (x - rect.left) / rect.width)),
+          y: Math.max(0, Math.min(1, (y - rect.top) / rect.height)),
+        }
+      : undefined
+    grid?.startNewWidgetDrag(widgetTypeId, { x, y }, grab)
+  }
   if ('touches' in event) {
     const touch = event.touches[0]
     if (!touch) return
-    grid?.startNewWidgetDrag(widgetTypeId, {
-      x: touch.clientX,
-      y: touch.clientY,
-    })
+    start(touch.clientX, touch.clientY)
     return
   }
-  grid?.startNewWidgetDrag(widgetTypeId, {
-    x: event.clientX,
-    y: event.clientY,
-  })
+  start(event.clientX, event.clientY)
 }
 
 interface WidgetGridProps {
@@ -147,12 +152,8 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       autoHeight,
       gridColumns,
     })
-    const {
-      isCompact,
-      currentWidgets,
-      currentGridWidth,
-      currentGridHeight,
-    } = metrics
+    const { isCompact, currentWidgets, currentGridWidth, currentGridHeight } =
+      metrics
     const [containerWidth, setContainerWidth] = useState(0)
     const containerRef = useRef<HTMLDivElement | null>(null)
     const gridRectRef = useRef<DOMRect | null>(null)
@@ -526,9 +527,9 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
                       }}
                       allowSticker={Boolean(
                         isFreeLayout &&
-                          isEditMode &&
-                          stickerPickActive &&
-                          onPickStickerSlot,
+                        isEditMode &&
+                        stickerPickActive &&
+                        onPickStickerSlot,
                       )}
                     />
                   )

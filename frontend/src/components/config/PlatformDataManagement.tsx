@@ -10,6 +10,7 @@ import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
 import { fetchJson } from '../../utils/apiHelper'
 import { getCSRFToken } from '../../utils/csrf'
 import { resolvePlatformId } from '../../utils/platformId'
+import { platformFetchDetails, refreshPlatformViews } from '../../utils/platformRefresh'
 import { notifyRecentActivityUpdated } from '../../utils/recentActivity'
 import { userFacingError } from '../../utils/userFacingError'
 import { ButtonItem, SettingGroup, useSettingGuide } from '../settings'
@@ -62,6 +63,9 @@ export default function PlatformDataManagement({
   const [statusLoading, setStatusLoading] = useState(false)
   const [rawStatusError, setRawStatusError] = useState(false)
   const [cacheStatusError, setCacheStatusError] = useState(false)
+  const [fetchResult, setFetchResult] = useState<{ partial: boolean; issues: unknown; message?: unknown } | null>(null)
+  const fetchDetails = platformFetchDetails(fetchResult?.issues, t.dataManagement.fetchResult) || userFacingError(fetchResult?.message, t.dataManagement.refreshFailed)
+  const fetchMessage = fetchResult ? `${fetchResult.partial ? t.dataManagement.fetchResult.partial : t.dataManagement.fetchResult.failed}\n${fetchDetails}` : ''
   const [refreshing, setRefreshing] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [clearing, setClearing] = useState(false)
@@ -136,6 +140,8 @@ export default function PlatformDataManagement({
     t.dataManagement.loadStatusFailed,
   ])
 
+  useEffect(() => { setFetchResult(null) }, [platformId])
+
   useEffect(() => {
     setStatus(null)
     setCache(null)
@@ -160,6 +166,7 @@ export default function PlatformDataManagement({
     }
 
     setRefreshing(true)
+    setFetchResult(null)
     try {
       const csrfToken = await getCSRFToken(true)
       if (!csrfToken) {
@@ -179,21 +186,25 @@ export default function PlatformDataManagement({
       })
       const data = await response.json()
 
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.message ||
-            format(t.errors.httpStatus, { status: response.status }),
-        )
+      if (!response.ok) {
+        throw new Error(data.message || format(t.errors.httpStatus, { status: response.status }))
       }
 
+      // Both full and partial fetches may have updated persisted data.
+      await refreshPlatformViews(loadStatus, async () => previewRef.current?.reload())
       notifyRecentActivityUpdated()
+      const details = platformFetchDetails(data.issues, t.dataManagement.fetchResult)
+      if (!data.success) {
+        setFetchResult({ partial: Boolean(data.partial), issues: data.issues, message: data.message })
+        const prefix = data.partial ? t.dataManagement.fetchResult.partial : t.dataManagement.fetchResult.failed
+        showMessage(`${prefix}\n${details || userFacingError(data.message, t.dataManagement.refreshFailed)}`, data.partial ? 'warning' : 'error', 5000)
+        return
+      }
       showMessage(
         format(t.dataManagement.dataRefreshed, { platform: platformName }),
         'success',
         5000,
       )
-      await loadStatus()
-      void previewRef.current?.reload()
     } catch (error) {
       showMessage(
         userFacingError(error, t.dataManagement.refreshFailed),
@@ -308,6 +319,7 @@ export default function PlatformDataManagement({
         {...bindGuide('platforms.dataManagement', g.platforms.dataManagement)}
         className="platform-data-management"
       >
+        {fetchMessage ? <p role="status" className="whitespace-pre-line">{fetchMessage}</p> : null}
         {activeTask ? (
           <div className="platform-data-management-task">
             <TaskStatus

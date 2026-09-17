@@ -309,9 +309,19 @@ ensure_env() {
 ensure_current_layout() {
     info "==> Ensuring current proxy + updater layout"
     mkdir -p pgdata state state/snapshots state/cache backups guard-policy
-    ensure_key MYRIAD_TAG v0.4.14
-    ensure_key PROXY_TAG v0.4.6
-    ensure_key UPDATER_TAG v0.4.6
+    # Keep bootstrap in sync with the published, independently pinned infra
+    # defaults. Never overwrite an operator's existing tags.
+    local key default
+    for key in MYRIAD_TAG PROXY_TAG UPDATER_TAG; do
+        if ! grep -qE "^${key}=" .env 2>/dev/null; then
+            default="$(env_file_value "$key" "$ROOT/.env.production.example")"
+            if [ -z "$default" ]; then
+                err "✗ Missing $key default in .env.production.example"
+                return 2
+            fi
+            ensure_key "$key" "$default"
+        fi
+    done
     ensure_key BACKEND_IMAGE docker.io/somekawahitomi/myriad-backend
     ensure_key FRONTEND_IMAGE docker.io/somekawahitomi/myriad-frontend
     ensure_key COMPOSE_PROJECT_NAME myriad

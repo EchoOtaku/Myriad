@@ -98,18 +98,35 @@ pub(super) async fn fetch_bilibili(ctx: &mut FetchCtx<'_>) {
             }
 
             // 追番/电影（fetcher type=1 番剧 + type=2 电影，不拉 type=5 追剧）
-            match ctx.fetcher.fetch_all_bilibili_bangumi(uid).await {
-                Ok(bangumi_data) => {
-                    ctx.all_data["bilibili"]["bangumi"] = json!(bangumi_data);
-                    tracing::info!(
-                        "✓ Bilibili bangumi data fetched: {} items",
-                        bangumi_data.len()
-                    );
+            let mut bangumi = Vec::new();
+            let mut fetched_bangumi = false;
+            for (kind, stage) in [(1, "bangumi"), (2, "movies")] {
+                match ctx.fetcher.fetch_bilibili_bangumi(uid, kind).await {
+                    Ok(mut items) => {
+                        fetched_bangumi = true;
+                        bangumi.append(&mut items);
+                    }
+                    Err(error) => {
+                        tracing::warn!("Bilibili {} fetch failed: {}", stage, error);
+                        note_fetch_error(&mut ctx.fetch_errors, "bilibili", stage, error);
+                        // Keep the last usable data for the failed subtask.
+                        if let Some(previous) = ctx.all_data["bilibili"]["bangumi"].as_array() {
+                            bangumi.extend(
+                                previous
+                                    .iter()
+                                    .filter(|item| {
+                                        item["season_type"].as_i64() == Some(kind as i64)
+                                    })
+                                    .filter_map(|item| serde_json::from_value(item.clone()).ok()),
+                            );
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("Bilibili bangumi fetch failed: {}", e);
-                    note_fetch_error(&mut ctx.fetch_errors, "bilibili", "bangumi", e);
-                }
+                let delay = 1500 + (rand::random::<u64>() % 1000);
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+            }
+            if fetched_bangumi {
+                ctx.all_data["bilibili"]["bangumi"] = json!(bangumi);
             }
 
             // 获取收藏夹

@@ -56,6 +56,7 @@ function Fixture() {
   const { t } = useI18n()
   const [editing, setEditing] = useState(true)
   const [dragStarts, setDragStarts] = useState(0)
+  const [dragGrab, setDragGrab] = useState('')
   const [settingsOpens, setSettingsOpens] = useState(0)
   const [held, setHeld] = useState(false)
   useEditModeEscape(editing, () => setEditing(false), t.home.exitEditConfirm)
@@ -70,6 +71,7 @@ function Fixture() {
     <>
       <output data-testid="editing">{String(editing)}</output>
       <output data-testid="drag-starts">{dragStarts}</output>
+      <output data-testid="drag-grab">{dragGrab}</output>
       <output data-testid="settings-opens">{settingsOpens}</output>
       <div
         data-testid="outside"
@@ -110,8 +112,11 @@ function Fixture() {
               widgetType={widgetType}
               isEditMode
               isHovered={false}
-              onDragStart={() => {
+              onDragStart={(start) => {
                 setDragStarts((count) => count + 1)
+                setDragGrab(
+                  `${start.grab.x.toFixed(2)},${start.grab.y.toFixed(2)}`,
+                )
                 setHeld(true)
               }}
               onMouseEnter={() => {}}

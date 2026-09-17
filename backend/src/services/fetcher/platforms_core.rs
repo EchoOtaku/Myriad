@@ -303,7 +303,11 @@ impl PlatformFetcher {
             .await?;
 
         if response["code"].as_i64() != Some(0) {
-            return Err(anyhow!("Bilibili API error: {}", response["message"]));
+            return Err(anyhow!(
+                "Bilibili API error: {} {}",
+                response["code"],
+                response["message"]
+            ));
         }
 
         let list = response["data"]["list"]
@@ -395,7 +399,7 @@ impl PlatformFetcher {
                 response["code"],
                 response["message"]
             );
-            return Ok(Vec::new()); // 返回空列表而不是错误
+            return Err(anyhow!("Bilibili API error: {}", response["code"]));
         }
 
         // 检查 data 字段是否存在

@@ -517,6 +517,7 @@
   "usersCreateUserDesc": "Créer un compte local",
   "usersCreateUsername": "Nom d'utilisateur",
   "usersCreatePassword": "Mot de passe initial",
+  "usersCreatePasswordRule": "Utilisez 8 à 128 caractères, dont au moins une lettre et un chiffre.",
   "usersCreateIsAdmin": "Accorder les privilèges admin",
   "usersCreateSubmit": "Créer",
   "usersRefresh": "Actualiser",

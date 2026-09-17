@@ -1509,6 +1509,30 @@
     "malWish": "예정"
   },
   "dataManagement": {
+    "fetchResult": {
+      "repoSummary": "저장소 {1}개, 주요 사용 언어: {2}",
+      "partial": "일부 데이터는 사용할 수 있습니다. 다음 항목을 가져오지 못했습니다:",
+      "failed": "가져오기 실패:",
+      "videoSummary": "즐겨찾기 동영상 {1}개와 팔로우한 시리즈 {2}개 기반 분석",
+      "collectionSummary": "Bangumi 컬렉션: {1}개, 완료 {2}개, 시청 중 {3}개",
+      "stages": {
+        "user": "프로필",
+        "bangumi": "팔로우한 시리즈",
+        "movies": "영화",
+        "favorites": "즐겨찾기",
+        "collections": "컬렉션"
+      },
+      "reasons": {
+        "private": "비공개입니다. 공개 설정을 확인하세요.",
+        "rate_limit": "요청이 제한되었습니다. 나중에 다시 시도하세요.",
+        "401": "인증 실패. 인증 정보를 확인하세요.",
+        "403": "접근 거부. 공개 설정과 권한을 확인하세요.",
+        "404": "계정을 찾을 수 없습니다. 설정을 확인하세요.",
+        "timeout": "연결 실패 또는 시간 초과. 나중에 다시 시도하세요.",
+        "invalid_response": "잘못된 응답 형식. 나중에 다시 시도하세요.",
+        "fetch_failed": "가져오기 실패. 나중에 다시 시도하세요."
+      }
+    },
     "loadStatusFailed": "상태를 불러오지 못했습니다",
     "statusUnavailable": "상태를 잠시 쓸 수 없습니다. 잠시 후 다시 시도하세요.",
     "confirmRefreshData": "{platform} 원본 데이터를 새로고침할까요?",

@@ -1,5 +1,9 @@
 import type { StickerCrop } from '../utils/homeStickerCrop'
-import type { WidgetConfig, WidgetType } from './widgetGridTypes'
+import type {
+  WidgetConfig,
+  WidgetDragStart,
+  WidgetType,
+} from './widgetGridTypes'
 import { LuSparkles, LuX } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import React, {
@@ -113,7 +117,7 @@ export const WidgetGridItem = React.memo(
     isHeld?: boolean
     isCovered?: boolean
     isHovered: boolean
-    onDragStart: (e: React.MouseEvent, id: string) => void
+    onDragStart: (start: WidgetDragStart, id: string) => void
     onMouseEnter: (id: string) => void
     onMouseLeave: () => void
     onRemove: (id: string) => void
@@ -135,9 +139,8 @@ export const WidgetGridItem = React.memo(
     const [showSettings, setShowSettings] = useState(false)
     const [settingsAnchor, setSettingsAnchor] = useState<DOMRect | null>(null)
     const [stickerCropOpen, setStickerCropOpen] = useState(false)
-    const [stickerCropDraft, setStickerCropDraft] = useState<StickerCrop>(
-      defaultStickerCrop,
-    )
+    const [stickerCropDraft, setStickerCropDraft] =
+      useState<StickerCrop>(defaultStickerCrop)
     const stickerPressRef = useRef<{
       timer: number
       move: (event: MouseEvent) => void
@@ -230,6 +233,22 @@ export const WidgetGridItem = React.memo(
 
     const useLiteTransition = !anim.spring || !isStandardAnimation(anim)
 
+    const dragStart = (
+      point: { x: number; y: number },
+      origin = point,
+    ): WidgetDragStart => {
+      const rect = stickerItemRef.current?.getBoundingClientRect()
+      return {
+        point,
+        grab: rect
+          ? {
+              x: Math.max(0, Math.min(1, (origin.x - rect.left) / rect.width)),
+              y: Math.max(0, Math.min(1, (origin.y - rect.top) / rect.height)),
+            }
+          : { x: 0.5, y: 0.5 },
+      }
+    }
+
     return (
       <motion.div
         className={`widget-grid-item absolute ${
@@ -296,7 +315,12 @@ export const WidgetGridItem = React.memo(
               const componentLongPress =
                 isEditMode && Boolean(widgetType.componentLongPress)
               if (!holdSticker && !holdSettings && !componentLongPress) {
-                onDragStart(event, widget.id)
+                event.stopPropagation()
+                event.preventDefault()
+                onDragStart(
+                  dragStart({ x: event.clientX, y: event.clientY }),
+                  widget.id,
+                )
                 return
               }
               event.stopPropagation()
@@ -317,12 +341,7 @@ export const WidgetGridItem = React.memo(
                 if (Math.hypot(x - startX, y - startY) < 8) return
                 clearPress()
                 onDragStart(
-                  {
-                    clientX: x,
-                    clientY: y,
-                    stopPropagation() {},
-                    preventDefault() {},
-                  } as React.MouseEvent,
+                  dragStart({ x, y }, { x: startX, y: startY }),
                   widget.id,
                 )
               }
@@ -384,12 +403,7 @@ export const WidgetGridItem = React.memo(
                 if (Math.hypot(x - startX, y - startY) < 8) return
                 clearPress()
                 onDragStart(
-                  {
-                    clientX: x,
-                    clientY: y,
-                    stopPropagation() {},
-                    preventDefault() {},
-                  } as React.MouseEvent,
+                  dragStart({ x, y }, { x: startX, y: startY }),
                   widget.id,
                 )
               }
@@ -405,7 +419,8 @@ export const WidgetGridItem = React.memo(
                 if (componentLongPress) return
                 if (holdSticker) {
                   setStickerCropDraft(
-                    parseStickerCrop(widget.config?.crop) ?? defaultStickerCrop(),
+                    parseStickerCrop(widget.config?.crop) ??
+                      defaultStickerCrop(),
                   )
                   setStickerCropOpen(true)
                   return
@@ -471,7 +486,9 @@ export const WidgetGridItem = React.memo(
                 >
                   <LuX className="widget-grid-item-remove__icon" aria-hidden />
                 </button>
-                {allowSticker && onRequestSticker && isHomeWidgetItem(widget) ? (
+                {allowSticker &&
+                onRequestSticker &&
+                isHomeWidgetItem(widget) ? (
                   <button
                     type="button"
                     className="widget-grid-item-sticker"

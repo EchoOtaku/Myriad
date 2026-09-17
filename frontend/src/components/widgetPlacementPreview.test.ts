@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   coveringWidgetId,
+  dragCenterFromGrab,
   dragGhostContentSize,
   dragGhostExitMs,
   dragGhostHandoffDelays,
@@ -34,7 +35,24 @@ describe('gridCellFromPoint', () => {
       gridHeight: 4,
       size: { w: 2, h: 2 },
     })
-    assert.deepEqual(cell, { x: 1, y: 0 })
+    assert.deepEqual(cell, { x: 2, y: 0 })
+  })
+
+  it('keeps a tile in its cell until its top-left crosses half a cell', () => {
+    const common = {
+      gridRect: { left: 0, top: 0, width: 1600, height: 320 },
+      gridWidth: 16,
+      gridHeight: 4,
+      size: { w: 2, h: 2 },
+    }
+    assert.deepEqual(
+      gridCellFromPoint({ ...common, point: { x: 349, y: 80 } }),
+      { x: 2, y: 0 },
+    )
+    assert.deepEqual(
+      gridCellFromPoint({ ...common, point: { x: 351, y: 80 } }),
+      { x: 3, y: 0 },
+    )
   })
 
   it('does not let a 4x2 tile hang off the right or bottom', () => {
@@ -46,6 +64,32 @@ describe('gridCellFromPoint', () => {
       size: { w: 4, h: 2 },
     })
     assert.deepEqual(cell, { x: 12, y: 2 })
+  })
+})
+
+describe('dragCenterFromGrab', () => {
+  it('keeps a corner grab under the pointer', () => {
+    assert.deepEqual(
+      dragCenterFromGrab({
+        point: { x: 110, y: 70 },
+        grab: { x: 0.1, y: 0.25 },
+        width: 200,
+        height: 80,
+      }),
+      { x: 190, y: 90 },
+    )
+  })
+
+  it('leaves a centered grab unchanged', () => {
+    assert.deepEqual(
+      dragCenterFromGrab({
+        point: { x: 110, y: 70 },
+        grab: { x: 0.5, y: 0.5 },
+        width: 200,
+        height: 80,
+      }),
+      { x: 110, y: 70 },
+    )
   })
 })
 
@@ -168,15 +212,12 @@ describe('drag ghost settle', () => {
       false,
     )
     assert.equal(
-      placementHasCommitted(
-        [{ ...widgets[0], position: { x: 4, y: 1 } }],
-        {
-          type: 'existing',
-          widgetId: 'widget_9',
-          pendingId: 'widget_9',
-          pendingCell: { x: 4, y: 1 },
-        },
-      ),
+      placementHasCommitted([{ ...widgets[0], position: { x: 4, y: 1 } }], {
+        type: 'existing',
+        widgetId: 'widget_9',
+        pendingId: 'widget_9',
+        pendingCell: { x: 4, y: 1 },
+      }),
       true,
     )
   })
@@ -233,7 +274,12 @@ describe('widgetPlacementCollides', () => {
   it('treats overflow and overlap as a collision, and ignores the moving id', () => {
     assert.equal(widgetPlacementCollides(left, [], 16, 4), false)
     assert.equal(
-      widgetPlacementCollides({ ...left, position: { x: 15, y: 0 } }, [], 16, 4),
+      widgetPlacementCollides(
+        { ...left, position: { x: 15, y: 0 } },
+        [],
+        16,
+        4,
+      ),
       true,
     )
     assert.equal(

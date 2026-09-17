@@ -114,6 +114,8 @@ jobs:
         run: cargo check --all-targets --locked
       # The updater holds the highest-privilege paths in the system (Docker
       # socket, pgdata snapshots, image tags) and had no CI coverage at all.
+      - name: Deployment compatibility
+        run: python3 ../scripts/extra/test-deployment-compatibility.py
       - name: Updater tests
         run: cargo test --all-targets --locked
       - name: Clippy

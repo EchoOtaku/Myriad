@@ -1055,7 +1055,6 @@ export default function Reports() {
                           ...platformStripScroll.style,
                         } as React.CSSProperties
                       }
-                      onWheel={platformStripScroll.onWheel}
                       onPointerDown={platformStripScroll.onPointerDown}
                       onPointerMove={platformStripScroll.onPointerMove}
                       onPointerUp={platformStripScroll.onPointerUp}

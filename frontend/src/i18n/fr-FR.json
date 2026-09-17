@@ -1509,6 +1509,30 @@
     "malWish": "À voir"
   },
   "dataManagement": {
+    "fetchResult": {
+      "repoSummary": "{1} dépôts, principalement en {2}",
+      "partial": "Certaines données restent disponibles. Échec pour les éléments suivants :",
+      "failed": "Échec de récupération :",
+      "videoSummary": "Analyse de {1} vidéos favorites et {2} séries suivies",
+      "collectionSummary": "Collection Bangumi : {1} titres, {2} terminés, {3} en cours",
+      "stages": {
+        "user": "Profil",
+        "bangumi": "Séries suivies",
+        "movies": "Films",
+        "favorites": "Favoris",
+        "collections": "Collection"
+      },
+      "reasons": {
+        "private": "Données privées. Vérifiez la visibilité.",
+        "rate_limit": "Requêtes limitées ou bloquées. Réessayez plus tard.",
+        "401": "Authentification échouée. Vérifiez les identifiants.",
+        "403": "Accès refusé. Vérifiez la visibilité et les permissions.",
+        "404": "Compte introuvable. Vérifiez les paramètres.",
+        "timeout": "Connexion échouée ou expirée. Réessayez plus tard.",
+        "invalid_response": "Format de réponse inattendu. Réessayez plus tard.",
+        "fetch_failed": "Échec de récupération. Réessayez plus tard."
+      }
+    },
     "loadStatusFailed": "Impossible de charger l'état",
     "statusUnavailable": "L'état est temporairement indisponible. Réessayez bientôt.",
     "confirmRefreshData": "Actualiser les données brutes de {platform} ?",

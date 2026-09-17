@@ -1509,6 +1509,30 @@
     "malWish": "計劃"
   },
   "dataManagement": {
+    "fetchResult": {
+      "repoSummary": "擁有 {1} 個儲存庫，主要使用 {2}",
+      "partial": "仍有部分可用資料，以下項目擷取失敗：",
+      "failed": "擷取失敗：",
+      "videoSummary": "根據 {1} 個收藏影片和 {2} 部追番的分析",
+      "collectionSummary": "Bangumi 收藏：{1} 項，已完成 {2} 項，在看 {3} 項",
+      "stages": {
+        "user": "使用者資料",
+        "bangumi": "追番",
+        "movies": "電影",
+        "favorites": "收藏",
+        "collections": "收藏"
+      },
+      "reasons": {
+        "private": "資料未公開，請檢查公開設定。",
+        "rate_limit": "請求過於頻繁或受風控限制，請稍後重試。",
+        "401": "驗證失敗，請檢查憑證。",
+        "403": "存取被拒絕，請檢查公開設定與權限。",
+        "404": "找不到帳號，請檢查帳號設定。",
+        "timeout": "連線失敗或逾時，請稍後重試。",
+        "invalid_response": "平台回傳的資料格式異常，請稍後重試。",
+        "fetch_failed": "擷取失敗，請稍後重試。"
+      }
+    },
     "loadStatusFailed": "載入狀態失敗",
     "statusUnavailable": "狀態暫時不可用，請稍後重試",
     "confirmRefreshData": "確定要重新整理 {platform} 的原始資料嗎？",

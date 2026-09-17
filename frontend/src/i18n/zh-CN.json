@@ -1509,6 +1509,30 @@
     "malWish": "计划"
   },
   "dataManagement": {
+    "fetchResult": {
+      "repoSummary": "拥有 {1} 个仓库，主要使用 {2}",
+      "partial": "仍有部分可用数据，以下项目抓取失败：",
+      "failed": "抓取失败：",
+      "videoSummary": "基于 {1} 个收藏视频和 {2} 部追番的分析",
+      "collectionSummary": "Bangumi 收藏：{1} 项，已完成 {2} 项，在看 {3} 项",
+      "stages": {
+        "user": "用户资料",
+        "bangumi": "追番",
+        "movies": "电影",
+        "favorites": "收藏",
+        "collections": "收藏"
+      },
+      "reasons": {
+        "private": "资料未公开，请检查公开设置。",
+        "rate_limit": "请求过于频繁或受风控限制，请稍后重试。",
+        "401": "认证失败，请检查凭据。",
+        "403": "访问被拒绝，请检查公开设置与权限。",
+        "404": "未找到账号，请检查账号设置。",
+        "timeout": "连接失败或超时，请稍后重试。",
+        "invalid_response": "平台返回的数据格式异常，请稍后重试。",
+        "fetch_failed": "抓取失败，请稍后重试。"
+      }
+    },
     "loadStatusFailed": "加载状态失败",
     "statusUnavailable": "状态暂时不可用，请稍后重试",
     "confirmRefreshData": "确定要刷新 {platform} 的原始数据吗？",

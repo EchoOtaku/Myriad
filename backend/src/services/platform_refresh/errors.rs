@@ -3,6 +3,78 @@
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// Only stable categories may leave the fetch layer; raw errors can contain URL credentials.
+fn fetch_error_reason(error: &str) -> &'static str {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("53013") || lower.contains("隐私") || lower.contains("private") {
+        "private"
+    } else if lower.contains("429")
+        || lower.contains("-352")
+        || lower.contains("-799")
+        || lower.contains("频繁")
+        || lower.contains("rate limit")
+        || lower.contains("rate_limit")
+        || lower.contains("too many requests")
+        || lower.contains("quota")
+    {
+        "rate_limit"
+    } else if lower.contains("402") || lower.contains("credits depleted") {
+        "402"
+    } else if lower.contains("401")
+        || lower.contains("unauthorized")
+        || lower.contains("invalid token")
+        || lower.contains("bad credentials")
+        || lower.contains("invalid_grant")
+    {
+        "401"
+    } else if lower.contains("403")
+        || lower.contains("forbidden")
+        || lower.contains("access denied")
+    {
+        "403"
+    } else if lower.contains("404") || lower.contains("not found") {
+        "404"
+    } else if lower.contains("timeout") || lower.contains("timed out") || lower.contains("connect")
+    {
+        "timeout"
+    } else if lower.contains("invalid response")
+        || lower.contains("missing")
+        || lower.contains("decode")
+    {
+        "invalid_response"
+    } else {
+        "fetch_failed"
+    }
+}
+
+pub fn platform_fetch_details(error: Option<&str>) -> Vec<Value> {
+    error
+        .into_iter()
+        .flat_map(|error| error.split("; "))
+        .filter_map(|issue| {
+            let (stage, reason) = issue.split_once(": ")?;
+            Some(serde_json::json!({"stage": stage, "reason": reason}))
+        })
+        .collect()
+}
+
+pub fn platform_has_usable_data(platform: &str, data: Option<&Value>) -> bool {
+    let Some(data) = data.filter(|data| !data.is_null()) else {
+        return false;
+    };
+    if matches!(platform, "bilibili" | "bangumi") {
+        return ["user", "user_info"]
+            .iter()
+            .any(|key| data.get(key).is_some_and(|v| !v.is_null()))
+            || ["favorites", "bangumi", "collections"].iter().any(|key| {
+                data.get(key)
+                    .and_then(Value::as_array)
+                    .is_some_and(|items| !items.is_empty())
+            });
+    }
+    platform_data_warning(platform, Some(data)).is_none()
+}
+
 /// 记录某平台抓取错误（主/副接口均可）；同平台多次失败会拼接，避免覆盖。
 pub(super) fn note_fetch_error(
     errors: &mut HashMap<String, String>,
@@ -11,7 +83,7 @@ pub(super) fn note_fetch_error(
     error: impl ToString,
 ) {
     let detail = {
-        let raw = error.to_string();
+        let raw = fetch_error_reason(&error.to_string()).to_string();
         if stage.is_empty() {
             raw
         } else {
@@ -81,7 +153,21 @@ pub fn humanize_platform_fetch_error_for(platform: &str, error: &str, locale: &s
         .to_string();
     }
 
-    if lower.contains("429")
+    if lower.contains("private") {
+        return format!(
+            "{}{}",
+            label,
+            pick_msg(
+                locale,
+                " 资料未公开。请检查公开设置后重试。",
+                " の情報は非公開です。公開設定を確認して再試行してください。",
+                " data is private. Check the visibility settings and retry."
+            )
+        );
+    }
+
+    if lower.contains("rate_limit")
+        || lower.contains("429")
         || lower.contains("rate limit")
         || lower.contains("too many requests")
         || lower.contains("quota")
@@ -185,7 +271,7 @@ pub fn resolve_platform_fetch_message_for(
     remote_error: Option<&str>,
     locale: &str,
 ) -> Option<String> {
-    let has_usable = platform_data_warning_for(platform, data, locale).is_none();
+    let has_usable = platform_has_usable_data(platform, data);
 
     match (remote_error, has_usable) {
         (Some(err), false) => Some(humanize_platform_fetch_error_for(platform, err, locale)),
@@ -199,8 +285,7 @@ pub fn resolve_platform_fetch_message_for(
                 " (some data is still available — retry the failed parts)",
             )
         )),
-        (None, false) => platform_data_warning_for(platform, data, locale),
-        (None, true) => None,
+        (None, _) => platform_data_warning_for(platform, data, locale),
     }
 }
 
@@ -399,6 +484,40 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn recorded_errors_are_safe_and_keep_failed_stages() {
+        let mut errors = HashMap::new();
+        note_fetch_error(
+            &mut errors,
+            "bilibili",
+            "bangumi",
+            "53013 用户隐私设置未公开 token=secret",
+        );
+        note_fetch_error(
+            &mut errors,
+            "bilibili",
+            "favorites",
+            "请求过于频繁 Cookie=secret",
+        );
+        let recorded = &errors["bilibili"];
+        assert_eq!(recorded, "bangumi: private; favorites: rate_limit");
+        assert_eq!(
+            platform_fetch_details(Some(recorded)),
+            vec![
+                json!({"stage": "bangumi", "reason": "private"}),
+                json!({"stage": "favorites", "reason": "rate_limit"})
+            ]
+        );
+        assert!(platform_has_usable_data(
+            "bilibili",
+            Some(&json!({"bangumi": [{"title": "saved"}]}))
+        ));
+        assert!(!platform_has_usable_data(
+            "bilibili",
+            Some(&json!({"bangumi": []}))
+        ));
+    }
+
+    #[test]
     fn humanize_x_402_credits_depleted() {
         let msg = humanize_platform_fetch_error_for(
             "x",
@@ -455,8 +574,8 @@ mod tests {
         note_fetch_error(&mut map, "steam", "user", "boom");
         note_fetch_error(&mut map, "steam", "games", "nope");
         let v = map.get("steam").unwrap();
-        assert!(v.contains("user: boom"), "{v}");
-        assert!(v.contains("games: nope"), "{v}");
+        assert!(v.contains("user: fetch_failed"), "{v}");
+        assert!(v.contains("games: fetch_failed"), "{v}");
     }
 
     #[test]

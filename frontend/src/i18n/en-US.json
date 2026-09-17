@@ -1509,6 +1509,30 @@
     "malWish": "Plan to"
   },
   "dataManagement": {
+    "fetchResult": {
+      "repoSummary": "Owns {1} repositories, mainly using {2}",
+      "partial": "Some data is still available. These items could not be fetched:",
+      "failed": "Fetch failed:",
+      "videoSummary": "Analysis based on {1} collected videos and {2} followed series",
+      "collectionSummary": "Bangumi collection: {1} items, finished {2}, currently {3}",
+      "stages": {
+        "user": "Profile",
+        "bangumi": "Followed series",
+        "movies": "Movies",
+        "favorites": "Favorites",
+        "collections": "Collection"
+      },
+      "reasons": {
+        "private": "Data is private. Check visibility settings.",
+        "rate_limit": "Requests are limited or blocked. Retry later.",
+        "401": "Authentication failed. Check credentials.",
+        "403": "Access denied. Check visibility and permissions.",
+        "404": "Account not found. Check account settings.",
+        "timeout": "Connection failed or timed out. Retry later.",
+        "invalid_response": "Unexpected response format. Retry later.",
+        "fetch_failed": "Fetch failed. Retry later."
+      }
+    },
     "loadStatusFailed": "Failed to load status",
     "statusUnavailable": "Status is temporarily unavailable. Try again shortly.",
     "confirmRefreshData": "Are you sure you want to refresh {platform} raw data?",

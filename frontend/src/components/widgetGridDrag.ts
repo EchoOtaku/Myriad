@@ -27,9 +27,10 @@ export function idleWidgetDrag(): WidgetDragUi {
 export function beginExistingWidgetDrag(
   widgetId: string,
   hoveredCell: { x: number; y: number } | null,
+  grab = { x: 0.5, y: 0.5 },
 ): WidgetDragUi {
   return {
-    dragged: { type: 'existing', widgetId },
+    dragged: { type: 'existing', widgetId, grab },
     settling: false,
     previewUncovered: false,
     previewExiting: false,
@@ -40,9 +41,10 @@ export function beginExistingWidgetDrag(
 export function beginLibraryWidgetDrag(
   widgetTypeId: string,
   hoveredCell: { x: number; y: number } | null,
+  grab = { x: 0.5, y: 0.5 },
 ): WidgetDragUi {
   return {
-    dragged: { type: 'new', widgetTypeId },
+    dragged: { type: 'new', widgetTypeId, grab },
     settling: false,
     previewUncovered: false,
     previewExiting: false,

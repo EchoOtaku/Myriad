@@ -2,16 +2,14 @@ import type {
   CSSProperties,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
-  WheelEvent as ReactWheelEvent,
-  RefObject,
+  RefCallback,
 } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 const DRAG_THRESHOLD_PX = 6
 
 export interface HorizontalStripScrollBind {
-  ref: RefObject<HTMLDivElement | null>
-  onWheel: (e: ReactWheelEvent<HTMLDivElement>) => void
+  ref: RefCallback<HTMLDivElement>
   onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void
   onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => void
   onPointerUp: (e: ReactPointerEvent<HTMLDivElement>) => void
@@ -109,18 +107,29 @@ export function useHorizontalStripScroll(): HorizontalStripScrollBind {
     )
   }, [removeWinListeners])
 
-  const onWheel = useCallback((e: ReactWheelEvent<HTMLDivElement>) => {
+  const onWheel = useCallback((e: WheelEvent) => {
     // 只映射纯纵向滚轮；横向 deltaX 留给浏览器，以免和惯性对打。
-    if (e.deltaX !== 0 || e.deltaY === 0) return
-    const el = e.currentTarget
+    if (e.ctrlKey || e.deltaX !== 0 || e.deltaY === 0 || !e.cancelable) return
+    const el = e.currentTarget as HTMLDivElement
     const maxScrollLeft = el.scrollWidth - el.clientWidth
     if (maxScrollLeft <= 0) return
-    e.preventDefault()
-    el.scrollLeft = Math.max(
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1
+    const next = Math.max(
       0,
-      Math.min(maxScrollLeft, el.scrollLeft + e.deltaY),
+      Math.min(maxScrollLeft, el.scrollLeft + e.deltaY * unit),
     )
+    if (next === el.scrollLeft) return
+    e.preventDefault()
+    el.scrollLeft = next
   }, [])
+
+  // The strip mounts conditionally. Bind to the actual node, not a mount-only
+  // effect, and avoid React's passive delegated wheel listener.
+  const setStripRef = useCallback((el: HTMLDivElement | null) => {
+    ref.current?.removeEventListener('wheel', onWheel)
+    ref.current = el
+    el?.addEventListener('wheel', onWheel, { passive: false })
+  }, [onWheel])
 
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -209,8 +218,7 @@ export function useHorizontalStripScroll(): HorizontalStripScrollBind {
   }, [])
 
   return {
-    ref,
-    onWheel,
+    ref: setStripRef,
     onPointerDown,
     onPointerMove,
     onPointerUp,

@@ -517,6 +517,7 @@
   "usersCreateUserDesc": "创建本地账号",
   "usersCreateUsername": "用户名",
   "usersCreatePassword": "初始密码",
+  "usersCreatePasswordRule": "密码须为 8–128 个字符，且至少包含一个字母和一个数字。",
   "usersCreateIsAdmin": "授予管理员权限",
   "usersCreateSubmit": "创建",
   "usersRefresh": "刷新",

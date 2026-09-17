@@ -10,6 +10,7 @@ export interface WidgetDragSession {
   widgetTypeId?: string
   pendingId?: string
   pendingCell?: { x: number; y: number }
+  grab?: { x: number; y: number }
 }
 
 export interface WidgetDragUi {
@@ -40,12 +41,27 @@ export function gridCellFromPoint(input: {
   return {
     x: Math.max(
       0,
-      Math.min(input.gridWidth - input.size.w, Math.floor(mouseX / cellWidth)),
+      Math.min(input.gridWidth - input.size.w, Math.round(mouseX / cellWidth)),
     ),
     y: Math.max(
       0,
-      Math.min(input.gridHeight - input.size.h, Math.floor(mouseY / cellHeight)),
+      Math.min(
+        input.gridHeight - input.size.h,
+        Math.round(mouseY / cellHeight),
+      ),
     ),
+  }
+}
+
+export function dragCenterFromGrab(input: {
+  point: { x: number; y: number }
+  grab: { x: number; y: number }
+  width: number
+  height: number
+}): { x: number; y: number } {
+  return {
+    x: input.point.x + (0.5 - input.grab.x) * input.width,
+    y: input.point.y + (0.5 - input.grab.y) * input.height,
   }
 }
 
@@ -150,7 +166,9 @@ export function resolveDragGhostWidget(input: {
   fromLibrary: boolean
 } | null {
   if (input.dragged.type === 'existing' && input.dragged.widgetId) {
-    const widget = input.widgets.find((item) => item.id === input.dragged.widgetId)
+    const widget = input.widgets.find(
+      (item) => item.id === input.dragged.widgetId,
+    )
     if (!widget) return null
     return {
       widgetType: input.widgetTypeById.get(widget.type),
@@ -199,9 +217,7 @@ export function placementHasCommitted(
   const cell = dragged?.pendingCell
   if (!id || !cell) return false
   const found = widgets.find((widget) => widget.id === id)
-  return Boolean(
-    found?.position.x === cell.x && found.position.y === cell.y,
-  )
+  return Boolean(found?.position.x === cell.x && found.position.y === cell.y)
 }
 
 export function widgetPlacementCollides(

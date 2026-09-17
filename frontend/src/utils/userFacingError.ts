@@ -441,6 +441,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return joinParts(t.database, usefulExtra(hint, t.database))
   }
+  if (code === 'password_too_short') return t.passwordMinLength
+  if (code === 'password_too_long') return currentCopy().auth.passwordLengthError
+  if (code === 'password_needs_letter_and_digit') {
+    return currentCopy().userModal.passwordNeedsLetterAndDigit
+  }
   if (code === 'password_failed') {
     return joinParts(t.passwordFailed, usefulExtra(hint, t.passwordFailed))
   }

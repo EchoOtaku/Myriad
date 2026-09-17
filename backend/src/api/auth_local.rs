@@ -679,6 +679,7 @@ fn validate_password(password: &str) -> Result<(), HttpError> {
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid password",
+                "code": "password_too_short",
                 "message": "Password must be at least 8 characters long"
             })),
         )));
@@ -688,6 +689,7 @@ fn validate_password(password: &str) -> Result<(), HttpError> {
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid password",
+                "code": "password_too_long",
                 "message": "Password must be at most 128 characters long"
             })),
         )));
@@ -702,6 +704,7 @@ fn validate_password(password: &str) -> Result<(), HttpError> {
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid password",
+                "code": "password_needs_letter_and_digit",
                 "message": "Password must contain both letters and numbers for security"
             })),
         )));
@@ -1337,6 +1340,33 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration as StdDuration;
     use tokio::sync::Semaphore;
+
+    #[tokio::test]
+    async fn password_validation_reports_stable_codes() {
+        for (password, code) in [
+            ("abc1234".to_string(), "password_too_short"),
+            (format!("a1{}", "x".repeat(127)), "password_too_long"),
+            ("abcdefgh".to_string(), "password_needs_letter_and_digit"),
+            ("12345678".to_string(), "password_needs_letter_and_digit"),
+        ] {
+            let response = super::validate_password(&password)
+                .unwrap_err()
+                .into_response();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(value["code"], code);
+        }
+        for password in [
+            "abc12345".to_string(),
+            format!("a1{}", "😀".repeat(126)),
+            "汉字かな۱۲۳۴".to_string(),
+            "aⅣ😀😀😀😀😀😀".to_string(),
+        ] {
+            assert!(super::validate_password(&password).is_ok());
+        }
+        assert!(super::validate_password("a1😀😀😀😀😀").is_err());
+    }
 
     #[test]
     fn auth_response_never_serializes_the_jwt() {

@@ -517,6 +517,7 @@
   "usersCreateUserDesc": "Lokales Konto anlegen",
   "usersCreateUsername": "Benutzername",
   "usersCreatePassword": "Anfangspasswort",
+  "usersCreatePasswordRule": "Verwenden Sie 8–128 Zeichen mit mindestens einem Buchstaben und einer Zahl.",
   "usersCreateIsAdmin": "Admin-Rechte vergeben",
   "usersCreateSubmit": "Anlegen",
   "usersRefresh": "Aktualisieren",

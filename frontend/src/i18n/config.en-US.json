@@ -517,6 +517,7 @@
   "usersCreateUserDesc": "Create a local account",
   "usersCreateUsername": "Username",
   "usersCreatePassword": "Initial password",
+  "usersCreatePasswordRule": "Use 8–128 characters, including at least one letter and one number.",
   "usersCreateIsAdmin": "Grant admin privileges",
   "usersCreateSubmit": "Create",
   "usersRefresh": "Refresh",

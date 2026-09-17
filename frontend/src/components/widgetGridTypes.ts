@@ -18,6 +18,11 @@ export interface WidgetConfig {
   kind?: HomeLayoutItemKind
 }
 
+export interface WidgetDragStart {
+  point: { x: number; y: number }
+  grab: { x: number; y: number }
+}
+
 export interface WidgetComponentProps {
   config: WidgetConfig
   isEditMode: boolean
@@ -44,5 +49,6 @@ export interface WidgetGridHandle {
   startNewWidgetDrag: (
     widgetTypeId: string,
     point: { x: number; y: number },
+    grab?: { x: number; y: number },
   ) => void
 }

@@ -1,0 +1,88 @@
+import type { Root } from 'react-dom/client'
+import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
+import { after, afterEach, beforeEach, it } from 'node:test'
+import { act, createElement } from 'react'
+import { useHorizontalStripScroll } from './useHorizontalStripScroll'
+
+const require = createRequire(import.meta.url)
+const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))
+const dom = new JSDOM('<div id="root"></div>')
+const prior = new Map<string, PropertyDescriptor | undefined>()
+for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true })) {
+  prior.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
+  Object.defineProperty(globalThis, key, { configurable: true, value })
+}
+// Load React DOM after the browser globals so its passive-event detection runs.
+const { createRoot } = await import('react-dom/client')
+after(() => {
+  dom.window.close()
+  for (const [key, descriptor] of prior) {
+    if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+    else Reflect.deleteProperty(globalThis, key)
+  }
+})
+let root: Root
+beforeEach(() => { root = createRoot(document.getElementById('root')!) })
+afterEach(async () => { await act(async () => root.unmount()) })
+
+function Harness({ visible = true }: { visible?: boolean }) {
+  const bind = useHorizontalStripScroll()
+  const { isDragging: _, ...props } = bind
+  return visible ? createElement('div', { ...props, 'data-strip': true }) : null
+}
+async function mount(visible = true) {
+  await act(async () => root.render(createElement(Harness, { visible })))
+  const el = document.querySelector<HTMLDivElement>('[data-strip]')
+  if (el) Object.defineProperties(el, { scrollWidth: { configurable: true, value: 800 }, clientWidth: { configurable: true, value: 300 } })
+  return el!
+}
+function wheel(el: HTMLDivElement, options: WheelEventInit = {}) {
+  const event = new dom.window.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 60, ...options })
+  el.dispatchEvent(event)
+  return event
+}
+
+it('cancels the native wheel event when converting vertical motion to horizontal scroll', async () => {
+  const el = await mount()
+  assert.equal(wheel(el).defaultPrevented, true)
+  assert.equal(el.scrollLeft, 60)
+})
+
+it('lets the page scroll at strip boundaries and when there is no overflow', async () => {
+  const el = await mount()
+  assert.equal(wheel(el, { deltaY: -60 }).defaultPrevented, false)
+  el.scrollLeft = 500
+  assert.equal(wheel(el).defaultPrevented, false)
+  Object.defineProperty(el, 'scrollWidth', { value: 300 })
+  el.scrollLeft = 0
+  assert.equal(wheel(el).defaultPrevented, false)
+})
+
+it('preserves trackpad horizontal gestures and browser zoom', async () => {
+  const el = await mount()
+  assert.equal(wheel(el, { deltaX: 20 }).defaultPrevented, false)
+  assert.equal(wheel(el, { ctrlKey: true }).defaultPrevented, false)
+  assert.equal(el.scrollLeft, 0)
+})
+
+it('normalizes line and page deltas and clamps to the strip extent', async () => {
+  const el = await mount()
+  wheel(el, { deltaY: 3, deltaMode: 1 })
+  assert.equal(el.scrollLeft, 48)
+  wheel(el, { deltaY: 1, deltaMode: 2 })
+  assert.equal(el.scrollLeft, 348)
+  wheel(el, { deltaY: 1, deltaMode: 2 })
+  assert.equal(el.scrollLeft, 500)
+})
+
+it('attaches after conditional mounting and removes listeners from replaced strips', async () => {
+  await mount(false)
+  const el = await mount()
+  assert.equal(wheel(el).defaultPrevented, true)
+  await mount(false)
+  assert.equal(wheel(el).defaultPrevented, false)
+  assert.equal(el.scrollLeft, 60)
+  const replacement = await mount()
+  assert.equal(wheel(replacement).defaultPrevented, true)
+})

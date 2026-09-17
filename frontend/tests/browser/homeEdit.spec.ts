@@ -43,19 +43,20 @@ test('stationary widget long press opens component settings without starting dra
   await page.mouse.up()
 })
 
-test('moving a settings widget past the hold threshold starts drag', async ({
+test('moving a settings widget preserves a non-center grab point', async ({
   page,
 }) => {
-  const box = await page.getByTestId('widget').boundingBox()
+  const box = await page.getByTestId('widget').locator('..').boundingBox()
   if (!box) throw new Error('settings widget has no layout box')
 
-  const x = box.x + box.width / 2
-  const y = box.y + box.height / 2
+  const x = box.x + box.width * 0.15
+  const y = box.y + box.height * 0.25
   await page.mouse.move(x, y)
   await page.mouse.down()
   await page.mouse.move(x + 12, y)
   await page.mouse.up()
   await expect(page.getByTestId('drag-starts')).toHaveText('1')
+  await expect(page.getByTestId('drag-grab')).toHaveText(/^0\.15,0\.2[45]$/)
   await page.waitForTimeout(550)
   await expect(page.getByTestId('settings-opens')).toHaveText('0')
 })

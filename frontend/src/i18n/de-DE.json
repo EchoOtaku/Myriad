@@ -1509,6 +1509,30 @@
     "malWish": "Geplant"
   },
   "dataManagement": {
+    "fetchResult": {
+      "repoSummary": "{1} Repositories, hauptsächlich {2}",
+      "partial": "Einige Daten sind weiterhin verfügbar. Diese Inhalte konnten nicht abgerufen werden:",
+      "failed": "Abruf fehlgeschlagen:",
+      "videoSummary": "Analyse von {1} gespeicherten Videos und {2} verfolgten Serien",
+      "collectionSummary": "Bangumi-Sammlung: {1} Titel, {2} abgeschlossen, {3} laufend",
+      "stages": {
+        "user": "Profil",
+        "bangumi": "Verfolgte Serien",
+        "movies": "Filme",
+        "favorites": "Favoriten",
+        "collections": "Sammlung"
+      },
+      "reasons": {
+        "private": "Daten sind privat. Sichtbarkeit prüfen.",
+        "rate_limit": "Anfragen begrenzt oder blockiert. Später erneut versuchen.",
+        "401": "Authentifizierung fehlgeschlagen. Zugangsdaten prüfen.",
+        "403": "Zugriff verweigert. Sichtbarkeit und Berechtigungen prüfen.",
+        "404": "Konto nicht gefunden. Einstellungen prüfen.",
+        "timeout": "Verbindung fehlgeschlagen oder Zeitüberschreitung. Später erneut versuchen.",
+        "invalid_response": "Unerwartetes Antwortformat. Später erneut versuchen.",
+        "fetch_failed": "Abruf fehlgeschlagen. Später erneut versuchen."
+      }
+    },
     "loadStatusFailed": "Status ließ sich nicht laden",
     "statusUnavailable": "Status ist gerade nicht verfügbar. Gleich erneut versuchen.",
     "confirmRefreshData": "{platform}-Rohdaten wirklich aktualisieren?",

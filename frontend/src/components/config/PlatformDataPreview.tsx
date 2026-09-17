@@ -3,8 +3,10 @@ import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
 import { resolvePlatformId } from '../../utils/platformId'
+import { localizePlatformSummary } from '../../utils/platformRefresh'
 import { userFacingError } from '../../utils/userFacingError'
 import { SettingGroup, useSettingGuide } from '../settings'
+import { PreviewSampleImage } from './PreviewSampleImage'
 import './PlatformDataPreview.css'
 
 export interface PlatformDataPreviewHandle {
@@ -152,7 +154,7 @@ export const PlatformDataPreview = forwardRef<
       Boolean(user.user_id && user.user_id.trim()))
   const metrics = preview?.metrics ?? []
   const samples = preview?.samples ?? []
-  const summary = preview?.summary?.trim() || ''
+  const summary = localizePlatformSummary(preview?.summary?.trim() || '', dm.fetchResult)
   const hasBody =
     hasUser || summary || metrics.length > 0 || samples.length > 0
   const empty =
@@ -237,21 +239,7 @@ export const PlatformDataPreview = forwardRef<
             <ul className="platform-data-preview-samples">
               {samples.map((s, i) => (
                 <li key={`${s.title}-${i}`} className="platform-data-preview-sample">
-                  {s.image ? (
-                    <img
-                      className="platform-data-preview-sample-cover"
-                      src={s.image}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <span
-                      className="platform-data-preview-sample-cover is-placeholder"
-                      aria-hidden
-                    />
-                  )}
+                  <PreviewSampleImage src={s.image} />
                   <span className="platform-data-preview-sample-text">
                     <span className="platform-data-preview-sample-title settings-text-1">
                       {s.title}
