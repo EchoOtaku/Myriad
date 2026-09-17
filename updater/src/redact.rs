@@ -6,6 +6,14 @@
 //! `GITHUB_TOKEN`) and a few common header/URL patterns so
 //! accidental echo of secrets does not leak into operator-facing output.
 
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+static AUTHORIZATION_VALUE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)(?P<prefix>(?:proxy-)?authorization["']?\s*:\s*).*$"#)
+        .expect("valid authorization regex")
+});
+
 /// Env keys whose values must never appear in logs or error bodies.
 const SECRET_ENV_KEYS: &[&str] = &[
     "UPDATE_TOKEN",
@@ -29,13 +37,14 @@ pub fn redact_secrets(input: &str) -> String {
             }
         }
     }
+    out = AUTHORIZATION_VALUE
+        .replace_all(&out, "${prefix}[REDACTED]")
+        .into_owned();
     // Header / query patterns even when env is unavailable in this process.
-    // Bearer before Authorization so "Authorization: Bearer <token>" loses the token first.
     out = redact_pattern(&out, "Bearer ");
     out = redact_pattern(&out, "X-Update-Token:");
     out = redact_pattern(&out, "X-Guard-Self-Update-Token:");
     out = redact_pattern(&out, "X-Updater-Gateway-Secret:");
-    out = redact_pattern(&out, "Authorization:");
     out = redact_kv_assignment(&out, "password");
     out = redact_kv_assignment(&out, "token");
     out
@@ -54,13 +63,12 @@ fn redact_pattern(input: &str, prefix: &str) -> String {
         let after = &rest[idx + prefix.len()..];
         let after_l = &rest_lower[idx + pref_lower.len()..];
         // Skip whitespace after prefix.
-        let trim_start = after.chars().take_while(|c| c.is_whitespace()).count();
+        let trim_start = prefix_len_while(after, char::is_whitespace);
         out.push_str(&after[..trim_start]);
         let token_part = &after[trim_start..];
-        let token_len = token_part
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != '"' && *c != '\'' && *c != ',' && *c != '}')
-            .count();
+        let token_len = prefix_len_while(token_part, |c| {
+            !c.is_whitespace() && c != '"' && c != '\'' && c != ',' && c != '}'
+        });
         if token_len > 0 {
             out.push_str("[REDACTED]");
         }
@@ -82,10 +90,9 @@ fn redact_kv_assignment(input: &str, key: &str) -> String {
         out.push_str(&rest[..idx + needle.len()]);
         let after = &rest[idx + needle.len()..];
         let after_l = &rest_lower[idx + needle.len()..];
-        let val_len = after
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != '&' && *c != '"' && *c != '\'' && *c != ',')
-            .count();
+        let val_len = prefix_len_while(after, |c| {
+            !c.is_whitespace() && c != '&' && c != '"' && c != '\'' && c != ','
+        });
         if val_len > 0 {
             out.push_str("[REDACTED]");
         }
@@ -94,6 +101,13 @@ fn redact_kv_assignment(input: &str, key: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+fn prefix_len_while(input: &str, predicate: impl Fn(char) -> bool) -> usize {
+    input
+        .char_indices()
+        .find_map(|(index, character)| (!predicate(character)).then_some(index))
+        .unwrap_or(input.len())
 }
 
 /// Sanitize an actor claim for audit lines: `admin:<id>` or `admin:<id>:<user>`.
@@ -142,5 +156,27 @@ mod tests {
         let r = redact_secrets(s);
         assert!(!r.contains("hunter2extra"));
         assert!(r.contains("password=[REDACTED]"));
+    }
+
+    #[test]
+    fn redacts_non_ascii_values_without_breaking_utf8_boundaries() {
+        let r = redact_secrets("token=秘密 Authorization: 密钥");
+        assert_eq!(r, "token=[REDACTED] Authorization: [REDACTED]");
+    }
+
+    #[test]
+    fn redacts_complete_basic_and_json_authorization_values() {
+        for value in [
+            "Authorization: Basic dXNlcjpwYXNz",
+            r#"{"Authorization":"Digest username=\"u\", response=\"secret\""}"#,
+            r#"Authorization: AWS4-HMAC Credential=x, SignedHeaders=host, Signature=secret"#,
+            r#"{"Authorization":["Basic dXNlcjpwYXNz"]}"#,
+        ] {
+            let redacted = redact_secrets(value);
+            assert!(!redacted.contains("dXNlcjpwYXNz"), "{redacted}");
+            assert!(!redacted.contains("response="), "{redacted}");
+            assert!(!redacted.contains("Signature="), "{redacted}");
+            assert!(redacted.contains("[REDACTED]"), "{redacted}");
+        }
     }
 }

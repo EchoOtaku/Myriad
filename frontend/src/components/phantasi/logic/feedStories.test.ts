@@ -26,6 +26,7 @@ import {
   stitchStoriesBySources,
   storiesForSource,
   storiesFromSources,
+  storyColumnCount,
   storyColumnLeads,
   storyColumnShift,
   storyRailGroup,
@@ -270,6 +271,17 @@ describe('topicFeedStories', () => {
       9,
     ])
   })
+
+  it('按需加载的主题文章不依赖来源近文', () => {
+    const topicId = topicFeedId(0)
+    const loaded = [
+      toFeedStory(makeItem({ id: 30, source_id: 9, topic: 'AI' })),
+      toFeedStory(makeItem({ id: 31, source_id: 9, topic: 'Rust' })),
+    ]
+    const stories = topicFeedStories([], new Map(), 'AI', topicId, 20, loaded)
+    assert.deepEqual(stories.map((story) => story.id), [30])
+    assert.equal(stories[0]?.rail_group, topicId)
+  })
 })
 
 describe('latestFeedStackFaces', () => {
@@ -426,6 +438,7 @@ describe('feed span / stitch', () => {
       { id: 5, title: '乙2', source_id: 9 },
     ]
     assert.equal(storyRailSlots(stories).at(-1)?.column, 3)
+    assert.equal(storyColumnCount(storyRailSlots(stories)), 3)
     assert.deepEqual(
       storyRailSlots(stories).map((slot) => ({
         id: slot.story.id,
@@ -524,6 +537,31 @@ describe('feed span / stitch', () => {
     assert.equal(storySlotAtColumn(slots, 1, leads)?.story.id, 1)
     assert.equal(storySlotAtColumn(slots, 2, leads)?.story.id, 2)
     assert.equal(storySlotAtColumn(slots, 9, leads), undefined)
+  })
+
+  it('奇数张文章仍保留最后一列', () => {
+    const slots = storyRailSlots([
+      { id: 1, title: '甲1', source_id: 8 },
+      { id: 2, title: '甲2', source_id: 8 },
+      { id: 3, title: '甲3', source_id: 8 },
+    ])
+    assert.equal(slots.at(-1)?.column, 1)
+    assert.equal(storyColumnCount(slots), 2)
+  })
+
+  it('列位移按聚合组匹配同一篇文章的副本', () => {
+    const prev = [
+      { story: { id: 7, source_id: 8, rail_group: -1 }, column: 1 },
+      { story: { id: 7, source_id: 8, rail_group: -2 }, column: 3 },
+      { story: { id: 7, source_id: 8 }, column: 5 },
+    ]
+    const next = [
+      { story: { id: 7, source_id: 8, rail_group: -1 }, column: 1 },
+      { story: { id: 7, source_id: 8, rail_group: -2 }, column: 4 },
+      { story: { id: 7, source_id: 8 }, column: 7 },
+    ]
+    assert.equal(storyColumnShift(prev, next, 3), 1)
+    assert.equal(storyColumnShift(prev, next, 5), 2)
   })
 })
 

@@ -10,6 +10,7 @@ import {
   phantasiCacheKeys,
 } from '../../services/phantasiCache'
 import { requestCache } from '../../utils/requestCache'
+import { SharedRequest } from '../../utils/sharedRequest'
 import {
   FEEDS_ARTICLE_MAX,
   latestStoryPreview,
@@ -54,6 +55,7 @@ export async function loadLatestStory(
   },
   signal?: AbortSignal,
 ): Promise<PhantasiItemPreview | undefined> {
+  signal?.throwIfAborted()
   const latest = peekLatestStory(source)
   if (latest) return latest
   const stories = await loadFeedStories(
@@ -90,8 +92,10 @@ export async function loadNoteDocs(
 ): Promise<PhantasiNoteDoc[]> {
   const docs = await requestCache.fetch(
     NOTE_DOCS_CACHE_KEY,
-    () => phantasiApi.listNoteDocs(),
+    (transportSignal) => phantasiApi.listNoteDocs(transportSignal),
     BOARD_PAGE_TTL,
+    false,
+    signal,
   )
   signal?.throwIfAborted()
   return docs
@@ -102,10 +106,10 @@ interface NotePages {
   pages: Map<string, NotePage>
   complete?: HomeBoardNote[]
   bytes: number
-  pending: Map<string, Promise<NotePage>>
+  pending: Map<string, SharedRequest<NotePage>>
 }
 
-function loadNotePage(sourceId: number, cursor?: string): Promise<NotePage> {
+function loadNotePage(sourceId: number, cursor?: string, signal?: AbortSignal): Promise<NotePage> {
   // Each source bucket is bounded by page count and UTF-16 payload bytes.
   const key = `${phantasiCacheKeys.boardNotes([sourceId])}:pages`
   let bucket = requestCache.get<NotePages>(key)
@@ -118,15 +122,16 @@ function loadNotePage(sourceId: number, cursor?: string): Promise<NotePage> {
   const hit = pages.pages.get(pageKey)
   if (hit) return Promise.resolve(hit)
   const pending = pages.pending.get(pageKey)
-  if (pending) return pending
-  const request = phantasiApi
+  if (pending && !pending.controller.signal.aborted) return pending.wait(signal)
+  const request = new SharedRequest<NotePage>(transportSignal => phantasiApi
     .getItemPreviews({
       source_id: sourceId,
       sort_order: 'desc',
       per_page: BOARD_NOTES_PAGE,
       cursor,
-    })
+    }, undefined, { signal: transportSignal })
     .then((page) => {
+      transportSignal.throwIfAborted()
       const bytes = JSON.stringify(page).length * 2
       if (bytes <= 2 * 1024 * 1024) {
         pages.pages.set(pageKey, page)
@@ -160,15 +165,19 @@ function loadNotePage(sourceId: number, cursor?: string): Promise<NotePage> {
       if (requestCache.get(key) === pages)
         requestCache.set(key, pages, BOARD_PAGE_TTL)
       return page
-    })
-    .finally(() => pages.pending.delete(pageKey))
+    }))
+  const clearPending = () => {
+    if (pages.pending.get(pageKey) === request) pages.pending.delete(pageKey)
+  }
+  void request.promise.then(clearPending, clearPending)
   pages.pending.set(pageKey, request)
-  return request
+  return request.wait(signal)
 }
 
 /**
  * Share individual pages, not the consumer's traversal: leaving stops later pages
  * without cancelling a page another mounted consumer is still awaiting.
+ * The last consumer leaving also cancels the current page's transport.
  */
 export async function loadBoardNotes(
   sources: Array<{ id: number; source_type: string }>,
@@ -222,7 +231,7 @@ export async function loadBoardNotes(
         if (failed) return
         signal?.throwIfAborted()
         const source = queue.shift()!
-        const page = await loadNotePage(source.id, source.cursor)
+        const page = await loadNotePage(source.id, source.cursor, signal)
         signal?.throwIfAborted()
         if (failed) return
         for (const item of page.items) items.set(item.id, toHomeBoardNote(item))
@@ -266,7 +275,7 @@ export async function loadBoardNotes(
 export async function loadTopicCatalog(
   signal?: AbortSignal,
 ): Promise<{ topics: string[]; cards: string[] }> {
-  const catalog = await phantasiApi.listSubscriptionTopicCatalog()
+  const catalog = await phantasiApi.listSubscriptionTopicCatalog(undefined, { signal })
   signal?.throwIfAborted()
   return catalog
 }
@@ -276,21 +285,39 @@ export async function loadFeedStories(
   stamp?: number | null,
   signal?: AbortSignal,
 ): Promise<FeedStory[]> {
+  signal?.throwIfAborted()
   const normalized = stamp ?? 0
   const cacheKey = feedStoriesCacheKey(sourceId, normalized)
   const latest = requestCache.get<FeedStory[]>(cacheKey)
   if (latest) return latest
 
-  // 同上：不把 signal 传进请求，换源太快时别把同一个源的请求发好几遍。
-  const load = async () => {
+  // Consumers share IO; only the last cancellation aborts the transport.
+  const load = async (transportSignal: AbortSignal) => {
     const res = await phantasiApi.getItemPreviews({
       source_id: sourceId,
       sort_order: 'desc',
       per_page: FEEDS_ARTICLE_MAX,
-    })
+    }, undefined, { signal: transportSignal })
     return res.items.map(toFeedStory)
   }
-  const items = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
+  const items = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL, false, signal)
   signal?.throwIfAborted()
   return items
+}
+
+export async function loadTopicStories(
+  topic: string,
+  signal?: AbortSignal,
+): Promise<FeedStory[]> {
+  const res = await phantasiApi.getItemPreviews(
+    {
+      topic,
+      sort_order: 'desc',
+      per_page: FEEDS_ARTICLE_MAX,
+    },
+    undefined,
+    { signal },
+  )
+  signal?.throwIfAborted()
+  return res.items.map(toFeedStory)
 }

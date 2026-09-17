@@ -525,6 +525,14 @@ export function storyColumnLeads(
   return map
 }
 
+export function storyColumnCount(
+  slots: ReadonlyArray<{ column: number }>,
+): number {
+  let count = 1
+  for (const slot of slots) count = Math.max(count, slot.column)
+  return count
+}
+
 export function storySlotAtColumn<T extends { column: number }>(
   slots: readonly T[],
   col: number,
@@ -537,20 +545,34 @@ export function storySlotAtColumn<T extends { column: number }>(
 
 /** 前面的源变长时，当前领头卡的列差，用来把滚动补回去。 */
 export function storyColumnShift(
-  prev: ReadonlyArray<{ story: Pick<FeedStory, 'id'>; column: number }>,
-  next: ReadonlyArray<{ story: Pick<FeedStory, 'id'>; column: number }>,
+  prev: ReadonlyArray<{
+    story: Pick<FeedStory, 'id' | 'source_id' | 'rail_group'>
+    column: number
+  }>,
+  next: ReadonlyArray<{
+    story: Pick<FeedStory, 'id' | 'source_id' | 'rail_group'>
+    column: number
+  }>,
   leadColumn: number,
 ): number {
-  let leadId: number | undefined
+  let leadStory:
+    | Pick<FeedStory, 'id' | 'source_id' | 'rail_group'>
+    | undefined
   for (const slot of prev) {
     if (slot.column === leadColumn) {
-      leadId = slot.story.id
+      leadStory = slot.story
       break
     }
   }
-  if (leadId == null) return 0
+  if (!leadStory) return 0
+  const leadGroup = storyRailGroup(leadStory)
   for (const slot of next) {
-    if (slot.story.id === leadId) return slot.column - leadColumn
+    if (
+      slot.story.id === leadStory.id
+      && storyRailGroup(slot.story) === leadGroup
+    ) {
+      return slot.column - leadColumn
+    }
   }
   return 0
 }
@@ -664,11 +686,20 @@ export function topicFeedStories(
   topic: string,
   groupId: number,
   limit = FEEDS_ARTICLE_MAX,
+  loaded?: readonly FeedStory[],
 ): FeedStory[] {
   const key = normalizeTopicName(topic)
   if (!key) return []
   const seen = new Set<number>()
   const stories: FeedStory[] = []
+  if (loaded) {
+    for (const item of loaded) {
+      if (normalizeTopicName(item.topic) !== key || seen.has(item.id)) continue
+      seen.add(item.id)
+      stories.push({ ...item, rail_group: groupId })
+    }
+    return stories.slice(0, limit)
+  }
   for (const source of sources) {
     if (!isInboxFeedSource(source)) continue
     const items = fetched.get(source.id)

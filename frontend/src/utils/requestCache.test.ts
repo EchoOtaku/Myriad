@@ -63,3 +63,70 @@ describe('request cache invalidation', () => {
     assert.equal(cache.get('phantasi:item:1'), 'mutation')
   })
 })
+
+describe('shared request cancellation', () => {
+  it('cancels one consumer immediately without aborting another consumer', async () => {
+    const cache = new RequestCache()
+    const result = deferred<string>()
+    const a = new AbortController()
+    const b = new AbortController()
+    let transport!: AbortSignal
+    const first = cache.fetch('shared', signal => { transport = signal; return result.promise }, 1000, false, a.signal)
+    const second = cache.fetch('shared', () => assert.fail('must share transport'), 1000, false, b.signal)
+    a.abort()
+    await assert.rejects(first, { name: 'AbortError' })
+    assert.equal(transport.aborted, false)
+    result.resolve('body')
+    assert.equal(await second, 'body')
+    assert.equal(await cache.fetch('shared', () => assert.fail('must use cache')), 'body')
+  })
+
+  it('aborts transport after the last consumer leaves and rejects stale cache fills', async () => {
+    const cache = new RequestCache()
+    const old = deferred<string>()
+    const owner = new AbortController()
+    let transport!: AbortSignal
+    const request = cache.fetch('body', signal => { transport = signal; return old.promise }, 1000, false, owner.signal)
+    owner.abort()
+    await assert.rejects(request, { name: 'AbortError' })
+    assert.equal(transport.aborted, true)
+    assert.equal(await cache.fetch('body', async () => 'fresh'), 'fresh')
+    old.resolve('obsolete')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert.equal(cache.get('body'), 'fresh')
+  })
+
+  it('reuses transport during a same-turn cancellation handoff', async () => {
+    const cache = new RequestCache()
+    const result = deferred<string>()
+    const owner = new AbortController()
+    let transport!: AbortSignal
+    const first = cache.fetch('handoff', signal => { transport = signal; return result.promise }, 1000, false, owner.signal)
+    owner.abort()
+    const second = cache.fetch('handoff', () => assert.fail('handoff must not restart IO'))
+    await assert.rejects(first, { name: 'AbortError' })
+    assert.equal(transport.aborted, false)
+    result.resolve('shared')
+    assert.equal(await second, 'shared')
+  })
+
+  it('cleans cancelled pending entries even if a loader ignores transport cancellation', async () => {
+    const cache = new RequestCache()
+    const result = deferred<string>()
+    const owner = new AbortController()
+    const pending = cache.fetch('abandoned', () => result.promise, 1000, false, owner.signal)
+    owner.abort()
+    await assert.rejects(pending, { name: 'AbortError' })
+    result.resolve('unused')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert.equal(cache.get('abandoned'), null)
+    assert.equal(cache.getStatus().pending, 0)
+  })
+
+  it('does not start IO for an already cancelled consumer and retries synchronous failures', async () => {
+    const cache = new RequestCache()
+    await assert.rejects(cache.fetch('aborted', () => assert.fail('must not fetch'), 1000, false, AbortSignal.abort()), { name: 'AbortError' })
+    await assert.rejects(cache.fetch('retry', () => { throw new Error('sync failure') }), /sync failure/)
+    assert.equal(await cache.fetch('retry', async () => 'recovered'), 'recovered')
+  })
+})

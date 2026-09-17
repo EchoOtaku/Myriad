@@ -67,6 +67,7 @@ function libraryFilterLabel(
 }
 
 const PREVIEW_LAZY_ROOT_MARGIN = '280px 0px'
+type WidgetLibraryDragStartEvent = React.MouseEvent<HTMLElement> | TouchEvent
 
 const LibraryPreviewSlot = React.memo(
   ({
@@ -135,12 +136,10 @@ const WidgetLibraryTile = React.memo(
     displayScale: number
     scrollRef: React.RefObject<HTMLDivElement | null>
     widgetsI18n: Record<string, unknown>
-    onDragStart: (
-      e: React.MouseEvent | React.TouchEvent,
-      id: string,
-    ) => void
+    onDragStart: (event: WidgetLibraryDragStartEvent, id: string) => void
   }) => {
     const WidgetComponent = widgetType.component
+    const tileRef = useRef<HTMLDivElement>(null)
     const span = widgetSizeSpan(widgetType.defaultSize)
     const standard = {
       width: span.w * STANDARD_CELL_SIZE,
@@ -155,12 +154,22 @@ const WidgetLibraryTile = React.memo(
       [widgetType],
     )
     const libraryLabel = widgetDisplayLabel(widgetType, widgetsI18n)
-    const startDrag = {
-      onMouseDown: (e: React.MouseEvent) => onDragStart(e, widgetType.id),
-      onTouchStart: (e: React.TouchEvent) => onDragStart(e, widgetType.id),
-    }
+    useEffect(() => {
+      const tile = tileRef.current
+      if (!tile) return
+      const handleTouchStart = (event: TouchEvent) =>
+        onDragStart(event, widgetType.id)
+      tile.addEventListener('touchstart', handleTouchStart, { passive: false })
+      return () => tile.removeEventListener('touchstart', handleTouchStart)
+    }, [onDragStart, widgetType.id])
+
     return (
-      <div className="widget-library-tile" draggable={false} {...startDrag}>
+      <div
+        ref={tileRef}
+        className="widget-library-tile"
+        draggable={false}
+        onMouseDown={(event) => onDragStart(event, widgetType.id)}
+      >
         <div
           className="widget-library-tile-stage"
           style={{ width: wrapperWidth, height: wrapperHeight }}
@@ -229,10 +238,7 @@ function LibrarySearchField({
 export interface WidgetLibraryIslandProps {
   visible: boolean
   availableWidgets: WidgetType[]
-  onNewWidgetDragStart: (
-    e: React.MouseEvent | React.TouchEvent,
-    id: string,
-  ) => void
+  onNewWidgetDragStart: (event: WidgetLibraryDragStartEvent, id: string) => void
   layoutMode?: HomeLayoutMode
   parkable?: boolean
   // 首页贴纸挑选：不要从网格点击 restore/park。

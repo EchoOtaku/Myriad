@@ -226,7 +226,7 @@ export interface PhantasiSourcesResponse {
 
 export interface PhantasiItemsResponse {
   success: boolean
-  items: PhantasiItem[]
+  items: Omit<PhantasiItem, 'content' | 'has_ai_annotations' | 'has_ai_podcast'>[]
   total: number
   page: number
   per_page: number

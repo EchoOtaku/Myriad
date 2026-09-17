@@ -38,6 +38,21 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.doesNotMatch(src, /startTransition/)
   })
 
+  it('来源文章异步到达后只重试仍在等待的轨道对齐', () => {
+    const src = read('PhantasiFeeds.tsx')
+    assert.match(src, /pendingSourceAlignRef/)
+    assert.match(src, /pendingSourceAlignRef\.current = alignStoryGroup\(focusId\) \? null : focusId/)
+    assert.match(src, /if \(alignStoryGroup\(pending\)\) pendingSourceAlignRef\.current = null/)
+    assert.match(src, /\}, \[focusId, sourceCols\]\)/)
+  })
+
+  it('AI 主题卡按需加载自己的文章组', () => {
+    const page = read('../useBoardPage.ts')
+    assert.match(page, /if \(isTopicFeedId\(sourceId\)\)/)
+    assert.match(page, /loadTopicStories\(topic\)/)
+    assert.match(page, /topicStoriesRef\.current\.get\(name\)/)
+  })
+
   it('文章轨虚拟化样式不依赖展开宫格', () => {
     const css = read('../ui/css/cards.css')
     const feedsCss = read('../ui/css/feeds.css')

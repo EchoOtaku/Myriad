@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
 
-test('account default survives reopening, history previews and restoration preserve current input', async ({ page }) => {
+test('account default survives reopening, history previews and restoration preserve current input', async ({ page }, testInfo) => {
   let preference = 'visual'
   let restored = false
+  let bodyRequests = 0
   await page.addInitScript(() => localStorage.setItem('locale', 'en-US'))
   await page.route('**/api/**', async route => {
     const request = route.request()
@@ -12,9 +13,16 @@ test('account default survives reopening, history previews and restoration prese
       return route.fulfill({ json: { default_view: preference } })
     }
     if (path.endsWith('/history')) { return route.fulfill({ json: { history: [
-      { revision: 5, actor_id: 2, actor_name: 'Bob', saved_at: 1700000000000, snapshot: { title: 'Previous note', content_md: 'Historical draft', topic: null, image: null, published_at: null } },
+      { revision: 5, actor_id: 2, actor_name: 'Bob', saved_at: 1700000000000, snapshot: { title: 'Previous note', topic: null, image: null, published_at: null } },
     ] } })
 }
+    if (path.endsWith('/history/5')) {
+      bodyRequests += 1
+      return route.fulfill({ json: { entry: {
+        revision: 5, actor_id: 2, actor_name: 'Bob', saved_at: 1700000000000,
+        snapshot: { title: 'Previous note', content_md: 'Historical draft', topic: null, image: null, published_at: null },
+      } } })
+    }
     if (path.endsWith('/restore')) {
       expect(request.postDataJSON().current.content_md).toBe('Current draft')
       expect(request.postDataJSON().revision).toBe(20)
@@ -29,12 +37,14 @@ test('account default survives reopening, history previews and restoration prese
   await expect.poll(() => preference).toBe('write')
   await page.reload()
   await expect(page.locator('#view')).toHaveText('write')
+  expect(bodyRequests).toBe(0)
   await page.locator('.phantasi-note__history-entry').click()
   await expect(page.locator('.phantasi-note__history-preview pre')).toHaveText('Historical draft')
+  expect(bodyRequests).toBe(1)
   await page.locator('.phantasi-note__history-preview button').click()
   await expect(page.locator('#content')).toHaveText('Historical draft')
   expect(restored).toBe(true)
-  await page.screenshot({ path: '/tmp/myriad-note-editor-settings.png', fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath('note-editor-settings.png'), fullPage: true })
 })
 
 test('collaborators show online and active typing on narrow screens', async ({ page }) => {

@@ -164,6 +164,10 @@ function PhantasiSubjectPage() {
       moduleVisibility.modules.phantasi,
     ],
   )
+  const visibleNavIds = useMemo(
+    () => navItems.map((item) => item.id),
+    [navItems],
+  )
   const { activeId, setActiveId, setExpanded } = useSecondaryNav({
     routePath: '/journal',
     items: navItems,
@@ -175,7 +179,7 @@ function PhantasiSubjectPage() {
   const route = usePhantasiBoardRoute(
     isAuthenticated,
     isAdmin,
-    sources.sources,
+    visibleNavIds,
     activeId,
     setActiveId,
     location.pathname,

@@ -299,7 +299,7 @@ html.dark .runtime-diagnostics-summary-meta > span {
 
   .runtime-diagnostics-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.375rem;
     width: 100%;
   }
@@ -346,10 +346,6 @@ html.dark .runtime-diagnostics-summary-meta > span {
 
 @media (width <= 380px) {
   .runtime-diagnostics-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .runtime-diagnostics-actions .settings-btn:last-child {
-    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
   }
 }

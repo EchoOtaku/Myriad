@@ -630,6 +630,7 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 | POST | `/rescue/continue` | token | 一键回退：对 stuck job 的 snapshot 执行与 `/rollback` 相同的恢复（pgdata + MYRIAD_TAG） |
 | POST | `/rescue/forget-current` | token + manual | 放弃当前 job |
 | GET | `/diagnostics` | token | 环境探测报告 |
+| GET | `/process-logs` | token | 核心 Compose 服务最近的 warning/error 与无级别 stderr 报告 |
 | GET | `/healthz` | 公开 | updater 自己活着 |
 
 **manual 权限**：宿主机 `touch state/manual-override` 后才生效。防止 API 打穿后被远程救援。
@@ -874,6 +875,11 @@ M2：cosign 签名（已实现）
 - `state/audit.log`（若存在）
 - `docker images | grep myriad`
 - `docker compose ps` 输出
+
+`GET /process-logs` 按需读取当前 Compose 项目的核心服务日志，仅保留 warning、error
+和无法判定级别的 stderr。响应按来源限制扫描行数、保留条目与单条大小，并标明
+`complete`、`truncated`、`collection_errors` 和未运行的服务；不会读取浏览器 console
+或外部 MCP 部署。日志先做尽力脱敏，但仍属于仅管理员可下载的敏感诊断数据。
 
 ### 16.3 rescue CLI
 

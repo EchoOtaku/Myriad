@@ -13,8 +13,8 @@
 use std::time::Duration;
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+    sea_query::Expr,
 };
 use serde_json::json;
 
@@ -231,24 +231,27 @@ pub async fn list_subscription_topic_names(
     list_existing_subscription_topics(db, include_admin_only).await
 }
 
-async fn load_subscription_item(
+async fn ensure_subscription_item(
     db: &DatabaseConnection,
     item_id: i32,
-) -> Result<(phantasi_items::Model, phantasi_sources::Model), TopicWriteError> {
-    let item = phantasi_items::Entity::find_by_id(item_id)
+) -> Result<(), TopicWriteError> {
+    let source_id = phantasi_items::Entity::find_by_id(item_id)
+        .select_only()
+        .column(phantasi_items::Column::SourceId)
+        .into_query();
+    let source_type = phantasi_sources::Entity::find()
+        .filter(phantasi_sources::Column::Id.in_subquery(source_id))
+        .select_only()
+        .column(phantasi_sources::Column::SourceType)
+        .into_tuple::<SourceType>()
         .one(db)
         .await
         .map_err(|_| TopicWriteError::Store)?
         .ok_or(TopicWriteError::NotFound)?;
-    let source = phantasi_sources::Entity::find_by_id(item.source_id)
-        .one(db)
-        .await
-        .map_err(|_| TopicWriteError::Store)?
-        .ok_or(TopicWriteError::NotFound)?;
-    if source.source_type == SourceType::Note {
+    if source_type == SourceType::Note {
         return Err(TopicWriteError::NoteItem);
     }
-    Ok((item, source))
+    Ok(())
 }
 
 pub async fn set_subscription_item_topic(
@@ -256,14 +259,20 @@ pub async fn set_subscription_item_topic(
     item_id: i32,
     topic: Option<&str>,
 ) -> Result<Option<String>, TopicWriteError> {
-    let (item, _) = load_subscription_item(db, item_id).await?;
+    ensure_subscription_item(db, item_id).await?;
     let normalized = topic.and_then(normalize_topic_name);
-    let mut active: phantasi_items::ActiveModel = item.into();
-    active.topic = Set(normalized.clone());
-    active
-        .update(db)
+    let result = phantasi_items::Entity::update_many()
+        .col_expr(
+            phantasi_items::Column::Topic,
+            Expr::value(normalized.clone()),
+        )
+        .filter(phantasi_items::Column::Id.eq(item_id))
+        .exec(db)
         .await
         .map_err(|_| TopicWriteError::Store)?;
+    if result.rows_affected == 0 {
+        return Err(TopicWriteError::NotFound);
+    }
     Ok(normalized)
 }
 
@@ -307,15 +316,18 @@ async fn suggest_topic_name(
 
 async fn write_suggested_topic(
     db: &DatabaseConnection,
-    item: phantasi_items::Model,
+    item_id: i32,
     topic: Option<String>,
 ) -> Result<Option<String>, TopicSuggestError> {
-    let mut active: phantasi_items::ActiveModel = item.into();
-    active.topic = Set(topic.clone());
-    active
-        .update(db)
+    let result = phantasi_items::Entity::update_many()
+        .col_expr(phantasi_items::Column::Topic, Expr::value(topic.clone()))
+        .filter(phantasi_items::Column::Id.eq(item_id))
+        .exec(db)
         .await
         .map_err(|_| TopicSuggestError::Store)?;
+    if result.rows_affected == 0 {
+        return Err(TopicSuggestError::NotFound);
+    }
     Ok(topic)
 }
 
@@ -325,38 +337,50 @@ pub async fn suggest_subscription_item_topic(
     item_id: i32,
     apply: bool,
 ) -> Result<Option<String>, TopicSuggestError> {
-    let (item, _) = load_subscription_item(db, item_id)
+    ensure_subscription_item(db, item_id)
         .await
         .map_err(|err| match err {
             TopicWriteError::NotFound => TopicSuggestError::NotFound,
             TopicWriteError::NoteItem => TopicSuggestError::NoteItem,
             TopicWriteError::Store => TopicSuggestError::Store,
         })?;
+    let (title, excerpt) = phantasi_items::Entity::find_by_id(item_id)
+        .select_only()
+        .column(phantasi_items::Column::Title)
+        .column_as(
+            Expr::cust("LEFT(COALESCE(summary, content), 8192)"),
+            phantasi_items::Column::Summary,
+        )
+        .into_tuple::<(String, Option<String>)>()
+        .one(db)
+        .await
+        .map_err(|_| TopicSuggestError::Store)?
+        .ok_or(TopicSuggestError::NotFound)?;
     let existing = list_existing_subscription_topics(db, true)
         .await
         .map_err(|_| TopicSuggestError::Store)?;
-    let excerpt = excerpt_for_topic(item.summary.as_deref(), item.content.as_deref());
-    let topic = suggest_topic_name(&item.title, &excerpt, &existing).await?;
+    let excerpt = excerpt_for_topic(excerpt.as_deref(), None);
+    let topic = suggest_topic_name(&title, &excerpt, &existing).await?;
     if apply {
-        write_suggested_topic(db, item, topic).await
+        write_suggested_topic(db, item_id, topic).await
     } else {
         Ok(topic)
     }
 }
 
-async fn recommend_one(db: &DatabaseConnection, item: phantasi_items::Model) {
-    match suggest_subscription_item_topic(db, item.id, true).await {
+async fn recommend_one(db: &DatabaseConnection, item_id: i32) {
+    match suggest_subscription_item_topic(db, item_id, true).await {
         Ok(Some(topic)) => {
-            tracing::info!(item_id = item.id, %topic, "assigned subscription topic");
+            tracing::info!(item_id, %topic, "assigned subscription topic");
         }
         Ok(None) => {
-            tracing::debug!(item_id = item.id, "subscription topic left empty");
+            tracing::debug!(item_id, "subscription topic left empty");
         }
         Err(TopicSuggestError::Unavailable) => {
-            tracing::debug!(item_id = item.id, "subscription topic AI unavailable");
+            tracing::debug!(item_id, "subscription topic AI unavailable");
         }
         Err(err) => {
-            tracing::warn!(item_id = item.id, ?err, "subscription topic suggest failed");
+            tracing::warn!(item_id, ?err, "subscription topic suggest failed");
         }
     }
 }
@@ -374,15 +398,7 @@ pub async fn recommend_topics_for_item_ids(db: &DatabaseConnection, item_ids: &[
         return;
     }
     for item_id in item_ids.iter().copied().take(MAX_INGEST_SUGGESTS) {
-        let item = match phantasi_items::Entity::find_by_id(item_id).one(db).await {
-            Ok(Some(item)) => item,
-            Ok(None) => continue,
-            Err(error) => {
-                tracing::warn!(%error, item_id, "load item for topic suggest failed");
-                continue;
-            }
-        };
-        recommend_one(db, item).await;
+        recommend_one(db, item_id).await;
     }
 }
 
@@ -396,11 +412,14 @@ pub async fn recommend_unlabeled_for_source(
     if limit == 0 {
         return;
     }
-    let items = match phantasi_items::Entity::find()
+    let ids = match phantasi_items::Entity::find()
         .filter(phantasi_items::Column::SourceId.eq(source_id))
         .filter(phantasi_items::Column::Topic.is_null())
         .order_by_desc(phantasi_items::Column::FetchedAt)
         .limit(limit)
+        .select_only()
+        .column(phantasi_items::Column::Id)
+        .into_tuple::<i32>()
         .all(db)
         .await
     {
@@ -410,13 +429,64 @@ pub async fn recommend_unlabeled_for_source(
             return;
         }
     };
-    let ids: Vec<i32> = items.iter().map(|item| item.id).collect();
     recommend_topics_for_item_ids(db, &ids).await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn manual_topic_write_only_needs_metadata_and_rejects_notes() {
+        use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, Statement};
+        let Ok(url) = std::env::var("PHANTASI_TEST_DATABASE_URL") else {
+            eprintln!("skipped PostgreSQL topic test: PHANTASI_TEST_DATABASE_URL is unset");
+            return;
+        };
+        let mut options = ConnectOptions::new(url);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options).await.unwrap();
+        // Intentionally no body columns: classification commands must not depend
+        // on loading or returning the article model.
+        db.execute_unprepared(
+            "CREATE TEMP TABLE phantasi_sources (id integer PRIMARY KEY, source_type text NOT NULL);
+             CREATE TEMP TABLE phantasi_items (id integer PRIMARY KEY, source_id integer, topic text);
+             INSERT INTO phantasi_sources VALUES (1, 'rss'), (2, 'note');
+             INSERT INTO phantasi_items VALUES (10, 1, NULL), (20, 2, 'Keep')",
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            set_subscription_item_topic(&db, 10, Some(" Rust "))
+                .await
+                .unwrap(),
+            Some("Rust".into())
+        );
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT topic FROM phantasi_items WHERE id = 10",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.try_get::<String>("", "topic").unwrap(), "Rust");
+        assert_eq!(
+            set_subscription_item_topic(&db, 10, None).await.unwrap(),
+            None
+        );
+        assert!(matches!(
+            set_subscription_item_topic(&db, 20, Some("Forbidden")).await,
+            Err(TopicWriteError::NoteItem)
+        ));
+        assert!(matches!(
+            set_subscription_item_topic(&db, 999, Some("Missing")).await,
+            Err(TopicWriteError::NotFound)
+        ));
+    }
 
     #[test]
     fn normalize_trims_and_caps() {

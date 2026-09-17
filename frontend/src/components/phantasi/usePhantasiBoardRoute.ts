@@ -10,11 +10,7 @@ import type { PendingPathSync } from './logic/boardRouteSync'
 import type { JournalLocation } from './logic/journalRoutes'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { resolveBoardParam, viewForBoardEntry } from './logic/board'
-import {
-  decideNavWrite,
-  decidePathSync,
-
-} from './logic/boardRouteSync'
+import { decideNavWrite, decidePathSync } from './logic/boardRouteSync'
 import {
   JOURNAL_ROOT,
   journalListPath,
@@ -83,7 +79,7 @@ function applyLocationState(
 export function usePhantasiBoardRoute(
   isAuthenticated: boolean,
   isAdmin: boolean,
-  _sources: PhantasiSource[],
+  visibleNavIds: readonly string[],
   activeId: string,
   setActiveId: (id: string) => void,
   pathname: string,
@@ -125,7 +121,12 @@ export function usePhantasiBoardRoute(
   applyBoardEntryRef.current = applyBoardEntry
 
   useEffect(() => {
-    const sync = decidePathSync(pathname, isAuthenticated, isAdmin)
+    const sync = decidePathSync(
+      pathname,
+      isAuthenticated,
+      isAdmin,
+      visibleNavIds,
+    )
     if (sync.action === 'none' || sync.action === 'keep-article') return
     if (sync.action === 'bounce') {
       navigate(sync.to, { replace: true })
@@ -154,7 +155,7 @@ export function usePhantasiBoardRoute(
     } else {
       pendingPathSyncRef.current = null
     }
-  }, [pathname, isAuthenticated, isAdmin, setActiveId, navigate])
+  }, [pathname, isAuthenticated, isAdmin, visibleNavIds, setActiveId, navigate])
 
   useEffect(() => {
     const decision = decideNavWrite({

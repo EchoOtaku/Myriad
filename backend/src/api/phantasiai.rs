@@ -1036,8 +1036,14 @@ async fn regenerate_podcast_script(
 
     // 获取文章信息以获取 source_id（用于清理 TTS 缓存）
     use crate::models::entities::phantasi_items;
-    let source_id = match phantasi_items::Entity::find_by_id(item_id).one(&db).await {
-        Ok(Some(item)) => item.source_id,
+    let source_id = match phantasi_items::Entity::find_by_id(item_id)
+        .select_only()
+        .column(phantasi_items::Column::SourceId)
+        .into_tuple::<i32>()
+        .one(&db)
+        .await
+    {
+        Ok(Some(source_id)) => source_id,
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
@@ -1321,6 +1327,13 @@ async fn generate_style_tags(
         .filter(phantasi_items::Column::SourceId.eq(source_id))
         .order_by_desc(phantasi_items::Column::PublishedAt)
         .limit(10)
+        .select_only()
+        .column(phantasi_items::Column::Title)
+        .column_as(
+            sea_orm::sea_query::Expr::cust("LEFT(COALESCE(content, summary), 8192)"),
+            phantasi_items::Column::Content,
+        )
+        .into_tuple::<(String, Option<String>)>()
         .all(&db)
         .await
     {
@@ -1340,15 +1353,13 @@ async fn generate_style_tags(
 
     // 构建文章摘要
     let mut articles_summary = String::new();
-    for (i, item) in items.iter().enumerate() {
+    for (i, (title, excerpt)) in items.iter().enumerate() {
         // 预编译正则表达式（避免在循环中重复编译）
         static HTML_TAG_RE: once_cell::sync::Lazy<regex::Regex> =
             once_cell::sync::Lazy::new(|| regex::Regex::new(r"<[^>]+>").unwrap());
 
-        let content = item
-            .content
+        let content = excerpt
             .as_ref()
-            .or(item.summary.as_ref())
             .map(|c| {
                 // 清理 HTML 标签并截取前 100 字
                 let cleaned = c
@@ -1366,7 +1377,7 @@ async fn generate_style_tags(
         articles_summary.push_str(&format!(
             "{}. Title: {}\n   Summary: {}\n\n",
             i + 1,
-            item.title,
+            title,
             content
         ));
     }

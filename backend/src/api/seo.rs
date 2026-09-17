@@ -1329,7 +1329,7 @@ async fn own_phantasi_item_links(
     if own_source_ids.is_empty() {
         return links;
     }
-    let Ok(items) = phantasi_items::Entity::find()
+    let Ok(items) = phantasi_items::preview_query(phantasi_items::Entity::find())
         .filter(phantasi_items::Column::SourceId.is_in(own_source_ids))
         .order_by_desc(phantasi_items::Column::PublishedAt)
         .limit(PHANTASI_LIST_SHELL_LIMIT)
@@ -1373,7 +1373,7 @@ async fn own_phantasi_note_links(
     if note_source_ids.is_empty() {
         return links;
     }
-    let Ok(items) = phantasi_items::Entity::find()
+    let Ok(items) = phantasi_items::preview_query(phantasi_items::Entity::find())
         .filter(phantasi_items::Column::SourceId.is_in(note_source_ids))
         .order_by_desc(phantasi_items::Column::PublishedAt)
         .limit(PHANTASI_LIST_SHELL_LIMIT)
@@ -2088,13 +2088,19 @@ pub async fn sitemap_xml(State(db): State<DatabaseConnection>, _headers: HeaderM
                     .filter(phantasi_items::Column::SourceId.is_in(own_source_ids))
                     .order_by_desc(phantasi_items::Column::PublishedAt)
                     .limit(PHANTASI_SITEMAP_ITEM_LIMIT)
+                    .select_only()
+                    .columns([
+                        phantasi_items::Column::Id,
+                        phantasi_items::Column::PublishedAt,
+                    ])
+                    .into_tuple::<(i32, chrono::DateTime<chrono::FixedOffset>)>()
                     .all(&db)
                     .await
                 {
-                    for item in items {
+                    for (id, published_at) in items {
                         urls.push(SitemapUrl {
-                            loc: format!("{base}{}", phantasi_item_path(item.id)),
-                            lastmod: Some(item.published_at.format("%Y-%m-%d").to_string()),
+                            loc: format!("{base}{}", phantasi_item_path(id)),
+                            lastmod: Some(published_at.format("%Y-%m-%d").to_string()),
                             changefreq: None,
                         });
                     }

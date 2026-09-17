@@ -180,17 +180,9 @@ impl ItemResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ItemProjection {
-    Full,
-    Preview,
-}
-
 /// 文章列表查询参数
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ItemsQuery {
-    pub projection: Option<ItemProjection>,
     /// 订阅源 ID（可选，不传则返回所有）
     pub source_id: Option<i32>,
     /// 分类筛选
@@ -216,7 +208,6 @@ pub struct ItemsQuery {
 impl Default for ItemsQuery {
     fn default() -> Self {
         Self {
-            projection: None,
             source_id: None,
             category: None,
             topic: None,
@@ -313,6 +304,15 @@ pub fn ordered_list_query(
     }
 }
 
+// Feed descriptions can contain the entire article. Bound them at the database
+// boundary as well as omitting the explicit body columns from preview reads.
+pub const PREVIEW_SUMMARY_CHARS: usize = 2048;
+
+/// `column` must be a static SQL identifier, never request input.
+pub fn preview_summary_sql(column: &str) -> String {
+    format!("LEFT({column}, {PREVIEW_SUMMARY_CHARS})")
+}
+
 pub fn preview_query(query: sea_orm::Select<Entity>) -> sea_orm::Select<Entity> {
     use sea_orm::{QuerySelect, sea_query::Expr};
     query
@@ -323,7 +323,6 @@ pub fn preview_query(query: sea_orm::Select<Entity>) -> sea_orm::Select<Entity> 
             Column::Guid,
             Column::Title,
             Column::Link,
-            Column::Summary,
             Column::Author,
             Column::Image,
             Column::AudioUrl,
@@ -337,6 +336,10 @@ pub fn preview_query(query: sea_orm::Select<Entity>) -> sea_orm::Select<Entity> 
             Column::Topic,
             Column::ContentRevision,
         ])
+        .column_as(
+            Expr::cust(preview_summary_sql("\"phantasi_items\".\"summary\"")),
+            Column::Summary,
+        )
         .column_as(Expr::val(Option::<String>::None), Column::Content)
         .column_as(Expr::val(Option::<String>::None), Column::ContentMd)
         .column_as(Expr::val(Option::<Json>::None), Column::Enclosures)
@@ -344,15 +347,14 @@ pub fn preview_query(query: sea_orm::Select<Entity>) -> sea_orm::Select<Entity> 
 
 pub fn list_response_items(
     items: Vec<ItemResponse>,
-    preview: bool,
 ) -> Result<serde_json::Value, serde_json::Error> {
     let mut value = serde_json::to_value(items)?;
-    if preview {
-        if let Some(items) = value.as_array_mut() {
-            for item in items {
-                if let Some(fields) = item.as_object_mut() {
-                    fields.remove("content");
-                }
+    if let Some(items) = value.as_array_mut() {
+        for item in items {
+            if let Some(fields) = item.as_object_mut() {
+                fields.remove("content");
+                fields.remove("has_ai_annotations");
+                fields.remove("has_ai_podcast");
             }
         }
     }
@@ -375,6 +377,7 @@ mod preview_tests {
         assert!(sql.contains("NULL AS \"content\""));
         assert!(sql.contains("NULL AS \"enclosures\""));
         assert!(sql.contains("\"phantasi_items\".\"summary\""));
+        assert!(sql.contains("LEFT(\"phantasi_items\".\"summary\", 2048) AS \"summary\""));
         assert!(sql.contains("\"phantasi_items\".\"content_revision\""));
     }
 
@@ -471,7 +474,7 @@ mod preview_tests {
         assert_eq!(none, None);
     }
     #[test]
-    fn preview_response_omits_body_and_full_response_preserves_it() {
+    fn list_response_omits_body_and_detail_response_preserves_it() {
         let model = Model {
             id: 1,
             source_id: 2,
@@ -514,38 +517,48 @@ mod preview_tests {
         item.state_revision = Some(0);
         assert_eq!(serde_json::to_value(&item).unwrap()["state_revision"], 0);
         item.state_revision = Some(9);
-        let full = list_response_items(vec![item.clone()], false).unwrap();
-        let preview = list_response_items(vec![item], true).unwrap();
-        assert_eq!(full[0]["content"], "<p>body</p>");
+        let detail = serde_json::to_value(&item).unwrap();
+        let preview = list_response_items(vec![item]).unwrap();
+        assert_eq!(detail["content"], "<p>body</p>");
         assert!(preview[0].get("content").is_none());
         assert!(preview[0].get("content_md").is_none());
+        assert!(preview[0].get("has_ai_annotations").is_none());
+        assert!(preview[0].get("has_ai_podcast").is_none());
+        assert!(detail.get("has_ai_annotations").is_some());
+        assert!(detail.get("has_ai_podcast").is_some());
         assert_eq!(preview[0]["summary"], "summary");
         assert_eq!(preview[0]["content_revision"], 3);
-        assert_eq!(full[0]["content_revision"], 3);
+        assert_eq!(detail["content_revision"], 3);
         assert_eq!(preview[0]["is_starred"], true);
         assert_eq!(preview[0]["read_progress"], 42.0);
-        assert_eq!(full[0]["state_revision"], 9);
+        assert_eq!(detail["state_revision"], 9);
         assert_eq!(preview[0]["state_revision"], 9);
     }
 
     #[test]
-    fn projection_is_opt_in_and_unknown_projection_is_rejected() {
-        let default: ItemsQuery = serde_json::from_str("{}").unwrap();
-        assert_eq!(default.projection, None);
-        let preview: ItemsQuery = serde_json::from_str(r#"{"projection":"preview"}"#).unwrap();
-        assert_eq!(preview.projection, Some(ItemProjection::Preview));
-        assert!(serde_json::from_str::<ItemsQuery>(r#"{"projection":"typo"}"#).is_err());
+    fn legacy_projection_cannot_enable_full_lists() {
+        for projection in ["preview", "full"] {
+            let query: ItemsQuery = serde_json::from_value(serde_json::json!({
+                "projection": projection,
+                "source_id": 2,
+            }))
+            .unwrap();
+            assert_eq!(query.source_id, Some(2));
+            assert!(
+                serde_json::to_value(query)
+                    .unwrap()
+                    .get("projection")
+                    .is_none()
+            );
+        }
     }
     #[test]
-    fn every_list_projection_has_a_stable_tie_breaker() {
+    fn list_has_a_stable_tie_breaker() {
         for ascending in [true, false] {
-            for preview in [true, false] {
-                let query = ordered_list_query(Entity::find(), ascending);
-                let query = if preview { preview_query(query) } else { query };
-                let sql = query.build(DbBackend::Postgres).to_string();
-                let direction = if ascending { "ASC" } else { "DESC" };
-                assert!(sql.contains(&format!("ORDER BY \"phantasi_items\".\"published_at\" {direction}, \"phantasi_items\".\"id\" {direction}")), "{sql}");
-            }
+            let query = preview_query(ordered_list_query(Entity::find(), ascending));
+            let sql = query.build(DbBackend::Postgres).to_string();
+            let direction = if ascending { "ASC" } else { "DESC" };
+            assert!(sql.contains(&format!("ORDER BY \"phantasi_items\".\"published_at\" {direction}, \"phantasi_items\".\"id\" {direction}")), "{sql}");
         }
     }
 }

@@ -48,12 +48,15 @@ import './WidgetGrid.css'
 
 export function startGridLibraryDrag(
   grid: WidgetGridHandle | null,
-  event: React.MouseEvent | React.TouchEvent,
+  event: React.MouseEvent<HTMLElement> | TouchEvent,
   widgetTypeId: string,
 ): void {
   event.stopPropagation()
   event.preventDefault()
-  const stage = event.currentTarget.querySelector('.widget-library-tile-stage')
+  const stage =
+    event.currentTarget instanceof Element
+      ? event.currentTarget.querySelector('.widget-library-tile-stage')
+      : null
   const rect = stage?.getBoundingClientRect()
   const start = (x: number, y: number) => {
     const grab = rect

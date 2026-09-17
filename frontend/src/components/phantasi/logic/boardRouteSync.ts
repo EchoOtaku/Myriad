@@ -2,7 +2,7 @@
 
 import {
   isJournalAppPath,
-  JOURNAL_ROOT,
+  journalPathForNavId,
   navIdForJournalLocation,
   NOTES_RSS_PATH,
   parseJournalPath,
@@ -18,26 +18,39 @@ export type PathSync =
 /** 路径同步还没落到 activeId 时记下「从哪来、要去哪」，避免把首屏旧值当成用户点击。 */
 export interface PendingPathSync { target: string; from: string }
 
+function firstVisibleBoardPath(visibleNavIds: readonly string[]): string {
+  const navId = visibleNavIds.find(
+    (id) => id === 'feeds' || id === 'notes' || id === 'sites',
+  )
+  return journalPathForNavId(navId ?? 'feeds')
+}
+
 export function decidePathSync(
   pathname: string,
   isAuthenticated: boolean,
   isAdmin: boolean,
+  visibleNavIds: readonly string[],
 ): PathSync {
   if (!isJournalAppPath(pathname) || pathname === NOTES_RSS_PATH) {
     return { action: 'none' }
   }
+  const fallbackPath = firstVisibleBoardPath(visibleNavIds)
   const loc = parseJournalPath(pathname)
-  if (!loc) return { action: 'bounce', to: JOURNAL_ROOT }
+  if (!loc) return { action: 'bounce', to: fallbackPath }
   if (loc.kind === 'article') return { action: 'keep-article' }
   if (loc.kind === 'starred' && !isAdmin) {
-    return { action: 'bounce', to: JOURNAL_ROOT }
+    return { action: 'bounce', to: fallbackPath }
   }
   if (loc.kind === 'workbench' && !isAdmin) {
-    return { action: 'bounce', to: JOURNAL_ROOT }
+    return { action: 'bounce', to: fallbackPath }
+  }
+  const navId = navIdForJournalLocation(loc, isAuthenticated, isAdmin)
+  if (!visibleNavIds.includes(navId)) {
+    return { action: 'bounce', to: fallbackPath }
   }
   return {
     action: 'apply',
-    navId: navIdForJournalLocation(loc, isAuthenticated, isAdmin),
+    navId,
   }
 }
 

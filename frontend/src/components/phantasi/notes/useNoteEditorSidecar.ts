@@ -49,12 +49,12 @@ export function useNoteEditorSidecar(host: {
     if (!settingsOpen || cloudId == null) return
     const controller = new AbortController()
     void Promise.all([
-      phantasiApi.getNoteDoc(cloudId, controller.signal),
+      phantasiApi.listNoteDocAuthors(cloudId, controller.signal),
       phantasiApi.listNoteAuthorCandidates(controller.signal),
     ])
-      .then(([doc, candidates]) => {
+      .then(([authors, candidates]) => {
         if (controller.signal.aborted) return
-        if (doc.authors) setAuthors(doc.authors)
+        setAuthors(authors)
         setAuthorCandidates(candidates)
       })
       .catch((err) => {

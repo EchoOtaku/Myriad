@@ -17,7 +17,9 @@ import {
 import {
   coverFeedIndices,
   expandFeedCover,
+  FEEDS_ARTICLE_MAX,
   isAggregateFeedId,
+  isTopicFeedId,
   latestFeedStories,
   reuseFeedStories,
   stitchStoriesBySources,
@@ -29,6 +31,7 @@ import {
   loadBoardNotes,
   loadFeedStories,
   loadTopicCatalog,
+  loadTopicStories,
   peekFeedStories,
   peekFeedStoriesLoose,
 } from './pageData'
@@ -168,6 +171,11 @@ export function useFeedStories(
   )
   const [tick, setTick] = useState(0)
   const slotsRef = useRef<Map<number, FeedStorySlot>>(new Map())
+  const topicStoriesRef = useRef(new Map<string, FeedStory[]>())
+  const topicInflightRef = useRef(new Set<string>())
+  const topicGenerationRef = useRef(0)
+  const topicCardsRef = useRef(topicCards)
+  topicCardsRef.current = topicCards
   const sourcesRef = useRef(sources)
   sourcesRef.current = sources
   const inflightRef = useRef(new Set<string>())
@@ -221,6 +229,33 @@ export function useFeedStories(
     const list = sourcesRef.current
     if (isAggregateFeedId(sourceId)) {
       setCover((current) => coverFeedIndices(current, 0, list.length - 1, 3))
+      if (isTopicFeedId(sourceId)) {
+        const topic = topicCardsRef.current[-2 - sourceId]
+        if (
+          topic
+          && !topicStoriesRef.current.has(topic)
+          && !topicInflightRef.current.has(topic)
+        ) {
+          const generation = topicGenerationRef.current
+          topicInflightRef.current.add(topic)
+          void loadTopicStories(topic)
+            .then((items) => {
+              if (
+                fetchLiveRef.current
+                && generation === topicGenerationRef.current
+              ) {
+                topicStoriesRef.current.set(topic, items)
+                bump()
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (generation === topicGenerationRef.current) {
+                topicInflightRef.current.delete(topic)
+              }
+            })
+        }
+      }
       return
     }
     const index = list.findIndex((source) => source.id === sourceId)
@@ -228,7 +263,13 @@ export function useFeedStories(
     setCover((current) =>
       coverFeedIndices(current, index, list.length - 1, 3),
     )
-  }, [])
+  }, [bump])
+
+  useEffect(() => {
+    topicGenerationRef.current += 1
+    topicStoriesRef.current.clear()
+    topicInflightRef.current.clear()
+  }, [board, stampKey])
 
   useEffect(() => {
     fetchLiveRef.current = true
@@ -288,7 +329,14 @@ export function useFeedStories(
         ? [
             ...latestFeedStories(sources, fetched),
             ...topicCards.flatMap((name, index) =>
-              topicFeedStories(sources, fetched, name, topicFeedId(index)),
+              topicFeedStories(
+                sources,
+                fetched,
+                name,
+                topicFeedId(index),
+                FEEDS_ARTICLE_MAX,
+                topicStoriesRef.current.get(name),
+              ),
             ),
             ...stitchStoriesBySources(sources, fetched, 0, lastIndex),
           ].map((story) => flags.project(story))

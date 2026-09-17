@@ -1,7 +1,7 @@
-import type { NoteEditorDefaultView, NoteHistoryEntry } from '../../../services/phantasiApi'
+import type { NoteEditorDefaultView, NoteHistoryEntry, NoteHistorySummary } from '../../../services/phantasiApi'
 import { useEffect, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
-import { getNoteHistory } from '../../../services/phantasiApi'
+import { getNoteHistory, getNoteHistoryEntry } from '../../../services/phantasiApi'
 import { NoteButton, NoteSection, NoteSwitch } from './NoteControls'
 
 export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDefaultView, onRestore, busy }: {
@@ -13,13 +13,19 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
   busy: boolean
 }) {
   const { t, locale, format } = useI18n()
-  const [history, setHistory] = useState<NoteHistoryEntry[]>([])
+  const [history, setHistory] = useState<NoteHistorySummary[]>([])
   const [selected, setSelected] = useState<NoteHistoryEntry | null>(null)
+  const [selection, setSelection] = useState<{ docId: number; revision: number } | null>(null)
+  const selectedRevision = selection?.docId === cloudId ? selection.revision : null
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const [restoring, setRestoring] = useState(false)
   useEffect(() => {
+    setHistory([])
+    setSelection(null)
+    setSelected(null)
     if (cloudId == null) { setLoading(false); return }
     const controller = new AbortController()
     setLoading(true)
@@ -33,13 +39,29 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
     })
     return () => controller.abort()
   }, [cloudId, refresh])
+  useEffect(() => {
+    setSelected(null)
+    if (cloudId == null || selectedRevision == null) { setPreviewLoading(false); return }
+    const controller = new AbortController()
+    setPreviewLoading(true)
+    setError(false)
+    void getNoteHistoryEntry(cloudId, selectedRevision, controller.signal).then((entry) => {
+      if (!controller.signal.aborted) setSelected(entry)
+    }).catch(() => {
+      if (!controller.signal.aborted) setError(true)
+    }).finally(() => {
+      if (!controller.signal.aborted) setPreviewLoading(false)
+    })
+    return () => controller.abort()
+  }, [cloudId, selectedRevision])
   const restore = async () => {
-    if (!selected || restoring || busy) return
+    if (!selected || selected.revision !== selectedRevision || previewLoading || restoring || busy) return
     setRestoring(true)
     setError(false)
     try {
       await onRestore(selected)
       setSelected(null)
+      setSelection(null)
       setRefresh((value) => value + 1)
     } catch { setError(true) }
     finally { setRestoring(false) }
@@ -69,13 +91,13 @@ export function NoteEditorSettings({ cloudId, defaultView, preferenceBusy, onDef
       </span>}
         hint={t.phantasi.noteHistoryHint}
       >
-        {loading ? <p className="phantasi-note__history-message" role="status">{t.phantasi.noteHistoryLoading}</p> : null}
+        {loading || previewLoading ? <p className="phantasi-note__history-message" role="status">{t.phantasi.noteHistoryLoading}</p> : null}
         {error ? <p className="phantasi-note__history-message is-error" role="alert">{t.phantasi.noteHistoryFailed}</p> : null}
         {!loading && !error && history.length === 0 ? <p className="phantasi-note__history-message">{t.phantasi.noteHistoryEmpty}</p> : null}
         <ul className="phantasi-note__history-list">
           {history.map((entry) => (
             <li key={entry.revision}>
-              <button type="button" className="phantasi-note__history-entry" aria-pressed={selected?.revision === entry.revision} onClick={() => setSelected(entry)} disabled={restoring}>
+              <button type="button" className="phantasi-note__history-entry" aria-pressed={selectedRevision === entry.revision} onClick={() => { if (cloudId != null) setSelection({ docId: cloudId, revision: entry.revision }) }} disabled={restoring}>
                 <strong>{entry.snapshot.title || t.phantasi.noteHistoryUntitled}</strong>
                 <time dateTime={new Date(entry.saved_at).toISOString()}>{new Date(entry.saved_at).toLocaleString(locale)}</time>
                 <span>{entry.actor_name || t.phantasi.noteHistoryUnknown} · {format(t.phantasi.noteHistoryVersion, { revision: entry.revision })}</span>

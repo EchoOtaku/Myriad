@@ -24,7 +24,7 @@ use crate::services::tapp_storage::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-    sea_query::OnConflict,
+    QuerySelect, sea_query::OnConflict,
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -563,7 +563,13 @@ async fn execute_phantasi_mark(
     let user_id = ctx.user_id;
 
     // 验证文章存在
-    let item = phantasi_items::Entity::find_by_id(item_id)
+    let (source_id, title) = phantasi_items::Entity::find_by_id(item_id)
+        .select_only()
+        .columns([
+            phantasi_items::Column::SourceId,
+            phantasi_items::Column::Title,
+        ])
+        .into_tuple::<(i32, String)>()
         .one(ctx.db)
         .await
         .map_err(|error| write_store_failed("find article", error))?
@@ -571,7 +577,7 @@ async fn execute_phantasi_mark(
 
     // 共享订阅库：按可见源标状态，不按创建者
     let is_admin = crate::services::agent::user_is_current_admin(ctx.db, user_id).await;
-    let source = phantasi_sources::Entity::find_by_id(item.source_id)
+    let source = phantasi_sources::Entity::find_by_id(source_id)
         .one(ctx.db)
         .await
         .map_err(|error| write_store_failed("find phantasi source", error))?
@@ -650,7 +656,7 @@ async fn execute_phantasi_mark(
         crate::services::agent::merope::spawn_ingest(
             user_id,
             "phantasi.starred",
-            format!("Starred \"{}\"", item.title),
+            format!("Starred \"{}\"", title),
         );
     }
 
@@ -668,7 +674,7 @@ async fn execute_phantasi_mark(
         "itemId": item_id,
         "action": action,
         "status": status,
-        "title": item.title
+        "title": title
     }))
 }
 

@@ -19,7 +19,7 @@ use axum::{
     http::StatusCode,
 };
 use myriad_phantasi_notes::{render_markdown_preview, validate_note};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -65,21 +65,24 @@ fn validation_err(err: myriad_phantasi_notes::NoteError) -> HttpError {
 async fn find_catalog_note(
     db: &DatabaseConnection,
     item_id: i32,
-) -> Result<(phantasi_items::Model, phantasi_sources::Model), HttpError> {
-    let item = phantasi_items::Entity::find_by_id(item_id)
+) -> Result<phantasi_sources::Model, HttpError> {
+    let source_id = phantasi_items::Entity::find_by_id(item_id)
+        .select_only()
+        .column(phantasi_items::Column::SourceId)
+        .into_tuple::<i32>()
         .one(db)
         .await
         .map_err(|e| phantasi_store_http("find note", e))?
         .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
 
-    let source = phantasi_sources::Entity::find_by_id(item.source_id)
+    let source = phantasi_sources::Entity::find_by_id(source_id)
         .filter(phantasi_sources::Column::SourceType.eq(phantasi_sources::SourceType::Note))
         .one(db)
         .await
         .map_err(|e| phantasi_store_http("find note source", e))?
         .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
 
-    Ok((item, source))
+    Ok(source)
 }
 
 /// `POST /api/phantasi/notes/preview` — 编辑器预览。
@@ -133,11 +136,11 @@ pub(crate) async fn update_note(
     Json(req): Json<NoteWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let (item, _) = find_catalog_note(&db, id).await?;
+    find_catalog_note(&db, id).await?;
     let item = crate::services::note_publish::write_note_with_doc(
         &db,
         user_id,
-        Some(item.id),
+        Some(id),
         &req.title,
         &req.content_md,
         req.topic.clone(),
@@ -160,9 +163,9 @@ pub(crate) async fn delete_note(
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
-    let (item, source) = find_catalog_note(&db, id).await?;
+    let source = find_catalog_note(&db, id).await?;
 
-    crate::services::note_publish::delete_note_with_doc(&db, item.id, &source).await?;
+    crate::services::note_publish::delete_note_with_doc(&db, id, &source).await?;
 
     Ok(Json(json!({ "success": true })))
 }

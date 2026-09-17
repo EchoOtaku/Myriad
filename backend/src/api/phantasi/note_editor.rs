@@ -1,6 +1,6 @@
 //! Account-scoped editor preferences and version-checked history restoration.
 use super::helpers::{get_admin_user_id_from_headers, phantasi_http_err, phantasi_store_http};
-use super::note_docs::{broadcast_saved_doc, credit_and_respond, find_doc};
+use super::note_docs::{broadcast_saved_doc, credit_and_respond, find_doc_owner};
 use crate::{
     error::HttpError, models::entities::phantasi_note_docs,
     services::note_publish::millis_to_datetime,
@@ -67,30 +67,72 @@ pub(crate) async fn put_preference(
     Ok(Json(json!({"default_view": req.default_view})))
 }
 
+const HISTORY_LIST_SQL: &str = "SELECT h.revision, h.actor_id,
+    jsonb_build_object('title', h.snapshot->'title', 'topic', h.snapshot->'topic',
+        'image', h.snapshot->'image', 'published_at', h.snapshot->'published_at') AS snapshot,
+    (EXTRACT(EPOCH FROM h.saved_at) * 1000)::bigint AS saved_at,
+    COALESCE(u.display_name, u.username) AS actor_name
+    FROM phantasi_note_history h LEFT JOIN users u ON u.id = h.actor_id
+    WHERE h.doc_id = $1 ORDER BY h.revision DESC LIMIT 10";
+
+const HISTORY_ENTRY_SQL: &str = "SELECT h.revision, h.actor_id, h.snapshot,
+    (EXTRACT(EPOCH FROM h.saved_at) * 1000)::bigint AS saved_at,
+    COALESCE(u.display_name, u.username) AS actor_name
+    FROM phantasi_note_history h LEFT JOIN users u ON u.id = h.actor_id
+    WHERE h.doc_id = $1 AND h.revision = $2";
+
+fn history_response(row: sea_orm::QueryResult) -> Result<Value, sea_orm::DbErr> {
+    Ok(json!({
+        "revision": row.try_get::<i64>("", "revision")?,
+        "actor_id": row.try_get::<Option<i32>>("", "actor_id")?,
+        "actor_name": row.try_get::<Option<String>>("", "actor_name")?,
+        "saved_at": row.try_get::<i64>("", "saved_at")?,
+        "snapshot": row.try_get::<Value>("", "snapshot")?,
+    }))
+}
+
 pub(crate) async fn list_history(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<Json<Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
-    find_doc(&db, id).await?;
-    let rows = db.query_all_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
-        "SELECT h.revision, h.actor_id, h.snapshot, (EXTRACT(EPOCH FROM h.saved_at) * 1000)::bigint AS saved_at, COALESCE(u.display_name, u.username) AS actor_name FROM phantasi_note_history h LEFT JOIN users u ON u.id = h.actor_id WHERE h.doc_id = $1 ORDER BY h.revision DESC LIMIT 10", [id.into()])).await
+    find_doc_owner(&db, id).await?;
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            HISTORY_LIST_SQL,
+            [id.into()],
+        ))
+        .await
         .map_err(|e| phantasi_store_http("load note history", e))?;
     let history = rows
         .into_iter()
-        .map(|row| -> Result<Value, sea_orm::DbErr> {
-            Ok(json!({
-                "revision": row.try_get::<i64>("", "revision")?,
-                "actor_id": row.try_get::<Option<i32>>("", "actor_id")?,
-                "actor_name": row.try_get::<Option<String>>("", "actor_name")?,
-                "saved_at": row.try_get::<i64>("", "saved_at")?,
-                "snapshot": row.try_get::<Value>("", "snapshot")?,
-            }))
-        })
+        .map(history_response)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| phantasi_store_http("read note history", e))?;
     Ok(Json(json!({"history": history})))
+}
+
+pub(crate) async fn get_history_entry(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+    Path((id, version)): Path<(i32, i64)>,
+) -> Result<Json<Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    find_doc_owner(&db, id).await?;
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            HISTORY_ENTRY_SQL,
+            [id.into(), version.into()],
+        ))
+        .await
+        .map_err(|e| phantasi_store_http("load history version", e))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note version not found"))?;
+    let entry =
+        history_response(row).map_err(|e| phantasi_store_http("read history version", e))?;
+    Ok(Json(json!({"entry": entry})))
 }
 
 #[derive(Deserialize)]
@@ -225,6 +267,78 @@ async fn restore_version(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn history_list_omits_bodies_and_single_version_preserves_snapshot() {
+        let Ok(url) = std::env::var("PHANTASI_TEST_DATABASE_URL") else {
+            eprintln!("skipped PostgreSQL history test: PHANTASI_TEST_DATABASE_URL is unset");
+            return;
+        };
+        let mut options = sea_orm::ConnectOptions::new(url);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = sea_orm::Database::connect(options).await.unwrap();
+        db.execute_unprepared(
+            "CREATE TEMP TABLE users (id integer PRIMARY KEY, display_name text, username text);
+             CREATE TEMP TABLE phantasi_note_history (
+                doc_id integer, revision bigint, actor_id integer, saved_at timestamptz, snapshot jsonb
+             );
+             INSERT INTO users VALUES (1, 'Writer', 'writer');
+             INSERT INTO phantasi_note_history
+                SELECT 1, version, 1, now(), jsonb_build_object(
+                    'title', 'Version ' || version, 'content_md', repeat('正文', 10000),
+                    'topic', 'Notes', 'image', NULL, 'published_at', NULL,
+                    'future_heavy_field', repeat('x', 10000))
+                FROM generate_series(1, 12) AS version",
+        ).await.unwrap();
+        let rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                HISTORY_LIST_SQL,
+                [1.into()],
+            ))
+            .await
+            .unwrap();
+        let history: Vec<Value> = rows
+            .into_iter()
+            .map(history_response)
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(history.len(), 10);
+        assert_eq!(history[0]["revision"], 12);
+        assert_eq!(history[9]["revision"], 3);
+        for entry in history {
+            assert_eq!(entry["actor_name"], "Writer");
+            assert_eq!(entry["snapshot"]["topic"], "Notes");
+            assert!(entry["snapshot"].get("content_md").is_none());
+            assert!(entry["snapshot"].get("future_heavy_field").is_none());
+        }
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                HISTORY_ENTRY_SQL,
+                [1.into(), 3_i64.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let entry = history_response(row).unwrap();
+        assert_eq!(entry["snapshot"]["title"], "Version 3");
+        assert_eq!(entry["snapshot"]["content_md"], "正文".repeat(10000));
+        assert!(
+            db.query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                HISTORY_ENTRY_SQL,
+                [2.into(), 3_i64.into()],
+            ))
+            .await
+            .unwrap()
+            .is_none()
+        );
+    }
+
     #[test]
     fn preference_accepts_only_editor_views() {
         for view in ["visual", "write", "preview"] {

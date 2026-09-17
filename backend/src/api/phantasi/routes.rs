@@ -59,6 +59,10 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
             get(super::note_editor::list_history),
         )
         .route(
+            "/notes/docs/{id}/history/{version}",
+            get(super::note_editor::get_history_entry),
+        )
+        .route(
             "/notes/docs/{id}/history/{version}/restore",
             post(super::note_editor::restore_history),
         )
@@ -78,7 +82,7 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
         )
         .route(
             "/notes/docs/{id}/authors",
-            post(note_docs::add_note_doc_author),
+            get(note_docs::list_note_doc_authors).post(note_docs::add_note_doc_author),
         )
         .route(
             "/notes/docs/{id}/authors/{user_id}",

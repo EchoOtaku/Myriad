@@ -17,9 +17,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::models::entities::phantasi_sources::SourceType;
-use crate::models::entities::{
-    phantasi_annotations, phantasi_items, phantasi_podcasts, phantasi_sources, phantasi_user_states,
-};
+use crate::models::entities::{phantasi_items, phantasi_sources, phantasi_user_states};
 use crate::services::phantasi_topics::{
     TopicSuggestError, TopicWriteError, list_subscription_topic_names, normalize_topic_name,
     set_subscription_item_topic, suggest_subscription_item_topic,
@@ -311,10 +309,7 @@ pub(crate) async fn list_items(
             .map_err(|error| phantasi_store_http("count articles", error))?
     };
 
-    let preview = query.projection != Some(phantasi_items::ItemProjection::Full);
-    if preview {
-        items_query = phantasi_items::preview_query(items_query);
-    }
+    items_query = phantasi_items::preview_query(items_query);
 
     let fetch = per_page as u64 + 1;
     let items = if cursor.is_some() {
@@ -334,51 +329,39 @@ pub(crate) async fn list_items(
             let page_source_ids: Vec<i32> = items.iter().map(|i| i.source_id).collect();
 
             // 性能优化：并行执行多个独立查询
-            let (states_result, sources_result, annotations_result, podcast_result) =
-                tokio::try_join!(
-                    async {
-                        if let Some(uid) = user_id {
-                            phantasi_user_states::Entity::find()
-                                .filter(phantasi_user_states::Column::UserId.eq(uid))
-                                .filter(
-                                    phantasi_user_states::Column::ItemId.is_in(item_ids.clone()),
-                                )
-                                .all(&db)
-                                .await
-                        } else {
-                            Ok(Vec::new())
-                        }
-                    },
-                    phantasi_sources::Entity::find()
-                        .filter(phantasi_sources::Column::Id.is_in(page_source_ids))
-                        .all(&db),
-                    phantasi_annotations::Entity::find()
-                        .filter(phantasi_annotations::Column::ItemId.is_in(item_ids.clone()))
-                        .select_only()
-                        .column(phantasi_annotations::Column::ItemId)
-                        .distinct()
-                        .into_tuple::<i32>()
-                        .all(&db),
-                    phantasi_podcasts::Entity::find()
-                        .filter(phantasi_podcasts::Column::ItemId.is_in(item_ids.clone()))
-                        .select_only()
-                        .column(phantasi_podcasts::Column::ItemId)
-                        .into_tuple::<i32>()
-                        .all(&db),
-                )
-                .map_err(|error| phantasi_store_http("list article extras", error))?;
+            let (states_result, sources_result) = tokio::try_join!(
+                async {
+                    if let Some(uid) = user_id {
+                        phantasi_user_states::Entity::find()
+                            .filter(phantasi_user_states::Column::UserId.eq(uid))
+                            .filter(phantasi_user_states::Column::ItemId.is_in(item_ids.clone()))
+                            .all(&db)
+                            .await
+                    } else {
+                        Ok(Vec::new())
+                    }
+                },
+                phantasi_sources::Entity::find()
+                    .filter(phantasi_sources::Column::Id.is_in(page_source_ids))
+                    .select_only()
+                    .columns([
+                        phantasi_sources::Column::Id,
+                        phantasi_sources::Column::Name,
+                        phantasi_sources::Column::Icon,
+                    ])
+                    .into_tuple::<(i32, String, Option<String>)>()
+                    .all(&db),
+            )
+            .map_err(|error| phantasi_store_http("list article extras", error))?;
 
             let states_map: std::collections::HashMap<i32, phantasi_user_states::Model> =
                 states_result.into_iter().map(|s| (s.item_id, s)).collect();
 
-            let sources_map: std::collections::HashMap<i32, phantasi_sources::Model> =
-                sources_result.into_iter().map(|s| (s.id, s)).collect();
-
-            let items_with_annotations: std::collections::HashSet<i32> =
-                annotations_result.into_iter().collect();
-
-            let items_with_podcast: std::collections::HashSet<i32> =
-                podcast_result.into_iter().collect();
+            let sources_map: std::collections::HashMap<i32, (String, Option<String>)> =
+                sources_result
+                    .into_iter()
+                    .map(|(id, name, icon)| (id, (name, icon)))
+                    .collect();
 
             // 构建响应
             let response_items: Vec<phantasi_items::ItemResponse> = items
@@ -395,12 +378,8 @@ pub(crate) async fn list_items(
                     };
 
                     let source = sources_map.get(&item.source_id);
-                    let source_name = source.map(|s| s.name.clone());
-                    let source_icon = source.and_then(|s| s.icon.clone());
-
-                    // 获取 AI 状态
-                    let has_ai_annotations = items_with_annotations.contains(&item.id);
-                    let has_ai_podcast = items_with_podcast.contains(&item.id);
+                    let source_name = source.map(|s| s.0.clone());
+                    let source_icon = source.and_then(|s| s.1.clone());
 
                     phantasi_items::ItemResponse::from_model_with_ai(
                         item,
@@ -409,13 +388,13 @@ pub(crate) async fn list_items(
                         is_read,
                         is_starred,
                         read_progress,
-                        has_ai_annotations,
-                        has_ai_podcast,
+                        false,
+                        false,
                     )
                 })
                 .collect();
 
-            let response_items = phantasi_items::list_response_items(response_items, preview)
+            let response_items = phantasi_items::list_response_items(response_items)
                 .map_err(|error| phantasi_store_http("serialize articles", error))?;
             Ok(Json(json!({
                 "success": true,

@@ -85,7 +85,10 @@ pub(crate) async fn update_item_state(
     // This serializes first writes and keeps the count delta tied to the state read.
     let item_result = phantasi_items::Entity::find_by_id(item_id)
         .filter(phantasi_items::Column::SourceId.in_subquery(visible_sources))
+        .select_only()
+        .column(phantasi_items::Column::Title)
         .lock_exclusive()
+        .into_tuple::<String>()
         .one(&transaction)
         .await;
     let existing = phantasi_user_states::Entity::find()
@@ -95,8 +98,8 @@ pub(crate) async fn update_item_state(
         .one(&transaction)
         .await;
 
-    let item = match item_result {
-        Ok(Some(item)) => item,
+    let title = match item_result {
+        Ok(Some(title)) => title,
         Ok(None) => {
             return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Item not found"));
         }
@@ -139,7 +142,7 @@ pub(crate) async fn update_item_state(
                         crate::services::agent::merope::spawn_ingest(
                             user_id,
                             "phantasi.starred",
-                            format!("Starred \"{}\"", item.title),
+                            format!("Starred \"{}\"", title),
                         );
                     }
                     Ok(Json(
@@ -180,7 +183,7 @@ pub(crate) async fn update_item_state(
                         crate::services::agent::merope::spawn_ingest(
                             user_id,
                             "phantasi.starred",
-                            format!("Starred \"{}\"", item.title),
+                            format!("Starred \"{}\"", title),
                         );
                     }
                     Ok(Json(

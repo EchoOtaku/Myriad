@@ -113,6 +113,7 @@ async function request<T>(
 
   const method = options.method?.toUpperCase() || 'GET'
   const needsCSRF = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+  options.signal?.throwIfAborted()
 
   if (needsCSRF) {
     const csrfToken = await getCSRFToken()
@@ -122,6 +123,7 @@ async function request<T>(
   }
 
   phantasiSubject.assert(subject)
+  options.signal?.throwIfAborted()
   let response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers,
@@ -148,6 +150,7 @@ async function request<T>(
 
   const data = await response.json()
   phantasiSubject.assert(subject)
+  options.signal?.throwIfAborted()
 
   if (!response.ok) {
     if (response.status === 403 && needsCSRF && retryOnCSRFError) {
@@ -156,6 +159,7 @@ async function request<T>(
         console.warn('CSRF token invalid, refreshing and retrying...')
         const newToken = await getCSRFToken(true)
         phantasiSubject.assert(subject)
+        options.signal?.throwIfAborted()
         if (newToken) {
           headers['X-CSRF-Token'] = newToken
           const retryResponse = await fetch(`${API_BASE}${endpoint}`, {
@@ -165,6 +169,7 @@ async function request<T>(
           })
           const retryData = await retryResponse.json()
           phantasiSubject.assert(subject)
+          options.signal?.throwIfAborted()
           if (!retryResponse.ok) {
             throw phantasiHttpError(retryResponse.status, retryData)
           }
@@ -198,21 +203,21 @@ export async function getSources(
   const catalog = options?.view === 'catalog'
   const path = catalog ? '/sources?view=catalog' : '/sources'
   const cacheKey = catalog ? phantasiCacheKeys.sourceCatalog : phantasiCacheKeys.sources
-  const fetchSources = async () => {
+  const fetchSources = async (signal?: AbortSignal) => {
     const data = await request<PhantasiSourcesResponse>(path, {
       headers: attributionHeaders,
-      // Shared cache requests belong to the current subject, not the first
-      // component that asked. Attribution requests are never shared.
-      signal: attributionHeaders ? options?.signal : undefined,
+      signal,
     })
     return data.sources
   }
-  if (attributionHeaders) return fetchSources()
+  if (attributionHeaders) return fetchSources(options?.signal)
   if (options?.forceRefresh) requestCache.delete(cacheKey)
   const sources = await requestCache.fetch(
     cacheKey,
     fetchSources,
     CACHE_TTL.SOURCES,
+    false,
+    options?.signal,
   )
   options?.signal?.throwIfAborted()
   return sources
@@ -383,19 +388,21 @@ export async function getCategories(
   options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<PhantasiCategoriesResponse['categories']> {
   options?.signal?.throwIfAborted()
-  const fetchCategories = async () => {
+  const fetchCategories = async (signal?: AbortSignal) => {
     const data = await request<PhantasiCategoriesResponse>('/categories', {
       headers: attributionHeaders,
-      signal: attributionHeaders ? options?.signal : undefined,
+      signal,
     })
     return data.categories
   }
-  if (attributionHeaders) return fetchCategories()
+  if (attributionHeaders) return fetchCategories(options?.signal)
   if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.categories)
   const categories = await requestCache.fetch(
     phantasiCacheKeys.categories,
     fetchCategories,
     CACHE_TTL.CATEGORIES,
+    false,
+    options?.signal,
   )
   options?.signal?.throwIfAborted()
   return categories
@@ -494,33 +501,12 @@ export async function deleteCategory(
   invalidateCategoriesCache()
 }
 
-type PhantasiItemListEntry = Omit<PhantasiItem, 'content'>
-type PhantasiItemPreviewsResponse = Omit<PhantasiItemsResponse, 'items'> & { items: PhantasiItemListEntry[] }
-
-export function getItems(
-  query: PhantasiItemsQuery = {},
-  attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal },
-): Promise<PhantasiItemsResponse> {
-  return queryItems(query, attributionHeaders, 'full', options?.signal)
-}
-
 export function getItemPreviews(
   query: PhantasiItemsQuery = {},
   attributionHeaders?: PhantasiAttributionHeaders,
   options?: { signal?: AbortSignal },
-): Promise<PhantasiItemPreviewsResponse> {
-  return queryItems(query, attributionHeaders, 'preview', options?.signal)
-}
-
-async function queryItems<T>(
-  query: PhantasiItemsQuery = {},
-  attributionHeaders?: PhantasiAttributionHeaders,
-  projection?: 'preview' | 'full',
-  signal?: AbortSignal,
-): Promise<T> {
+): Promise<PhantasiItemsResponse> {
   const params = new URLSearchParams()
-  if (projection) params.set('projection', projection)
   if (query.source_id) params.set('source_id', String(query.source_id))
   if (query.category) params.set('category', query.category)
   if (query.topic) params.set('topic', query.topic)
@@ -533,7 +519,7 @@ async function queryItems<T>(
   const queryString = params.toString()
   const endpoint = queryString ? `/items?${queryString}` : '/items'
 
-  return request<T>(endpoint, { headers: attributionHeaders, signal })
+  return request<PhantasiItemsResponse>(endpoint, { headers: attributionHeaders, signal: options?.signal })
 }
 
 export async function getItem(
@@ -542,22 +528,24 @@ export async function getItem(
   options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<PhantasiItem> {
   options?.signal?.throwIfAborted()
-  const fetchItem = async () => {
+  const fetchItem = async (signal?: AbortSignal) => {
     const data = await request<{ success: boolean; item: PhantasiItem }>(
       `/items/${id}`,
       {
         headers: attributionHeaders,
-        signal: attributionHeaders ? options?.signal : undefined,
+        signal,
       },
     )
     return data.item
   }
-  if (attributionHeaders) return fetchItem()
+  if (attributionHeaders) return fetchItem(options?.signal)
   if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.item(id))
   const item = await requestCache.fetch(
     phantasiCacheKeys.item(id),
     fetchItem,
     CACHE_TTL.ITEM,
+    false,
+    options?.signal,
   )
   options?.signal?.throwIfAborted()
   return item
@@ -573,26 +561,28 @@ export async function listSubscriptionTopicCatalog(
   options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<SubscriptionTopicCatalog> {
   options?.signal?.throwIfAborted()
-  const fetchCatalog = async () => {
+  const fetchCatalog = async (signal?: AbortSignal) => {
     const data = await request<{
       success: boolean
       topics?: unknown
       cards?: unknown
     }>('/topics', {
       headers: attributionHeaders,
-      signal: attributionHeaders ? options?.signal : undefined,
+      signal,
     })
     return {
       topics: parseFeedTopicCards(data.topics),
       cards: parseFeedTopicCards(data.cards),
     }
   }
-  if (attributionHeaders) return fetchCatalog()
+  if (attributionHeaders) return fetchCatalog(options?.signal)
   if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.topicCatalog)
   const catalog = await requestCache.fetch(
     phantasiCacheKeys.topicCatalog,
     fetchCatalog,
     CACHE_TTL.CATEGORIES,
+    false,
+    options?.signal,
   )
   options?.signal?.throwIfAborted()
   return catalog
@@ -765,6 +755,17 @@ export async function getNoteDocForItem(
     { signal },
   )
   return data.doc
+}
+
+export async function listNoteDocAuthors(
+  id: number,
+  signal?: AbortSignal,
+): Promise<PhantasiNoteAuthor[]> {
+  const data = await request<{ success: boolean; authors: PhantasiNoteAuthor[] }>(
+    `/notes/docs/${id}/authors`,
+    { signal },
+  )
+  return data.authors
 }
 
 export async function updateNoteDoc(
@@ -1033,19 +1034,21 @@ export async function getStats(
   options?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<PhantasiStats> {
   options?.signal?.throwIfAborted()
-  const fetchStats = async () => {
+  const fetchStats = async (signal?: AbortSignal) => {
     const data = await request<PhantasiStatsResponse>('/stats', {
       headers: attributionHeaders,
-      signal: attributionHeaders ? options?.signal : undefined,
+      signal,
     })
     return data.stats
   }
-  if (attributionHeaders) return fetchStats()
+  if (attributionHeaders) return fetchStats(options?.signal)
   if (options?.forceRefresh) requestCache.delete(phantasiCacheKeys.stats)
   const stats = await requestCache.fetch(
     phantasiCacheKeys.stats,
     fetchStats,
     CACHE_TTL.STATS,
+    false,
+    options?.signal,
   )
   options?.signal?.throwIfAborted()
   return stats
@@ -1403,6 +1406,9 @@ export interface NoteHistoryEntry {
     published_at: number | null
   }
 }
+export type NoteHistorySummary = Omit<NoteHistoryEntry, 'snapshot'> & {
+  snapshot: Omit<NoteHistoryEntry['snapshot'], 'content_md'>
+}
 export async function getNoteEditorPreference(signal?: AbortSignal): Promise<NoteEditorDefaultView> {
   const data = await request<{ default_view: NoteEditorDefaultView }>('/notes/editor-preference', { signal })
   return data.default_view
@@ -1410,9 +1416,13 @@ export async function getNoteEditorPreference(signal?: AbortSignal): Promise<Not
 export async function saveNoteEditorPreference(defaultView: NoteEditorDefaultView): Promise<void> {
   await request('/notes/editor-preference', { method: 'PUT', body: JSON.stringify({ default_view: defaultView }) })
 }
-export async function getNoteHistory(id: number, signal?: AbortSignal): Promise<NoteHistoryEntry[]> {
-  const data = await request<{ history: NoteHistoryEntry[] }>(`/notes/docs/${id}/history`, { signal })
+export async function getNoteHistory(id: number, signal?: AbortSignal): Promise<NoteHistorySummary[]> {
+  const data = await request<{ history: NoteHistorySummary[] }>(`/notes/docs/${id}/history`, { signal })
   return data.history
+}
+export async function getNoteHistoryEntry(id: number, version: number, signal?: AbortSignal): Promise<NoteHistoryEntry> {
+  const data = await request<{ entry: NoteHistoryEntry }>(`/notes/docs/${id}/history/${version}`, { signal })
+  return data.entry
 }
 export async function restoreNoteHistory(id: number, version: number, revision: number, clientRequestId: string, current: NoteHistoryEntry['snapshot']): Promise<PhantasiNoteDoc> {
   const data = await request<{ doc: PhantasiNoteDoc }>(`/notes/docs/${id}/history/${version}/restore`, {

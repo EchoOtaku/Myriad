@@ -18,6 +18,7 @@ import {
   railGroupSourceCount,
   sourceColumnStarts,
   sourceScrollStarts,
+  storyColumnCount,
   storyColumnLeads,
   storyColumnShift,
   storyRailGroup,
@@ -122,6 +123,7 @@ function PhantasiFeeds({
   const itemsApiRef = useRef<PhantasiRailApi | null>(null)
   const skipStoryAlignRef = useRef(false)
   const pendingStoryAlignRef = useRef<number | null>(null)
+  const pendingSourceAlignRef = useRef<number | null>(null)
   const railDriverRef = useRef<'sites' | 'stories' | null>(null)
   const [focusId, setFocusId] = useState<number | null>(
     sources.length > 0 ? LATEST_FEED_ID : null,
@@ -341,6 +343,9 @@ function PhantasiFeeds({
     slotCacheRef.current = next
     return next
   }, [stories])
+  const storyCols = useMemo(() => storyColumnCount(storySlots), [storySlots])
+  const storyColsRef = useRef(storyCols)
+  storyColsRef.current = storyCols
   const colCacheRef = useRef<Array<{ id: number; column: number }>>([])
   const sourceCols = useMemo(() => {
     const next = sourceColumnStarts(storySlots, colCacheRef.current)
@@ -564,11 +569,7 @@ function PhantasiFeeds({
   const primeStoryMount = () => {
     const colW = colWRef.current
     if (colW <= 1) return
-    const columns = sourceColsRef.current
-    const totalCols = Math.max(
-      1,
-      columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
-    )
+    const totalCols = storyColsRef.current
     const viewW =
       lastViewWRef.current || itemsViewRef.current?.clientWidth || 800
     const ideal = railMountColumns(
@@ -656,10 +657,7 @@ function PhantasiFeeds({
         col,
         colLeadRef.current,
       )
-      const totalCols = Math.max(
-        1,
-        columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
-      )
+      const totalCols = storyColsRef.current
       const ideal = railMountColumns(
         state.scroll,
         state.viewW,
@@ -895,10 +893,10 @@ function PhantasiFeeds({
     onStoryIdle,
   )
 
-  const alignStoryGroup = (groupId: number | null) => {
-    if (groupId == null) return
+  const alignStoryGroup = (groupId: number | null): boolean => {
+    if (groupId == null) return false
     const start = sourceColsRef.current.find((block) => block.id === groupId)
-    if (!start) return
+    if (!start) return false
     const column = start.column
     const mounted = mountColsRef.current
     const leadCol =
@@ -907,10 +905,7 @@ function PhantasiFeeds({
     const far = Math.abs(column - leadCol) > 1
     if (column < mounted.from || column > mounted.to || far) {
       const colW = colWRef.current
-      const totalCols =
-        sourceColsRef.current.at(-1)?.column ??
-        storySlotsRef.current.at(-1)?.column ??
-        column
+      const totalCols = storyColsRef.current
       const ideal = railMountColumns(
         (column - 1) * colW,
         itemsViewRef.current?.clientWidth || 800,
@@ -940,6 +935,7 @@ function PhantasiFeeds({
       storySetLiveRef.current(liveToRef.current)
     }
     itemsApiRef.current?.alignColumn(column, true)
+    return true
   }
 
   const prevStorySlotsRef = useRef(storySlots)
@@ -961,8 +957,14 @@ function PhantasiFeeds({
       skipStoryAlignRef.current = false
       return
     }
-    alignStoryGroup(focusId)
+    pendingSourceAlignRef.current = alignStoryGroup(focusId) ? null : focusId
   }, [focusId])
+
+  useLayoutEffect(() => {
+    const pending = pendingSourceAlignRef.current
+    if (pending == null || pending !== focusId) return
+    if (alignStoryGroup(pending)) pendingSourceAlignRef.current = null
+  }, [focusId, sourceCols])
 
   const activateSite = (id: number) => {
     if (!isAggregateFeedId(id) && isEditMode) {
@@ -978,14 +980,15 @@ function PhantasiFeeds({
       window.clearTimeout(focusTimerRef.current)
       focusTimerRef.current = 0
     }
-    skipStoryAlignRef.current = true
     setFocusId(id)
     setReadyId(id)
     onJumpSource?.(id)
     onRailFocus?.(isAggregateFeedId(id) ? null : id)
     releaseStoriesRef.current?.()
     sitesApiRef.current?.align(id, true)
-    alignStoryGroup(id)
+    const aligned = alignStoryGroup(id)
+    skipStoryAlignRef.current = aligned
+    pendingSourceAlignRef.current = aligned ? null : id
   }
   activateSiteRef.current = activateSite
 

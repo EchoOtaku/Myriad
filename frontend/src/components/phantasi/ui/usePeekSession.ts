@@ -2,14 +2,14 @@ import type { PeekStoryPreview } from './peekLane'
 import { useCallback, useLayoutEffect, useRef } from 'react'
 import { cancelIdleTask, scheduleIdleTask } from '../../../hooks/animation'
 import { onPhantasiMotion, phantasiMotionBusy } from '../../../hooks/animation/pages/phantasiMotion'
-import { cancelArticlePrefetch, prefetchArticleDetails } from '../articlePrefetch'
+import { cancelArticlePrefetch } from '../articlePrefetch'
 import { storySourceFace } from '../notes/noteSiteSource'
 import { canPhantasiPeek, PHANTASI_PEEK_MEDIA } from './interactionMedia'
 import { notePeekPointer, resetPeekPointer } from './peekLane'
 import { applyPeekFace, toPhantasiPeekFace, writePeekFace } from './PhantasiPeekAir'
 import { cancelPhantasiPeekResume, clearPhantasiStoryPeeks, schedulePhantasiPeekResume } from './StoryCard'
 
-/** One owner for wallpaper, card classes, resume jobs and article warm-up. */
+/** One owner for wallpaper, card classes, resume jobs and reader code warm-up. */
 export function usePeekSession(routeKey: string, blocked: boolean) {
   const live = useRef(false)
   const blockedRef = useRef(blocked)
@@ -36,7 +36,7 @@ export function usePeekSession(routeKey: string, blocked: boolean) {
     cancelArticlePrefetch()
     scheduleIdleTask('phantasi-peek-warm', () => {
       if (!live.current || !canPhantasiPeek() || activeId.current !== item.id || phantasiMotionBusy()) return
-      prefetchArticleDetails([item.id])
+      // Card details already have their preview data; only the reader needs the body.
       void import('../PhantasiReader')
     }, { priority: 'low' })
   }, [dropPeekSession])

@@ -3,6 +3,8 @@
 //! [`classify_request`] is the only allow/deny matcher. Do not split those
 //! arms across files; enforcement after a [`Decision`] belongs in `forward`.
 
+use std::collections::HashSet;
+
 use axum::http::{Method, Uri};
 use bytes::Bytes;
 use serde_json::Value;
@@ -11,7 +13,9 @@ use super::validate::{
     validate_container_create, validate_container_create_name, validate_container_rename,
     validate_image_pull, validate_image_tag,
 };
-use super::{GuardState, strip_api_version, validate_identifier};
+use super::{
+    GuardState, MAX_CONTAINER_LOG_TAIL, strip_api_version, validate_identifier,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum Decision {
@@ -74,6 +78,7 @@ pub(crate) fn classify_request(
         }
         ["containers", id, "logs"] if *method == Method::GET => {
             validate_identifier(id)?;
+            validate_container_logs_query(uri)?;
             Ok(Decision::ProjectContainerLogs((*id).to_string()))
         }
         ["containers", id, action]
@@ -113,6 +118,62 @@ pub(crate) fn classify_request(
         ["system", ..] if *method == Method::GET => Ok(Decision::Allow),
         _ => Err(format!(
             "Docker API operation is not allowed: {method} {path}"
+        )),
+    }
+}
+
+fn validate_container_logs_query(uri: &Uri) -> std::result::Result<(), String> {
+    let mut seen = HashSet::new();
+    let mut stdout = false;
+    let mut stderr = false;
+    let mut tail = None;
+    for (key, value) in url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes()) {
+        if !seen.insert(key.to_string()) {
+            return Err(format!("duplicate Docker logs query field: {key}"));
+        }
+        match key.as_ref() {
+            "stdout" => stdout = parse_query_bool(&value, "stdout")?,
+            "stderr" => stderr = parse_query_bool(&value, "stderr")?,
+            "timestamps" => {
+                parse_query_bool(&value, "timestamps")?;
+            }
+            "follow" | "details" => {
+                if parse_query_bool(&value, &key)? {
+                    return Err(format!("Docker logs query field {key}=true is not allowed"));
+                }
+            }
+            "since" | "until" => {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("Docker logs query field {key} must be an integer"))?;
+            }
+            "tail" => {
+                let parsed = value.parse::<u64>().map_err(|_| {
+                    "Docker logs tail must be an integer no greater than 10000".to_string()
+                })?;
+                if parsed > MAX_CONTAINER_LOG_TAIL {
+                    return Err("Docker logs tail exceeds 10000 lines".into());
+                }
+                tail = Some(parsed);
+            }
+            _ => return Err(format!("Docker logs query field is not allowed: {key}")),
+        }
+    }
+    if tail.is_none() {
+        return Err("Docker logs query requires a bounded numeric tail".into());
+    }
+    if !stdout && !stderr {
+        return Err("Docker logs query must select stdout or stderr".into());
+    }
+    Ok(())
+}
+
+fn parse_query_bool(value: &str, field: &str) -> std::result::Result<bool, String> {
+    match value {
+        "1" | "true" => Ok(true),
+        "0" | "false" => Ok(false),
+        _ => Err(format!(
+            "Docker logs query field {field} must be true or false"
         )),
     }
 }

@@ -3,64 +3,105 @@ import { describe, it } from 'node:test'
 import { decideNavWrite, decidePathSync } from './boardRouteSync.ts'
 import { pathForActiveIdChange, pathShowsNavId } from './journalRoutes.ts'
 
+const VISITOR_NAV = ['feeds', 'notes', 'sites']
+const ADMIN_NAV = [...VISITOR_NAV, 'starred', 'workbench']
+
+function decideVisitorPath(pathname: string, isAuthenticated = false) {
+  return decidePathSync(pathname, isAuthenticated, false, VISITOR_NAV)
+}
+
+function decideAdminPath(pathname: string) {
+  return decidePathSync(pathname, true, true, ADMIN_NAV)
+}
+
 describe('decidePathSync', () => {
   it('刷新板块深链只同步高亮，不回写', () => {
-    assert.deepEqual(decidePathSync('/journal/notes', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/notes'), {
       action: 'apply',
       navId: 'notes',
     })
-    assert.deepEqual(decidePathSync('/journal/friends', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/friends'), {
       action: 'apply',
       navId: 'sites',
     })
-    assert.deepEqual(decidePathSync('/journal/feeds/48', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/feeds/48'), {
       action: 'apply',
       navId: 'feeds',
     })
-    assert.deepEqual(decidePathSync('/journal/topics/ai', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/topics/ai'), {
       action: 'apply',
       navId: 'feeds',
     })
-    assert.deepEqual(decidePathSync('/journal/articles/946', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/articles/946'), {
       action: 'keep-article',
     })
   })
 
   it('收藏/工作台看身份；认不出的手帐地址只回根一次', () => {
-    assert.deepEqual(decidePathSync('/journal/starred', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/starred'), {
       action: 'bounce',
       to: '/journal',
     })
-    assert.deepEqual(decidePathSync('/journal/starred', true, false), {
+    assert.deepEqual(decideVisitorPath('/journal/starred', true), {
       action: 'bounce',
       to: '/journal',
     })
-    assert.deepEqual(decidePathSync('/journal/starred', true, true), {
+    assert.deepEqual(decideAdminPath('/journal/starred'), {
       action: 'apply',
       navId: 'starred',
     })
-    assert.deepEqual(decidePathSync('/journal/workbench/notes', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/workbench/notes'), {
       action: 'bounce',
       to: '/journal',
     })
-    assert.deepEqual(decidePathSync('/journal/workbench/notes', true, true), {
+    assert.deepEqual(decideAdminPath('/journal/workbench/notes'), {
       action: 'apply',
       navId: 'workbench',
     })
-    assert.deepEqual(decidePathSync('/journal/nope', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/nope'), {
       action: 'bounce',
       to: '/journal',
     })
-    assert.deepEqual(decidePathSync('/journal/feeds/not-a-number', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/feeds/not-a-number'), {
       action: 'bounce',
       to: '/journal',
     })
-    assert.deepEqual(decidePathSync('/journal/notes.xml', false, false), {
+    assert.deepEqual(decideVisitorPath('/journal/notes.xml'), {
       action: 'none',
     })
-    assert.deepEqual(decidePathSync('/library', false, false), {
+    assert.deepEqual(decideVisitorPath('/library'), {
       action: 'none',
     })
+  })
+
+  it('已关闭板块及其子页面回退到第一个可见板块', () => {
+    for (const pathname of [
+      '/journal',
+      '/journal/feeds/48',
+      '/journal/topics/ai',
+    ]) {
+      assert.deepEqual(
+        decidePathSync(pathname, false, false, ['notes', 'sites']),
+        {
+          action: 'bounce',
+          to: '/journal/notes',
+        },
+      )
+    }
+    assert.deepEqual(
+      decidePathSync('/journal/notes', false, false, ['sites']),
+      {
+        action: 'bounce',
+        to: '/journal/friends',
+      },
+    )
+    assert.deepEqual(
+      decidePathSync('/journal/friends', false, false, ['notes']),
+      {
+        action: 'bounce',
+        to: '/journal/notes',
+      },
+    )
   })
 })
 

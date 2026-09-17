@@ -28,7 +28,8 @@ use super::validate::{
     validate_endpoint_settings, validate_image_pull,
 };
 use super::{
-    GuardConfig, GuardState, SELF_UPDATE_GATE, TRUSTED_GUARD_REPOSITORY, strip_api_version,
+    GuardConfig, GuardState, MAX_CONCURRENT_LOG_READS, SELF_UPDATE_GATE,
+    TRUSTED_GUARD_REPOSITORY, strip_api_version,
 };
 
 fn state() -> GuardState {
@@ -77,6 +78,7 @@ fn state_with_visible_root(visible_root: PathBuf) -> GuardState {
         }),
         host_compose_root: Arc::new(PathBuf::from("/srv/myriad")),
         mutation_gate: Arc::new(AtomicUsize::new(0)),
+        log_read_gate: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_LOG_READS)),
     }
 }
 
@@ -817,12 +819,30 @@ fn exec_and_unknown_mutations_are_denied() {
 
 #[test]
 fn initializer_logs_remain_project_scoped_read_only_access() {
-    let request = Uri::from_static("/v1.51/containers/init-container-id/logs?stdout=1&stderr=1");
+    let request = Uri::from_static(
+        "/v1.51/containers/init-container-id/logs?stdout=1&stderr=1&tail=10000",
+    );
     assert_eq!(
         classify_request(&state(), &Method::GET, &request, &Bytes::new()).unwrap(),
         Decision::ProjectContainerLogs("init-container-id".into())
     );
     assert!(classify_request(&state(), &Method::POST, &request, &Bytes::new()).is_err());
+
+    for query in [
+        "stdout=1&stderr=1&tail=all",
+        "stdout=1&stderr=1&tail=10001",
+        "stdout=1&stderr=1&tail=100&follow=true",
+        "stdout=1&stderr=1&tail=100&unknown=true",
+        "stdout=1&stderr=1",
+    ] {
+        let request: Uri = format!("/v1.51/containers/init-container-id/logs?{query}")
+            .parse()
+            .unwrap();
+        assert!(
+            classify_request(&state(), &Method::GET, &request, &Bytes::new()).is_err(),
+            "query={query}"
+        );
+    }
 }
 
 #[test]

@@ -7,6 +7,7 @@ import { isValidElement, memo, useCallback, useEffect, useLayoutEffect, useMemo,
 import {
   clipPaintedBatches,
   extendPaintedRange,
+  storyColumnCount,
   storySlotsByColumn,
 } from '../logic/feedStories'
 import { peekStoryNode } from '../ui/peekLane'
@@ -141,7 +142,7 @@ export const PhantasiFeedsStories = memo(({
     pendingStoryAlignRef.current = null
     itemsApiRef.current?.alignColumn(alignId, true)
   }, [alignId, itemsApiRef, pendingStoryAlignRef])
-  const storyCols = storySlots.at(-1)?.column ?? 1
+  const storyCols = useMemo(() => storyColumnCount(storySlots), [storySlots])
   const grid = storyMountWindow(mountCols.from, mountCols.to, storyCols)
   const byColRef = useRef<Map<number, StorySlot[]> | undefined>(undefined)
   const byCol = useMemo(() => {

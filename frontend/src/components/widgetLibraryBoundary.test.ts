@@ -39,6 +39,18 @@ describe('widget library / grid boundary', () => {
     assert.ok(gridCss.includes('widget-grid-item-remove'))
   })
 
+  it('starts touch drags from a non-passive native listener', () => {
+    const island = readFileSync(
+      new URL('./WidgetLibraryIsland.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.match(
+      island,
+      /addEventListener\('touchstart', handleTouchStart, \{ passive: false \}\)/,
+    )
+    assert.doesNotMatch(island, /\bonTouchStart=/)
+  })
+
   it('pages mount the dock island as a grid sibling', () => {
     const home = readFileSync(new URL('../views/Home.tsx', import.meta.url), 'utf8')
     const panel = readFileSync(

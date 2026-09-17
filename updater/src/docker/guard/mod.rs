@@ -26,6 +26,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
 use serde_json::{Value, json};
+use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 
 pub use config::GuardConfig;
@@ -47,6 +48,9 @@ pub(crate) const SELF_UPDATE_HELPER_NAME: &str = "myriad-tcb-self-update";
 pub(crate) const SELF_UPDATE_RECOVERY_NAME: &str = "myriad-tcb-self-update-recovery";
 pub(crate) const SELF_UPDATE_EXHAUSTED_NAME: &str = "myriad-tcb-self-update-recovery-exhausted";
 pub(crate) const DOCKER_API_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const MAX_CONTAINER_LOG_BODY: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_CONTAINER_LOG_TAIL: u64 = 10_000;
+pub(crate) const MAX_CONCURRENT_LOG_READS: usize = 3;
 pub(crate) const SELF_UPDATE_GATE: usize = 1usize << (usize::BITS - 1);
 pub(crate) const POLICY_CONTAINER_FILE: &str = "/guard-policy/docker-guard.env";
 
@@ -55,6 +59,7 @@ pub(crate) struct GuardState {
     config: Arc<GuardConfig>,
     host_compose_root: Arc<PathBuf>,
     mutation_gate: Arc<AtomicUsize>,
+    log_read_gate: Arc<Semaphore>,
 }
 
 pub async fn run(mut config: GuardConfig) -> Result<()> {
@@ -83,6 +88,7 @@ pub async fn run(mut config: GuardConfig) -> Result<()> {
         config: Arc::new(config),
         host_compose_root: Arc::new(host_compose_root.clone()),
         mutation_gate: Arc::new(AtomicUsize::new(0)),
+        log_read_gate: Arc::new(Semaphore::new(MAX_CONCURRENT_LOG_READS)),
     };
     let recovery_exhausted =
         helper_container_exists(&state.config.socket_path, SELF_UPDATE_EXHAUSTED_NAME).await?;

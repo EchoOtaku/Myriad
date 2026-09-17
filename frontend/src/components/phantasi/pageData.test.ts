@@ -8,6 +8,7 @@ import {
   loadBoardNotes,
   loadFeedStories,
   loadLatestStory,
+  loadTopicStories,
   peekFeedStories,
   peekFeedStoriesLoose,
   peekLatestStory,
@@ -88,6 +89,37 @@ describe('并发同源请求合并', () => {
       // 命中缓存不再打网
       await loadFeedStories(11, 5)
       assert.equal(calls, 1)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('主题卡按主题一次读取完整预览组', async () => {
+    const original = globalThis.fetch
+    let requested: URL | null = null
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requested = new URL(String(input), 'https://test.invalid')
+      return Response.json({
+        items: [{
+          id: 51,
+          source_id: 8,
+          title: '主题文章',
+          topic: 'AI',
+          summary: null,
+          image: null,
+          published_at: 10,
+          is_read: false,
+        }],
+        total: 1,
+        page: 1,
+        per_page: 20,
+      })
+    }) as typeof fetch
+    try {
+      const items = await loadTopicStories('AI')
+      assert.equal(items[0]?.id, 51)
+      assert.equal(requested?.searchParams.get('topic'), 'AI')
+      assert.equal(requested?.searchParams.get('per_page'), '20')
     } finally {
       globalThis.fetch = original
     }

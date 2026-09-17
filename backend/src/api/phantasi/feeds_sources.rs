@@ -17,7 +17,7 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::models::entities::{phantasi_categories, phantasi_sources};
+use crate::models::entities::{phantasi_categories, phantasi_items, phantasi_sources};
 use crate::services::icon_service::IconService;
 use crate::services::phantasi_parser::{FeedParser, ParseError, ParsedFeed};
 use crate::services::phantasi_scheduler::get_phantasi_scheduler;
@@ -174,12 +174,13 @@ pub(crate) async fn list_sources(
                     .collect::<Vec<_>>()
                     .join(", ");
                 // $1 = user_id（游客传 -1，不存在的 ID，LEFT JOIN 不会匹配任何行）
+                let summary = phantasi_items::preview_summary_sql("i.summary");
                 let sql = format!(
                     "SELECT id, source_id, title, summary, image, published_at, topic, \
                             COALESCE(is_read, false) AS is_read, \
                             COALESCE(is_starred, false) AS is_starred \
                      FROM ( \
-                       SELECT i.id, i.source_id, i.title, i.summary, i.image, \
+                        SELECT i.id, i.source_id, i.title, {summary} AS summary, i.image, \
                               i.published_at, i.topic, s.is_read, s.is_starred, \
                               ROW_NUMBER() OVER \
                                 (PARTITION BY i.source_id ORDER BY i.published_at DESC NULLS LAST) AS rn \

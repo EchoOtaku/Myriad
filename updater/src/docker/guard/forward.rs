@@ -23,13 +23,12 @@ use super::validate::{
     managed_project_service_for_logs, validate_endpoint_settings,
 };
 use super::{
-    DOCKER_API_TIMEOUT, GuardState, SELF_UPDATE_GATE, denial, strip_api_version,
-    validate_identifier,
+    DOCKER_API_TIMEOUT, GuardState, MAX_CONTAINER_LOG_BODY, SELF_UPDATE_GATE, denial,
+    strip_api_version, validate_identifier,
 };
 
 const MAX_REQUEST_BODY: usize = 1024 * 1024;
 const MAX_INSPECT_BODY: usize = 2 * 1024 * 1024;
-
 pub(crate) async fn handle(
     State(state): State<GuardState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -57,6 +56,7 @@ pub(crate) async fn handle(
             return denial(StatusCode::FORBIDDEN, &reason);
         }
     };
+    let container_logs_request = matches!(&decision, Decision::ProjectContainerLogs(_));
     match decision {
         Decision::Allow => {}
         Decision::ProjectContainer(container) => {
@@ -119,9 +119,23 @@ pub(crate) async fn handle(
     } else {
         None
     };
+    let _log_read_permit = if container_logs_request {
+        match state.log_read_gate.clone().try_acquire_owned() {
+            Ok(permit) => Some(permit),
+            Err(_) => {
+                return denial(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "too many concurrent Docker log reads",
+                );
+            }
+        }
+    } else {
+        None
+    };
 
     let req = Request::from_parts(parts, Body::from(body));
     match forward(&state.config.socket_path, req).await {
+        Ok(resp) if container_logs_request => bound_container_log_response(resp).await,
         Ok(mut resp) => {
             if let Some(lease) = mutation_lease {
                 resp.extensions_mut().insert(lease);
@@ -132,6 +146,26 @@ pub(crate) async fn handle(
             error!(err = %e, "docker guard upstream failure");
             denial(StatusCode::BAD_GATEWAY, "docker daemon unavailable")
         }
+    }
+}
+
+async fn bound_container_log_response(resp: Response) -> Response {
+    let (parts, body) = resp.into_parts();
+    match tokio::time::timeout(
+        DOCKER_API_TIMEOUT,
+        to_bytes(body, MAX_CONTAINER_LOG_BODY),
+    )
+    .await
+    {
+        Ok(Ok(body)) => Response::from_parts(parts, Body::from(body)),
+        Ok(Err(_)) => denial(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "Docker log response exceeds 4 MiB",
+        ),
+        Err(_) => denial(
+            StatusCode::REQUEST_TIMEOUT,
+            "Docker log response timed out",
+        ),
     }
 }
 
@@ -295,4 +329,16 @@ pub(crate) async fn forward(socket: &Path, mut req: Request<Body>) -> Result<Res
     let resp = sender.send_request(req).await?;
     let (parts, body) = resp.into_parts();
     Ok(Response::from_parts(parts, Body::new(body)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn container_log_response_is_bounded() {
+        let response = Response::new(Body::from(vec![0; MAX_CONTAINER_LOG_BODY + 1]));
+        let response = bound_container_log_response(response).await;
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
 }

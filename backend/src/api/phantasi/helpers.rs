@@ -735,13 +735,10 @@ mod tests {
     }
 
     #[test]
-    fn list_items_defaults_to_preview() {
+    fn list_items_only_returns_previews() {
         let body = impl_fn(include_str!("feeds_list.rs"), "list_items");
-        assert!(body.contains("ItemProjection::Full"));
-        assert!(
-            body.contains("query.projection != Some(phantasi_items::ItemProjection::Full)"),
-            "list_items must default to preview unless projection=full"
-        );
+        assert!(body.contains("phantasi_items::preview_query(items_query)"));
+        assert!(!body.contains("query.projection"));
         assert!(
             body.contains("phantasi_store_http(\"count articles\""),
             "list_items must not swallow COUNT failures"

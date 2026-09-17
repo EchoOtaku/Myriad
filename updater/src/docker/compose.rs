@@ -418,7 +418,10 @@ impl ComposeRunner {
         // removing the disposable container. Failure to read logs is diagnostic
         // only; the authoritative result remains `docker wait`.
         let logs = self
-            .run_docker(&["logs", container_id], Duration::from_secs(120))
+            .run_docker(
+                &["logs", "--tail", "10000", container_id],
+                Duration::from_secs(120),
+            )
             .await;
         let removed = self
             .run_docker(&["rm", "--force", container_id], Duration::from_secs(120))

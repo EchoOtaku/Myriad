@@ -27,7 +27,6 @@ import { fetchJson } from '../../utils/apiHelper'
 import { getBuildInfo } from '../../utils/buildInfo'
 import { userFacingError } from '../../utils/userFacingError'
 import {
-  ButtonItem,
   SettingGroup,
   SettingGroupGrid,
   SettingsButton,
@@ -139,6 +138,7 @@ export default function RuntimeDiagnostics({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [requestLatency, setRequestLatency] = useState<number | null>(null)
+  const [exportingProcessLogs, setExportingProcessLogs] = useState(false)
   const requestIdRef = useRef(0)
   const buildInfo = useMemo(getBuildInfo, [])
 
@@ -482,6 +482,7 @@ export default function RuntimeDiagnostics({
   }, [makeReport])
 
   const exportProcessLogs = useCallback(async () => {
+    setExportingProcessLogs(true)
     try {
       const report = await fetchJson<ProcessLogExport>(
         '/api/admin/updater/process-logs',
@@ -519,6 +520,8 @@ export default function RuntimeDiagnostics({
         userFacingError(exportError, t.config.processLogsExportFailed),
         'error',
       )
+    } finally {
+      setExportingProcessLogs(false)
     }
   }, [onMessage, t])
 
@@ -702,20 +705,19 @@ export default function RuntimeDiagnostics({
           >
             {t.config.runtimeDiagnosticsDownload}
           </SettingsButton>
+          <SettingsButton
+            size="sm"
+            icon={<LuDownload />}
+            loading={exportingProcessLogs}
+            disabled={exportingProcessLogs}
+            aria-label={t.config.processLogsExport}
+            title={t.config.processLogsExportDesc}
+            onClick={() => void exportProcessLogs()}
+          >
+            {t.config.processLogsExportButton}
+          </SettingsButton>
         </div>
       </div>
-
-      <ButtonItem
-        itemKey="export_process_logs"
-        label={t.config.processLogsExport}
-        description={t.config.processLogsExportDesc}
-        buttonText={t.config.processLogsExportButton}
-        buttonIcon={<LuDownload size={14} />}
-        onClick={exportProcessLogs}
-        asyncAction
-        variant="secondary"
-        layout="horizontal"
-      />
 
       {data && (
         <>

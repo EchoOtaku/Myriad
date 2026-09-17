@@ -1,3 +1,5 @@
+import { SharedRequest } from './sharedRequest'
+
 interface CacheEntry<T> {
   data: T
   timestamp: number
@@ -10,7 +12,7 @@ const SWEEP_INTERVAL_MS = 60_000
 
 export class RequestCache {
   private cache: Map<string, CacheEntry<any>>
-  private pendingRequests: Map<string, Promise<any>>
+  private pendingRequests: Map<string, SharedRequest<any>>
   private maxEntries: number
   private sweepTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -129,36 +131,39 @@ export class RequestCache {
 
   async fetch<T>(
     key: string,
-    fetcher: () => Promise<T>,
+    fetcher: (signal: AbortSignal) => Promise<T>,
     ttl?: number,
     forceRefresh = false,
+    signal?: AbortSignal,
   ): Promise<T> {
+    signal?.throwIfAborted()
     const cached = forceRefresh ? null : this.get<T>(key)
     if (!forceRefresh && this.cache.has(key)) {
       return cached as T
     }
 
     const pending = this.pendingRequests.get(key)
-    if (pending) {
-      return pending as Promise<T>
+    if (pending && !pending.controller.signal.aborted) {
+      return pending.wait(signal) as Promise<T>
     }
 
-    const promise = fetcher()
+    const request = new SharedRequest<T>(transportSignal => Promise.try(() => fetcher(transportSignal))
       .then((data) => {
-        if (this.pendingRequests.get(key) === promise) {
-          this.set(key, data, ttl)
+        if (this.pendingRequests.get(key) === request) {
+          if (transportSignal.aborted) this.pendingRequests.delete(key)
+          else this.set(key, data, ttl)
         }
         return data
       })
       .catch((error) => {
-        if (this.pendingRequests.get(key) === promise) {
+        if (this.pendingRequests.get(key) === request) {
           this.pendingRequests.delete(key)
         }
         throw error
-      })
+      }))
 
-    this.pendingRequests.set(key, promise)
-    return promise
+    this.pendingRequests.set(key, request)
+    return request.wait(signal)
   }
 
   get size(): number {

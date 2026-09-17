@@ -19,7 +19,8 @@ The gateway exposes only the methods and paths used by
 `backend/src/api/updater_admin.rs`:
 
 - Read: status, available versions/builds/releases/commits, comparison, jobs,
-  snapshots, diagnostics, and the last self-update result.
+  snapshots, diagnostics, bounded core-process warning/error logs, and the last
+  self-update result.
 - Mutate: trigger update, change updater preferences, rollback, delete a named
   snapshot, the three fixed rescue actions, and the two fixed TCB/proxy update
   actions.
@@ -34,6 +35,12 @@ There is no arbitrary-method or fallback proxy. Unknown routes, encoded path
 traversal, method changes, duplicate/unknown query fields, unexpected headers,
 unknown JSON fields, wrong types, and bodies on bodyless operations are rejected
 before `X-Update-Token` is attached.
+
+Process-log collection also crosses Docker Guard. Guard permits raw log reads
+only for fixed services in the active Compose project, requires a numeric
+`tail <= 10000`, rejects follow mode and unknown query fields, caps each response
+at 4 MiB, and permits at most three concurrent reads. The updater then performs
+severity filtering, redaction, and per-entry response-size limiting.
 
 ## Failure and compromise consequences
 

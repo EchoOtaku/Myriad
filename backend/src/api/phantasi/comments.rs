@@ -90,13 +90,22 @@ async fn visible_source(
     db: &DatabaseConnection,
     item_id: i32,
     is_admin: bool,
-) -> Result<(phantasi_items::Model, phantasi_sources::Model), HttpError> {
-    let item = match phantasi_items::Entity::find_by_id(item_id).one(db).await {
-        Ok(Some(item)) => item,
+) -> Result<(i64, phantasi_sources::Model), HttpError> {
+    let (source_id, content_revision) = match phantasi_items::Entity::find_by_id(item_id)
+        .select_only()
+        .columns([
+            phantasi_items::Column::SourceId,
+            phantasi_items::Column::ContentRevision,
+        ])
+        .into_tuple::<(i32, i64)>()
+        .one(db)
+        .await
+    {
+        Ok(Some(target)) => target,
         Ok(None) => return Err(item_not_found()),
         Err(error) => return Err(phantasi_store_http("find article", error)),
     };
-    let source = match phantasi_sources::Entity::find_by_id(item.source_id)
+    let source = match phantasi_sources::Entity::find_by_id(source_id)
         .one(db)
         .await
     {
@@ -107,19 +116,19 @@ async fn visible_source(
     if source.admin_only && !is_admin {
         return Err(item_not_found());
     }
-    Ok((item, source))
+    Ok((content_revision, source))
 }
 
 async fn visible_item(
     db: &DatabaseConnection,
     item_id: i32,
     is_admin: bool,
-) -> Result<phantasi_items::Model, HttpError> {
-    let (item, source) = visible_source(db, item_id, is_admin).await?;
+) -> Result<i64, HttpError> {
+    let (content_revision, source) = visible_source(db, item_id, is_admin).await?;
     if source.source_type != phantasi_sources::SourceType::Note {
         return Err(comments_only_on_notes());
     }
-    Ok(item)
+    Ok(content_revision)
 }
 
 async fn load_user_faces(
@@ -293,7 +302,7 @@ pub(crate) async fn create_comment(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let (user_id, is_admin) = get_phantasi_user_and_admin_status(&headers, &db).await?;
     require_comment_write(user_id, is_admin).await?;
-    let item = visible_item(&db, item_id, is_admin).await?;
+    let content_revision = visible_item(&db, item_id, is_admin).await?;
 
     // 回复挂在同一篇文章的任意一条评论下；没写 color / is_public 时跟父评。
     let mut inherited_color: Option<String> = None;
@@ -347,7 +356,7 @@ pub(crate) async fn create_comment(
         color: Set(validated_color),
         is_public: Set(comment_is_public(req.is_public, inherited_is_public)),
         parent_id: Set(req.parent_id),
-        content_revision: Set(Some(item.content_revision)),
+        content_revision: Set(Some(content_revision)),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
         ..Default::default()

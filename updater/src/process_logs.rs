@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,6 +11,9 @@ use regex::Regex;
 use serde::Serialize;
 
 use crate::docker::client::DockerClient;
+use crate::docker::guard::{
+    MAX_CONCURRENT_LOG_READS, MAX_CONTAINER_LOG_BODY, MAX_CONTAINER_LOG_TAIL,
+};
 use crate::redact::redact_secrets;
 
 const CORE_SERVICES: &[&str] = &[
@@ -25,17 +28,23 @@ const CORE_SERVICES: &[&str] = &[
     "updater",
     "updater-gateway",
 ];
-const MAX_SCANNED_LINES_PER_SOURCE: usize = 10_000;
+const MAX_SCANNED_LINES_PER_SOURCE: usize = MAX_CONTAINER_LOG_TAIL as usize;
 const MAX_ENTRIES_PER_SOURCE: usize = 200;
+const MAX_INPUT_LINE_BYTES: usize = 16 * 1_024;
 const MAX_ENTRY_BYTES: usize = 2_048;
-const MAX_CONCURRENT_SOURCES: usize = 3;
-const SOURCE_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_SOURCE_RESPONSE_BYTES: usize = MAX_CONTAINER_LOG_BODY;
+const MAX_CONCURRENT_SOURCES: usize = MAX_CONCURRENT_LOG_READS;
+const SOURCE_TIMEOUT: Duration = Duration::from_secs(5);
 
 static ANSI_ESCAPE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").expect("valid ANSI regex"));
-static LOG_LEVEL: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)(?:^|[\s\[\]:])(?P<level>trace|debug|info|notice|log|warn|warning|error|fatal|panic)(?:$|[\s\[\]:])")
-        .expect("valid log level regex")
+static PREFIX_LEVEL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^(?:(?:\d{4}-\d{2}-\d{2}[T ]\S+)(?:\s+[A-Z]{2,5})?\s+(?:\[[^\]]+\]\s+)?)?(?P<level>trace|debug|info|notice|log|warn|warning|error|fatal|panic)(?:$|[\s\[\]:])")
+        .expect("valid prefix log level regex")
+});
+static STRUCTURED_LEVEL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)(?:^|[\s,{])["']?level["']?\s*[:=]\s*["']?(?P<level>trace|debug|info|notice|log|warn|warning|error|fatal|panic)(?:["'\s,}]|$)"#)
+        .expect("valid structured log level regex")
 });
 static JSON_SECRET: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -50,6 +59,10 @@ static CREDENTIAL_URL: Lazy<Regex> = Lazy::new(|| {
 static JWT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
         .expect("valid JWT regex")
+});
+static URL_QUERY_SECRET: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(?P<prefix>[?&](?:key|api[_-]?key|token|access[_-]?token|refresh[_-]?token|secret|password)=)[^&#\s]+")
+        .expect("valid URL query secret regex")
 });
 
 #[derive(Debug, Serialize)]
@@ -68,7 +81,9 @@ pub struct ProcessLogExport {
 struct ExportLimits {
     scanned_lines_per_source: usize,
     retained_entries_per_source: usize,
+    input_line_bytes: usize,
     entry_bytes: usize,
+    source_response_bytes: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -79,6 +94,7 @@ struct ProcessLogSource {
     entries: Vec<ProcessLogEntry>,
     scanned_lines: usize,
     matched_lines: usize,
+    input_truncated: bool,
     truncated: bool,
     complete: bool,
 }
@@ -128,6 +144,8 @@ struct ContainerSource {
     service: String,
     container: String,
     state: Option<String>,
+    running: bool,
+    created: i64,
 }
 
 pub async fn export(docker: Arc<DockerClient>) -> ProcessLogExport {
@@ -156,8 +174,7 @@ pub async fn export(docker: Arc<DockerClient>) -> ProcessLogExport {
         }
     };
 
-    let mut discovered = Vec::new();
-    let mut discovered_services = HashSet::new();
+    let mut discovered = HashMap::<String, ContainerSource>::new();
     for container in containers {
         let labels = container.labels.unwrap_or_default();
         if labels.get("com.docker.compose.project").map(String::as_str) != Some(project.as_str()) {
@@ -185,14 +202,30 @@ pub async fn export(docker: Arc<DockerClient>) -> ProcessLogExport {
             .next()
             .map(|name| name.trim_start_matches('/').to_string())
             .unwrap_or_else(|| id.chars().take(12).collect());
-        discovered_services.insert(service.clone());
-        discovered.push(ContainerSource {
+        let running = container
+            .state
+            .as_ref()
+            .is_some_and(|state| state.to_string() == "running");
+        let candidate = ContainerSource {
             id,
-            service,
+            service: service.clone(),
             container: name,
             state: container.state.map(|state| state.to_string()),
-        });
+            running,
+            created: container.created.unwrap_or_default(),
+        };
+        match discovered.get(&service) {
+            Some(existing)
+                if existing.running && !candidate.running
+                    || existing.running == candidate.running
+                        && existing.created >= candidate.created => {}
+            _ => {
+                discovered.insert(service, candidate);
+            }
+        }
     }
+    let discovered_services = discovered.keys().cloned().collect::<Vec<_>>();
+    let mut discovered = discovered.into_values().collect::<Vec<_>>();
     discovered.sort_by(|left, right| {
         left.service
             .cmp(&right.service)
@@ -201,7 +234,7 @@ pub async fn export(docker: Arc<DockerClient>) -> ProcessLogExport {
 
     report.omitted_sources = CORE_SERVICES
         .iter()
-        .filter(|service| !discovered_services.contains(**service))
+        .filter(|service| !discovered_services.iter().any(|found| found == **service))
         .map(|service| OmittedSource {
             service,
             reason: "not_present",
@@ -263,7 +296,9 @@ fn empty_export() -> ProcessLogExport {
         limits: ExportLimits {
             scanned_lines_per_source: MAX_SCANNED_LINES_PER_SOURCE,
             retained_entries_per_source: MAX_ENTRIES_PER_SOURCE,
+            input_line_bytes: MAX_INPUT_LINE_BYTES,
             entry_bytes: MAX_ENTRY_BYTES,
+            source_response_bytes: MAX_SOURCE_RESPONSE_BYTES,
         },
         sources: Vec::new(),
         collection_errors: Vec::new(),
@@ -283,9 +318,10 @@ async fn collect_source(
         .tail(&tail)
         .build();
     let mut logs = docker.raw().logs(&source.id, Some(options));
-    let mut entries = Vec::new();
+    let mut entries = VecDeque::new();
     let mut scanned_lines = 0;
     let mut matched_lines = 0;
+    let mut input_truncated = false;
 
     while let Some(output) = logs.next().await {
         let output = output.map_err(|error| format!("read logs: {error}"))?;
@@ -295,10 +331,16 @@ async fn collect_source(
             LogOutput::Console { message } => (LogStream::Console, message),
             LogOutput::StdIn { .. } => continue,
         };
-        let chunk = String::from_utf8_lossy(&bytes);
-        for raw_line in chunk.lines() {
+        for raw_line in log_lines(&bytes) {
             scanned_lines += 1;
-            let line = normalize_line(raw_line);
+            let raw_line = if raw_line.len() > MAX_INPUT_LINE_BYTES {
+                input_truncated = true;
+                &raw_line[..MAX_INPUT_LINE_BYTES]
+            } else {
+                raw_line
+            };
+            let raw_line = String::from_utf8_lossy(raw_line);
+            let line = normalize_line(&raw_line);
             if line.is_empty() {
                 continue;
             }
@@ -307,12 +349,12 @@ async fn collect_source(
                 continue;
             };
             matched_lines += 1;
-            if entries.len() >= MAX_ENTRIES_PER_SOURCE {
-                continue;
-            }
             let sanitized = sanitize_message(message);
             let (message, truncated) = truncate_utf8(&sanitized, MAX_ENTRY_BYTES);
-            entries.push(ProcessLogEntry {
+            if entries.len() >= MAX_ENTRIES_PER_SOURCE {
+                entries.pop_front();
+            }
+            entries.push_back(ProcessLogEntry {
                 timestamp,
                 stream,
                 level,
@@ -328,12 +370,21 @@ async fn collect_source(
         service: source.service,
         container: source.container,
         state: source.state,
-        entries,
+        entries: entries.into(),
         scanned_lines,
         matched_lines,
-        truncated: scan_limited || entry_limited,
-        complete: !scan_limited && !entry_limited,
+        input_truncated,
+        truncated: scan_limited || entry_limited || input_truncated,
+        complete: !scan_limited && !entry_limited && !input_truncated,
     })
+}
+
+fn log_lines(bytes: &[u8]) -> Vec<&[u8]> {
+    let mut lines = bytes.split(|byte| *byte == b'\n').collect::<Vec<_>>();
+    if bytes.ends_with(b"\n") {
+        lines.pop();
+    }
+    lines
 }
 
 fn normalize_line(line: &str) -> String {
@@ -362,7 +413,10 @@ fn classify_line(line: &str, stream: LogStream) -> Option<ExportLevel> {
     if lower.contains("panicked at") || lower.starts_with("panic:") {
         return Some(ExportLevel::Error);
     }
-    if let Some(captures) = LOG_LEVEL.captures(line) {
+    if let Some(captures) = PREFIX_LEVEL
+        .captures(line)
+        .or_else(|| STRUCTURED_LEVEL.captures(line))
+    {
         return match captures
             .name("level")
             .map(|level| level.as_str().to_ascii_lowercase())
@@ -383,6 +437,7 @@ fn sanitize_message(message: &str) -> String {
     let redacted = redact_secrets(message);
     let redacted = JSON_SECRET.replace_all(&redacted, "${prefix}[REDACTED]");
     let redacted = CREDENTIAL_URL.replace_all(&redacted, "${prefix}[REDACTED]@");
+    let redacted = URL_QUERY_SECRET.replace_all(&redacted, "${prefix}[REDACTED]");
     JWT.replace_all(&redacted, "[JWT_REDACTED]").into_owned()
 }
 
@@ -390,11 +445,15 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> (String, bool) {
     if value.len() <= max_bytes {
         return (value.to_string(), false);
     }
-    let mut end = max_bytes;
+    let suffix = "...";
+    if max_bytes <= suffix.len() {
+        return (suffix[..max_bytes].to_string(), true);
+    }
+    let mut end = max_bytes - suffix.len();
     while !value.is_char_boundary(end) {
         end -= 1;
     }
-    (format!("{}…", &value[..end]), true)
+    (format!("{}{}", &value[..end], suffix), true)
 }
 
 #[cfg(test)]
@@ -411,7 +470,18 @@ mod tests {
             classify_line("ERROR: relation missing", LogStream::Stderr),
             Some(ExportLevel::Error)
         ));
+        assert!(matches!(
+            classify_line(r#"{"level":"error","message":"failed"}"#, LogStream::Stdout),
+            Some(ExportLevel::Error)
+        ));
+        assert!(matches!(
+            classify_line("level=warning operation delayed", LogStream::Stdout),
+            Some(ExportLevel::Warning)
+        ));
         assert!(classify_line("INFO no error was found", LogStream::Stdout).is_none());
+        assert!(classify_line("no error was found", LogStream::Stdout).is_none());
+        assert!(classify_line("INFO experience_level=error", LogStream::Stdout).is_none());
+        assert!(classify_line("INFO level=error", LogStream::Stdout).is_none());
         assert!(matches!(
             classify_line("request handler failed", LogStream::Stderr),
             Some(ExportLevel::UnclassifiedStderr)
@@ -428,9 +498,10 @@ mod tests {
 
     #[test]
     fn redacts_structured_credentials_and_database_urls() {
-        let line = r#"error {"access_token":"secret-value"} postgres://user:pass@db/app eyJabcdefgh.abcdefgh.abcdefgh"#;
+        let line = r#"error {"access_token":"secret-value"} https://api.example.test/data?key=steam-secret&lang=en postgres://user:pass@db/app eyJabcdefgh.abcdefgh.abcdefgh"#;
         let sanitized = sanitize_message(line);
         assert!(!sanitized.contains("secret-value"));
+        assert!(!sanitized.contains("steam-secret"));
         assert!(!sanitized.contains(":pass@"));
         assert!(!sanitized.contains("eyJabcdefgh"));
         assert!(sanitized.contains("[REDACTED]"));
@@ -439,6 +510,15 @@ mod tests {
     #[test]
     fn truncates_only_at_utf8_boundaries() {
         assert_eq!(truncate_utf8("abc", 3), ("abc".into(), false));
-        assert_eq!(truncate_utf8("a界b", 3), ("a…".into(), true));
+        assert_eq!(truncate_utf8("a界b", 4), ("a...".into(), true));
+        assert_eq!(truncate_utf8("abcdef", 3), ("...".into(), true));
+    }
+
+    #[test]
+    fn trailing_newline_does_not_create_an_extra_scanned_line() {
+        assert_eq!(log_lines(b"ERROR one\n").len(), 1);
+        assert_eq!(log_lines(b"ERROR one\nWARN two\n").len(), 2);
+        assert_eq!(log_lines(b"\n").len(), 1);
+        assert_eq!(log_lines(b"ERROR one\n\n").len(), 2);
     }
 }

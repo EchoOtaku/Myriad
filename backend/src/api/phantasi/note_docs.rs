@@ -12,7 +12,8 @@ use axum::{
 use chrono::Utc;
 use myriad_phantasi_notes::{NoteDocStatus, schedule_at, validate_note};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -127,41 +128,14 @@ fn to_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
     }
 }
 
-fn first_body_image(markdown: &str) -> Option<String> {
-    let mut search = markdown;
-    while let Some(bang) = search.find("![") {
-        let rest = &search[bang + 2..];
-        let Some(close_alt) = rest.find("](") else {
-            break;
-        };
-        let after = &rest[close_alt + 2..];
-        let Some(end) = after.find(')') else {
-            break;
-        };
-        let url = after[..end].split_whitespace().next()?.trim();
-        if !url.is_empty() && !url.starts_with('#') {
-            return Some(url.to_string());
-        }
-        search = &after[end + 1..];
-    }
-    None
-}
-
+// Only called with the bounded excerpt and derived cover from list_query().
 fn to_list_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
     let has_body = !doc.content_md.trim().is_empty();
     let excerpt = has_body.then(|| note_excerpt(&doc.content_md));
-    let cover = doc
-        .image
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .or_else(|| first_body_image(&doc.content_md));
     let mut row = to_response(doc);
     row.content_md = String::new();
     row.has_body = has_body;
     row.excerpt = excerpt;
-    row.image = cover;
     row
 }
 
@@ -255,7 +229,7 @@ pub(crate) async fn list_note_docs(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
-    let docs = phantasi_note_docs::Entity::find()
+    let docs = phantasi_note_docs::list_query()
         .order_by_desc(phantasi_note_docs::Column::UpdatedAt)
         .all(&db)
         .await
@@ -323,12 +297,15 @@ pub(crate) async fn get_note_doc_for_item(
     Path(item_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let item = crate::models::entities::phantasi_items::Entity::find_by_id(item_id)
+    let source_id = crate::models::entities::phantasi_items::Entity::find_by_id(item_id)
+        .select_only()
+        .column(crate::models::entities::phantasi_items::Column::SourceId)
+        .into_tuple::<i32>()
         .one(&db)
         .await
         .map_err(|e| phantasi_store_http("find note", e))?
         .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
-    let source = crate::models::entities::phantasi_sources::Entity::find_by_id(item.source_id)
+    let source = crate::models::entities::phantasi_sources::Entity::find_by_id(source_id)
         .one(&db)
         .await
         .map_err(|e| phantasi_store_http("find note source", e))?;
@@ -347,6 +324,12 @@ pub(crate) async fn get_note_doc_for_item(
             json!({ "success": true, "doc": respond_doc(&db, doc).await? }),
         ));
     }
+    // Only legacy published notes without a cloud document need this backfill.
+    let item = crate::models::entities::phantasi_items::Entity::find_by_id(item_id)
+        .one(&db)
+        .await
+        .map_err(|e| phantasi_store_http("find note", e))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
     let published = crate::services::note_publish::PublishedNote {
         id: item.id,
         link: item.link.clone(),
@@ -480,14 +463,21 @@ pub(crate) async fn delete_note_doc(
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
-    let doc = find_doc(&db, id).await?;
-    if doc.status == NoteDocStatus::Published.as_str() {
+    let status = phantasi_note_docs::Entity::find_by_id(id)
+        .select_only()
+        .column(phantasi_note_docs::Column::Status)
+        .into_tuple::<String>()
+        .one(&db)
+        .await
+        .map_err(|e| phantasi_store_http("find note doc", e))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note draft not found"))?;
+    if status == NoteDocStatus::Published.as_str() {
         return Err(phantasi_http_err(
             StatusCode::BAD_REQUEST,
             "Published notes must be deleted from the article",
         ));
     }
-    phantasi_note_docs::Entity::delete_by_id(doc.id)
+    phantasi_note_docs::Entity::delete_by_id(id)
         .exec(&db)
         .await
         .map_err(|e| phantasi_store_http("delete note doc", e))?;
@@ -700,6 +690,39 @@ pub(crate) async fn list_note_author_candidates(
     })))
 }
 
+/// Author management and collaboration admission only need owner/item IDs.
+pub(super) async fn find_doc_owner(
+    db: &DatabaseConnection,
+    id: i32,
+) -> Result<(i32, Option<i32>), HttpError> {
+    phantasi_note_docs::Entity::find_by_id(id)
+        .select_only()
+        .columns([
+            phantasi_note_docs::Column::UserId,
+            phantasi_note_docs::Column::ItemId,
+        ])
+        .into_tuple::<(i32, Option<i32>)>()
+        .one(db)
+        .await
+        .map_err(|e| phantasi_store_http("find note doc", e))?
+        .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note draft not found"))
+}
+
+/// `GET /notes/docs/{id}/authors` — settings do not need the document body.
+pub(crate) async fn list_note_doc_authors(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    find_doc_owner(&db, id).await?;
+    let mut authors = load_authors_for_docs(&db, &[id]).await?;
+    Ok(Json(json!({
+        "success": true,
+        "authors": authors.remove(&id).unwrap_or_default(),
+    })))
+}
+
 /// `POST /notes/docs/{id}/authors`
 pub(crate) async fn add_note_doc_author(
     State(db): State<DatabaseConnection>,
@@ -708,8 +731,8 @@ pub(crate) async fn add_note_doc_author(
     Json(req): Json<NoteAuthorWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
-    let doc = find_doc(&db, id).await?;
-    let authors = add_note_author(&db, doc.id, doc.user_id, req.user_id, doc.item_id).await?;
+    let (owner_id, item_id) = find_doc_owner(&db, id).await?;
+    let authors = add_note_author(&db, id, owner_id, req.user_id, item_id).await?;
     Ok(Json(json!({ "success": true, "authors": authors })))
 }
 
@@ -720,8 +743,8 @@ pub(crate) async fn remove_note_doc_author(
     Path((id, user_id)): Path<(i32, i32)>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
-    let doc = find_doc(&db, id).await?;
-    let authors = remove_note_author(&db, doc.id, user_id, doc.item_id).await?;
+    let (_, item_id) = find_doc_owner(&db, id).await?;
+    let authors = remove_note_author(&db, id, user_id, item_id).await?;
     Ok(Json(json!({ "success": true, "authors": authors })))
 }
 
@@ -743,9 +766,7 @@ pub(crate) async fn note_doc_websocket(
         .parse::<i32>()
         .map_err(|_| phantasi_http_err(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
     let username = claims.username.clone();
-    let doc = find_doc(&db, id).await?;
-    let owner_id = doc.user_id;
-    let item_id = doc.item_id;
+    let (owner_id, item_id) = find_doc_owner(&db, id).await?;
     Ok(ws.on_upgrade(move |socket| {
         handle_note_doc_socket(socket, db, id, user_id, owner_id, item_id, username)
     }))
@@ -1055,16 +1076,6 @@ mod tests {
         let body = &src[start..];
         assert!(body.contains("row.content_md = String::new()"));
         assert!(body.contains("note_excerpt"));
-        assert!(body.contains("first_body_image"));
-        assert!(body.contains("row.image = cover"));
-    }
-
-    #[test]
-    fn first_body_image_reads_inline_markdown() {
-        assert_eq!(
-            first_body_image("前文\n![内文](https://img.example/body.jpg)"),
-            Some("https://img.example/body.jpg".into())
-        );
-        assert_eq!(first_body_image("没有图"), None);
+        assert!(body.contains("phantasi_note_docs::list_query()"));
     }
 }

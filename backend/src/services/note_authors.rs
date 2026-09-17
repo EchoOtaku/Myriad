@@ -1,8 +1,8 @@
 //! 笔记联合作者。发起人是 owner，同时写入或主动加入的管理员是 author。
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, Statement, Value as SeaValue,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    Statement, Value as SeaValue, sea_query::Expr,
 };
 use serde::Serialize;
 
@@ -152,18 +152,11 @@ pub async fn sync_published_author_line<C: ConnectionTrait>(
     let Some(item_id) = item_id else {
         return Ok(());
     };
-    let Some(item) = phantasi_items::Entity::find_by_id(item_id)
-        .one(db)
-        .await
-        .map_err(|e| store_http("find note", e))?
-    else {
-        return Ok(());
-    };
     let line = note_author_line(db, doc_id).await?;
-    let mut active: phantasi_items::ActiveModel = item.into();
-    active.author = Set(line);
-    active
-        .update(db)
+    phantasi_items::Entity::update_many()
+        .col_expr(phantasi_items::Column::Author, Expr::value(line))
+        .filter(phantasi_items::Column::Id.eq(item_id))
+        .exec(db)
         .await
         .map_err(|e| store_http("save note author", e))?;
     Ok(())
