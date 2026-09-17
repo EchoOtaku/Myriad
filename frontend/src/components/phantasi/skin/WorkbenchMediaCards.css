@@ -1,4 +1,10 @@
-/* The clickable wrapper owns both the thumbnail and caption in grid mode. */
+/* Grid cards: settings-token preview well, contain (not crop). */
+
+.phantasi-workbench .phantasi-workbench__media .phantasi-workbench__thumb {
+  border: 1px solid var(--cfg-subtle-border);
+  background: var(--cfg-fill);
+}
+
 .managed-list--grid .phantasi-workbench__media .managed-list-row-hit {
   flex-direction: column;
   align-items: stretch;
@@ -15,6 +21,13 @@
   height: auto;
   aspect-ratio: 1;
   overflow: hidden;
+  border-bottom: 1px solid var(--cfg-subtle-border);
+  background:
+    repeating-conic-gradient(
+      color-mix(in srgb, var(--cfg-text-1) 9%, var(--cfg-fill)) 0 25%,
+      var(--cfg-fill) 0 50%
+    )
+    0 0 / 0.9rem 0.9rem;
 }
 
 .managed-list--grid
@@ -25,8 +38,23 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 0;
+  border: 0;
+  background: transparent;
+}
+
+.managed-list--grid
+  .phantasi-workbench__media
+  .managed-list-row-leading
+  .phantasi-workbench__thumb.is-empty {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: var(--cfg-fill);
 }
 
 .managed-list--grid .phantasi-workbench__media .managed-list-row-main {

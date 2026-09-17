@@ -30,7 +30,7 @@ use crate::{
 };
 
 use super::{
-    common::{authorize_tapp_permission, check_rate_limit, resolve_accessible_tapp},
+    common::{check_rate_limit, parse_user_id, resolve_accessible_tapp},
     runtime_grant::RuntimeGrantContext,
 };
 
@@ -87,20 +87,12 @@ struct EventFeed {
 /// POST /api/tapp/events/publish
 pub async fn publish_event(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime: RuntimeGrantContext,
     Json(request): Json<PublishEventRequest>,
 ) -> Result<Json<Value>, ApiError> {
     runtime.require(TappPermission::EventPublish)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        runtime.tapp_id(),
-        TappPermission::EventPublish,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
 
     let tapp = resolve_accessible_tapp(&db, user_id, runtime.tapp_id()).await?;
     let declaration =
@@ -125,19 +117,11 @@ pub async fn publish_event(
 /// GET /api/tapp/events/stream
 pub async fn stream_events(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime: RuntimeGrantContext,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
     runtime.require(TappPermission::EventSubscribe)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        runtime.tapp_id(),
-        TappPermission::EventSubscribe,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     let tapp = resolve_accessible_tapp(&db, user_id, runtime.tapp_id()).await?;
     let declaration =
         tapp_events::parse_event_manifest(&tapp.manifest).map_err(event_http_error)?;

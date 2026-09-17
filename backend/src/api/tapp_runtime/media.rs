@@ -1,7 +1,6 @@
 //! 媒体控制 API
 
-use axum::{Extension, Json, extract::State, http::StatusCode};
-use sea_orm::DatabaseConnection;
+use axum::{Extension, Json, http::StatusCode};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -9,7 +8,6 @@ use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 
-use super::common::authorize_tapp_permission;
 use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
@@ -21,22 +19,12 @@ pub struct MediaControlRequest {
 
 /// POST /api/tapp/media/control
 pub async fn media_control(
-    State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<MediaControlRequest>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::MediaControl)?;
-    authorize_tapp_permission(
-        &db,
-        &claims,
-        &req.tapp_id,
-        TappPermission::MediaControl,
-        &dynamic_config,
-    )
-    .await?;
 
     tracing::info!(
         "[TAPP] media_control - User: {}, Tapp: {}, Action: {}",

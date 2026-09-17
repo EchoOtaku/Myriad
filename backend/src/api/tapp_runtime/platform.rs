@@ -20,7 +20,7 @@ use crate::services::platform_cache::{
     PlatformCacheError, append_filtered_items, build_tapp_written_item, get_cached_platform_items,
 };
 
-use super::common::{authorize_tapp_permission, validate_platform_name};
+use super::common::validate_platform_name;
 use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
@@ -209,22 +209,12 @@ fn new_item_document(item_id: &str, tapp_id: &str, item: &NewPlatformItem) -> Va
 
 /// POST /api/tapp/platform/items
 pub async fn add_platform_item(
-    State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<AddPlatformItemRequest>,
 ) -> Result<Json<PlatformItemResult>, HttpError> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::PlatformWrite)?;
-    authorize_tapp_permission(
-        &db,
-        &claims,
-        &req.tapp_id,
-        TappPermission::PlatformWrite,
-        &dynamic_config,
-    )
-    .await?;
 
     validate_platform_name(&req.item.platform)
         .map_err(|e| (StatusCode::BAD_REQUEST, Json(AppError::public_json(e))))?;
@@ -257,22 +247,12 @@ pub struct AddPlatformItemsBatchRequest {
 
 /// POST /api/tapp/platform/items/batch
 pub async fn add_platform_items_batch(
-    State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
-    Extension(claims): Extension<Claims>,
+    Extension(_claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<AddPlatformItemsBatchRequest>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::PlatformWrite)?;
-    authorize_tapp_permission(
-        &db,
-        &claims,
-        &req.tapp_id,
-        TappPermission::PlatformWrite,
-        &dynamic_config,
-    )
-    .await?;
 
     for item in &req.items {
         validate_platform_name(&item.platform)

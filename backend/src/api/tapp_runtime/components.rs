@@ -17,7 +17,7 @@ use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_components::{self, ComponentRegistryError, ComponentType};
 
-use super::common::{authorize_tapp_permission, parse_user_id, verify_tapp_ownership};
+use super::common::authorize_tapp_permission;
 use super::runtime_grant::RuntimeGrantContext;
 use crate::api::tapp_store::{TappStorageAccess, installation_write_forbidden_error};
 use crate::error::HttpError;
@@ -145,8 +145,6 @@ pub async fn list_components(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &tapp_id).await?;
     let access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)?;
     let owner_id = access.installation_namespace();
     tracing::debug!(

@@ -5,8 +5,7 @@
 //! Tapp notifications enter the shared `NotificationManager`; clients consume
 //! the same events for toast / island / system surfaces.
 
-use axum::{Extension, Json, extract::State, http::StatusCode};
-use sea_orm::DatabaseConnection;
+use axum::{Extension, Json, http::StatusCode};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -15,7 +14,7 @@ use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_notification::{self, TappNotificationError};
 
-use super::common::authorize_tapp_permission;
+use super::common::parse_user_id;
 use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
@@ -48,22 +47,13 @@ fn notification_http_error(err: TappNotificationError) -> (StatusCode, Json<Valu
 
 /// POST /api/tapp/notifications
 pub async fn create_tapp_notification(
-    State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(request): Json<TappNotificationRequest>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&request.tapp_id)?;
     runtime_grant.require(TappPermission::UiNotification)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &request.tapp_id,
-        TappPermission::UiNotification,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
 
     let notification_id = tapp_notification::create_tapp_notification(
         user_id,

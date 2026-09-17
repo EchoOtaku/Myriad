@@ -299,7 +299,9 @@ export function MediaEditorDialog({
             className={`media-editor__comparison${draft ? ' has-draft' : ''}`}
           >
             <figure>
-              <figcaption>{c.mediaEditOriginal}</figcaption>
+              <figcaption className="media-editor__tag">
+                {c.mediaEditOriginal}
+              </figcaption>
               <EditorCanvas zoom={video ? 1 : zoom} pannable={!video}>
                 {video ? (
                   <video src={src} controls />
@@ -329,7 +331,7 @@ export function MediaEditorDialog({
             </figure>
             {draft && (
               <figure>
-                <figcaption>
+                <figcaption className="media-editor__tag is-result">
                   <LuSparkles aria-hidden="true" />
                   {c.mediaEditResult}
                 </figcaption>
