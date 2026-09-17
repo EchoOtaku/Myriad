@@ -16,7 +16,7 @@ import {
   isValidFederationMediaUrl,
 } from '../utils/federationMediaUrl'
 
-/** 确定访客时短路 Channel/Room 读。仅 isKnownGuest() 为 true 才短路；未知一律走网络。鉴权仍在后端。 */
+/** 确定访客时短路会话域读。仅 isKnownGuest() 为 true 才短路；未知一律走网络。公开 feed 不短路。鉴权仍在后端。 */
 /** 访客无会话返回空成功，不是错误。 */
 function guestEmptyChannels() {
   return { success: true as const, data: { channels: [], total: 0 } }
@@ -24,6 +24,33 @@ function guestEmptyChannels() {
 
 function guestEmptyRooms() {
   return { success: true as const, data: { rooms: [], total: 0 } }
+}
+
+function guestEmptyItems() {
+  return { success: true as const, data: { items: [], total: 0 } }
+}
+
+function guestEmptyRings() {
+  return { success: true as const, data: { rings: [], total: 0 } }
+}
+
+function guestEmptyIdentity() {
+  return {
+    success: true as const,
+    data: {
+      username: '',
+      domain: '',
+      handle: '',
+      acct: '',
+      webfinger_resource: '',
+      actor_url: '',
+      inbox_url: '',
+      outbox_url: '',
+      followers_url: '',
+      following_url: '',
+      profile_url: '',
+    },
+  }
 }
 
 function missingArg() {
@@ -211,6 +238,7 @@ export function registerFederationHandlers(
   }
 
   bridge.registerHandler('federation.getIdentity', async () => {
+    if (isKnownGuest()) return guestEmptyIdentity()
     try {
       try {
         const runtimeGrant = await bridge.getRuntimeGrant()
@@ -281,6 +309,7 @@ export function registerFederationHandlers(
   })
 
   bridge.registerHandler('federation.getTimeline', async () => {
+    if (isKnownGuest()) return guestEmptyItems()
     try {
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getTimeline(runtimeGrant)
@@ -351,6 +380,7 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler('federation.getFollowing', async () => {
+    if (isKnownGuest()) return guestEmptyItems()
     try {
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getFollowing(runtimeGrant)
@@ -364,6 +394,7 @@ export function registerFederationHandlers(
   })
 
   bridge.registerHandler('federation.getFollowers', async () => {
+    if (isKnownGuest()) return guestEmptyItems()
     try {
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getFollowers(runtimeGrant)
@@ -540,6 +571,7 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler('federation.getBookmarks', async () => {
+    if (isKnownGuest()) return guestEmptyItems()
     try {
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getBookmarks(runtimeGrant)
@@ -683,6 +715,7 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler('federation.getPublished', async () => {
+    if (isKnownGuest()) return guestEmptyItems()
     try {
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getPublished(runtimeGrant)
@@ -1350,6 +1383,7 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler('federation.getRings', async () => {
+    if (isKnownGuest()) return guestEmptyRings()
     try {
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getRings(runtimeGrant)

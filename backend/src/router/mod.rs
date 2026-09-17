@@ -173,7 +173,10 @@ pub(crate) async fn start_unified_server(
         // live_inbox_body_limit / live_authenticated_body_limit, not DefaultBodyLimit.
         .layer(axum::extract::DefaultBodyLimit::max(50 * 1024 * 1024))
         .layer(cors)
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        // JSON/API gzip. DefaultPredicate skips images (except SVG) and SSE, so
+        // agent EventSource and /api/proxy/image stay uncompressed.
+        .layer(CompressionLayer::new());
 
     // SPA fallback vs API-only depending on frontend_dist_path.
     let app: Router = if std::path::Path::new(&config.frontend_dist_path).exists() {
@@ -182,7 +185,7 @@ pub(crate) async fn start_unified_server(
         // 重要：ServeDir 对任何非 GET/HEAD 请求直接返回 405，所以 /api/* 绝不能落到
         // 静态文件服务——未注册的 POST 应是可读的 JSON 404，不是 405。
         let index_html = std::path::Path::new(&config.frontend_dist_path).join("index.html");
-        // CompressionLayer 包住 ServeDir。默认谓词跳过图片（除 SVG）和 SSE；agent SSE 在 API 路由，不进这层。
+        // CompressionLayer 包住 ServeDir。默认谓词跳过图片（除 SVG）和 SSE。
         let serve_dir = tower::Layer::layer(
             &CompressionLayer::new(),
             ServeDir::new(&config.frontend_dist_path).not_found_service(ServeFile::new(index_html)),
@@ -474,5 +477,53 @@ mod cors_method_tests {
                 "{path} preflight methods: {allow_methods}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod api_compression_tests {
+    use super::CompressionLayer;
+    use axum::Json;
+    use axum::Router;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode, header};
+    use axum::routing::get;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn json_api_responses_are_gzip_encoded() {
+        let padding = "library-item-".repeat(40);
+        let app = Router::new()
+            .route(
+                "/api/ping",
+                get({
+                    let padding = padding.clone();
+                    move || {
+                        let padding = padding.clone();
+                        async move { Json(json!({ "ok": true, "padding": padding })) }
+                    }
+                }),
+            )
+            .layer(CompressionLayer::new());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ping")
+                    .header(header::ACCEPT_ENCODING, "gzip")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .expect("gzip json");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_ENCODING)
+                .and_then(|value| value.to_str().ok()),
+            Some("gzip"),
+            "JSON API must gzip when the client accepts it"
+        );
     }
 }

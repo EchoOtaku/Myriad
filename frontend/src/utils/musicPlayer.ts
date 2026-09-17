@@ -264,15 +264,35 @@ function addToLyricsCache(key: string, lyrics: LyricLine[]): void {
   lyricsCache.set(key, lyrics)
 }
 
+/** Session cache stores the player view without geo-specific `url`. */
+type CachedPlayerSong = Omit<Song, 'url'>
+
+export interface PlayerPlaylistSong {
+  id: string
+  name: string
+  artist: string
+  album: string
+  cover: string
+  duration: number
+  isVip?: boolean
+}
+
+export interface PlayerPlaylistPayload {
+  code: number
+  source: MusicSource
+  playlistId: string
+  songs: PlayerPlaylistSong[]
+}
+
 interface PlaylistCacheEntry {
-  data: Song[]
+  data: CachedPlayerSong[]
   timestamp: number
 }
 
 const playlistMemoryCache = new Map<string, PlaylistCacheEntry>()
 const PLAYLIST_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000
-// Drop outer/url play-url leftovers.
-const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache_v3'
+// v4: metadata only; hydrate url on read.
+const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache_v4'
 const MAX_PLAYLIST_CACHE_SIZE = 5
 
 function setPlaylistMemoryCache(
@@ -404,12 +424,63 @@ export function parseKrc(krcText: string): WordLyricLine[] {
   return result.toSorted((a, b) => a.time - b.time)
 }
 
-/** Normalize cached 126.net covers. */
-function normalizeSongCovers(songs: Song[]): Song[] {
-  return songs.map((s) => ({
-    ...s,
-    cover: proxyImageUrlOr(s.cover),
+function playbackUrlForSong(
+  source: MusicSource,
+  id: string,
+  inChina: boolean | null,
+): string {
+  if (source === 'netease') {
+    if (inChina === null) return getNeteaseAudioUrlImmediate(id)
+    return getNeteaseGeoPlaybackUrl(id, inChina)
+  }
+  if (inChina === null) return getQQAudioUrlImmediate(id)
+  return getQQGeoPlaybackUrl(id, inChina)
+}
+
+function hydrateCachedSongs(
+  songs: CachedPlayerSong[],
+  inChina: boolean | null,
+): Song[] {
+  return songs.map((song) => ({
+    ...song,
+    cover: proxyImageUrlOr(song.cover),
+    url: playbackUrlForSong(song.source, song.id, inChina),
   }))
+}
+
+export function songsFromPlayerPlaylist(
+  data: PlayerPlaylistPayload,
+  inChina: boolean,
+): Song[] {
+  const source = data.source
+  return data.songs.map((song) => {
+    const id = String(song.id)
+    return {
+      id,
+      name: song.name || '',
+      artist: song.artist || 'Unknown',
+      album: song.album || '',
+      cover: proxyImageUrlOr(song.cover || ''),
+      url: playbackUrlForSong(source, id, inChina),
+      duration: song.duration || 0,
+      source,
+      isVip: Boolean(song.isVip),
+    } satisfies Song
+  })
+}
+
+function stripPlaybackUrl(song: Song): CachedPlayerSong {
+  const { url: _url, ...rest } = song
+  return rest
+}
+
+function isPlayerPlaylistPayload(
+  data: unknown,
+  source: MusicSource,
+): data is PlayerPlaylistPayload {
+  if (!data || typeof data !== 'object') return false
+  const payload = data as Record<string, unknown>
+  return payload.source === source && Array.isArray(payload.songs)
 }
 
 function getPlaylistFromCache(cacheKey: string): Song[] | null {
@@ -419,7 +490,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
     Date.now() - memoryCache.timestamp < PLAYLIST_CACHE_DURATION
   ) {
     setPlaylistMemoryCache(cacheKey, memoryCache)
-    return normalizeSongCovers(memoryCache.data)
+    return hydrateCachedSongs(memoryCache.data, getCachedIsChinaMainland())
   }
   if (memoryCache) playlistMemoryCache.delete(cacheKey)
 
@@ -434,7 +505,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
 
       if (cached && Date.now() - cached.timestamp < PLAYLIST_CACHE_DURATION) {
         setPlaylistMemoryCache(cacheKey, cached)
-        return normalizeSongCovers(cached.data)
+        return hydrateCachedSongs(cached.data, getCachedIsChinaMainland())
       }
     }
   } catch {
@@ -445,7 +516,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
 
 function savePlaylistToCache(cacheKey: string, songs: Song[]): void {
   const entry: PlaylistCacheEntry = {
-    data: songs,
+    data: songs.map(stripPlaybackUrl),
     timestamp: Date.now(),
   }
 
@@ -495,179 +566,71 @@ export function clearLyricsCache(): void {
   kugouVerbatimCache.clear()
 }
 
-export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
-  const cacheKey = `netease-${playlistId}`
+async function fetchPlayerPlaylist(
+  source: MusicSource,
+  playlistId: string,
+): Promise<PlayerPlaylistPayload> {
+  const path =
+    source === 'netease'
+      ? `${API_URL}/api/proxy/music/netease/playlist/${playlistId}`
+      : `${API_URL}/api/proxy/music/qq/playlist/${playlistId}`
+  const response = await fetch(path)
 
+  if (response.status === 429) {
+    const body = await response.json().catch(() => null)
+    const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
+    notifyHttpRateLimit(response, body)
+    throw new Error('RATE_LIMITED')
+  }
+
+  if (!response.ok) {
+    throw new Error('FETCH_FAILED')
+  }
+
+  const data: unknown = await response.json()
+  if (!isPlayerPlaylistPayload(data, source)) {
+    throw new Error('FETCH_FAILED')
+  }
+  return data
+}
+
+async function loadPlayerPlaylist(
+  source: MusicSource,
+  playlistId: string,
+): Promise<Song[]> {
+  const cacheKey = `${source}-${playlistId}`
   const cached = getPlaylistFromCache(cacheKey)
   if (cached) {
     return cached
   }
 
-  try {
-    const geoPromise = isUserInChinaMainland()
-
-    const response = await fetch(
-      `${API_URL}/api/proxy/music/netease/playlist/${playlistId}`,
-    )
-
-    if (response.status === 429) {
-      const body = await response.json().catch(() => null)
-      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
-      notifyHttpRateLimit(response, body)
-      throw new Error('RATE_LIMITED')
-    }
-
-    if (!response.ok) {
-      throw new Error('FETCH_FAILED')
-    }
-
-    const data = await response.json()
-
-    if (data.code && data.code !== 200) {
-      if (data.code === -447) {
-        throw new Error('RATE_LIMITED')
-      } else if (data.code === -460 || data.code === -462) {
-        throw new Error('PLAYLIST_BLOCKED')
-      }
-      throw new Error(
-        typeof data.message === 'string' && data.message.trim()
-          ? data.message
-          : `NETEASE_${data.code}`,
-      )
-    }
-
-    const tracks = data.result?.playlist?.tracks || data.playlist?.tracks || []
-    if (tracks.length === 0) {
-      throw new Error('PLAYLIST_EMPTY')
-    }
-
-    const inChina = await geoPromise
-    const useSameOriginProxy = prefersSameOriginMusicProxy()
-    console.log(
-      `[MusicPlayer] 歌单加载完成，用户在中国大陆: ${inChina}，${
-        !inChina || useSameOriginProxy
-          ? `全量代理${useSameOriginProxy && inChina ? '（桌面频谱 CORS）' : ''}`
-          : 'play-url 直连 CDN'
-      }`,
-    )
-
-    const songs = tracks.map((track: any) => {
-      const artists = track.ar || track.artists || []
-      const album = track.al || track.album || {}
-      const duration = track.dt || track.duration || 0
-
-      const isVip = track.isVip || false
-      const isTrial = false
-      const trialDuration = undefined
-
-      // CN mobile: play-url; desktop/overseas: full proxy (CORS).
-      const audioUrl = getNeteaseGeoPlaybackUrl(String(track.id), inChina)
-
-      return {
-        id: track.id.toString(),
-        name: track.name,
-        artist: artists.map((a: any) => a.name).join(', ') || 'Unknown',
-        album: album.name || '',
-        // 126.net covers: proxy (hotlink).
-        cover: proxyImageUrlOr(album.picUrl || album.blurPicUrl || ''),
-        url: audioUrl,
-        duration: Math.floor(duration / 1000),
-        source: 'netease' as MusicSource,
-        isVip,
-        isTrial,
-        trialDuration,
-      }
-    })
-
-    savePlaylistToCache(cacheKey, songs)
-
-    return songs
-  } catch (error) {
-    console.error('Error fetching Netease playlist:', error)
-    return []
+  const geoPromise = isUserInChinaMainland()
+  const data = await fetchPlayerPlaylist(source, playlistId)
+  if (data.songs.length === 0) {
+    throw new Error('PLAYLIST_EMPTY')
   }
+
+  const inChina = await geoPromise
+  const useSameOriginProxy = prefersSameOriginMusicProxy()
+  console.log(
+    `[MusicPlayer] 歌单加载完成，用户在中国大陆: ${inChina}，${
+      !inChina || useSameOriginProxy
+        ? `全量代理${useSameOriginProxy && inChina ? '（桌面频谱 CORS）' : ''}`
+        : 'play-url 直连 CDN'
+    }`,
+  )
+
+  const songs = songsFromPlayerPlaylist(data, inChina)
+  savePlaylistToCache(cacheKey, songs)
+  return songs
+}
+
+export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
+  return loadPlayerPlaylist('netease', playlistId)
 }
 
 export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
-  const cacheKey = `qq-${playlistId}`
-
-  const cached = getPlaylistFromCache(cacheKey)
-  if (cached) {
-    return cached
-  }
-
-  try {
-    const geoPromise = isUserInChinaMainland()
-
-    const response = await fetch(
-      `${API_URL}/api/proxy/music/qq/playlist/${playlistId}`,
-    )
-
-    if (response.status === 429) {
-      const body = await response.json().catch(() => null)
-      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
-      notifyHttpRateLimit(response, body)
-      throw new Error('RATE_LIMITED')
-    }
-
-    if (!response.ok) {
-      throw new Error('FETCH_FAILED')
-    }
-
-    const data = await response.json()
-
-    if (!data.cdlist || data.cdlist.length === 0) {
-      throw new Error('INVALID_PLAYLIST')
-    }
-
-    const playlist = data.cdlist[0]
-    const songlist = playlist.songlist || []
-
-    const inChina = await geoPromise
-    const useSameOriginProxy = prefersSameOriginMusicProxy()
-    console.log(
-      `[MusicPlayer] QQ 歌单加载完成，用户在中国大陆: ${inChina}，${
-        !inChina || useSameOriginProxy
-          ? `全量代理${useSameOriginProxy && inChina ? '（桌面频谱 CORS）' : ''}`
-          : 'play-url 直连 CDN'
-      }`,
-    )
-
-    const songs = songlist
-      .map((song: any) => {
-        const singers = Array.isArray(song.singer) ? song.singer : []
-        const songMid = String(song.songmid || song.id || '').trim()
-        if (!songMid) {
-          return null
-        }
-
-        return {
-          id: songMid,
-          name: song.songname || song.name,
-          artist:
-            singers.length > 0
-              ? singers.map((s: any) => s.name).join(', ')
-              : 'Unknown',
-          album: song.albumname || song.album?.name || '',
-          cover: song.albummid
-            ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg`
-            : '',
-          // CN mobile: play-url; desktop/overseas: full proxy (CORS).
-          url: getQQGeoPlaybackUrl(songMid, inChina),
-          duration: song.interval || 0,
-          source: 'qq' as MusicSource,
-          isVip: Boolean(song.isVip),
-        } satisfies Song
-      })
-      .filter((song: Song | null): song is Song => song !== null)
-
-    savePlaylistToCache(cacheKey, songs)
-
-    return songs
-  } catch (error) {
-    console.error('Error fetching QQ playlist:', error)
-    return []
-  }
+  return loadPlayerPlaylist('qq', playlistId)
 }
 
 const verbatimLyricsCache = new Map<string, VerbatimLyricsResult>()

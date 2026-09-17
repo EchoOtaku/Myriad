@@ -101,13 +101,13 @@ Demo 里可以把网格切成 16×8 方便在窄画布里看更多卡。**生产
 | 入场动画 | `hooks/animation/pages/phantasi.ts` `usePhantasiCardStagger` | 只看 index，换布局不用改 |
 | FLIP 排序 | `PhantasiSourceGrid` 现有 `getBoundingClientRect` | 布局无关，**保留** |
 | 数据 | `services/phantasiApi.ts` `getSources` / `getItems` | cache key `phantasi:sources`，TTL 30s |
-| 首页轮询 | `useHomeVisibilityInterval` | FriendLinks 60s，照搬 |
+| 首页轮询 | `useHomeVisibilityInterval` | 友链卡不轮询；进视口才拉一次 `category=friends` |
 | 封面 URL | `components/phantasi/constants.ts` `getImageUrl` | 不要另写一套 |
 | 自有源 | `PHANTASI_MINE_CATEGORY === '我'`、`isOwnPhantasiSource` | SEO 依赖，禁止改文案 |
-| 友链源 | `PHANTASI_FRIEND_LINK_CATEGORY === '友情链接'` | FriendLinksWidget 已按此过滤 |
+| 友链源 | `PHANTASI_FRIEND_LINK_CATEGORY === '友情链接'` | FriendLinksWidget 请求 `category=friends`，客户端仍按此过滤 |
 | 角色 | `useAuth()` 的 `isAuthenticated` / `isAdmin` | 游客 / 成员 / 管理员 |
 
-首页已有读 Phantasi 的范例：`FriendLinksWidget` 调 `getSources()`，客户端按 category 过滤。单源磁贴走同一个 cache key，`requestCache` 会合并 inflight。
+首页已有读 Phantasi 的范例：`FriendLinksWidget` 调 `getSources({ view: 'catalog', category: 'friends' })`，只拉友情链接源行。单源磁贴走全量 cache key，`requestCache` 会合并 inflight。
 
 ---
 

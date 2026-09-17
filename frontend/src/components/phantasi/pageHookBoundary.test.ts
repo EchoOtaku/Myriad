@@ -86,6 +86,7 @@ describe('phantasi page hooks 边界', () => {
     assert.doesNotMatch(page, /import NoteEditor from/)
     assert.doesNotMatch(page, /import PhantasiWorkbenchLane from/)
     assert.match(page, /<Suspense/)
+    assert.match(page, /journalSourceScope\(location\.pathname\)/)
     assert.match(board, /noteSourceStamp/)
     assert.doesNotMatch(board, /\[board, key, sources\]/)
     assert.doesNotMatch(sources, /flags\.project\(/)

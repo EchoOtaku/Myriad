@@ -636,6 +636,9 @@ pub struct LibraryPage {
     pub next_offset: Option<usize>,
 }
 
+/// Same as the frontend `LIBRARY_PAGE_SIZE`. Missing `limit` used to dump the whole library.
+pub const LIBRARY_DEFAULT_PAGE_LIMIT: usize = 120;
+
 /// Filter by item type before slicing, so a typed page can never become a false empty state.
 pub fn paginate_library_items(
     items: &[LibraryItem],
@@ -665,26 +668,23 @@ pub fn paginate_library_items(
         .collect::<Vec<_>>();
     let total = filtered.len();
     let offset = offset.unwrap_or(0).min(total);
-    let limit = limit.map(|limit| limit.clamp(1, 200));
-    let items: Vec<LibraryItem> = match limit {
-        Some(limit) => filtered
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .cloned()
-            .collect(),
-        None => filtered.into_iter().cloned().collect(),
-    };
+    let limit = limit.unwrap_or(LIBRARY_DEFAULT_PAGE_LIMIT).clamp(1, 200);
+    let items: Vec<LibraryItem> = filtered
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .cloned()
+        .collect();
     let returned = items.len();
     let next = offset + returned;
-    let has_more = limit.is_some() && next < total;
+    let has_more = next < total;
 
     Ok(LibraryPage {
         items,
         total,
         returned,
         offset,
-        limit,
+        limit: Some(limit),
         has_more,
         next_offset: has_more.then_some(next),
     })
@@ -1213,6 +1213,25 @@ mod tests {
         let page = paginate_library_items(&items, None, None, None, Some(999)).unwrap();
         assert_eq!(page.limit, Some(200));
         assert!(paginate_library_items(&[item], None, Some("unknown"), None, None).is_err());
+    }
+
+    #[test]
+    fn missing_limit_defaults_to_a_page_instead_of_dumping() {
+        let items: Vec<LibraryItem> = (0..300)
+            .map(|index| LibraryItem {
+                id: index.to_string(),
+                item_type: "game".into(),
+                title: index.to_string(),
+                cover: None,
+                platform: "Test".into(),
+                metadata: json!({}),
+            })
+            .collect();
+        let page = paginate_library_items(&items, None, None, None, None).unwrap();
+        assert_eq!(page.limit, Some(LIBRARY_DEFAULT_PAGE_LIMIT));
+        assert_eq!(page.returned, LIBRARY_DEFAULT_PAGE_LIMIT);
+        assert!(page.has_more);
+        assert_eq!(page.next_offset, Some(LIBRARY_DEFAULT_PAGE_LIMIT));
     }
 
     #[test]

@@ -224,11 +224,10 @@ export function stampWebManifest(base, brand) {
 
   if (next.site_favicon !== DEFAULT_BRAND_FAVICON) {
     const src = resolveManifestIconSrc(next.site_favicon)
-    manifest.icons = [
-      { src, sizes: 'any', purpose: 'any' },
-      { src, sizes: '192x192', purpose: 'any' },
-      { src, sizes: '512x512', purpose: 'any' },
-    ]
+    // One entry: Chrome fetches every icons[].src. Repeating the 90KB
+    // /api/config/site-icon three times was a cold-start triple download.
+    // JS composeBrandedIconSet still upgrades to 192/512 data URLs.
+    manifest.icons = [{ src, sizes: 'any', purpose: 'any' }]
   }
   return manifest
 }

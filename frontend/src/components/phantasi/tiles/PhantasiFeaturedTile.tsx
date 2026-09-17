@@ -21,8 +21,6 @@ import { TileShell } from './TileShell'
 import { fs, T_MINOR } from './tokens'
 import { useWidgetSources } from './useWidgetSources'
 
-const REFRESH_INTERVAL = 60 * 1000
-
 interface PhantasiFeaturedTileProps {
   size: PhantasiTileSize
   scale: number
@@ -120,7 +118,6 @@ const PhantasiFeaturedWidgetBody = memo(
     )
     const sources = useWidgetSources(
       isPreview ?? false,
-      REFRESH_INTERVAL,
       '[PhantasiFeaturedWidget]',
     )
     // 会话内冻结时钟。

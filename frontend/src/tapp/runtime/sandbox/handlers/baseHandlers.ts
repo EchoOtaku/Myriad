@@ -4,6 +4,7 @@ import type { OpenUrlRequest } from '../../../utils/openUrlAllowlist'
 import type { TappBridge } from '../../TappBridge'
 import type { TappNotificationOptions } from '../types'
 import { currentCopy } from '../../../../i18n/localeCopy'
+import { isKnownGuest } from '../../../../utils/authState'
 import { userFacingError } from '../../../../utils/userFacingError'
 import * as TappApiService from '../../../services/TappApiService'
 import {
@@ -382,7 +383,10 @@ export function registerStorageHandlers(
   )
 }
 
-/** userRole 仍是 guest 时重探：先 Runtime Grant context，再会话 cookie /api/auth/me（destroyAll 后仍可用）。 */
+/**
+ * userRole 仍是 guest 时重探：先 Runtime Grant context，再会话 cookie /api/auth/me（destroyAll 后仍可用）。
+ * 确定访客时不打 /api/auth/me。仅 isKnownGuest() 为 true 才短路；未知一律走网络。
+ */
 async function resolveLiveUserRole(
   bridge: TappBridge,
   tappInstance: TappInstance,
@@ -432,6 +436,7 @@ async function resolveLiveUserRole(
     if (role !== 'guest') return role
   } catch (error) {
     if (
+      !isKnownGuest() &&
       error instanceof Error &&
       /runtime has already stopped|not initialized|grant/i.test(error.message)
     ) {
@@ -442,6 +447,8 @@ async function resolveLiveUserRole(
       )
     }
   }
+
+  if (isKnownGuest()) return role
 
   try {
     const {

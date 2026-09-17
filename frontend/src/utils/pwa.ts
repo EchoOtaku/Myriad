@@ -339,24 +339,39 @@ type DrawableImage = CanvasImageSource & {
   height: number
 }
 
+const inflightIconBlobs = new Map<string, Promise<Blob>>()
+
+function fetchIconBlob(src: string): Promise<Blob> {
+  const existing = inflightIconBlobs.get(src)
+  if (existing) return existing
+  const pending = (async () => {
+    const response = await fetch(src, {
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'force-cache',
+    })
+    if (!response.ok) {
+      throw new Error(`[PWA] failed to load icon source (HTTP ${response.status}): ${src.slice(0, 120)}`)
+    }
+    const blob = await response.blob()
+    if (blob.size < 16) {
+      throw new Error(`[PWA] failed to load icon source (empty body): ${src.slice(0, 120)}`)
+    }
+    return blob
+  })().finally(() => {
+    inflightIconBlobs.delete(src)
+  })
+  inflightIconBlobs.set(src, pending)
+  return pending
+}
+
 async function loadImageForCanvas(src: string): Promise<DrawableImage> {
   const fail = (reason: string) =>
     new Error(`[PWA] failed to load icon source (${reason}): ${src.slice(0, 120)}`)
 
   if (!src.startsWith('blob:')) {
     try {
-      const response = await fetch(src, {
-        mode: 'cors',
-        credentials: 'omit',
-        cache: 'force-cache',
-      })
-      if (!response.ok) {
-        throw fail(`HTTP ${response.status}`)
-      }
-      const blob = await response.blob()
-      if (blob.size < 16) {
-        throw fail('empty body')
-      }
+      const blob = await fetchIconBlob(src)
       if (typeof createImageBitmap === 'function') {
         try {
           const bitmap = await createImageBitmap(blob)

@@ -58,7 +58,8 @@ function instrument(gl: WebGL2RenderingContext) {
     const height = args.length >= 9 ? Number(args[4]) : source.height
     const format = args.length >= 9 ? args[6] : args[3]
     const type = args.length >= 9 ? args[7] : args[4]
-    // Production atlas uploads are RGBA8, without mipmaps. Fail visibly if this changes.
+    // Production atlas uploads are RGBA8. Mipmaps are generateMipmap on the GPU,
+    // not extra texImage2D levels, so this probe still accounts requested level-0 bytes.
     if (format !== gl.RGBA || type !== gl.UNSIGNED_BYTE) throw new Error('GPU byte probe needs a format accounting update')
     const levels = textureBytes.get(texture) || new Map<number, number>()
     levels.set(Number(level), width * height * 4)

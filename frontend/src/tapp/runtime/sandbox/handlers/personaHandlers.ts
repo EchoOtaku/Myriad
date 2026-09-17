@@ -2,6 +2,7 @@ import type { TappBridge } from '../../TappBridge'
 import { getSiteFace } from '../../../../features/merope/api'
 import { publicPersonaNameFromConfig } from '../../../../features/merope/publicName'
 import { agentService } from '../../../../services/agent'
+import { isKnownGuest } from '../../../../utils/authState'
 import { getPublicConfigDeduped } from '../../../../utils/requestDedup'
 import { userFacingError } from '../../../../utils/userFacingError'
 import { projectPersonaCard, sameOriginPortraitUrl } from '../personaCard'
@@ -20,6 +21,7 @@ async function loadVitals(): Promise<{
   arousal?: number
   activity?: string
 }> {
+  if (isKnownGuest()) return {}
   try {
     const persona = await agentService.getPersona()
     if (!persona) return {}

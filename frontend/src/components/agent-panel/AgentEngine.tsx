@@ -187,7 +187,10 @@ export const AgentEngine: React.FC = () => {
 
   const pageContentContext = usePageContentOptional()
 
-  useEffect(() => startPresenceInbound(), [])
+  useEffect(() => {
+    if (!isAuthenticated) return
+    return startPresenceInbound()
+  }, [isAuthenticated])
   useEffect(() => {
     if (isAuthenticated) return retainPlaybackDirection()
     playbackDirection.stop()

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { setAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
 import { currentPagePublisher, setCurrentPageContent } from '../../../contexts/currentPage'
+import { setKnownAuthState } from '../../../utils/authState'
 import { authSubject } from '../../../utils/authSubject'
 import { PERSONA_UPDATED_EVENT } from '../events'
 import { livePresenceFacts } from '../livePresence'
@@ -39,6 +40,25 @@ function snapshot(
 }
 
 test.describe('presence inbound', { concurrency: false }, () => {
+  test.beforeEach(() => {
+    setKnownAuthState(true)
+  })
+  test.afterEach(() => {
+    setKnownAuthState(true)
+  })
+
+  test('does not post presence when the host already knows the viewer is a guest', async () => {
+    resetPresenceInboundForTest()
+    setKnownAuthState(false)
+    setPresenceArmedForTest(true)
+    let posts = 0
+    setPresencePostForTest(async () => {
+      posts++
+    })
+    await reportPresence('start')
+    assert.equal(posts, 0)
+  })
+
   test('real capture cannot renew the old subject page after identity loss or late publication', async () => {
     resetPresenceInboundForTest()
     setAgentContextConsent(true)

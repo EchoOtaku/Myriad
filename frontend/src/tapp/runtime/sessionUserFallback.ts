@@ -6,6 +6,7 @@ import {
   isAuthMeHttpOk,
   parseAuthMeResponse,
 } from '../../utils/authMe'
+import { isKnownGuest } from '../../utils/authState'
 
 export type HostUserRole = 'guest' | 'user' | 'admin'
 
@@ -20,8 +21,12 @@ export interface SessionUserSnapshot {
   authenticated: boolean
 }
 
-/** 用 cookie 探宿主会话。不用 Runtime Grant；destroyAll 后仍安全。 */
+/**
+ * 用 cookie 探宿主会话。不用 Runtime Grant；destroyAll 后仍安全。
+ * 确定访客时不打 /api/auth/me。仅 isKnownGuest() 为 true 才短路；未知一律走网络。
+ */
 export async function fetchSessionUserSnapshot(): Promise<SessionUserSnapshot | null> {
+  if (isKnownGuest()) return null
   try {
     const response = await fetch(`${API_URL}/api/auth/me`, {
       credentials: 'include',

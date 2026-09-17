@@ -10,7 +10,9 @@ describe('widget catalog load', () => {
   it('shares getSources cache and cancels apply on unmount', () => {
     const hook = readFileSync(join(dir, 'useWidgetSources.ts'), 'utf8')
     assert.match(hook, /getSources\(\)/)
+    assert.match(hook, /if \(isPreview\) return/)
     assert.doesNotMatch(hook, /getSources\([^)]*signal/)
+    assert.doesNotMatch(hook, /useHomeVisibilityInterval/)
     assert.match(hook, /new RequestTurn\(\)/)
     assert.match(hook, /turns\.current\.cancel\(\)/)
   })

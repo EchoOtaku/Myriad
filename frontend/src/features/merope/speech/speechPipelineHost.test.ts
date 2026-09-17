@@ -6,6 +6,7 @@ import {
   executeConfigOperations,
 } from '../../../components/config/form/configDomain'
 import { invalidateSpeechStatusCache } from '../../../services/speechApi'
+import { setKnownAuthState } from '../../../utils/authState'
 import {
   liveMotionGeneration,
   setLiveMotionGeneration,
@@ -14,6 +15,10 @@ import { MEROPE_SPEECH_EVENT } from '../speechEvents'
 import { personaSpeechFlags, SpeechPipelineHost } from './speechPipelineHost'
 import { SpeechSegmenter } from './speechSegmenter'
 import { getVoicePresence, patchVoicePresence } from './voicePresence'
+
+test.beforeEach(() => {
+  setKnownAuthState(true)
+})
 
 test('persona speech is off unless the status flag is on', () => {
   assert.deepEqual(personaSpeechFlags({ available: true, tts_enabled: true }), {

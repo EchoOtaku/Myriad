@@ -77,16 +77,123 @@ pub(crate) fn build_pulses_sql(source_count: usize) -> String {
 pub struct ListSourcesQuery {
     /// `catalog` returns source rows only — no unread overlay, previews, or pulses.
     view: Option<String>,
+    /// Comma-separated category tokens. Aliases like `friends` / `友链` match 友情链接.
+    category: Option<String>,
+    /// Journal board slice: `feeds` | `notes` | `sites`. Matches frontend `sourcesForBoard`.
+    board: Option<String>,
 }
 
 fn is_catalog_view(view: Option<&str>) -> bool {
     view == Some("catalog")
 }
 
+fn normalize_listed_category_token(token: &str) -> String {
+    let trimmed = token.trim();
+    match trimmed.to_lowercase().as_str() {
+        "friends" | "friend" | "friendlink" | "friend-link" | "friend_link" | "friend-links"
+        | "friend_links" | "friend links" | "友链" | "友情連結" | "友情链接" => {
+            "友情链接".to_string()
+        }
+        "mine" | "me" | "我的" | "我" => "我".to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
+fn source_matches_listed_category(
+    category: Option<&str>,
+    source_type: &phantasi_sources::SourceType,
+    wanted: &str,
+) -> bool {
+    let want = normalize_listed_category_token(wanted);
+    if want.is_empty() {
+        return false;
+    }
+    let hit = category
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .any(|part| normalize_listed_category_token(part) == want);
+    if hit {
+        return true;
+    }
+    want == "友情链接"
+        && *source_type == phantasi_sources::SourceType::Link
+        && category.map(str::trim).unwrap_or("").is_empty()
+}
+
+fn listed_board_keeps(
+    source_type: &phantasi_sources::SourceType,
+    category: Option<&str>,
+    admin_only: bool,
+    board: &str,
+) -> bool {
+    match board {
+        "feeds" => {
+            *source_type != phantasi_sources::SourceType::Link
+                && *source_type != phantasi_sources::SourceType::Note
+        }
+        "notes" => {
+            *source_type == phantasi_sources::SourceType::Note
+                || (!admin_only && source_matches_listed_category(category, source_type, "我"))
+        }
+        "sites" => {
+            *source_type == phantasi_sources::SourceType::Link
+                || source_matches_listed_category(category, source_type, "友情链接")
+        }
+        _ => true,
+    }
+}
+
+fn retain_listed_sources_for_board(
+    sources: &mut Vec<phantasi_sources::Model>,
+    board: Option<&str>,
+) {
+    let Some(board) = board.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    if !matches!(board, "feeds" | "notes" | "sites") {
+        return;
+    }
+    sources.retain(|source| {
+        listed_board_keeps(
+            &source.source_type,
+            source.category.as_deref(),
+            source.admin_only,
+            board,
+        )
+    });
+}
+
+fn retain_listed_sources_for_category(
+    sources: &mut Vec<phantasi_sources::Model>,
+    category: Option<&str>,
+) {
+    let Some(raw) = category.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    let wanted: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect();
+    if wanted.is_empty() {
+        return;
+    }
+    sources.retain(|source| {
+        wanted.iter().any(|token| {
+            source_matches_listed_category(source.category.as_deref(), &source.source_type, token)
+        })
+    });
+}
+
 /// 获取订阅源列表（带最新文章预览）
 /// 游客可访问（只读）。未读聚合跳过；预览 SQL 仍 LEFT JOIN 出 is_read/is_starred（游客 $1=-1）。
 /// 非管理员用户看不到 admin_only=true 的订阅源
 /// `view=catalog` 只回源行，给友情链接这类不读预览的首页卡。
+/// `category` 在图标物化和预览 SQL 之前收窄源行，避免友情链接卡把整份目录拉回去。
+/// `board` 按手帐板块切：订阅不含入口/笔记，笔记含 note/`我`，朋友们含入口和友情链接。
 pub(crate) async fn list_sources(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
@@ -101,6 +208,14 @@ pub(crate) async fn list_sources(
     if !is_admin {
         source_query = source_query.filter(phantasi_sources::Column::AdminOnly.eq(false));
     }
+    // `feeds` 与内存过滤同口径，可在 SQL 里丢掉入口/笔记，少物化图标、少跑预览 SQL。
+    // notes/sites 有分类别名，不能收成 SQL。
+    if query.board.as_deref() == Some("feeds") {
+        source_query = source_query.filter(phantasi_sources::Column::SourceType.is_not_in([
+            phantasi_sources::SourceType::Link,
+            phantasi_sources::SourceType::Note,
+        ]));
+    }
 
     let mut sources = match source_query.all(&db).await {
         Ok(s) => s,
@@ -108,6 +223,8 @@ pub(crate) async fn list_sources(
             return Err(phantasi_store_http("list sources", e));
         }
     };
+    retain_listed_sources_for_category(&mut sources, query.category.as_deref());
+    retain_listed_sources_for_board(&mut sources, query.board.as_deref());
     for source in &mut sources {
         let raw = source.icon.take();
         source.icon = materialize_source_icon(&db, source.id, raw).await;
@@ -1037,6 +1154,11 @@ pub(crate) async fn delete_category(
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        listed_board_keeps, normalize_listed_category_token, source_matches_listed_category,
+    };
+    use crate::models::entities::phantasi_sources::SourceType;
+
     #[test]
     fn list_sources_rewrites_inline_icons_before_serialize() {
         let src = include_str!("feeds_sources.rs");
@@ -1050,5 +1172,113 @@ mod tests {
             .unwrap_or(body.len());
         let list = &body[..end];
         assert!(list.contains("materialize_source_icon"));
+        let retain = list
+            .find("retain_listed_sources_for_category")
+            .expect("category filter before icon rewrite");
+        let board = list
+            .find("retain_listed_sources_for_board")
+            .expect("board filter before icon rewrite");
+        let icons = list.find("materialize_source_icon").expect("icon rewrite");
+        assert!(retain < icons, "category filter must run before icon I/O");
+        assert!(board < icons, "board filter must run before icon I/O");
+    }
+
+    #[test]
+    fn listed_category_aliases_collapse_to_canonical_names() {
+        assert_eq!(normalize_listed_category_token("friends"), "友情链接");
+        assert_eq!(normalize_listed_category_token("友链"), "友情链接");
+        assert_eq!(normalize_listed_category_token("friend_links"), "友情链接");
+        assert_eq!(normalize_listed_category_token("友情連結"), "友情链接");
+        assert_eq!(normalize_listed_category_token("mine"), "我");
+        assert_eq!(normalize_listed_category_token("技术"), "技术");
+    }
+
+    #[test]
+    fn listed_category_matches_friend_link_tokens_and_legacy_links() {
+        assert!(source_matches_listed_category(
+            Some("友情链接"),
+            &SourceType::Rss,
+            "friends"
+        ));
+        assert!(source_matches_listed_category(
+            Some("friend_links, 技术"),
+            &SourceType::Rss,
+            "友情链接"
+        ));
+        assert!(source_matches_listed_category(
+            None,
+            &SourceType::Link,
+            "friends"
+        ));
+        assert!(!source_matches_listed_category(
+            Some("技术"),
+            &SourceType::Rss,
+            "friends"
+        ));
+        assert!(!source_matches_listed_category(
+            None,
+            &SourceType::Rss,
+            "friends"
+        ));
+        assert!(!source_matches_listed_category(
+            Some("科学技术"),
+            &SourceType::Rss,
+            "技术"
+        ));
+    }
+
+    #[test]
+    fn listed_board_matches_journal_sources_for_board() {
+        assert!(listed_board_keeps(&SourceType::Rss, None, false, "feeds"));
+        assert!(listed_board_keeps(
+            &SourceType::Phantasiai,
+            None,
+            false,
+            "feeds"
+        ));
+        assert!(!listed_board_keeps(&SourceType::Link, None, false, "feeds"));
+        assert!(!listed_board_keeps(&SourceType::Note, None, false, "feeds"));
+        assert!(listed_board_keeps(
+            &SourceType::Rss,
+            Some("友情链接"),
+            false,
+            "feeds"
+        ));
+
+        assert!(listed_board_keeps(&SourceType::Note, None, false, "notes"));
+        assert!(listed_board_keeps(&SourceType::Note, None, true, "notes"));
+        assert!(listed_board_keeps(
+            &SourceType::Rss,
+            Some("我"),
+            false,
+            "notes"
+        ));
+        assert!(!listed_board_keeps(
+            &SourceType::Rss,
+            Some("我"),
+            true,
+            "notes"
+        ));
+        assert!(!listed_board_keeps(&SourceType::Link, None, false, "notes"));
+
+        assert!(listed_board_keeps(&SourceType::Link, None, false, "sites"));
+        assert!(listed_board_keeps(
+            &SourceType::Rss,
+            Some("友情链接"),
+            false,
+            "sites"
+        ));
+        assert!(listed_board_keeps(
+            &SourceType::Link,
+            Some("技术"),
+            false,
+            "sites"
+        ));
+        assert!(!listed_board_keeps(
+            &SourceType::Rss,
+            Some("技术"),
+            false,
+            "sites"
+        ));
     }
 }

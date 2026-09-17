@@ -245,13 +245,46 @@ fn print_startup_logo() {
 /// Cache-Control for statically served frontend assets. `ServeDir` emits only
 /// `Last-Modified`, so without this every asset forces a revalidation round-trip
 /// per navigation (dozens of unhashed icons ⇒ dozens of conditional GETs). Tiers:
-/// - `/assets/*`  content-hashed by Astro → immutable, cache for a year.
+/// - `/assets/*` and hashed `/_astro/*`  content-hashed by Astro → immutable, cache for a year.
 /// - media/fonts  unhashed but rarely change → week-long TTL, revalidate in
 /// the background while serving the stale copy.
 /// - `/sw.js` + HTML  must always revalidate so a new deploy (and its fresh
 /// hashed-asset references) lands immediately.
+fn hashed_astro_asset(path: &str) -> bool {
+    if !path.starts_with("/_astro/") {
+        return false;
+    }
+    let Some((_, ext)) = path.rsplit_once('.') else {
+        return false;
+    };
+    matches!(
+        ext,
+        "js" | "mjs"
+            | "cjs"
+            | "css"
+            | "map"
+            | "png"
+            | "webp"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "svg"
+            | "ico"
+            | "woff"
+            | "woff2"
+            | "ttf"
+            | "otf"
+            | "json"
+            | "txt"
+            | "wasm"
+            | "webm"
+            | "mp3"
+            | "mp4"
+    )
+}
+
 fn static_asset_cache_control(path: &str) -> &'static str {
-    if path.starts_with("/assets/") {
+    if path.starts_with("/assets/") || hashed_astro_asset(path) {
         return "public, max-age=31536000, immutable";
     }
     if path == "/sw.js" {
@@ -823,6 +856,15 @@ mod cache_control_tests {
             static_asset_cache_control("/assets/logo-abc123.png"),
             "public, max-age=31536000, immutable"
         );
+        assert_eq!(
+            static_asset_cache_control("/_astro/SpaDocument.BcAPa8iS.css"),
+            "public, max-age=31536000, immutable"
+        );
+        assert_eq!(
+            static_asset_cache_control("/_astro/client.js"),
+            "public, max-age=31536000, immutable"
+        );
+        assert_eq!(static_asset_cache_control("/_astro/README"), "no-cache");
     }
 
     #[test]

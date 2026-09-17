@@ -143,6 +143,35 @@ export function parseJournalPath(pathname: string): JournalLocation | null {
   return null
 }
 
+/** Which `/sources` slice this journal path is allowed to load. */
+export type JournalSourceScope =
+  | 'feeds'
+  | 'notes'
+  | 'sites'
+  | 'all'
+  | 'catalog'
+  | 'none'
+
+export function journalSourceScope(pathname: string): JournalSourceScope {
+  const loc = parseJournalPath(pathname)
+  if (!loc) return 'none'
+  switch (loc.kind) {
+    case 'feeds':
+      return 'feeds'
+    case 'notes':
+      return 'notes'
+    case 'friends':
+      return 'sites'
+    case 'workbench':
+      return 'all'
+    case 'article':
+      return 'catalog'
+    case 'starred':
+    case 'topic':
+      return 'none'
+  }
+}
+
 export function navIdForJournalLocation(
   loc: JournalLocation,
   _isAuthenticated: boolean,

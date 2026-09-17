@@ -118,6 +118,7 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     defaultSize: '4x2' as WidgetSize,
     component: FriendLinksWidget,
     supportedSizes: ['4x1', '2x2', '4x2'] as WidgetSize[],
+    hosts: ['home', 'note'] as const,
   },
   weather: {
     defaultSize: '2x2' as WidgetSize,
@@ -213,19 +214,19 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     defaultSize: '4x2' as WidgetSize,
     component: PhantasiSourceWidget,
     supportedSizes: ['2x2', '4x2', '4x4'] as WidgetSize[],
-    hosts: ['home', 'control-panel'] as const,
+    hosts: ['home'] as const,
   },
   'phantasi-topic': {
     defaultSize: '4x2' as WidgetSize,
     component: PhantasiTopicWidget,
     supportedSizes: ['2x2', '4x2', '4x4'] as WidgetSize[],
-    hosts: ['home', 'control-panel'] as const,
+    hosts: ['home'] as const,
   },
   'phantasi-featured': {
     defaultSize: '4x4' as WidgetSize,
     component: PhantasiFeaturedWidget,
     supportedSizes: ['4x2', '4x4'] as WidgetSize[],
-    hosts: ['home', 'control-panel'] as const,
+    hosts: ['home'] as const,
   },
   'github-repos': {
     defaultSize: '2x2' as WidgetSize,

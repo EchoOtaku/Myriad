@@ -52,6 +52,7 @@ export function usePhantasiSources(
   isAuthenticated: boolean,
   labels: { loadFailed: string; refreshFailed: string },
   setError: (message: string) => void,
+  scope: 'feeds' | 'notes' | 'sites' | 'all' | 'catalog' | 'none' = 'all',
 ) {
   const [sources, setSources] = useState<PhantasiSource[]>([])
   const [sourcesLoaded, setSourcesLoaded] = useState(false)
@@ -61,10 +62,23 @@ export function usePhantasiSources(
   const sourceTurns = useRef(new RequestTurn())
 
   const loadSources = useCallback(async (forceRefresh = false) => {
+    if (scope === 'none') {
+      setSources([])
+      setSourcesLoaded(false)
+      return
+    }
     const request = ++sourceRequest.current
     const signal = sourceTurns.current.begin()
     try {
-      const data = await phantasiApi.getSources(undefined, { signal, forceRefresh })
+      const data = await phantasiApi.getSources(undefined, {
+        signal,
+        forceRefresh,
+        view: scope === 'catalog' ? 'catalog' : undefined,
+        board:
+          scope === 'feeds' || scope === 'notes' || scope === 'sites'
+            ? scope
+            : undefined,
+      })
       if (signal.aborted || request !== sourceRequest.current) return
       setSourcesLoaded(true)
       setSources(data)
@@ -72,7 +86,7 @@ export function usePhantasiSources(
       if (signal.aborted || request !== sourceRequest.current) return
       reportPhantasiError(err, labels.loadFailed, setError)
     }
-  }, [labels.loadFailed, setError])
+  }, [labels.loadFailed, scope, setError])
 
   useEffect(() => {
     const unsubscribe = phantasiItemState.subscribeMutations((id, patch, sourceId) => {
@@ -88,6 +102,17 @@ export function usePhantasiSources(
   }, [])
 
   useEffect(() => {
+    if (scope === 'none') {
+      sourceTurns.current.cancel()
+      sourceRequest.current++
+      setSources([])
+      setSourcesLoaded(false)
+      setBooting(false)
+      return () => {
+        sourceTurns.current.cancel()
+        sourceRequest.current++
+      }
+    }
     let cancelled = false
     setBooting(true)
     void loadSources().finally(() => {
@@ -98,7 +123,7 @@ export function usePhantasiSources(
       sourceTurns.current.cancel()
       sourceRequest.current++
     }
-  }, [loadSources])
+  }, [loadSources, scope])
 
   const refreshRef = useRef(() => {})
   refreshRef.current = () => {
@@ -106,12 +131,12 @@ export function usePhantasiSources(
   }
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated || scope === 'none') return
     return connectSourceUpdates(
       phantasiApi.createPhantasiWebSocket,
       () => refreshRef.current(),
     )
-  }, [isAuthenticated])
+  }, [isAuthenticated, scope])
 
   const reloadBoard = useCallback(() => {
     void loadSources(true)

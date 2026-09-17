@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
-import { executeTappApi, listTappApis } from './TappContextApi.ts'
+import { executeTappApi, getContextGeo, listTappApis } from './TappContextApi.ts'
 
 const originalFetch = globalThis.fetch
 const originalSessionStorage = globalThis.sessionStorage
@@ -216,5 +216,32 @@ describe('TappContextApi declared API client', { concurrency: false }, () => {
     assert.equal(result.error, 'Runtime grant is no longer valid')
     assert.equal(calls.length, 1)
     assertNoSecret(result)
+  })
+  it('returns unwrapped geo from the success/data envelope', async () => {
+    mockFetch(() => ({
+      ok: true,
+      status: 200,
+      body: {
+        success: true,
+        cached: true,
+        data: {
+          lat: 35.68,
+          lon: 139.76,
+          city: 'Tokyo',
+          region: 'Tokyo',
+          country: 'Japan',
+        },
+      },
+    }))
+    const geo = await getContextGeo(GRANT)
+    assert.deepEqual(geo, {
+      lat: 35.68,
+      lon: 139.76,
+      city: 'Tokyo',
+      region: 'Tokyo',
+      country: 'Japan',
+    })
+    assert.equal(calls[0]!.url, '/api/tapp/context/geo')
+    assert.equal(calls[0]!.grant, GRANT)
   })
 })

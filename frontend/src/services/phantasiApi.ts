@@ -197,12 +197,29 @@ type PhantasiAttributionHeaders = Record<string, string>
 /** Tapp attribution skips cache. */
 export async function getSources(
   attributionHeaders?: PhantasiAttributionHeaders,
-  options?: { signal?: AbortSignal; view?: 'catalog'; forceRefresh?: boolean },
+  options?: {
+    signal?: AbortSignal
+    view?: 'catalog'
+    category?: string
+    board?: 'feeds' | 'notes' | 'sites'
+    forceRefresh?: boolean
+  },
 ): Promise<PhantasiSource[]> {
   options?.signal?.throwIfAborted()
   const catalog = options?.view === 'catalog'
-  const path = catalog ? '/sources?view=catalog' : '/sources'
-  const cacheKey = catalog ? phantasiCacheKeys.sourceCatalog : phantasiCacheKeys.sources
+  const category = options?.category?.trim() || undefined
+  const board = options?.board
+  const params = new URLSearchParams()
+  if (catalog) params.set('view', 'catalog')
+  if (category) params.set('category', category)
+  if (board) params.set('board', board)
+  const query = params.toString()
+  const path = query ? `/sources?${query}` : '/sources'
+  const cacheKey = phantasiCacheKeys.sourceList(
+    catalog ? 'catalog' : undefined,
+    category,
+    board,
+  )
   const fetchSources = async (signal?: AbortSignal) => {
     const data = await request<PhantasiSourcesResponse>(path, {
       headers: attributionHeaders,

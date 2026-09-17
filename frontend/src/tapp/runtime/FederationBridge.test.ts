@@ -102,7 +102,7 @@ describe('registerFederationHandlers', { concurrency: false }, () => {
     stop()
   })
 
-  it('returns empty channels for a known guest without a Runtime Grant', async () => {
+  it('returns empty session-scoped reads for a known guest without a Runtime Grant', async () => {
     installLocalStorage()
     setKnownAuthState(false)
     const bridge = new FakeBridge()
@@ -110,12 +110,47 @@ describe('registerFederationHandlers', { concurrency: false }, () => {
       bridge as unknown as TappBridge,
       instance,
     )
-    const result = await invoke(bridge, 'federation.getChannels')
-    assert.deepEqual(result, {
+    assert.deepEqual(await invoke(bridge, 'federation.getChannels'), {
       success: true,
       data: { channels: [], total: 0 },
     })
+    assert.deepEqual(await invoke(bridge, 'federation.getRooms'), {
+      success: true,
+      data: { rooms: [], total: 0 },
+    })
+    assert.deepEqual(await invoke(bridge, 'federation.getFollowing'), {
+      success: true,
+      data: { items: [], total: 0 },
+    })
+    assert.deepEqual(await invoke(bridge, 'federation.getFollowers'), {
+      success: true,
+      data: { items: [], total: 0 },
+    })
+    assert.deepEqual(await invoke(bridge, 'federation.getBookmarks'), {
+      success: true,
+      data: { items: [], total: 0 },
+    })
+    assert.deepEqual(await invoke(bridge, 'federation.getPublished'), {
+      success: true,
+      data: { items: [], total: 0 },
+    })
+    assert.deepEqual(await invoke(bridge, 'federation.getTimeline'), {
+      success: true,
+      data: { items: [], total: 0 },
+    })
+    assert.deepEqual(await invoke(bridge, 'federation.getRings'), {
+      success: true,
+      data: { rings: [], total: 0 },
+    })
+    const identity = await invoke(bridge, 'federation.getIdentity')
+    assert.equal((identity as { success: boolean }).success, true)
+    assert.equal(
+      ((identity as { data: { username: string } }).data.username),
+      '',
+    )
     assert.equal(bridge.grantCalls, 0)
+    await invoke(bridge, 'federation.getFeed')
+    assert.equal(bridge.grantCalls, 1)
     stop()
   })
 })

@@ -23,7 +23,6 @@ import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 import './FriendLinksWidget.css'
 
-const REFRESH_INTERVAL = 60 * 1000
 const BATCH_INTERVAL = 5 * 1000
 const BATCH_TRANSITION_DURATION = 810
 
@@ -149,11 +148,14 @@ export const FriendLinksWidget = memo(
     const { t, format, locale } = useI18n()
     const navigate = useNavigate()
     const anim = useAnimationLevel()
-    const { containerRef, scale, fontScale } = useWidgetSize(
+    const { containerRef: sizeRef, scale, fontScale } = useWidgetSize(
       config.size,
       isPreview ? 1 : undefined,
     )
     const mountedRef = useRef(true)
+    const shownRef = useRef(false)
+    const ioRef = useRef<IntersectionObserver | null>(null)
+    const [shown, setShown] = useState(false)
     const [sources, setSources] = useState<PhantasiSource[]>([])
     const [loading, setLoading] = useState(!isPreview)
     const [failed, setFailed] = useState(false)
@@ -170,13 +172,46 @@ export const FriendLinksWidget = memo(
       mountedRef.current = true
       return () => {
         mountedRef.current = false
+        ioRef.current?.disconnect()
+        ioRef.current = null
       }
     }, [])
+
+    const markShown = useCallback(() => {
+      if (shownRef.current) return
+      shownRef.current = true
+      setShown(true)
+    }, [])
+
+    const containerRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        sizeRef(node)
+        ioRef.current?.disconnect()
+        ioRef.current = null
+        if (!node || isPreview || shownRef.current) return
+        if (typeof IntersectionObserver === 'undefined') {
+          markShown()
+          return
+        }
+        const io = new IntersectionObserver((entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return
+          markShown()
+          io.disconnect()
+          ioRef.current = null
+        })
+        ioRef.current = io
+        io.observe(node)
+      },
+      [isPreview, markShown, sizeRef],
+    )
 
     const loadFriendLinks = useCallback(async () => {
       if (isPreview) return
       try {
-        const nextSources = await getSources(undefined, { view: 'catalog' })
+        const nextSources = await getSources(undefined, {
+          view: 'catalog',
+          category: 'friends',
+        })
         if (!mountedRef.current) return
         setSources(nextSources)
         setFailed(false)
@@ -189,10 +224,9 @@ export const FriendLinksWidget = memo(
     }, [isPreview])
 
     useEffect(() => {
+      if (!shown) return
       void loadFriendLinks()
-    }, [loadFriendLinks])
-
-    useHomeVisibilityInterval(loadFriendLinks, REFRESH_INTERVAL, !isPreview)
+    }, [loadFriendLinks, shown])
 
     const previewEntries = useMemo<FriendLinkEntry[]>(
       () => [

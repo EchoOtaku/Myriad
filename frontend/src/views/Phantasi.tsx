@@ -30,7 +30,10 @@ import {
   captureBoardScroll,
   restoreBoardScroll,
 } from '../components/phantasi/logic/boardScroll'
-import { journalItemPath } from '../components/phantasi/logic/journalRoutes'
+import {
+  journalItemPath,
+  journalSourceScope,
+} from '../components/phantasi/logic/journalRoutes'
 import { shouldPopOpenedItem } from '../components/phantasi/logic/phantasiItemRoute'
 import { topicDisplayName } from '../components/phantasi/logic/topics'
 import PhantasiFilterLane from '../components/phantasi/PhantasiFilterLane'
@@ -131,6 +134,7 @@ function PhantasiSubjectPage() {
   const setError = useCallback((message: string) => {
     showToast({ message, type: 'error', replaceKey: 'phantasi-page' })
   }, [])
+  const sourceScope = journalSourceScope(location.pathname)
 
   const sources = usePhantasiSources(
     isAuthenticated,
@@ -139,6 +143,7 @@ function PhantasiSubjectPage() {
       refreshFailed: t.errors.phantasiRefreshFailed,
     },
     setError,
+    sourceScope,
   )
 
   const boardNavVisibility = useMemo(

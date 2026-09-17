@@ -144,7 +144,9 @@ describe('stampWebManifest', () => {
     )
     assert.equal(stamped.name, 'Fuukei')
     assert.equal(stamped.short_name, 'Fuukei')
+    assert.equal(stamped.icons.length, 1)
     assert.equal(stamped.icons[0].src, SITE_ICON_API_PATH)
+    assert.equal(stamped.icons[0].sizes, 'any')
   })
 
   it('keeps packaged icons when favicon is the default', () => {

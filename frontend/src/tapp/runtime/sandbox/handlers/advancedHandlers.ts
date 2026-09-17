@@ -4,6 +4,7 @@ import type { TappBridge } from '../../TappBridge'
 import type { AnimationConfigRef } from '../types'
 import { isExlight } from '../../../../hooks/useAnimationLevel'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
+import { isKnownGuest } from '../../../../utils/authState'
 import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
 import {
   getLyricsWithVerbatim,
@@ -1341,6 +1342,12 @@ export function registerContextHandlers(
         ),
       }
     } catch (grantError) {
+      if (isKnownGuest()) {
+        return {
+          success: false,
+          error: userFacingError(grantError),
+        }
+      }
       try {
         const { fetchSessionUserSnapshot } = await import(
           '../../sessionUserFallback',

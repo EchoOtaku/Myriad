@@ -47,7 +47,6 @@ const LIST_PAGE_4X4 = 5
 const LIST_PAGE_4X2 = 4
 const ROTATE_PAGE_MS = 5600
 const ROTATE_MAX_PAGES = 4
-const WIDGET_REFRESH_INTERVAL = 60 * 1000
 
 interface PhantasiSourceTileProps {
   source: PhantasiSource
@@ -937,7 +936,6 @@ const PhantasiSourceWidgetBody = memo(
     )
     const sources = useWidgetSources(
       isPreview ?? false,
-      WIDGET_REFRESH_INTERVAL,
       '[PhantasiSourceWidget]',
     )
     // 会话内冻结时钟。

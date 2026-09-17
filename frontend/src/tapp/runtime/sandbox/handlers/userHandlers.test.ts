@@ -2,6 +2,7 @@ import type { TappInstance, TappMessage } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
+import { setKnownAuthState } from '../../../../utils/authState.ts'
 import { registerUserHandlers } from './baseHandlers.ts'
 
 const originalFetch = globalThis.fetch
@@ -13,6 +14,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch
   globalThis.sessionStorage = originalSessionStorage
   calls.length = 0
+  setKnownAuthState(true)
 })
 
 function installSessionStorage() {
@@ -146,5 +148,45 @@ describe('registerUserHandlers', { concurrency: false }, () => {
     assert.equal(tapp.userRole, 'user')
     assert.equal(calls[0]?.grant, GRANT)
     assert.match(String(calls[0]?.url), /context\/user|\/user/)
+  })
+
+  it('does not probe /api/auth/me when the host already knows the viewer is a guest', async () => {
+    setKnownAuthState(false)
+    mockContextUser({
+      id: 'guest',
+      role: 'guest',
+      authenticated: false,
+    })
+    const tapp = instance('guest')
+    const bridge = new FakeBridge(GRANT)
+    registerUserHandlers(bridge as unknown as TappBridge, tapp)
+    assert.deepEqual(await invoke(bridge, 'user.getRole'), {
+      success: true,
+      data: 'guest',
+    })
+    assert.equal(
+      calls.some((call) => String(call.url).includes('/api/auth/me')),
+      false,
+    )
+  })
+
+  it('still probes /api/auth/me when guest role is unconfirmed', async () => {
+    setKnownAuthState(true)
+    mockContextUser({
+      id: 'guest',
+      role: 'guest',
+      authenticated: false,
+    })
+    const tapp = instance('guest')
+    const bridge = new FakeBridge(GRANT)
+    registerUserHandlers(bridge as unknown as TappBridge, tapp)
+    assert.deepEqual(await invoke(bridge, 'user.getRole'), {
+      success: true,
+      data: 'guest',
+    })
+    assert.equal(
+      calls.some((call) => String(call.url).includes('/api/auth/me')),
+      true,
+    )
   })
 })

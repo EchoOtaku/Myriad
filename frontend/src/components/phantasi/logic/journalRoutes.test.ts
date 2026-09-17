@@ -6,6 +6,7 @@ import {
   journalBoardPath,
   journalItemPath,
   journalListPath,
+  journalSourceScope,
   journalPathForNavId,
   journalSourceFocus,
   navIdForJournalLocation,
@@ -36,6 +37,18 @@ describe('parseJournalPath', () => {
     assert.equal(parseJournalPath('/journal/feeds/9'), null)
     assert.equal(parseJournalPath('/journal/feeds/not-a-number'), null)
     assert.equal(parseJournalPath('/phantasi'), null)
+  })
+
+  it('source scope follows the board, not the whole catalog', () => {
+    assert.equal(journalSourceScope('/journal'), 'feeds')
+    assert.equal(journalSourceScope('/journal/feeds'), 'feeds')
+    assert.equal(journalSourceScope('/journal/notes'), 'notes')
+    assert.equal(journalSourceScope('/journal/friends'), 'sites')
+    assert.equal(journalSourceScope('/journal/workbench'), 'all')
+    assert.equal(journalSourceScope('/journal/articles/12'), 'catalog')
+    assert.equal(journalSourceScope('/journal/starred'), 'none')
+    assert.equal(journalSourceScope('/journal/topics/AI'), 'none')
+    assert.equal(journalSourceScope('/library'), 'none')
   })
 
   it('工作台先匹配更长段', () => {

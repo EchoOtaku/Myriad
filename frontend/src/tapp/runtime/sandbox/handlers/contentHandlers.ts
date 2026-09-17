@@ -269,7 +269,9 @@ export function registerPhantasiListHandlers(
   bridge.registerHandler('phantasiList.sources', async () => {
     try {
       const { getSources } = await import('../../../../services/phantasiApi')
-      const sources = await getSources(await bridge.hostAttributionHeaders())
+      const sources = await getSources(await bridge.hostAttributionHeaders(), {
+        view: 'catalog',
+      })
       return {
         success: true,
         data: sources.map((s) => ({

@@ -19,6 +19,7 @@ import {
   currentAgentMusicStatus,
   subscribeCurrentSong,
 } from '../../../contexts/currentSong'
+import { isKnownGuest } from '../../../utils/authState'
 import { authSubject } from '../../../utils/authSubject'
 import { PERSONA_UPDATED_EVENT } from '../events'
 import {
@@ -196,7 +197,7 @@ function currentRoute(): string {
 /** Lease is not a decision heartbeat */
 export async function reportPresence(reason: string): Promise<void> {
   const subject = authSubject.signal
-  if (!inboundArmed) {
+  if (!inboundArmed || isKnownGuest()) {
     return
   }
   const consentChange = reason === 'page-consent'

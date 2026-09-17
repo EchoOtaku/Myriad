@@ -6,6 +6,16 @@ export const PHANTASI_BOARD_NOTES_CACHE_PREFIX = 'phantasi:board-notes:'
 export const phantasiCacheKeys = {
   sources: 'phantasi:sources',
   sourceCatalog: 'phantasi:sources:catalog',
+  sourceList: (view?: 'catalog', category?: string, board?: string) => {
+    const base =
+      view === 'catalog'
+        ? phantasiCacheKeys.sourceCatalog
+        : phantasiCacheKeys.sources
+    const cat = category?.trim()
+    const slice = board?.trim()
+    const withCat = cat ? `${base}:cat:${cat}` : base
+    return slice ? `${withCat}:board:${slice}` : withCat
+  },
   stats: 'phantasi:stats',
   categories: 'phantasi:categories',
   topicCatalog: 'phantasi:topic-catalog',
@@ -24,8 +34,7 @@ export function invalidatePhantasiStatsCache(): void {
 }
 
 export function invalidatePhantasiSourcesCache(): void {
-  requestCache.delete(phantasiCacheKeys.sources)
-  requestCache.delete(phantasiCacheKeys.sourceCatalog)
+  requestCache.deleteByPrefix('phantasi:sources')
   invalidatePhantasiStatsCache()
 }
 

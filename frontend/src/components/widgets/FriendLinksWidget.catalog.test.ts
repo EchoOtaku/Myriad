@@ -7,9 +7,23 @@ import { fileURLToPath } from 'node:url'
 const dir = dirname(fileURLToPath(import.meta.url))
 
 describe('FriendLinksWidget source load', () => {
-  it('asks for catalog sources instead of preview/pulse overlay', () => {
+  it('asks for catalog friend-link sources instead of the full overlay', () => {
     const src = readFileSync(join(dir, 'FriendLinksWidget.tsx'), 'utf8')
-    assert.match(src, /getSources\(undefined, \{ view: 'catalog' \}\)/)
+    assert.match(src, /view: 'catalog'/)
+    assert.match(src, /category: 'friends'/)
     assert.doesNotMatch(src, /recent_items|pulses/)
+  })
+
+  it('does not fetch until the card intersects, and never polls', () => {
+    const src = readFileSync(join(dir, 'FriendLinksWidget.tsx'), 'utf8')
+    assert.match(src, /new IntersectionObserver/)
+    assert.match(src, /if \(!shown\) return/)
+    assert.match(src, /void loadFriendLinks\(\)/)
+    assert.doesNotMatch(src, /useLocation/)
+    assert.doesNotMatch(src, /REFRESH_INTERVAL/)
+    assert.doesNotMatch(
+      src,
+      /useHomeVisibilityInterval\(\s*loadFriendLinks/,
+    )
   })
 })

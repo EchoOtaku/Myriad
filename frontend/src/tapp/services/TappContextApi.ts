@@ -1,6 +1,5 @@
 import { API_URL } from '../../config'
 import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
-import { currentCopy } from '../../i18n/localeCopy'
 import { getCSRFToken } from '../../utils/csrf'
 import { apiRequest } from './TappHttpClient'
 
@@ -191,14 +190,7 @@ export interface GeoContext {
 export async function getContextGeo(
   runtimeGrant?: string,
 ): Promise<GeoContext> {
-  const result = await apiRequest<{ success: boolean; data: GeoContext }>(
-    '/api/tapp/context/geo',
-    { runtimeGrant },
-  )
-  if (result.success && result.data) {
-    return result.data
-  }
-  throw new Error(currentCopy().errors.geoLoadFailed)
+  return apiRequest('/api/tapp/context/geo', { runtimeGrant })
 }
 
 export interface TappApiExecuteResponse {

@@ -18,9 +18,19 @@ use crate::services::http_client::MEDIA_FETCH_CLIENT;
 
 // 网易云 / 酷狗服务与共享缓存、限流
 use crate::services::kugou_service::KugouService;
+use crate::services::music_player_view::{self, PlayerMusicSource, PlayerPlaylist};
 use crate::services::netease_service::{CacheEntry, MUSIC_CACHE, NeteaseService, RATE_LIMITER};
 
 /// Music proxy 429 with Retry-After + JSON body for FE toast / axios interceptors.
+fn player_playlist_response(view: PlayerPlaylist) -> Response {
+    (
+        StatusCode::OK,
+        [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+        Json(view),
+    )
+        .into_response()
+}
+
 fn music_rate_limited_response(context: &str) -> Response {
     const RETRY_AFTER_SECS: u64 = 60;
     tracing::warn!("Rate limit exceeded for {}", context);
@@ -588,7 +598,8 @@ mod image_proxy_tests {
     }
 }
 
-/// 代理网易云歌单。`NeteaseService::fetch_playlist`。
+/// 代理网易云歌单。上游仍走 `NeteaseService::fetch_playlist`（平台喜欢的歌用胖 JSON）；
+/// 播放器出口只返回/缓存 `music_player_view` 瘦队列。
 pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response {
     let playlist_id_i64 = match playlist_id.parse::<i64>() {
         Ok(id) => id,
@@ -601,6 +612,13 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         }
     };
 
+    if let Some(view) =
+        music_player_view::get_cached_player_playlist(PlayerMusicSource::Netease, &playlist_id)
+            .await
+    {
+        return player_playlist_response(view);
+    }
+
     // Align with QQ playlist: surface 429 + Retry-After for FE toast
     let cache_key = format!("netease_playlist:{}", playlist_id);
     {
@@ -612,12 +630,11 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
 
     let service = NeteaseService::new();
     match service.fetch_playlist(playlist_id_i64, true).await {
-        Ok(data) => (
-            StatusCode::OK,
-            [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-            Json(data),
-        )
-            .into_response(),
+        Ok(data) => {
+            let view = music_player_view::project_netease_player_playlist(&playlist_id, &data);
+            music_player_view::set_cached_player_playlist(&view).await;
+            player_playlist_response(view)
+        }
         Err(e) => {
             tracing::error!("Failed to fetch Netease playlist {}: {}", playlist_id, e);
             (
@@ -1284,32 +1301,19 @@ pub async fn proxy_qq_audio(Path(song_mid): Path<String>) -> Response {
     }
 }
 
-/// 代理 QQ 歌单。读缓存关闭（`use_cache = false`）；写入 TTL 604800s。
+/// 代理 QQ 歌单。只缓存播放器瘦视图；不再写只写不读的胖 `qq_playlist:` JSON。
 pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
-    let cache_key = format!("qq_playlist:{}", playlist_id);
+    if let Some(view) =
+        music_player_view::get_cached_player_playlist(PlayerMusicSource::Qq, &playlist_id).await
+    {
+        return player_playlist_response(view);
+    }
 
-    // 检查限流
+    let cache_key = format!("qq_playlist:{}", playlist_id);
     {
         let mut limiter = RATE_LIMITER.write().await;
         if !limiter.check_rate_limit(&cache_key) {
             return music_rate_limited_response(&format!("QQ playlist: {}", playlist_id));
-        }
-    }
-
-    // 读路径关闭：`use_cache = false`。写入仍 604800s。
-    let use_cache = false;
-    if use_cache {
-        let mut cache = MUSIC_CACHE.write().await;
-        if let Some(entry) = cache.get(&cache_key) {
-            if entry.expires_at > Instant::now() {
-                tracing::debug!("Cache hit for QQ playlist: {}", playlist_id);
-                return (
-                    StatusCode::OK,
-                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-                    Json(entry.data.clone()),
-                )
-                    .into_response();
-            }
         }
     }
 
@@ -1328,47 +1332,23 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
         .await
     {
         Ok(resp) => match read_limited_json(resp).await {
-            Ok(mut data) => {
-                // QQ 匿名接口不返回可靠 VIP 字段；按 payplay 粗略标注（播放链仍以 audio 代理实测为准）
-                if let Some(cdlist) = data.get_mut("cdlist") {
-                    if let Some(cdlist_array) = cdlist.as_array_mut() {
-                        for cd in cdlist_array.iter_mut() {
-                            if let Some(songlist) = cd.get_mut("songlist") {
-                                if let Some(songlist_array) = songlist.as_array_mut() {
-                                    for song in songlist_array.iter_mut() {
-                                        let payplay = song
-                                            .pointer("/pay/payplay")
-                                            .and_then(|v| v.as_i64())
-                                            .unwrap_or(0);
-                                        if let Some(obj) = song.as_object_mut() {
-                                            obj.insert("isVip".to_string(), json!(payplay > 0));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+            Ok(data) => match music_player_view::project_qq_player_playlist(&playlist_id, &data) {
+                Ok(view) => {
+                    music_player_view::set_cached_player_playlist(&view).await;
+                    player_playlist_response(view)
                 }
-
-                // 存入缓存
-                {
-                    let mut cache = MUSIC_CACHE.write().await;
-                    cache.insert(
-                        cache_key,
-                        CacheEntry {
-                            data: data.clone(),
-                            expires_at: Instant::now() + Duration::from_secs(604800), // 7天 (7*24*3600)
-                        },
-                    );
+                Err(music_player_view::QqPlaylistError::Invalid) => {
+                    tracing::error!("QQ playlist {} missing cdlist", playlist_id);
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(json!({
+                            "error": "Failed to fetch playlist",
+                            "code": "playlist_fetch_failed"
+                        })),
+                    )
+                        .into_response()
                 }
-
-                (
-                    StatusCode::OK,
-                    [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-                    Json(data),
-                )
-                    .into_response()
-            }
+            },
             Err(e) => {
                 tracing::error!("Failed to parse QQ playlist: {}", e);
                 (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()

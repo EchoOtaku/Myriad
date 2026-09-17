@@ -40,6 +40,7 @@ pub mod merope_rig; // Anime2.5D rig store (live pointer is worn outfit)
 pub mod metadata_service;
 pub mod minimax_speech; // MiniMax T2A speech synthesis
 pub mod module_visibility; // Module visibility for Agent (no api::config import)
+pub mod music_player_view; // Player playlist projection (slim cache + Song fields)
 pub mod netease_service;
 pub mod netease_utils;
 pub mod oauth;

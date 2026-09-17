@@ -5,6 +5,7 @@ import { afterEach, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { requestCache } from '../utils/requestCache'
 import { getSources } from './phantasiApi'
+import { phantasiCacheKeys } from './phantasiCache'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 
@@ -13,9 +14,20 @@ afterEach(() => requestCache.deleteByPrefix('phantasi:sources'))
 describe('phantasi source catalog fetch', () => {
   it('caches catalog and full source lists on separate keys', () => {
     const api = readFileSync(join(dir, 'phantasiApi.ts'), 'utf8')
-    assert.match(api, /\/sources\?view=catalog/)
-    assert.match(api, /phantasiCacheKeys\.sourceCatalog/)
+    assert.match(api, /params\.set\('view', 'catalog'\)/)
+    assert.match(api, /params\.set\('category', category\)/)
+    assert.match(api, /phantasiCacheKeys\.sourceList/)
     assert.match(api, /invalidatePhantasiSourcesCache/)
+    assert.equal(phantasiCacheKeys.sourceList(), 'phantasi:sources')
+    assert.equal(phantasiCacheKeys.sourceList('catalog'), 'phantasi:sources:catalog')
+    assert.equal(
+      phantasiCacheKeys.sourceList('catalog', 'friends'),
+      'phantasi:sources:catalog:cat:friends',
+    )
+    assert.equal(
+      phantasiCacheKeys.sourceList(undefined, undefined, 'sites'),
+      'phantasi:sources:board:sites',
+    )
   })
 
   it('force refresh replaces an older shared request without stale refill', async () => {

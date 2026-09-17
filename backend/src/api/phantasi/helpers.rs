@@ -812,9 +812,36 @@ mod tests {
         assert!(src.contains("view=catalog"));
         let body = impl_fn(src, "list_sources");
         assert!(
+            body.contains("SourceType.is_not_in"),
+            "feeds board must drop link/note rows in SQL before overlay"
+        );
+        assert!(
             body.contains("is_catalog_view(query.view.as_deref())"),
             "catalog view must return source rows before unread/preview/pulse SQL"
         );
+        let retain = body
+            .find("retain_listed_sources_for_category")
+            .expect("category filter");
+        let board = body
+            .find("retain_listed_sources_for_board")
+            .expect("board filter");
+        let catalog = body
+            .find("is_catalog_view(query.view.as_deref())")
+            .expect("catalog view");
+        let unread = body.find("source unread counts").expect("unread overlay");
+        assert!(
+            retain < catalog,
+            "category filter must run before catalog return"
+        );
+        assert!(
+            board < catalog,
+            "board filter must run before catalog return"
+        );
+        assert!(
+            retain < unread,
+            "category filter must run before preview SQL"
+        );
+        assert!(board < unread, "board filter must run before preview SQL");
     }
 
     #[test]

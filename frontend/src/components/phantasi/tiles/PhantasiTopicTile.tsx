@@ -33,8 +33,6 @@ import {
 } from './tokens'
 import { useWidgetSources } from './useWidgetSources'
 
-const TOPIC_WIDGET_REFRESH_INTERVAL = 60 * 1000
-
 interface PhantasiTopicTileProps {
   topic: PhantasiTopic
   size: PhantasiTileSize
@@ -213,7 +211,6 @@ const PhantasiTopicWidgetBody = memo(
     )
     const sources = useWidgetSources(
       isPreview ?? false,
-      TOPIC_WIDGET_REFRESH_INTERVAL,
       '[PhantasiTopicWidget]',
     )
     const [now] = useState(() => Date.now())

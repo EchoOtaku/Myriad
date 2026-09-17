@@ -6,6 +6,7 @@ import {
 } from '../features/merope/speech/realtimeChat'
 import { currentCopy } from '../i18n/localeCopy'
 import { withAiTimeoutSignal } from '../utils/aiRequestTimeout.mjs'
+import { isKnownGuest } from '../utils/authState'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { userFacingError } from '../utils/userFacingError'
@@ -238,16 +239,28 @@ export type SpeechAttributionHeaders = Record<string, string>
 let speechStatusCache: SpeechStatus | null = null
 let speechStatusInflight: Promise<SpeechStatus> | null = null
 
+const GUEST_SPEECH_STATUS: SpeechStatus = {
+  available: false,
+  tts_enabled: false,
+  asr_enabled: false,
+  convo_enabled: false,
+  persona_speech_enabled: false,
+}
+
 /** Invalidate /status cache after settings save. */
 export function invalidateSpeechStatusCache(): void {
   speechStatusCache = null
   speechStatusInflight = null
 }
 
-/** Tapp attribution skips the host /status cache. */
+/**
+ * Tapp attribution skips the host /status cache.
+ * 确定访客时不打 /api/speech/*。仅 isKnownGuest() 为 true 才短路；未知一律走网络。
+ */
 export async function getSpeechStatus(
   attributionHeaders?: SpeechAttributionHeaders,
 ): Promise<SpeechStatus> {
+  if (isKnownGuest()) return { ...GUEST_SPEECH_STATUS }
   if (attributionHeaders) {
     return request<SpeechStatus>('/status', { headers: attributionHeaders })
   }
@@ -270,6 +283,7 @@ export async function getSpeechStatus(
 export async function getVoiceList(
   attributionHeaders?: SpeechAttributionHeaders,
 ): Promise<{ voices: VoiceInfo[] }> {
+  if (isKnownGuest()) return { voices: [] }
   return request<{ voices: VoiceInfo[] }>('/voices', {
     headers: attributionHeaders,
   })
