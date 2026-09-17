@@ -20,7 +20,7 @@ use super::classify::{Decision, classify_request};
 use super::self_update::handle_self_update;
 use super::validate::{
     allowlisted_network_name, authorize_guard_network_attachment, managed_project_service,
-    validate_endpoint_settings,
+    managed_project_service_for_logs, validate_endpoint_settings,
 };
 use super::{
     DOCKER_API_TIMEOUT, GuardState, SELF_UPDATE_GATE, denial, strip_api_version,
@@ -71,6 +71,21 @@ pub(crate) async fn handle(
                 Err(e) => {
                     warn!(container, err = %e, "docker guard could not authorize container");
                     return denial(StatusCode::FORBIDDEN, "container authorization failed");
+                }
+            }
+        }
+        Decision::ProjectContainerLogs(container) => {
+            match container_logs_belong_to_project(&state, &container).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    return denial(
+                        StatusCode::FORBIDDEN,
+                        "container logs are not from a managed service in this Compose project",
+                    );
+                }
+                Err(e) => {
+                    warn!(container, err = %e, "docker guard could not authorize container logs");
+                    return denial(StatusCode::FORBIDDEN, "container log authorization failed");
                 }
             }
         }
@@ -174,6 +189,11 @@ impl Drop for GenericMutationLeaseInner {
 async fn container_belongs_to_project(state: &GuardState, id: &str) -> Result<bool> {
     let value = daemon_json(&state.config.socket_path, &format!("/containers/{id}/json")).await?;
     Ok(managed_project_service(&value, &state.config).is_some())
+}
+
+async fn container_logs_belong_to_project(state: &GuardState, id: &str) -> Result<bool> {
+    let value = daemon_json(&state.config.socket_path, &format!("/containers/{id}/json")).await?;
+    Ok(managed_project_service_for_logs(&value, &state.config).is_some())
 }
 
 /// Authorize `networks/{id}/connect|disconnect` against the exact production

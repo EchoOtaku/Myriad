@@ -991,25 +991,57 @@ pub(crate) fn validate_image_tag(
 
 /// Returns the Compose service name when the container is a managed project member.
 pub(crate) fn managed_project_service(inspect: &Value, config: &GuardConfig) -> Option<String> {
+    managed_project_service_from_allowlist(
+        inspect,
+        config,
+        &[
+            "backend",
+            "backend-volume-init",
+            "federation-worker",
+            "persona-worker",
+            "frontend",
+            "postgres",
+            "proxy",
+            "updater",
+        ],
+    )
+}
+
+/// Log reads include TCB services without granting them generic inspect or mutation.
+pub(crate) fn managed_project_service_for_logs(
+    inspect: &Value,
+    config: &GuardConfig,
+) -> Option<String> {
+    managed_project_service_from_allowlist(
+        inspect,
+        config,
+        &[
+            "backend",
+            "backend-volume-init",
+            "federation-worker",
+            "persona-worker",
+            "frontend",
+            "postgres",
+            "proxy",
+            "docker-guard",
+            "updater",
+            "updater-gateway",
+        ],
+    )
+}
+
+fn managed_project_service_from_allowlist(
+    inspect: &Value,
+    config: &GuardConfig,
+    services: &[&str],
+) -> Option<String> {
     let project = inspect
         .pointer("/Config/Labels/com.docker.compose.project")
         .and_then(Value::as_str)?;
     let service = inspect
         .pointer("/Config/Labels/com.docker.compose.service")
         .and_then(Value::as_str)?;
-    if project == config.project
-        && matches!(
-            service,
-            "backend"
-                | "backend-volume-init"
-                | "federation-worker"
-                | "persona-worker"
-                | "frontend"
-                | "postgres"
-                | "proxy"
-                | "updater"
-        )
-    {
+    if project == config.project && services.contains(&service) {
         Some(service.to_string())
     } else {
         None

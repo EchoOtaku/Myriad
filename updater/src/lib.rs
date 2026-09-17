@@ -8,6 +8,7 @@ pub mod env_file;
 pub mod error;
 pub mod log;
 pub mod probe;
+pub mod process_logs;
 pub mod redact;
 pub mod release;
 pub mod rescue;

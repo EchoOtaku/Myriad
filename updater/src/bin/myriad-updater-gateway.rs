@@ -124,6 +124,7 @@ fn build_router(state: Arc<GatewayState>) -> Router {
         .route("/snapshots/{id}", delete(proxy))
         .route("/self-update/last", get(proxy))
         .route("/diagnostics", get(proxy))
+        .route("/process-logs", get(proxy))
         .route("/update", post(proxy))
         .route("/prefs", post(proxy))
         .route("/last-failed/dismiss", post(proxy))
@@ -311,7 +312,7 @@ fn validate_capability(
         | (&Method::GET, "/jobs")
         | (&Method::GET, "/snapshots")
         | (&Method::GET, "/self-update/last") => read_capability(&[], &[]),
-        (&Method::GET, "/diagnostics") => Capability {
+        (&Method::GET, "/diagnostics" | "/process-logs") => Capability {
             actor_header: false,
             ..read_capability(&[], &[])
         },
@@ -1136,5 +1137,17 @@ mod tests {
             assert!(validate_capability(&Method::POST, &uri, &headers, b"").is_ok());
             assert!(validate_capability(&Method::POST, &uri, &headers, br#"{}"#).is_err());
         }
+    }
+
+    #[test]
+    fn process_logs_is_a_get_only_parameterless_capability() {
+        let mut headers = HeaderMap::new();
+        headers.insert(HEADER_GATEWAY_SECRET, HeaderValue::from_static(TEST_SECRET));
+        let uri: Uri = "/process-logs".parse().unwrap();
+        assert!(validate_capability(&Method::GET, &uri, &headers, &[]).is_ok());
+        assert!(validate_capability(&Method::POST, &uri, &headers, &[]).is_err());
+
+        let uri: Uri = "/process-logs?all=true".parse().unwrap();
+        assert!(validate_capability(&Method::GET, &uri, &headers, &[]).is_err());
     }
 }

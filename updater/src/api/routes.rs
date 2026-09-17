@@ -53,6 +53,7 @@ pub fn build(state: ApiState) -> Router {
         // Manual proxy upgrade (spec §12.3; not part of business auto-update).
         .route("/admin/proxy-update", post(proxy_update))
         .route("/diagnostics", get(diagnostics))
+        .route("/process-logs", get(process_logs))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::token_required,
@@ -979,6 +980,10 @@ async fn diagnostics(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
             "rollback_pair": rollback_pair,
         }
     })))
+}
+
+async fn process_logs(State(st): State<ApiState>) -> Json<crate::process_logs::ProcessLogExport> {
+    Json(crate::process_logs::export(st.worker.docker().clone()).await)
 }
 
 /// Report whether local `backend:myriad-rollback` and `frontend:myriad-rollback` both exist.

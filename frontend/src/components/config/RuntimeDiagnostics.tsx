@@ -16,7 +16,6 @@ import {
   LuServer,
 } from '@lib/icons'
 import {
-
   useCallback,
   useEffect,
   useMemo,
@@ -28,6 +27,7 @@ import { fetchJson } from '../../utils/apiHelper'
 import { getBuildInfo } from '../../utils/buildInfo'
 import { userFacingError } from '../../utils/userFacingError'
 import {
+  ButtonItem,
   SettingGroup,
   SettingGroupGrid,
   SettingsButton,
@@ -119,6 +119,15 @@ interface RuntimeDiagnosticsResponse {
 
 interface RuntimeDiagnosticsProps {
   onMessage?: (message: string, type?: ToastType) => void
+}
+
+interface ProcessLogExport {
+  format: 'myriad-process-log-export'
+  schema_version: number
+  generated_at: string
+  sources: unknown[]
+  collection_errors: unknown[]
+  omitted_sources: unknown[]
 }
 
 export default function RuntimeDiagnostics({
@@ -472,6 +481,47 @@ export default function RuntimeDiagnostics({
     URL.revokeObjectURL(url)
   }, [makeReport])
 
+  const exportProcessLogs = useCallback(async () => {
+    try {
+      const report = await fetchJson<ProcessLogExport>(
+        '/api/admin/updater/process-logs',
+        undefined,
+        t.config.processLogsExportFailed,
+      )
+      if (
+        report.format !== 'myriad-process-log-export' ||
+        !Array.isArray(report.sources) ||
+        !Array.isArray(report.collection_errors)
+      ) {
+        throw new Error(t.config.processLogsExportFailed)
+      }
+      const blob = new Blob([JSON.stringify(report, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `myriad-process-errors-${new Date()
+        .toISOString()
+        .replaceAll(/[:.]/g, '-')}.json`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      onMessage?.(
+        report.collection_errors.length > 0
+          ? t.config.processLogsExportPartial
+          : t.config.processLogsExportSuccess,
+        report.collection_errors.length > 0 ? 'warning' : 'success',
+      )
+    } catch (exportError) {
+      onMessage?.(
+        userFacingError(exportError, t.config.processLogsExportFailed),
+        'error',
+      )
+    }
+  }, [onMessage, t])
+
   const backendVersion = data?.runtime.version ?? ''
   const frontendVersion = buildInfo.version
   const versionDetailFull = !data
@@ -654,6 +704,18 @@ export default function RuntimeDiagnostics({
           </SettingsButton>
         </div>
       </div>
+
+      <ButtonItem
+        itemKey="export_process_logs"
+        label={t.config.processLogsExport}
+        description={t.config.processLogsExportDesc}
+        buttonText={t.config.processLogsExportButton}
+        buttonIcon={<LuDownload size={14} />}
+        onClick={exportProcessLogs}
+        asyncAction
+        variant="secondary"
+        layout="horizontal"
+      />
 
       {data && (
         <>

@@ -17,6 +17,7 @@ use super::{GuardState, strip_api_version, validate_identifier};
 pub(crate) enum Decision {
     Allow,
     ProjectContainer(String),
+    ProjectContainerLogs(String),
     ProjectNetworkMutation {
         network: String,
         container: String,
@@ -71,9 +72,13 @@ pub(crate) fn classify_request(
             validate_container_rename(state, uri)?;
             Ok(Decision::ProjectContainer((*id).to_string()))
         }
+        ["containers", id, "logs"] if *method == Method::GET => {
+            validate_identifier(id)?;
+            Ok(Decision::ProjectContainerLogs((*id).to_string()))
+        }
         ["containers", id, action]
             if (*method == Method::GET
-                && matches!(*action, "json" | "logs" | "stats" | "top" | "changes"))
+                && matches!(*action, "json" | "stats" | "top" | "changes"))
                 || (*method == Method::POST
                     && matches!(*action, "start" | "stop" | "restart" | "kill" | "wait")) =>
         {

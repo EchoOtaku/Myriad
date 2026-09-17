@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use axum::{
     extract::{Path, Query},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Json, Response},
 };
 use serde::Deserialize;
@@ -640,6 +640,27 @@ pub async fn diagnostics() -> Response {
     };
     match c.get_json("/diagnostics").await {
         Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+pub async fn process_logs() -> Response {
+    let c = match require_mutate() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    match c.get_json("/process-logs").await {
+        Ok(value) => {
+            let mut response = Json(value).into_response();
+            response.headers_mut().insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("no-store, private"),
+            );
+            response
+                .headers_mut()
+                .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+            response
+        }
         Err(e) => err_to_response(e),
     }
 }

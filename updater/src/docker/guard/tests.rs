@@ -24,8 +24,8 @@ use super::self_update::{
 };
 use super::validate::{
     allowlisted_network_name, authorize_guard_network_attachment, managed_project_service,
-    validate_container_create, validate_container_rename, validate_endpoint_settings,
-    validate_image_pull,
+    managed_project_service_for_logs, validate_container_create, validate_container_rename,
+    validate_endpoint_settings, validate_image_pull,
 };
 use super::{
     GuardConfig, GuardState, SELF_UPDATE_GATE, TRUSTED_GUARD_REPOSITORY, strip_api_version,
@@ -820,7 +820,7 @@ fn initializer_logs_remain_project_scoped_read_only_access() {
     let request = Uri::from_static("/v1.51/containers/init-container-id/logs?stdout=1&stderr=1");
     assert_eq!(
         classify_request(&state(), &Method::GET, &request, &Bytes::new()).unwrap(),
-        Decision::ProjectContainer("init-container-id".into())
+        Decision::ProjectContainerLogs("init-container-id".into())
     );
     assert!(classify_request(&state(), &Method::POST, &request, &Bytes::new()).is_err());
 }
@@ -1222,6 +1222,23 @@ fn managed_project_service_and_network_helpers() {
         }
     });
     assert!(managed_project_service(&foreign, &s.config).is_none());
+    assert!(managed_project_service_for_logs(&foreign, &s.config).is_none());
+
+    for tcb_service in ["docker-guard", "updater-gateway"] {
+        let tcb = json!({
+            "Config": {
+                "Labels": {
+                    "com.docker.compose.project": "myriad",
+                    "com.docker.compose.service": tcb_service,
+                }
+            }
+        });
+        assert_eq!(
+            managed_project_service_for_logs(&tcb, &s.config).as_deref(),
+            Some(tcb_service)
+        );
+        assert!(managed_project_service(&tcb, &s.config).is_none());
+    }
 
     let guard_net = json!({"Name": "myriad-docker-guard-net"});
     assert_eq!(

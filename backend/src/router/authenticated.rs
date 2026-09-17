@@ -1128,6 +1128,13 @@ pub(super) fn build_authenticated_router(
             )),
         )
         .route(
+            "/api/admin/updater/process-logs",
+            get(api::updater_admin::process_logs).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::admin_middleware,
+            )),
+        )
+        .route(
             "/api/admin/updater/rescue/exit-maintenance",
             post(api::updater_admin::exit_maintenance).route_layer(from_fn_with_state(
                 app_state.clone(),
@@ -1342,5 +1349,14 @@ mod security_route_wiring_tests {
             route_has_middleware(src, "/api/media/{id}", "admin_middleware"),
             "media delete must be admin only"
         );
+    }
+
+    #[test]
+    fn process_log_export_is_admin_only() {
+        assert!(route_has_middleware(
+            router_src(),
+            "/api/admin/updater/process-logs",
+            "admin_middleware"
+        ));
     }
 }
