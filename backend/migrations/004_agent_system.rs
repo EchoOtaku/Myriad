@@ -428,7 +428,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         // ==================== HEARTBEAT_CLAIMS ====================
-        // 多副本 heartbeat 分钟桶认领；与 schema_check::ensure_heartbeat_claims_table 同结构
+        // 多副本 heartbeat 分钟桶认领；与 `get_expected_schema` 同结构
         manager
             .get_connection()
             .execute_unprepared(

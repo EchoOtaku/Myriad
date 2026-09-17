@@ -2,9 +2,8 @@
 //!
 //! **Support floor: product ≥ 0.3.10.** Thin ADD COLUMN one-shots are not kept;
 //! missing columns go through `get_expected_schema` + generic DDL.
-//! Heals here: CREATE IF NOT EXISTS, unique-index cleanup, analytics `target` PK,
-//! federation FK report/apply, triggers, credential CHECK, inbox_scope rebuild,
-//! retired-report DELETE.
+//! Heals here: recent (~1 month) CREATE IF NOT EXISTS, unique-index cleanup,
+//! federation FK report/apply, triggers, credential CHECK, inbox_scope rebuild.
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
 
 /// `phantasi_items.topic` 的部分索引（`migrations/003` 已 CREATE）。
@@ -62,51 +61,6 @@ pub(crate) async fn ensure_phantasi_content_revision(db: &DatabaseConnection) ->
         .await?;
     db.execute_unprepared("CREATE TRIGGER phantasi_content_revision BEFORE UPDATE ON phantasi_items FOR EACH ROW EXECUTE FUNCTION phantasi_advance_content_revision()")
         .await?;
-    Ok(())
-}
-
-/// 近月功能表兜底（`migrations/005` 已 CREATE）。
-pub(crate) async fn ensure_federation_content_filters_table(
-    db: &DatabaseConnection,
-) -> Result<(), DbErr> {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE IF NOT EXISTS federation_content_filters (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    filter_type VARCHAR NOT NULL,
-    value TEXT NOT NULL,
-    enabled BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-"#,
-    )
-    .await?;
-    Ok(())
-}
-
-/// 近月功能表兜底（`migrations/005` 已 CREATE）。缺列由 `get_expected_schema` 通用 ADD。
-/// 字段级对齐不再为 <0.3.10 单独维护。
-pub(crate) async fn ensure_federation_policy_settings_table(
-    db: &DatabaseConnection,
-) -> Result<(), DbErr> {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE IF NOT EXISTS federation_policy_settings (
-    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-    min_trust_level SMALLINT NOT NULL DEFAULT 0,
-    allowed_domains JSONB NOT NULL DEFAULT '[]'::jsonb,
-    auto_discover BOOLEAN NOT NULL DEFAULT true,
-    rate_max_requests BIGINT NOT NULL DEFAULT 100,
-    rate_window_seconds BIGINT NOT NULL DEFAULT 60,
-    rate_trusted_multiplier BIGINT NOT NULL DEFAULT 5,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-INSERT INTO federation_policy_settings (id) VALUES (1)
-ON CONFLICT (id) DO NOTHING;
-"#,
-    )
-    .await?;
     Ok(())
 }
 
@@ -174,26 +128,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_proactive_user_created
     Ok(())
 }
 
-/// 近月功能表兜底（`migrations/004` 已 CREATE）。
-pub(crate) async fn ensure_heartbeat_claims_table(db: &DatabaseConnection) -> Result<(), DbErr> {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE IF NOT EXISTS heartbeat_claims (
-    task_id VARCHAR(128) NOT NULL,
-    minute_bucket BIGINT NOT NULL,
-    status VARCHAR(16) NOT NULL DEFAULT 'running',
-    claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ,
-    PRIMARY KEY (task_id, minute_bucket)
-);
-CREATE INDEX IF NOT EXISTS idx_heartbeat_claims_claimed_at
-    ON heartbeat_claims (claimed_at);
-"#,
-    )
-    .await?;
-    Ok(())
-}
-
 /// 近期 Agent 意图账本兜底（`migrations/004` 已 CREATE）。
 pub(crate) async fn ensure_agent_intentions_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
@@ -220,13 +154,11 @@ CREATE INDEX IF NOT EXISTS idx_agent_intentions_user_updated
     ON agent_intentions (user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_intentions_source_event
     ON agent_intentions (source_event_id);
-ALTER TABLE agent_intentions
-    ADD COLUMN IF NOT EXISTS accept_source VARCHAR(16) NOT NULL DEFAULT 'user';
 "#,
     )
     .await?;
-    // Unique (user_id, source_event_id) is a separate statement so a pre-heal
-    // duplicate row cannot roll back accept_source. Keep the oldest row.
+    // Deduplicate before the unique index. Keep the oldest row.
+    // Missing `accept_source` is generic ADD, already applied above.
     let removed = db
         .execute_unprepared(
             r#"
@@ -273,149 +205,6 @@ CREATE TABLE IF NOT EXISTS agent_autonomy_grants (
 "#,
     )
     .await?;
-    Ok(())
-}
-
-/// First-party site analytics tables.
-///
-/// **权威建表**：`migrations/001_initial_schema.rs` §8（新库 Migrator）。
-/// 与 001 §8 同结构（列 / PK / 索引），作表尚不存在时的幂等 CREATE 兜底。
-/// 普通缺列（engagement / ordinal 等）走 `get_expected_schema` 通用 ADD，
-/// 不再为 <0.3.10 或中间过渡形态维护逐列 ALTER。
-///
-/// 仅保留 **event `target` 维度** 的列补齐 + PK 重建（通用 ADD 无法改主键）。
-pub(crate) async fn ensure_analytics_tables(db: &DatabaseConnection) -> Result<(), DbErr> {
-    // 须与 migrations/001_initial_schema.rs §8 SITE ANALYTICS 保持同步
-    db.execute_unprepared(
-        r#"
-CREATE TABLE IF NOT EXISTS analytics_page_daily (
-    day DATE NOT NULL,
-    path TEXT NOT NULL,
-    views BIGINT NOT NULL DEFAULT 0,
-    unique_visitors BIGINT NOT NULL DEFAULT 0,
-    engagement_ms BIGINT NOT NULL DEFAULT 0,
-    engaged_views BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, path)
-);
-CREATE INDEX IF NOT EXISTS idx_analytics_page_daily_day
-    ON analytics_page_daily (day);
-
-CREATE TABLE IF NOT EXISTS analytics_visitor_seen (
-    day DATE NOT NULL,
-    path TEXT NOT NULL,
-    visitor_hash VARCHAR(64) NOT NULL,
-    ordinal BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, path, visitor_hash)
-);
-CREATE INDEX IF NOT EXISTS idx_analytics_visitor_seen_day
-    ON analytics_visitor_seen (day);
-
-CREATE TABLE IF NOT EXISTS analytics_event_daily (
-    day DATE NOT NULL,
-    event_name TEXT NOT NULL,
-    path TEXT NOT NULL DEFAULT '',
-    target TEXT NOT NULL DEFAULT '',
-    count BIGINT NOT NULL DEFAULT 0,
-    unique_visitors BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, event_name, path, target)
-);
-CREATE INDEX IF NOT EXISTS idx_analytics_event_daily_day
-    ON analytics_event_daily (day);
-
-CREATE TABLE IF NOT EXISTS analytics_event_visitor (
-    day DATE NOT NULL,
-    event_name TEXT NOT NULL,
-    path TEXT NOT NULL DEFAULT '',
-    target TEXT NOT NULL DEFAULT '',
-    visitor_hash VARCHAR(64) NOT NULL,
-    PRIMARY KEY (day, event_name, path, target, visitor_hash)
-);
-CREATE INDEX IF NOT EXISTS idx_analytics_event_visitor_day
-    ON analytics_event_visitor (day);
-
-CREATE TABLE IF NOT EXISTS analytics_referrer_daily (
-    day DATE NOT NULL,
-    host TEXT NOT NULL,
-    count BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, host)
-);
-CREATE INDEX IF NOT EXISTS idx_analytics_referrer_daily_day
-    ON analytics_referrer_daily (day);
-
-CREATE TABLE IF NOT EXISTS analytics_country_daily (
-    day DATE NOT NULL,
-    country_code VARCHAR(8) NOT NULL,
-    country_name TEXT NOT NULL DEFAULT '',
-    views BIGINT NOT NULL DEFAULT 0,
-    unique_visitors BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, country_code)
-);
-CREATE INDEX IF NOT EXISTS idx_analytics_country_daily_day
-    ON analytics_country_daily (day);
-
-CREATE TABLE IF NOT EXISTS analytics_country_visitor (
-    day DATE NOT NULL,
-    country_code VARCHAR(8) NOT NULL,
-    visitor_hash VARCHAR(64) NOT NULL,
-    PRIMARY KEY (day, country_code, visitor_hash)
-);
-CREATE INDEX IF NOT EXISTS idx_analytics_country_visitor_day
-    ON analytics_country_visitor (day);
-"#,
-    )
-    .await?;
-    // target 列（post-0.3.10）：缺列时通用 ADD 也会补，但 PK 扩维必须显式 heal。
-    for stmt in [
-        "ALTER TABLE analytics_event_daily ADD COLUMN IF NOT EXISTS target TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE analytics_event_visitor ADD COLUMN IF NOT EXISTS target TEXT NOT NULL DEFAULT ''",
-    ] {
-        db.execute_unprepared(stmt).await?;
-    }
-    // 旧 PK (day, event_name, path) → 含 target。新建表已是新 PK；失败则忽略。
-    for stmt in [
-        r#"
-DO $heal$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'analytics_event_daily_pkey'
-      AND conrelid = 'analytics_event_daily'::regclass
-  ) THEN
-    ALTER TABLE analytics_event_daily DROP CONSTRAINT analytics_event_daily_pkey;
-  END IF;
-  ALTER TABLE analytics_event_daily
-    ADD CONSTRAINT analytics_event_daily_pkey
-    PRIMARY KEY (day, event_name, path, target);
-EXCEPTION
-  WHEN duplicate_object OR invalid_table_definition OR unique_violation THEN
-    NULL;
-END
-$heal$;
-"#,
-        r#"
-DO $heal$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'analytics_event_visitor_pkey'
-      AND conrelid = 'analytics_event_visitor'::regclass
-  ) THEN
-    ALTER TABLE analytics_event_visitor DROP CONSTRAINT analytics_event_visitor_pkey;
-  END IF;
-  ALTER TABLE analytics_event_visitor
-    ADD CONSTRAINT analytics_event_visitor_pkey
-    PRIMARY KEY (day, event_name, path, target, visitor_hash);
-EXCEPTION
-  WHEN duplicate_object OR invalid_table_definition OR unique_violation THEN
-    NULL;
-END
-$heal$;
-"#,
-    ] {
-        if let Err(e) = db.execute_unprepared(stmt).await {
-            tracing::warn!("analytics event target PK heal: {}", e);
-        }
-    }
     Ok(())
 }
 
@@ -799,70 +588,6 @@ END $$;
     Ok(())
 }
 
-/// 近月功能表兜底（`migrations/005` 已 CREATE）。
-pub(crate) async fn ensure_federation_domain_aliases_table(
-    db: &DatabaseConnection,
-) -> Result<(), DbErr> {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE IF NOT EXISTS federation_domain_aliases (
-    id SERIAL PRIMARY KEY,
-    old_base_url TEXT NOT NULL UNIQUE,
-    new_base_url TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_federation_domain_aliases_new
-    ON federation_domain_aliases (new_base_url);
-"#,
-    )
-    .await?;
-    Ok(())
-}
-
-/// 退休跨平台综合报告：历史行 `platform = 'all'` 已无生成/读取产品路径。
-///
-/// API 侧已用 `platform.ne("all")` 过滤，这里做一次幂等物理清理，避免库内残留
-/// 被 federation content 导出或手工 SQL 重新暴露。
-pub(crate) async fn cleanup_retired_comprehensive_reports(
-    db: &DatabaseConnection,
-) -> Result<(), DbErr> {
-    db.execute_unprepared(
-        r#"
-DELETE FROM platform_reports WHERE platform = 'all';
-"#,
-    )
-    .await?;
-    Ok(())
-}
-
-/// 近月功能表兜底（`migrations/005` 已 CREATE）。
-pub(crate) async fn ensure_federation_object_interactions_table(
-    db: &DatabaseConnection,
-) -> Result<(), DbErr> {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE IF NOT EXISTS federation_object_interactions (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    object_id TEXT NOT NULL,
-    kind VARCHAR(20) NOT NULL,
-    activity_id TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT federation_object_interactions_kind_check
-        CHECK (kind IN ('like', 'bookmark', 'announce')),
-    CONSTRAINT federation_object_interactions_unique
-        UNIQUE (user_id, object_id, kind)
-);
-CREATE INDEX IF NOT EXISTS idx_fed_interactions_object_kind
-    ON federation_object_interactions (object_id, kind);
-CREATE INDEX IF NOT EXISTS idx_fed_interactions_user_kind_created
-    ON federation_object_interactions (user_id, kind, created_at DESC);
-"#,
-    )
-    .await?;
-    Ok(())
-}
-
 /// Inbox receipt table (authoritative CREATE is `migrations/005`).
 ///
 /// Old DBs that already applied 005 get `CREATE IF NOT EXISTS`. Review DBs that
@@ -1022,6 +747,7 @@ pub(crate) async fn ensure_phantasi_note_docs_table(db: &DatabaseConnection) -> 
 CREATE TABLE IF NOT EXISTS phantasi_note_docs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
+    last_edited_by INTEGER,
     item_id INTEGER,
     title TEXT NOT NULL DEFAULT '',
     content_md TEXT NOT NULL DEFAULT '',
@@ -1041,7 +767,6 @@ CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_item
     ON phantasi_note_docs (item_id);
 CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_schedule
     ON phantasi_note_docs (status, scheduled_at);
-ALTER TABLE phantasi_note_docs ADD COLUMN IF NOT EXISTS last_error TEXT;
 -- 文章被级联删掉时文档没有外键，会留下 published + 空 item_id。
 UPDATE phantasi_note_docs AS d
 SET item_id = NULL,

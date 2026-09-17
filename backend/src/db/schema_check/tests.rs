@@ -22,7 +22,7 @@ fn test_expected_schema_tables() {
 
 /// 001/004/005 扩展表：须在 get_expected_schema / indexes 有完整条目。
 #[test]
-fn test_recent_month_features_in_expected_schema() {
+fn test_folded_extension_tables_in_expected_schema() {
     let tables = get_expected_schema();
     let names: Vec<&str> = tables.iter().map(|t| t.name.as_str()).collect();
     for required in [
@@ -50,10 +50,12 @@ fn test_recent_month_features_in_expected_schema() {
         "phantasi_note_authors",
         "phantasi_source_applications",
         "media_assets",
+        // 006
+        "user_identities",
     ] {
         assert!(
             names.contains(&required),
-            "missing recent-feature table in get_expected_schema: {required}"
+            "missing table in get_expected_schema: {required}"
         );
     }
 
@@ -128,10 +130,13 @@ fn test_recent_month_features_in_expected_schema() {
         "federation_inbox_receipts_pkey",
         "idx_delivery_lease_expiry",
         "idx_delivery_queue_target_domain",
+        "idx_user_identities_provider_uid",
+        "idx_user_identities_user",
+        "idx_user_identities_provider_email",
     ] {
         assert!(
             idx_names.contains(&required),
-            "missing recent-feature index in get_expected_indexes: {required}"
+            "missing index in get_expected_indexes: {required}"
         );
     }
 }
@@ -224,6 +229,8 @@ fn test_default_platform_seeds_include_x_and_core() {
         "x",
         "discord",
         "mal",
+        "xbox",
+        "psn",
     ] {
         assert!(
             names.contains(&required),

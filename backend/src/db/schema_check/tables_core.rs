@@ -231,6 +231,91 @@ pub(crate) fn tables() -> Vec<TableDef> {
             ],
         },
         TableDef {
+            name: "user_identities".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "provider".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "provider_user_id".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "provider_username".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "email_verified".into(),
+                    data_type: "boolean".into(),
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "avatar_url".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "profile_url".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "raw_profile".into(),
+                    data_type: "jsonb".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "access_token".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "refresh_token".into(),
+                    data_type: "text".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "token_expires_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "is_primary".into(),
+                    data_type: "boolean".into(),
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "linked_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    default_value: Some("now()".into()),
+                },
+                ColumnDef {
+                    name: "last_login_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    default_value: None,
+                },
+            ],
+        },
+        TableDef {
             name: "configurations".to_string(),
             columns: vec![
                 ColumnDef {

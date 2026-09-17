@@ -13,6 +13,12 @@ it('starts the initial locale fetch before mounting the provider', () => {
   assert.match(beforeProvider, /loadShellLocale\(getDefaultLocale\(\)\)/)
 })
 
+it('does not paint locale suspense fallbacks into the document', () => {
+  const source = readFileSync(new URL('./I18nContext.tsx', import.meta.url), 'utf8')
+  assert.equal([...source.matchAll(/<Suspense fallback=\{null\}>/g)].length, 2)
+  assert.doesNotMatch(source, /fallback=\{<div role="status">/)
+})
+
 it('renders a complete settings catalog in a detached React tree and provider', async () => {
   function SettingsLabel() {
     const { t } = useConfigI18n()

@@ -132,6 +132,22 @@ impl MigrationTrait for Migration {
                         "client_id".into(),
                         false.into(),
                     ])
+                    .values_panic([
+                        "xbox".into(),
+                        "Xbox".into(),
+                        "xbox".into(),
+                        "https://xbl.io/api/v2".into(),
+                        "api_key".into(),
+                        false.into(),
+                    ])
+                    .values_panic([
+                        "psn".into(),
+                        "PlayStation".into(),
+                        "psn".into(),
+                        "https://m.np.playstation.com/api".into(),
+                        "npsso".into(),
+                        false.into(),
+                    ])
                     .on_conflict(OnConflict::column(Platforms::Name).do_nothing().to_owned())
                     .to_owned(),
             )
@@ -247,6 +263,12 @@ impl MigrationTrait for Migration {
                     )
                     // locale varchar(16) nullable（无 CHECK）
                     .col(ColumnDef::new(Users::Locale).string_len(16))
+                    .col(
+                        ColumnDef::new(Users::NoteEditorView)
+                            .string()
+                            .not_null()
+                            .default("visual"),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -303,6 +325,10 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager.get_connection().execute_unprepared(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner \
+             ON users ((true)) WHERE is_owner = true",
+        ).await?;
 
         // 约束
         manager.get_connection().execute_unprepared(
@@ -778,6 +804,7 @@ enum Users {
     ProfileTextSourceRef,
     TokenVersion,
     Locale,
+    NoteEditorView,
 }
 
 #[derive(DeriveIden)]

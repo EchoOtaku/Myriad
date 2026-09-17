@@ -207,7 +207,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   return (
     <I18nContext.Provider value={value}>
       <LocaleNamespaceBoundary locale={value.locale} copy={value.t} retry={() => loadLocale(value.locale)}>
-        <Suspense fallback={<div role="status">{value.t.common.loading}</div>}>
+        <Suspense fallback={null}>
           {children}
         </Suspense>
       </LocaleNamespaceBoundary>
@@ -237,7 +237,8 @@ export function useI18n(): I18nContextType {
   return useContext(I18nContext) ?? fallbackI18n()
 }
 
-/** Load domain catalogs for a subtree. Chrome stays on the outer provider. */
+/** Load domain catalogs for a subtree. Chrome stays on the outer provider.
+ *  fallback must stay null: Agent chrome mounts this at the document root. */
 export function I18nNamespace({
   names,
   children,
@@ -247,7 +248,7 @@ export function I18nNamespace({
 }) {
   const context = useI18n()
   return (
-    <Suspense fallback={<div role="status">{context.t.common.loading}</div>}>
+    <Suspense fallback={null}>
       <I18nNamespaceReady names={names}>{children}</I18nNamespaceReady>
     </Suspense>
   )

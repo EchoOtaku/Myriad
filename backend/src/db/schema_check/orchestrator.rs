@@ -17,11 +17,11 @@ use super::seeds::{ensure_default_config, ensure_default_platforms};
 ///
 /// Marker for ops/logs + `_schema_versions`. Bump only with real schema/heal work.
 ///
-/// 数字系列 `migrations/001`–`006` 是新库权威建表。Folded 007–020 names
-/// 在 `Migrator::up` 之前从 `seaql_migrations` 删掉。普通缺列走
+/// 数字系列 `migrations/001`–`006` 是新库权威建表。没有文件的
+/// `seaql_migrations` 行在 `Migrator::up` 之前删掉。普通缺列走
 /// `get_expected_schema` 通用 ADD。Support floor: product ≥ 0.3.10。
-/// Current: 友联 / 订阅申请表。
-pub const SCHEMA_VERSION: &str = "2026.09.16.1";
+/// Current: drop July CREATE heals; 003 source applications; 006 identities in TableDef。
+pub const SCHEMA_VERSION: &str = "2026.09.17.1";
 
 const SCHEMA_LOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
 const SCHEMA_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(250);
@@ -263,18 +263,14 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
         tracing::info!("✅ Database schema is up to date (no changes needed)");
     }
 
-    // Ongoing object/data heals (not one-shot upgrade paths).
+    // Ongoing object/data heals, plus recent (~1 month) CREATE IF NOT EXISTS.
     ensure_tapp_storage_credential_constraint(db).await?;
     ensure_tapp_storage_quota(db).await?;
-    ensure_federation_content_filters_table(db).await?;
-    ensure_federation_policy_settings_table(db).await?;
     ensure_timeline_unique(db).await?;
     ensure_delivery_queue_unique(db).await?;
-    ensure_heartbeat_claims_table(db).await?;
     ensure_agent_intentions_table(db).await?;
     ensure_agent_autonomy_grants_table(db).await?;
     ensure_agent_merope_tables(db).await?;
-    ensure_analytics_tables(db).await?;
     ensure_phantasi_item_topic_index(db).await?;
     ensure_phantasi_state_revision(db).await?;
     ensure_phantasi_content_revision(db).await?;
@@ -283,11 +279,8 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     ensure_phantasi_note_authors_table(db).await?;
     ensure_phantasi_source_applications_table(db).await?;
     ensure_media_assets_table(db).await?;
-    ensure_federation_domain_aliases_table(db).await?;
-    ensure_federation_object_interactions_table(db).await?;
     // last_read_at / rate_* / engagement 等字段：TableDef + 通用 drift ADD（无专用 heal）
     ensure_federation_foreign_keys(db).await?;
-    cleanup_retired_comprehensive_reports(db).await?;
     ensure_single_owner(db).await?;
 
     // 只有所有 repair 都成功且最终只读复核无漂移，才能记录版本并开放服务。

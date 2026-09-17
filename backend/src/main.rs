@@ -339,10 +339,9 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 tracing::info!(db_target = %db_target, "✅ Database connection established");
 
                 // Run database migrations automatically on startup (idempotent).
-                // Folded 007–020 names are deleted from `seaql_migrations` first
-                // so SeaORM does not require no-op files for them; leftover
-                // `digital_life_*` experiment tables are dropped in the same
-                // step. Any remaining migration failure is fatal to full mode.
+                // Extra `seaql_migrations` rows without files are deleted first;
+                // leftover `digital_life_*` tables are dropped. Remaining
+                // migration failure is fatal to full mode.
                 tracing::debug!("Checking for pending database migrations...");
                 migration::Migrator::up(&db, None)
                     .await
@@ -789,11 +788,11 @@ mod schema_startup_policy_tests {
     fn missing_migration_history_is_fatal() {
         let error = startup_schema_error(
             "Database migration",
-            &"Migration file of version '009_digital_life_phase_three' is missing",
+            &"Migration file of version 'missing_file_version' is missing",
         );
         let message = error.to_string();
         assert!(message.contains("Refusing to start full mode"));
-        assert!(message.contains("009_digital_life_phase_three"));
+        assert!(message.contains("missing_file_version"));
     }
 
     #[test]

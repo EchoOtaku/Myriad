@@ -898,6 +898,7 @@ impl MigrationTrait for Migration {
         // ==================== 9. PHANTASI_NOTE_DOCS 表 ====================
         // 云端笔记文档。草稿 / 定时只活在这里，发布后才有 phantasi_items。
         // 与 `ensure_phantasi_note_docs_table` / TableDef 同一段 DDL。
+        // 友联 / 订阅申请与 `ensure_phantasi_source_applications_table` 同一段。
         manager
             .get_connection()
             .execute_unprepared(
@@ -905,6 +906,7 @@ impl MigrationTrait for Migration {
 CREATE TABLE IF NOT EXISTS phantasi_note_docs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
+    last_edited_by INTEGER,
     item_id INTEGER,
     title TEXT NOT NULL DEFAULT '',
     content_md TEXT NOT NULL DEFAULT '',
@@ -949,6 +951,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_media_assets_url
     ON media_assets (url);
 CREATE INDEX IF NOT EXISTS idx_media_assets_kind
     ON media_assets (kind);
+CREATE TABLE IF NOT EXISTS phantasi_source_applications (
+    id SERIAL PRIMARY KEY,
+    kind VARCHAR NOT NULL DEFAULT 'friend',
+    status VARCHAR NOT NULL DEFAULT 'pending',
+    site_name TEXT NOT NULL,
+    site_url TEXT NOT NULL,
+    feed_url TEXT,
+    description TEXT,
+    message TEXT,
+    applicant_name TEXT,
+    applicant_email TEXT,
+    applicant_user_id INTEGER,
+    applicant_ip TEXT,
+    result_source_id INTEGER,
+    review_note TEXT,
+    reviewed_by INTEGER,
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_phantasi_source_applications_status
+    ON phantasi_source_applications (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_phantasi_source_applications_site_url
+    ON phantasi_source_applications (site_url);
 "#,
             )
             .await?;
@@ -958,15 +984,53 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_kind
             .execute_unprepared(include_str!("note_editor.sql"))
             .await?;
 
+        // 与 schema_check::ensure_phantasi_state_revision /
+        // ensure_phantasi_content_revision 同一段 DDL。
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+CREATE OR REPLACE FUNCTION phantasi_advance_state_revision() RETURNS trigger AS $$
+BEGIN
+    NEW.revision := OLD.revision + 1;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS phantasi_state_revision ON phantasi_user_states;
+CREATE TRIGGER phantasi_state_revision BEFORE UPDATE ON phantasi_user_states FOR EACH ROW EXECUTE FUNCTION phantasi_advance_state_revision();
+
+CREATE OR REPLACE FUNCTION phantasi_advance_content_revision() RETURNS trigger AS $$
+BEGIN
+    IF NEW.content IS DISTINCT FROM OLD.content
+        OR NEW.content_md IS DISTINCT FROM OLD.content_md THEN
+        NEW.content_revision := OLD.content_revision + 1;
+    ELSE
+        NEW.content_revision := OLD.content_revision;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS phantasi_content_revision ON phantasi_items;
+CREATE TRIGGER phantasi_content_revision BEFORE UPDATE ON phantasi_items FOR EACH ROW EXECUTE FUNCTION phantasi_advance_content_revision();
+"#,
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager.get_connection().execute_unprepared(
+            "DROP TRIGGER IF EXISTS phantasi_content_revision ON phantasi_items; \
+             DROP TRIGGER IF EXISTS phantasi_state_revision ON phantasi_user_states; \
+             DROP FUNCTION IF EXISTS phantasi_advance_content_revision(); \
+             DROP FUNCTION IF EXISTS phantasi_advance_state_revision();",
+        ).await?;
         manager.get_connection().execute_unprepared("DROP TABLE IF EXISTS phantasi_note_history; DROP FUNCTION IF EXISTS phantasi_capture_note_history() CASCADE;").await?;
         manager
             .get_connection()
             .execute_unprepared(
-                "DROP TABLE IF EXISTS media_assets; DROP TABLE IF EXISTS phantasi_note_authors; DROP TABLE IF EXISTS phantasi_note_docs",
+                "DROP TABLE IF EXISTS phantasi_source_applications; DROP TABLE IF EXISTS media_assets; DROP TABLE IF EXISTS phantasi_note_authors; DROP TABLE IF EXISTS phantasi_note_docs",
             )
             .await?;
 
