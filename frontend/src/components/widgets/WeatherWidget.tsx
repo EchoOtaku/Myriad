@@ -425,7 +425,7 @@ export const WeatherWidget = memo(
               <div className="flex items-center gap-2 shrink-0">
                 <WeatherAssetIcon
                   icon={weatherData.icon}
-                  className="h-10 w-10 shrink-0 object-contain drop-shadow-sm"
+                  className="h-10 w-10 shrink-0 object-contain"
                   fallbackClassName="text-3xl leading-none"
                 />
                 <div className="flex flex-col justify-center max-w-26">
@@ -549,7 +549,7 @@ export const WeatherWidget = memo(
             >
               <WeatherAssetIcon
                 icon={weatherData.icon}
-                className="h-9 w-9 object-contain drop-shadow-sm"
+                className="h-9 w-9 object-contain"
                 fallbackClassName="text-3xl leading-none"
               />
             </MSpan>

@@ -1,8 +1,17 @@
 import { API_URL } from '../config'
 import { ApiError } from '../services/api'
+import { readJsonOk } from './apiHelper'
 import { normalizeJsonMediaUrls } from './proxyImageUrl'
 import { RequestCache } from './requestCache'
-import { httpStatusMessage } from './userFacingError'
+import { httpStatusMessage, isUselessErrorText } from './userFacingError'
+
+async function fetchDedupedJson(url: string): Promise<any> {
+  const response = await fetch(url, {
+    credentials: 'include',
+    signal: AbortSignal.timeout(30000),
+  })
+  return readJsonOk(response)
+}
 
 const requestCache = new RequestCache(50)
 const DEFAULT_CACHE_TTL = 30 * 1000
@@ -46,13 +55,7 @@ export function clearLibraryDataCache(): void {
 export async function getUIConfigDeduped(): Promise<any> {
   return dedupedFetch(
     `${API_URL}/api/config/ui`,
-    async () => {
-      const response = await fetch(`${API_URL}/api/config/ui`, { signal: AbortSignal.timeout(30000) })
-      if (!response.ok) {
-        throw new ApiError(httpStatusMessage(response.status), response.status)
-      }
-      return response.json()
-    },
+    () => fetchDedupedJson(`${API_URL}/api/config/ui`),
     { cacheTTL: 30 * 1000 },
   )
 }
@@ -63,16 +66,7 @@ export async function getLatestReportDeduped(
   const cacheKey = `${API_URL}/api/reports/latest`
   const data = await dedupedFetch(
     cacheKey,
-    async () => {
-      const response = await fetch(`${API_URL}/api/reports/latest`, {
-        credentials: 'include',
-        signal: AbortSignal.timeout(30000),
-      })
-      if (!response.ok) {
-        throw new ApiError(httpStatusMessage(response.status), response.status)
-      }
-      return response.json()
-    },
+    () => fetchDedupedJson(`${API_URL}/api/reports/latest`),
     { cacheTTL: 30 * 1000, forceRefresh: options.forceRefresh },
   )
 
@@ -96,13 +90,7 @@ export function invalidateLatestReportCache(): void {
 export async function getPublicConfigDeduped(): Promise<any> {
   return dedupedFetch(
     `${API_URL}/api/config/public`,
-    async () => {
-      const response = await fetch(`${API_URL}/api/config/public`, { signal: AbortSignal.timeout(30000) })
-      if (!response.ok) {
-        throw new ApiError(httpStatusMessage(response.status), response.status)
-      }
-      return response.json()
-    },
+    () => fetchDedupedJson(`${API_URL}/api/config/public`),
     { cacheTTL: 30 * 1000 },
   )
 }
@@ -180,21 +168,21 @@ export async function getLibraryStatsDeduped(): Promise<LibraryTypeCounts> {
   const url = `${API_URL}/api/library?counts_only=true`
   const data = await dedupedFetch(
     url,
-    async () => {
-      const response = await fetch(url, {
-        credentials: 'include',
-        signal: AbortSignal.timeout(30000),
-      })
-      if (!response.ok) {
-        throw new ApiError(httpStatusMessage(response.status), response.status)
-      }
-      return response.json()
-    },
+    () => fetchDedupedJson(url),
     { cacheTTL: 2 * 60 * 1000 },
   )
   const stats = libraryStatsFromResponse(data)
   if (!stats) {
-    throw new ApiError('Unable to load library stats', 502)
+    const message =
+      data && typeof data === 'object' && typeof data.message === 'string'
+        ? data.message.trim()
+        : ''
+    throw new ApiError(
+      message && !isUselessErrorText(message)
+        ? message
+        : httpStatusMessage(502),
+      502,
+    )
   }
   return stats
 }
@@ -214,17 +202,7 @@ export async function getLibraryDataPageDeduped(
   const url = `${API_URL}/api/library?${params.toString()}`
   return dedupedFetch(
     url,
-    async () => {
-      const response = await fetch(url, {
-        credentials: 'include',
-        signal: AbortSignal.timeout(30000),
-      })
-      if (!response.ok) {
-        throw new ApiError(httpStatusMessage(response.status), response.status)
-      }
-      const data = await response.json()
-      return normalizeJsonMediaUrls(data)
-    },
+    async () => normalizeJsonMediaUrls(await fetchDedupedJson(url)),
     { cacheTTL: 2 * 60 * 1000 },
   )
 }

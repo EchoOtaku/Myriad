@@ -35,7 +35,7 @@ import {
 } from '../utils/libraryPreferences'
 import { isNeteaseVipFromMeta } from '../utils/musicPlayer'
 import { getLibraryDataPageDeduped } from '../utils/requestDedup'
-import { userFacingError } from '../utils/userFacingError'
+import { isUselessErrorText, userFacingError } from '../utils/userFacingError'
 import {
   LibraryCanvasChrome,
   syncLibraryCanvasChrome,
@@ -83,6 +83,16 @@ import { LibraryPlayingWaveBorder } from './library/libraryWaveBorder'
 import { useLibraryListWindow } from './library/useLibraryListWindow'
 import PlatformIcon from './PlatformIcon'
 import { QuickTransition } from './SkeletonTransition'
+
+function requireLibraryPage(
+  data: { success?: boolean; message?: unknown },
+  fallback: string,
+): void {
+  if (data.success) return
+  const message =
+    typeof data.message === 'string' ? data.message.trim() : ''
+  throw new Error(message && !isUselessErrorText(message) ? message : fallback)
+}
 import { Spinner } from './Spinner'
 import { getLibraryTourSurfaceSnapshot, isTourDomActive } from './tour/tourLogic'
 
@@ -641,21 +651,18 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       )
       if (generation !== libraryFetchGenerationRef.current) return
 
-      if (data.success) {
-        const balanced = balancedShuffleLibraryItems(
-          slimLibraryItems(data.items as LibraryItem[]),
-        )
-        setPreferredLayout(
-          data.preferences?.layout === 'canvas' ? 'canvas' : 'list',
-        )
-        setLayoutKnown(true)
-        setAllItems(balanced)
-        nextLibraryOffsetRef.current = data.next_offset ?? null
-        setLibraryHasMore(Boolean(data.has_more && data.next_offset != null))
-        setLoading(false)
-      } else {
-        throw new Error('No library data available')
-      }
+      requireLibraryPage(data, t.library.loadFailed)
+      const balanced = balancedShuffleLibraryItems(
+        slimLibraryItems(data.items as LibraryItem[]),
+      )
+      setPreferredLayout(
+        data.preferences?.layout === 'canvas' ? 'canvas' : 'list',
+      )
+      setLayoutKnown(true)
+      setAllItems(balanced)
+      nextLibraryOffsetRef.current = data.next_offset ?? null
+      setLibraryHasMore(Boolean(data.has_more && data.next_offset != null))
+      setLoading(false)
     } catch (err) {
       if (generation !== libraryFetchGenerationRef.current) return
       setError(userFacingError(err, t.library.loadFailed))
@@ -701,7 +708,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         filter,
       )
       if (generation !== libraryFetchGenerationRef.current) return
-      if (!data.success) throw new Error('No library data available')
+      requireLibraryPage(data, t.library.loadFailed)
 
       const incoming = balancedShuffleLibraryItems(
         slimLibraryItems(data.items as LibraryItem[]),

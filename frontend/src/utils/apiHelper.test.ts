@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { ApiError } from '../services/api'
-import { handleErrorResponse } from './apiHelper.ts'
+import { handleErrorResponse, readJsonOk } from './apiHelper.ts'
 
 describe('handleErrorResponse', () => {
   it('throws ApiError with the backend code and message', async () => {
@@ -39,5 +39,28 @@ describe('handleErrorResponse', () => {
         return true
       },
     )
+  })
+
+  it('readJsonOk keeps the server message on HTTP errors', async () => {
+    const response = Response.json(
+      { success: false, message: 'Source filter rejected', code: 'bad_request' },
+      { status: 400 },
+    )
+    await assert.rejects(
+      () => readJsonOk(response, '资料库没能加载。'),
+      (error: unknown) => {
+        assert.ok(error instanceof ApiError)
+        assert.equal(error.status, 400)
+        assert.equal(error.code, 'bad_request')
+        assert.equal(error.message, 'Source filter rejected')
+        return true
+      },
+    )
+  })
+
+  it('readJsonOk returns JSON when the response is ok', async () => {
+    const body = { success: true, items: [] }
+    const parsed = await readJsonOk(Response.json(body))
+    assert.deepEqual(parsed, body)
   })
 })

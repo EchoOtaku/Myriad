@@ -1,5 +1,4 @@
-import { ApiError } from '../services/api'
-import { httpStatusMessage } from './userFacingError'
+import { readJsonOk } from './apiHelper'
 
 interface QueuedRequest {
   key: string
@@ -171,15 +170,11 @@ export async function managedFetch<T = any>(
     key,
     async (signal) => {
       const response = await fetch(url, {
+        credentials: 'include',
         ...options,
         signal,
       })
-
-      if (!response.ok) {
-        throw new ApiError(httpStatusMessage(response.status), response.status)
-      }
-
-      return response.json()
+      return readJsonOk(response)
     },
     priority,
     timeout,

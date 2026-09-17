@@ -64,6 +64,17 @@ export async function handleErrorResponse(
   )
 }
 
+/** Parse JSON after a successful response; keep server message/code on failure. */
+export async function readJsonOk(
+  response: Response,
+  defaultMessage: string = currentCopy().errors.requestFailed,
+): Promise<any> {
+  if (!response.ok) {
+    await handleErrorResponse(response, defaultMessage)
+  }
+  return parseJsonResponse(response)
+}
+
 const TRANSIENT_STATUSES = new Set([502, 503, 504])
 const MAX_RETRIES = 3
 

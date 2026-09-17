@@ -44,6 +44,7 @@ import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useImmersiveChrome } from '../contexts/NavigationContext'
+import { currentCopy } from '../i18n/localeCopy'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
 import { useEditModeEscape } from '../hooks/useEditModeEscape'
 import { usePageSeo } from '../hooks/usePageSeo'
@@ -365,6 +366,9 @@ export default function Home() {
             )
           } catch (e) {
             console.error('解析仪表盘布局失败:', e)
+            showError(
+              userFacingError(e, currentCopy().config.loadConfigFailed),
+            )
             await applyLayouts(fallbackLayouts())
           }
         } else {
@@ -372,6 +376,9 @@ export default function Home() {
         }
       } catch (err) {
         console.error('加载配置失败:', err)
+        showError(
+          userFacingError(err, currentCopy().config.loadConfigFailed),
+        )
         persistHomeLayoutMode(
           'standard',
           typeof window === 'undefined' ? null : window.localStorage,

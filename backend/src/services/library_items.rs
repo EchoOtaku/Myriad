@@ -71,7 +71,7 @@ pub fn normalize_library_item_for_client(mut item: LibraryItem) -> LibraryItem {
     item
 }
 
-/// Prefer Bangumi `/c/` and Netease `param=240y240`; skip Bangumi `/r/{width}/` resize paths.
+/// Prefer Bangumi `/c/` and Netease `param=288y288`; skip Bangumi `/r/{width}/` resize paths.
 pub fn prefer_card_cover_url(url: &str) -> String {
     let trimmed = url.trim();
     if trimmed.is_empty() {
@@ -114,9 +114,9 @@ fn prefer_raw_card_cover_url(trimmed: &str) -> String {
     trimmed.to_string()
 }
 
-/// Card paint is ~220px. 240 is just above 1×; 300 was ~36% more pixels.
-const NETEASE_CARD_PARAM: &str = "240y240";
-const NETEASE_CARD_EDGE: u32 = 240;
+/// Card paint is ~220px. 288 is 1× plus ~20% slack (hover / canvas zoom).
+const NETEASE_CARD_PARAM: &str = "288y288";
+const NETEASE_CARD_EDGE: u32 = 288;
 
 fn with_netease_card_size(url: &str) -> String {
     if let Some(after) = url.split_once("param=").map(|(_, rest)| rest) {
@@ -135,8 +135,8 @@ fn with_netease_card_size(url: &str) -> String {
     format!("{url}{sep}param={NETEASE_CARD_PARAM}")
 }
 
-/// Card paint is ~220px; 2× retina. Width-only so CSS object-fit keeps aspect.
-const BILIBILI_CARD_WIDTH_SUFFIX: &str = "@440w.webp";
+/// Card paint is ~220px; 2× retina plus ~20% slack. Width-only so CSS object-fit keeps aspect.
+const BILIBILI_CARD_WIDTH_SUFFIX: &str = "@528w.webp";
 
 fn host_is_hdslb(url: &str) -> bool {
     let trimmed = url.trim();
@@ -1062,10 +1062,10 @@ mod tests {
         let proxied_resize = proxy_image_url("https://lain.bgm.tv/r/400/pic/cover/l/ab.jpg");
         assert_eq!(prefer_card_cover_url(&proxied_resize), proxied_resize);
         let netease = prefer_card_cover_url("https://p2.music.126.net/xx.jpg");
-        assert!(netease.contains("param=240y240"), "{netease}");
+        assert!(netease.contains("param=288y288"), "{netease}");
         assert_eq!(
-            prefer_card_cover_url("https://p2.music.126.net/xx.jpg?param=300y300"),
-            "https://p2.music.126.net/xx.jpg?param=240y240"
+            prefer_card_cover_url("https://p2.music.126.net/xx.jpg?param=400y400"),
+            "https://p2.music.126.net/xx.jpg?param=288y288"
         );
         // Already at or below the card edge: leave alone.
         assert_eq!(
@@ -1085,17 +1085,17 @@ mod tests {
         let proxied_ne = proxy_image_url("https://p2.music.126.net/xx.jpg");
         let rewritten_ne = prefer_card_cover_url(&proxied_ne);
         assert!(
-            rewritten_ne.contains("param%3D240y240") || rewritten_ne.contains("param=240y240"),
+            rewritten_ne.contains("param%3D288y288") || rewritten_ne.contains("param=288y288"),
             "proxied netease: {rewritten_ne}"
         );
 
         assert_eq!(
             prefer_card_cover_url("https://i0.hdslb.com/bfs/bangumi/image/x.jpg"),
-            "https://i0.hdslb.com/bfs/bangumi/image/x.jpg@440w.webp"
+            "https://i0.hdslb.com/bfs/bangumi/image/x.jpg@528w.webp"
         );
         assert_eq!(
             prefer_card_cover_url("https://i2.hdslb.com/bfs/archive/c.jpg?spm=1"),
-            "https://i2.hdslb.com/bfs/archive/c.jpg@440w.webp?spm=1"
+            "https://i2.hdslb.com/bfs/archive/c.jpg@528w.webp?spm=1"
         );
         let already = "https://i0.hdslb.com/bfs/archive/c.jpg@672w_378h_1c.webp";
         assert_eq!(prefer_card_cover_url(already), already);
@@ -1110,8 +1110,8 @@ mod tests {
         let proxied_bili = proxy_image_url("https://i0.hdslb.com/bfs/bangumi/image/x.jpg");
         let rewritten_bili = prefer_card_cover_url(&proxied_bili);
         assert!(
-            rewritten_bili.contains("x.jpg%40440w.webp")
-                || rewritten_bili.contains("x.jpg@440w.webp"),
+            rewritten_bili.contains("x.jpg%40528w.webp")
+                || rewritten_bili.contains("x.jpg@528w.webp"),
             "proxied bilibili: {rewritten_bili}"
         );
     }
@@ -1140,7 +1140,7 @@ mod tests {
             slim.pointer("/al/picUrl")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
-                .contains("param=240y240")
+                .contains("param=288y288")
         );
     }
 

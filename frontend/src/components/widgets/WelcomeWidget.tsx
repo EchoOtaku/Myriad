@@ -124,7 +124,7 @@ export const WelcomeWidget = memo(
           alt=""
           aria-hidden="true"
           draggable={false}
-          className="block shrink-0 object-contain drop-shadow-sm"
+          className="block shrink-0 object-contain"
           style={{
             width: `${welcomeIconSize}px`,
             height: `${welcomeIconSize}px`,

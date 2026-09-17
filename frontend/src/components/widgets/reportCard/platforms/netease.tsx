@@ -161,7 +161,7 @@ export const MusicStatsWidget = memo(
                   transition: { duration: 0.3, ease: 'easeOut' },
                 }}
               >
-                <div className="absolute top-[15%] left-[15%] w-[20%] h-[10%] bg-white/30 rounded-full blur-[1px] transform -rotate-45" />
+                <div className="absolute top-[15%] left-[15%] w-[20%] h-[10%] bg-white/30 rounded-full transform -rotate-45" />
                 <span className="relative z-10 mix-blend-multiply dark:mix-blend-normal">
                   {bubble.tag}
                 </span>

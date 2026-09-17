@@ -46,9 +46,9 @@ export function preferCardCoverUrl(url: string | null | undefined): string | nul
   return trimmed
 }
 
-/** Card paint is ~220px. 240 is just above 1×; 300 was ~36% more pixels. */
-const NETEASE_CARD_PARAM = '240y240'
-const NETEASE_CARD_EDGE = 240
+/** Card paint is ~220px. 288 is 1× plus ~20% slack (hover / canvas zoom). */
+const NETEASE_CARD_PARAM = '288y288'
+const NETEASE_CARD_EDGE = 288
 
 function withNeteaseCardSize(url: string): string {
   const match = url.match(/[?&]param=(\d+)y(\d+)/)
@@ -62,8 +62,8 @@ function withNeteaseCardSize(url: string): string {
   return `${url}${sep}param=${NETEASE_CARD_PARAM}`
 }
 
-/** Card paint is ~220px; 2× retina. Width-only so CSS object-fit keeps aspect. */
-const BILIBILI_CARD_WIDTH_SUFFIX = '@440w.webp'
+/** Card paint is ~220px; 2× retina plus ~20% slack. Width-only so CSS object-fit keeps aspect. */
+const BILIBILI_CARD_WIDTH_SUFFIX = '@528w.webp'
 
 function hostOf(url: string): string | null {
   try {

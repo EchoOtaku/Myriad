@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 use crate::error::{Result, UpdaterError};
 use crate::probe::compose::ComposeBinary;
@@ -435,6 +435,12 @@ impl ComposeRunner {
         if !waited.ok() {
             return Ok(waited);
         }
+        // Compose `up` leaves `container_name: myriad-backend-volume-init`
+        // (oneoff=False) after first install. The disposable `compose run`
+        // above does not replace it, so that exited container pins the
+        // previous backend image (`docker images` shows `U`) across updates.
+        self.remove_stale_volume_init_containers(container_id)
+            .await;
         let init_exit = waited
             .stdout_tail
             .lines()
@@ -467,6 +473,69 @@ impl ComposeRunner {
             stdout_tail: init_stdout,
             stderr_tail: init_stderr,
         })
+    }
+
+    /// Drop the compose-service volume-init container so it cannot pin the
+    /// previous backend image. Best-effort: a miss must not fail the update.
+    async fn remove_stale_volume_init_containers(&self, keep_id: &str) {
+        let project_filter = format!("label=com.docker.compose.project={}", self.project);
+        let listed = match self
+            .run_docker(
+                &[
+                    "ps",
+                    "-aq",
+                    "--filter",
+                    &project_filter,
+                    "--filter",
+                    "label=com.docker.compose.service=backend-volume-init",
+                ],
+                Duration::from_secs(30),
+            )
+            .await
+        {
+            Ok(output) if output.ok() => output,
+            Ok(output) => {
+                warn!(
+                    summary = %output.error_summary(),
+                    "failed to list leftover backend-volume-init containers"
+                );
+                return;
+            }
+            Err(error) => {
+                warn!(
+                    err = %error,
+                    "failed to list leftover backend-volume-init containers"
+                );
+                return;
+            }
+        };
+        for id in leftover_volume_init_ids(&listed.stdout_tail, keep_id) {
+            match self
+                .run_docker(&["rm", "--force", &id], Duration::from_secs(120))
+                .await
+            {
+                Ok(output) if output.ok() => {
+                    info!(
+                        container = %id,
+                        "removed leftover backend-volume-init container"
+                    );
+                }
+                Ok(output) => {
+                    warn!(
+                        container = %id,
+                        summary = %output.error_summary(),
+                        "failed to remove leftover backend-volume-init container"
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        container = %id,
+                        err = %error,
+                        "failed to remove leftover backend-volume-init container"
+                    );
+                }
+            }
+        }
     }
 
     async fn run_docker(&self, args: &[&str], timeout: Duration) -> Result<ComposeOutput> {
@@ -562,6 +631,19 @@ impl ComposeRunner {
     }
 }
 
+fn docker_ids_match(left: &str, right: &str) -> bool {
+    !left.is_empty() && (left == right || left.starts_with(right) || right.starts_with(left))
+}
+
+fn leftover_volume_init_ids(ps_output: &str, keep_id: &str) -> Vec<String> {
+    ps_output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !docker_ids_match(line, keep_id))
+        .map(str::to_string)
+        .collect()
+}
+
 fn tail_string(buf: &[u8], limit: usize) -> String {
     if buf.len() <= limit {
         return String::from_utf8_lossy(buf).into_owned();
@@ -570,4 +652,37 @@ fn tail_string(buf: &[u8], limit: usize) -> String {
     let slice = &buf[start..];
     let s = String::from_utf8_lossy(slice).into_owned();
     format!("…(truncated {} bytes)\n{}", start, s)
+}
+
+#[cfg(test)]
+mod leftover_volume_init_ids_tests {
+    use super::leftover_volume_init_ids;
+
+    #[test]
+    fn skips_blank_lines_and_the_disposable_keep_id() {
+        let ids = leftover_volume_init_ids(
+            "\n8a0903d4f94f\n\nabc123deadbe\n8a0903d4f94f\n",
+            "8a0903d4f94f",
+        );
+        assert_eq!(ids, vec!["abc123deadbe".to_string()]);
+    }
+
+    #[test]
+    fn short_and_long_keep_ids_are_the_same_container() {
+        let long = "8a0903d4f94f0123456789abcdef0123456789abcdef0123456789abcdef01";
+        assert_eq!(
+            leftover_volume_init_ids("8a0903d4f94f\nabc123deadbe\n", long),
+            vec!["abc123deadbe".to_string()]
+        );
+        assert_eq!(
+            leftover_volume_init_ids(&format!("{long}\nabc123deadbe\n"), "8a0903d4f94f"),
+            vec!["abc123deadbe".to_string()]
+        );
+    }
+
+    #[test]
+    fn empty_ps_output_is_a_no_op() {
+        assert!(leftover_volume_init_ids("", "keep").is_empty());
+        assert!(leftover_volume_init_ids("\n  \n", "keep").is_empty());
+    }
 }

@@ -588,7 +588,7 @@ const GlobalControlPanel: React.FC = () => {
     return (
       <WeatherAssetIcon
         icon={icon}
-        className="h-6 w-6 object-contain drop-shadow-sm"
+        className="h-6 w-6 object-contain"
         fallbackClassName="dynamic-icon-emoji"
       />
     )
@@ -598,7 +598,7 @@ const GlobalControlPanel: React.FC = () => {
     return (
       <WeatherAssetIcon
         icon={icon}
-        className="h-6 w-6 object-contain drop-shadow-sm"
+        className="h-6 w-6 object-contain"
         fallbackClassName="dynamic-icon-emoji"
       />
     )
@@ -641,7 +641,7 @@ const GlobalControlPanel: React.FC = () => {
       icon: (
         <WeatherAssetIcon
           icon={greetingIcon}
-          className="h-6 w-6 object-contain drop-shadow-sm"
+          className="h-6 w-6 object-contain"
           fallbackClassName="dynamic-icon-emoji"
         />
       ),
