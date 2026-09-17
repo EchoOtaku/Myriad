@@ -72,6 +72,12 @@
       "frontend": "SettingTitleTag à côté du titre ; POST /api/seo/generate-copy avec un seul champ.",
       "notes": "Générer par IA ouvre une boîte d’indice facultative, puis envoie un seul champ."
     },
+    "siteSeoReviewCadence": {
+      "what": "À quelle fréquence l’Agent compare le texte public SEO/GEO à vos contenus publics.",
+      "chain": "1) Désactivé / tous les jours / chaque semaine → enregistrer la config en bas.\n2) À l’échéance, il inspecte et notifie. Il n’écrase pas le texte ni la visibilité.",
+      "frontend": "Contrôle segmenté dans Recherche et visibilité IA.",
+      "notes": "N’apparaît pas dans la liste générique des tâches planifiées. Désactivé par défaut."
+    },
     "pwaEnabled": {
       "what": "Activer la PWA (service worker + manifeste installable), sous « Identité du site et application » avec le titre et l’icône.",
       "chain": "1) Activé : en production, enregistre /sw.js et conserve le manifeste d’application web.\n2) Prend effet juste après l’enregistrement — pas besoin de rechargement forcé.",

@@ -18,10 +18,7 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 use crate::api::tapp_runtime::RuntimeGrantContext;
-use crate::api::tapp_runtime::common::{
-    check_tapp_permission, check_tapp_permissions, resolve_accessible_tapp,
-    verify_tapp_approved_permissions, verify_tapp_ownership,
-};
+use crate::api::tapp_runtime::common::{resolve_accessible_tapp, verify_tapp_approved_permissions};
 use crate::error::HttpError;
 use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::models::entities::tapp_scheduled_tasks::{
@@ -30,10 +27,10 @@ use crate::models::entities::tapp_scheduled_tasks::{
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_scheduler::{
     MAX_SCHEDULER_RETRIES, MAX_SCHEDULER_RETRY_DELAY_MS, SCHEDULER_MAILBOX_POLL_MILLIS,
-    SCHEDULER_PRESENCE_REFRESH_SECONDS, TappSchedulerEngine, backend_action_permissions,
-    drain_frontend_messages, normalize_backend_actions, register_frontend_connection,
-    scheduler_engine as service_scheduler, try_scheduler_engine, unregister_frontend_connection,
-    validate_backend_action_declarations,
+    SCHEDULER_PRESENCE_REFRESH_SECONDS, TappSchedulerEngine, backend_action_permissions_of,
+    drain_frontend_messages, normalize_backend_actions, normalize_backend_actions_parsed,
+    register_frontend_connection, scheduler_engine as service_scheduler, try_scheduler_engine,
+    unregister_frontend_connection, validate_backend_action_declarations_of,
 };
 use uuid::Uuid;
 
@@ -209,16 +206,6 @@ fn bad_request(message: impl Into<String>) -> HttpError {
     ))
 }
 
-async fn check_backend_action_permissions(
-    db: &DatabaseConnection,
-    claims: &Claims,
-    actions: &Option<Value>,
-    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
-) -> Result<(), HttpError> {
-    let permissions = backend_action_permissions(actions).map_err(bad_request)?;
-    check_tapp_permissions(db, claims, &permissions, dynamic_config).await
-}
-
 fn schedule_type_name(value: &ScheduleType) -> &'static str {
     match value {
         ScheduleType::Cron => "cron",
@@ -262,15 +249,15 @@ fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
     })
 }
 
-fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model) -> TaskResponse {
+fn task_to_response(task: crate::models::entities::tapp_scheduled_tasks::Model) -> TaskResponse {
     TaskResponse {
         id: task.id,
-        task_id: task.task_id.clone(),
-        tapp_id: task.tapp_id.clone(),
-        name: task.name.clone(),
+        task_id: task.task_id,
+        tapp_id: task.tapp_id,
+        name: task.name,
         schedule_type: schedule_type_name(&task.schedule_type).to_string(),
-        schedule: task.schedule_config.clone(),
-        payload: task.payload.clone(),
+        schedule: task.schedule_config,
+        payload: task.payload,
         execution_target: execution_target_name(&task.execution_target).to_string(),
         enabled: task.enabled,
         missed_policy: missed_policy_name(&task.missed_policy).to_string(),
@@ -284,8 +271,8 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
             let dt: chrono::DateTime<chrono::Utc> = t.into();
             dt.to_rfc3339()
         }),
-        last_run_result: task.last_run_result.clone(),
-        stats: task.stats.clone(),
+        last_run_result: task.last_run_result,
+        stats: task.stats,
         created_at: {
             let dt: chrono::DateTime<chrono::Utc> = task.created_at.into();
             dt.to_rfc3339()
@@ -299,7 +286,6 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
 /// POST /api/tapp/scheduler/tasks
 pub async fn register_task(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<RegisterTaskRequest>,
@@ -307,14 +293,6 @@ pub async fn register_task(
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
-    check_tapp_permission(
-        &db,
-        &claims,
-        TappPermission::SchedulerRegister,
-        &dynamic_config,
-    )
-    .await?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
 
     let schedule_type = parse_schedule_type(&req.schedule_type)?;
     let execution_target = parse_execution_target(&req.execution_target)?;
@@ -326,21 +304,18 @@ pub async fn register_task(
         ensure_current_admin_on(&claims, &db).await?;
     }
 
-    let backend_actions = normalize_backend_actions(req.backend_actions).map_err(bad_request)?;
+    let (backend_actions, wrappers) =
+        normalize_backend_actions_parsed(req.backend_actions).map_err(bad_request)?;
     if matches!(
         execution_target,
         ExecutionTarget::Backend | ExecutionTarget::Both
-    ) && backend_actions
-        .as_ref()
-        .and_then(Value::as_array)
-        .is_none_or(Vec::is_empty)
+    ) && wrappers.is_empty()
     {
         return Err(bad_request(
             "backendActions are required when executionTarget is backend or both",
         ));
     }
-    check_backend_action_permissions(&db, &claims, &backend_actions, &dynamic_config).await?;
-    let action_permissions = backend_action_permissions(&backend_actions).map_err(bad_request)?;
+    let action_permissions = backend_action_permissions_of(&wrappers);
     for permission in &action_permissions {
         runtime_grant.require(*permission)?;
     }
@@ -357,7 +332,7 @@ pub async fn register_task(
             })),
         )));
     }
-    validate_backend_action_declarations(&tapp.manifest, &backend_actions).map_err(bad_request)?;
+    validate_backend_action_declarations_of(&tapp.manifest, &wrappers).map_err(bad_request)?;
 
     let schedule_config = serde_json::to_value(&req.schedule).map_err(|e| {
         tracing::warn!("Invalid schedule config: {e}");
@@ -399,7 +374,7 @@ pub async fn register_task(
 
     Ok(Json(json!({
         "success": true,
-        "task": task_to_response(&task),
+        "task": task_to_response(task),
     })))
 }
 
@@ -452,7 +427,7 @@ pub async fn list_tasks(
             )
         })?;
 
-    let task_responses: Vec<TaskResponse> = tasks.iter().map(task_to_response).collect();
+    let task_responses: Vec<TaskResponse> = tasks.into_iter().map(task_to_response).collect();
 
     Ok(Json(json!({
         "success": true,
@@ -484,7 +459,7 @@ pub async fn list_tapp_tasks(
             )
         })?;
 
-    let task_responses: Vec<TaskResponse> = tasks.iter().map(task_to_response).collect();
+    let task_responses: Vec<TaskResponse> = tasks.into_iter().map(task_to_response).collect();
 
     Ok(Json(json!({
         "success": true,
@@ -525,7 +500,7 @@ pub async fn get_task(
 
     Ok(Json(json!({
         "success": true,
-        "task": task_to_response(&task),
+        "task": task_to_response(task),
     })))
 }
 

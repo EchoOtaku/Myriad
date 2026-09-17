@@ -233,4 +233,17 @@ html.dark .section-header-actions-divider {
   .setting-section-header-action .checkbox-group-card-desc {
     display: none;
   }
+
+  .section-header-actions-extra,
+  .section-header-actions-pinned {
+    flex: 1 1 100%;
+    width: 100%;
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  /* extra / pinned each take a row: a 1px vertical divider would sit alone */
+  .section-header-actions-divider {
+    display: none;
+  }
 }

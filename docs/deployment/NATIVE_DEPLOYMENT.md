@@ -199,9 +199,14 @@ Keep PostgreSQL bound to localhost (default). Only the backend needs to reach it
 
 ## 8. Configure `.env`
 
-Create `/opt/myriad/.env`. This file is the **single source of truth** for
-configuration — the backend both loads it at startup and re-reads it when config
-changes from the UI.
+Create `/opt/myriad/.env`. This file is the source of truth for **process
+infrastructure** (database URL, JWT, bind address, public origin / CORS).
+The backend loads it at startup. Saving the public site origin from the admin
+UI rewrites `BASE_URL` / `FRONTEND_URL` / `CORS_ORIGINS` and re-reads those
+keys. Outbound HTTP proxy and Gemini / GitHub API mirrors are **not** in
+`.env`: they live in the database (`/config` → Advanced). Leftover
+`PROXY_ENABLED` / `PROXY_URL` / `PROXY_BYPASS` / `GEMINI_BASE_URL` /
+`GITHUB_API_BASE_URL` lines are ignored.
 
 ```bash
 sudo -u myriad tee /opt/myriad/.env >/dev/null <<'ENV'
@@ -251,8 +256,9 @@ openssl rand -base64 48   # JWT_SECRET
 ```
 
 > Everything else — AI provider keys, GitHub/Steam/Bilibili/Notion tokens, OAuth
-> apps, UI settings — is configured **through the web UI** after first start and
-> stored in the database. You do not put them in `.env`.
+> apps, UI settings, outbound HTTP proxy, API mirrors — is configured
+> **through the web UI** after first start and stored in the database. You do
+> not put them in `.env`.
 
 ### Environment variable reference
 
@@ -312,7 +318,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/opt/myriad/data /opt/myriad/cache
-# .env is re-read on config changes, so keep it writable if you edit via ops:
+# Public origin saves still rewrite BASE_URL / CORS in .env; keep it writable:
 # ReadWritePaths also implicitly covers files you rewrite under these dirs.
 
 [Install]

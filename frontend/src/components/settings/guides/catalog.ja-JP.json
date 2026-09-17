@@ -72,6 +72,12 @@
       "frontend": "タイトル横の SettingTitleTag。/api/seo/generate-copy に単一 field を送る。",
       "notes": "「AI 生成」で任意の補足ダイアログの後、単一 field を POST。"
     },
+    "siteSeoReviewCadence": {
+      "what": "公開の紹介文が自分の公開コンテンツとずれていないか、Agent がどれくらいの間隔で見るか。",
+      "chain": "① オフ / 毎日 / 毎週 → 下部で設定を保存。\n② 時刻になると検査して通知するだけ。文面も公開範囲も自動では変えない。",
+      "frontend": "「SEO と AI の公開範囲」のセグメント。",
+      "notes": "通常の定期実行リストには出ない。既定はオフ。"
+    },
     "pwaEnabled": {
       "what": "PWA（Service Worker + インストール用マニフェスト）を有効にするか。「サイト名刺とアプリ」内でタイトル／アイコンと並びます。",
       "chain": "① オン時は本番で /sw.js を登録し web app manifest を維持。\n② 保存後すぐ反映（フルハードリロード不要）。",

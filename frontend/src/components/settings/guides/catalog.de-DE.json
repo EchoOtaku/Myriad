@@ -72,6 +72,12 @@
       "frontend": "SettingTitleTag neben dem Titel; POST /api/seo/generate-copy mit einem einzelnen Feld.",
       "notes": "KI erzeugen öffnet einen optionalen Hinweisdialog und sendet dann ein einzelnes Feld per POST."
     },
+    "siteSeoReviewCadence": {
+      "what": "Wie oft Agent öffentliche SEO/GEO-Texte mit Ihren eigenen öffentlichen Inhalten vergleicht.",
+      "chain": "1) Aus / täglich / wöchentlich → Konfiguration unten speichern.\n2) Wenn fällig, prüft Agent und benachrichtigt. Texte und Sichtbarkeit werden nicht überschrieben.",
+      "frontend": "Segmentsteuerung unter Suche und KI-Sichtbarkeit.",
+      "notes": "Erscheint nicht in der allgemeinen Aufgabenliste. Standard ist aus."
+    },
     "pwaEnabled": {
       "what": "Ob PWA aktiv ist (Service Worker + installierbares Manifest), unter „Site-Identität & App“ mit Titel und Icon.",
       "chain": "1) Wenn an, registriert die Produktion /sw.js und hält das Web-App-Manifest.\n2) Gilt direkt nach dem Speichern — kein vollständiger Hard-Reload nötig.",

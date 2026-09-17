@@ -107,6 +107,9 @@ pub async fn execute(
     if capability_id == "speech.tts" {
         return execute_speech_tts(params).await;
     }
+    if capability_id == "seo.generate" {
+        return super::seo::execute_seo_generate(params, ctx).await;
+    }
 
     let analyzer = ctx.ai_analyzer.ok_or("AI analyzer not configured")?;
 

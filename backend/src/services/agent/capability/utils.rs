@@ -30,6 +30,9 @@ pub fn get_capability_friendly_name(capability_id: &str) -> String {
         "tapp.page" => "Opening an app".to_string(),
         "ai.image" => "Generating an image".to_string(),
         "prompt.generate" => "Generating a prompt".to_string(),
+        "seo.inspect" => "Reading site SEO content".to_string(),
+        "seo.generate" => "Drafting SEO copy".to_string(),
+        "seo.apply" => "Saving SEO copy".to_string(),
         "compare.content" => "Comparing content".to_string(),
         "speech.tts" => "Reading aloud".to_string(),
         "search.global" => "Searching".to_string(),
@@ -390,6 +393,13 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
         ("This will change site configuration.", RiskLevel::Medium),
     );
     map.insert(
+        "seo.apply",
+        (
+            "This will update the site's public SEO / GEO copy.",
+            RiskLevel::Medium,
+        ),
+    );
+    map.insert(
         "platform.refresh",
         (
             "This will refresh platform data and may use API quota.",
@@ -556,6 +566,15 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "config.get" => {
             "Read config. AI is Standard (enabled/provider/model, no secrets); platforms are connection flags; ui is public display fields."
         }
+        "seo.inspect" => {
+            "Agent SEO/GEO step 1. Read branding + guest-visible original writing/notes/apps. Ground truth. Never friend-links or third-party feeds. Always before seo.generate."
+        }
+        "seo.generate" => {
+            "Agent SEO/GEO step 2. Draft description/keywords/ai_intro from inspect facts. Does not save. Show the draft. seo.apply only after the owner confirms. Omit title to use branding. Scheduled review may generate drafts but must not apply."
+        }
+        "seo.apply" => {
+            "Agent SEO/GEO step 3. Save description/keywords/ai_intro after the owner confirms. Never visibility policy. Scheduled Agent SEO optimization must never call this."
+        }
         "setup.status" => {
             "Setup status: tables and owner (same as HTTP /api/setup/status, no AI keys)."
         }
@@ -675,7 +694,8 @@ pub fn get_quick_reference() -> Value {
             "translate / 翻译": ["translate.text"],
             "tts / 文字转语音 / 朗读": ["speech.tts"],
             "weather / 天气": ["weather.get"],
-            "quote / 一言 / 语录": ["hitokoto.get"]
+            "quote / 一言 / 语录": ["hitokoto.get"],
+            "SEO / GEO / llms.txt / 站点简介 / 搜索描述 / meta description": ["seo.inspect", "seo.generate", "seo.apply"]
         },
         "workflow_templates": {
             "summarize_article": {
@@ -722,7 +742,8 @@ pub fn get_quick_reference() -> Value {
             "phantasi.article is internal; phantasi.items chains to it",
             "every day/hour / 定时检查/总结 -> heartbeat.create with a natural-language action; not scheduler.create",
             "which scheduled/heartbeat tasks -> heartbeat.list",
-            "platform auto-refresh vs app scheduler vs heartbeat are different: platform.refresh / scheduler.* / heartbeat.*"
+            "platform auto-refresh vs app scheduler vs heartbeat are different: platform.refresh / scheduler.* / heartbeat.*",
+            "optimize SEO / GEO / Agent 优化 SEO / 站点简介 -> step1 seo.inspect (ground truth) -> step2 seo.generate (draft only) -> show current vs rewrite -> seo.apply only after the owner confirms; never change visibility; scheduled review: inspect, generate if bad, notify, never apply"
         ],
         "param_examples": {
             "platform.read": {"platform": "bilibili|bangumi|mal|steam|github|netease|x|discord|xbox|psn", "type": "overview|favorites|recent"},
@@ -732,7 +753,9 @@ pub fn get_quick_reference() -> Value {
             "router.navigate": {"path": "/, /library, /journal, /reports, /config, /tapp"},
             "music.control": {"action": "play|pause|toggle|next|previous|mute|unmute|volume", "volume": 50},
             "scheduler.create": {"tappId": "installed app id", "name": "task name", "scheduleType": "cron", "schedule": {"cron": "*/30 * * * *"}},
-            "heartbeat.create": {"name": "Phantasi morning summary", "schedule": "0 9 * * *", "action": "summarize phantasi feeds", "enabled": true}
+            "heartbeat.create": {"name": "Phantasi morning summary", "schedule": "0 9 * * *", "action": "summarize phantasi feeds", "enabled": true},
+            "seo.generate": {"hint": "indie developer writing Rust", "fields": ["site_ai_intro"]},
+            "seo.apply": {"site_description": "…", "site_ai_intro": "…"}
         }
     })
 }

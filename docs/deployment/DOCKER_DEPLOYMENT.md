@@ -163,8 +163,12 @@ database outage.
 Do not set `BACKEND_PORT` or `FRONTEND_PORT` for production. Those are internal
 container ports.
 
-Compose does **not** inject YouTube / OpenXBL / PSN keys — those are site
-settings. `PUBLIC_API_URL` is a frontend **build** stamp (empty = same-origin
+Compose does **not** inject YouTube / OpenXBL / PSN keys, outbound HTTP proxy
+(`PROXY_ENABLED` / `PROXY_URL` / `PROXY_BYPASS`), or Gemini / GitHub API
+mirrors — those are site settings under `/config` → Advanced. Leftover lines
+in host `.env` are ignored. Admin save still dual-writes only `BASE_URL` (and
+`FRONTEND_URL` / `CORS_ORIGINS` when the public origin changes).
+`PUBLIC_API_URL` is a frontend **build** stamp (empty = same-origin
 `/api`); the stock image does not read it at runtime. Compose sets
 `BRANDING_METADATA_URL` so the frontend process can stamp site title/icon into
 the SPA document from `GET /api/config/metadata` (same public fields backend SEO

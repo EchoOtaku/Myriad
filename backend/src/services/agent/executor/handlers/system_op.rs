@@ -28,7 +28,7 @@ use crate::services::tapp_data_transform::{
 };
 use crate::services::tapp_ownership::verify_tapp_ownership;
 use crate::services::tapp_scheduler::{
-    backend_action_permissions, normalize_backend_actions, scheduler_engine,
+    backend_action_permissions_of, normalize_backend_actions_parsed, scheduler_engine,
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -133,7 +133,7 @@ async fn execute_scheduler_create(
         .ok_or_else(|| "Missing schedule object".to_string())?;
 
     let raw_backend_actions = extract_raw_backend_actions(params);
-    let backend_actions = normalize_backend_actions(raw_backend_actions)?;
+    let (backend_actions, wrappers) = normalize_backend_actions_parsed(raw_backend_actions)?;
     let execution_target_name = params
         .get("executionTarget")
         .or_else(|| params.get("execution_target"))
@@ -161,7 +161,7 @@ async fn execute_scheduler_create(
         UserRole::User
     };
     let mut required_permissions = vec![TappPermission::SchedulerRegister];
-    required_permissions.extend(backend_action_permissions(&backend_actions)?);
+    required_permissions.extend(backend_action_permissions_of(&wrappers));
     {
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
         for permission in required_permissions {

@@ -38,7 +38,7 @@ pub async fn update_config(
     }
     tracing::info!("✅ Configuration saved to database");
 
-    // Deploy keys to .env (BASE_URL / PROXY_* / API bases). Credentials stay DB-only.
+    // Deploy keys to .env (BASE_URL + site-domain FRONTEND_URL / CORS adapt).
     let body = match save_all_configs(&payload).await {
         Ok(_) => {
             tracing::info!("✅ Deploy env synced; app credentials stay DB-only");
@@ -66,6 +66,7 @@ pub async fn update_config(
         Ok(new_config) => {
             // 内存节约档：立即收紧并发/缓存/Argon2；DB 池在下次建连/重启后生效
             crate::services::memory_profile::apply_from_saver_flag(new_config.memory_saver_enabled);
+            let seo_review_cadence = new_config.site_seo_review_cadence.clone();
             *dynamic_config.write().await = new_config;
             crate::services::ai_config::invalidate_ai_config_cache().await;
             tracing::info!("✅ Dynamic configuration cache updated");
@@ -77,6 +78,7 @@ pub async fn update_config(
             // OAuth redirect URLs follow site origin / provider list; reload after any config save.
             crate::services::oauth::registry::REGISTRY.reload().await;
             tracing::info!("✅ OAuth provider registry reloaded");
+            crate::services::agent::heartbeat::sync_seo_review_cadence(&seo_review_cadence).await;
         }
         Err(e) => {
             tracing::warn!("⚠️ Failed to reload dynamic config into cache: {}", e);
@@ -736,6 +738,14 @@ pub(crate) fn collect_database_updates(
                 updates.insert("site_ai_intro".to_string(), JsonValue::String(capped));
                 continue;
             }
+            "site_seo_review_cadence" => {
+                let cadence = crate::api::seo_policy::normalize_seo_review_cadence(&field.value);
+                updates.insert(
+                    "site_seo_review_cadence".to_string(),
+                    JsonValue::String(cadence.to_string()),
+                );
+                continue;
+            }
             "site_description" => {
                 // SERP / OG snippets; generate-copy truncates to 160, save allows a
                 // little more so owner-written copy is not chopped at the SERP budget.
@@ -921,17 +931,26 @@ pub(crate) fn should_write_env_field(field_key: &str, value: &str) -> bool {
     }
 }
 
+/// Env keys still dual-written on admin save.
+///
+/// Outbound proxy and API mirrors (`proxy_*`, `gemini_base_url`,
+/// `github_api_base_url`) stay DB-only; runtime reads `DynamicConfig`.
+pub(crate) fn deploy_env_key(field_key: &str) -> Option<&'static str> {
+    match field_key {
+        "base_url" => Some("BASE_URL"),
+        _ => None,
+    }
+}
+
 /// Save deploy keys to `.env`. App credentials stay DB-only.
 ///
 /// Never dual-write UI / platform credentials / AI / Tripo / music / site bag
-/// to `.env` or process env. This path writes only:
-/// BASE_URL, PROXY_*, GEMINI_BASE_URL, GITHUB_API_BASE_URL
-/// (plus infra already outside this path).
+/// / outbound proxy / API mirrors to `.env` or process env. This path writes
+/// only `BASE_URL` (plus site-domain `FRONTEND_URL` / `CORS_ORIGINS` adapt).
 ///
 /// Kept in env:
 /// - infra: DATABASE_URL, SERVER_*, JWT_SECRET, CORS_ORIGINS, FRONTEND_*, RUST_LOG
 /// - site origin: BASE_URL (+ site-domain FRONTEND_URL / CORS adapt)
-/// - outbound runtime: PROXY_*, GEMINI_BASE_URL, GITHUB_API_BASE_URL
 async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::error::Error>> {
     use std::fs;
     use std::path::Path;
@@ -961,18 +980,11 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
     let previous_base_url = crate::api::site_domain::read_env_key(&env_content, "BASE_URL")
         .or_else(|| std::env::var("BASE_URL").ok().filter(|s| !s.is_empty()));
 
-    // Only deploy / outbound keys still dual-write to .env:
-    // BASE_URL, proxy, API base mirrors.
+    // Only site origin still dual-writes to .env.
     let mut saved_base_url: Option<String> = None;
     for field in &config.ui_config.config_fields {
-        let key = match field.key.as_str() {
-            "base_url" => "BASE_URL",
-            "proxy_enabled" => "PROXY_ENABLED",
-            "proxy_url" => "PROXY_URL",
-            "proxy_bypass" => "PROXY_BYPASS",
-            "gemini_base_url" => "GEMINI_BASE_URL",
-            "github_api_base_url" => "GITHUB_API_BASE_URL",
-            _ => continue,
+        let Some(key) = deploy_env_key(&field.key) else {
+            continue;
         };
         if field.key == "base_url" {
             saved_base_url = Some(field.value.clone());
@@ -980,31 +992,9 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         if !should_write_env_field(&field.key, &field.value) {
             continue;
         }
-        let env_value = match field.key.as_str() {
-            "proxy_url" => match sanitize_proxy_url(&field.value) {
-                Some(safe) => safe,
-                None => {
-                    tracing::warn!("Skipping PROXY_URL env write: failed scheme/format policy");
-                    continue;
-                }
-            },
-            "gemini_base_url" | "github_api_base_url" => {
-                match sanitize_http_base_url(&field.value) {
-                    Some(safe) => safe,
-                    None => {
-                        tracing::warn!(
-                            key = %field.key,
-                            "Skipping API base URL env write: failed scheme/format policy"
-                        );
-                        continue;
-                    }
-                }
-            }
-            _ => field.value.clone(),
-        };
-        env_content = update_env_var(&env_content, key, &env_value)?;
+        env_content = update_env_var(&env_content, key, &field.value)?;
         // Commented `# KEY=` lines do not unset process env after dotenv reload.
-        if env_value.trim().is_empty() {
+        if field.value.trim().is_empty() {
             env_keys_to_clear.push(key);
         }
     }

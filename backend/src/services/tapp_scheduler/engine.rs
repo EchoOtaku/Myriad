@@ -3,9 +3,11 @@
 use chrono::{DateTime, Duration, FixedOffset, Local, NaiveTime, TimeZone, Utc};
 use cron::Schedule;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement, TransactionTrait,
+    sea_query::{Expr, OnConflict},
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -621,6 +623,7 @@ impl TappSchedulerEngine {
                 .map_err(|error| scheduler_store_failed("list connections", error))?;
         let mut deliveries = 0usize;
         let mut first_error = None;
+        let mut audience = HashMap::<i32, bool>::new();
         for connection in active_connections {
             let user_id = connection.subject_id;
             if message
@@ -630,7 +633,14 @@ impl TappSchedulerEngine {
             {
                 continue;
             }
-            if !Self::can_receive_frontend_task(db, user_id, task).await? {
+            let allowed = if let Some(&allowed) = audience.get(&user_id) {
+                allowed
+            } else {
+                let allowed = Self::can_receive_frontend_task(db, user_id, task).await?;
+                audience.insert(user_id, allowed);
+                allowed
+            };
+            if !allowed {
                 continue;
             }
             match shared_registry::enqueue(
@@ -819,6 +829,10 @@ SELECT EXISTS (
 
         // Multiple Tapp-scope clients may acknowledge the same broadcast. Claim
         // the running row atomically so task stats are finalized exactly once.
+        let txn = db
+            .begin()
+            .await
+            .map_err(|error| scheduler_store_failed("begin frontend completion", error))?;
         let update = tapp_task_executions::Entity::update_many()
             .col_expr(
                 tapp_task_executions::Column::CompletedAt,
@@ -838,20 +852,24 @@ SELECT EXISTS (
             )
             .filter(tapp_task_executions::Column::Id.eq(execution.id))
             .filter(tapp_task_executions::Column::Status.eq(ExecutionStatus::Running))
-            .exec(db)
+            .exec(&txn)
             .await
             .map_err(|error| scheduler_store_failed("finalize frontend execution", error))?;
         if update.rows_affected == 0 {
+            txn.rollback().await.ok();
             return Ok(());
         }
+
+        Self::update_task_after_frontend_completion(&txn, &task, &status, result, error.clone())
+            .await?;
+        txn.commit()
+            .await
+            .map_err(|error| scheduler_store_failed("commit frontend completion", error))?;
 
         SCHEDULER_COMPLETED.fetch_add(1, Ordering::Relaxed);
         if status == ExecutionStatus::Timeout {
             SCHEDULER_TIMEOUTS.fetch_add(1, Ordering::Relaxed);
         }
-
-        Self::update_task_after_frontend_completion(db, &task, &status, result, error.clone())
-            .await?;
         if matches!(status, ExecutionStatus::Failed | ExecutionStatus::Timeout) {
             Self::notify_task_failure(
                 &task,
@@ -927,8 +945,9 @@ SELECT EXISTS (
             return Err("Global scheduler task requires current administrator access".to_string());
         }
 
+        let wrappers = parse_backend_action_wrappers(&task.backend_actions)?;
         let mut required = vec![TappPermission::SchedulerRegister];
-        required.extend(backend_action_permissions(&task.backend_actions)?);
+        required.extend(backend_action_permissions_of(&wrappers));
 
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
         for permission in &required {
@@ -971,8 +990,7 @@ SELECT EXISTS (
                 ));
             }
         }
-        let ai_model_tier =
-            validate_backend_action_declarations(&tapp.manifest, &task.backend_actions)?;
+        let ai_model_tier = validate_backend_action_declarations_of(&tapp.manifest, &wrappers)?;
         Ok(ScheduledExecutionAuthority {
             role,
             owner_id: tapp.user_id,
@@ -1119,52 +1137,82 @@ SELECT EXISTS (
 
     /// 解析字符串中的模板变量 {{varName}} 或 {{varName.field}}
     fn resolve_template(template: &str, context: &HashMap<String, serde_json::Value>) -> String {
+        Self::fill_template(template, context, None)
+    }
+
+    fn resolve_template_with_input(
+        template: &str,
+        context: &HashMap<String, serde_json::Value>,
+        input: &serde_json::Value,
+    ) -> String {
+        Self::fill_template(template, context, Some(("_input", input)))
+    }
+
+    fn fill_template(
+        template: &str,
+        context: &HashMap<String, serde_json::Value>,
+        overlay: Option<(&str, &serde_json::Value)>,
+    ) -> String {
         static TEMPLATE_VAR: LazyLock<regex::Regex> = LazyLock::new(|| {
             regex::Regex::new(r"\{\{([^}]+)\}\}").expect("scheduler template pattern")
         });
         TEMPLATE_VAR
             .replace_all(template, |caps: &regex::Captures| {
                 let path = caps.get(1).map_or("", |m| m.as_str()).trim();
-                Self::get_value_by_path(context, path)
+                Self::get_value_by_path(context, path, overlay)
             })
             .to_string()
     }
 
-    /// 根据路径获取值，支持 varName.field.subfield
-    fn get_value_by_path(context: &HashMap<String, serde_json::Value>, path: &str) -> String {
-        let parts: Vec<&str> = path.split('.').collect();
-        if parts.is_empty() {
-            return "".to_string();
-        }
+    fn json_null() -> &'static serde_json::Value {
+        static NULL: serde_json::Value = serde_json::Value::Null;
+        &NULL
+    }
 
-        let var_name = parts[0];
-        let Some(mut value) = context.get(var_name).cloned() else {
-            return format!("{{{{{}}}}}", path); // 保留原样
-        };
-
-        // 遍历路径
-        for part in &parts[1..] {
-            value = match value {
-                serde_json::Value::Object(ref map) => {
-                    map.get(*part).cloned().unwrap_or(serde_json::Value::Null)
-                }
-                serde_json::Value::Array(ref arr) => {
-                    if let Ok(idx) = part.parse::<usize>() {
-                        arr.get(idx).cloned().unwrap_or(serde_json::Value::Null)
-                    } else {
-                        serde_json::Value::Null
-                    }
-                }
-                _ => serde_json::Value::Null,
+    fn lookup_json_path<'a>(root: &'a serde_json::Value, parts: &[&str]) -> &'a serde_json::Value {
+        let mut current = root;
+        for part in parts {
+            current = match current {
+                serde_json::Value::Object(map) => map.get(*part).unwrap_or(Self::json_null()),
+                serde_json::Value::Array(arr) => part
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|idx| arr.get(idx))
+                    .unwrap_or(Self::json_null()),
+                _ => Self::json_null(),
             };
         }
+        current
+    }
 
-        // 转换为字符串
+    fn json_to_template_string(value: &serde_json::Value) -> String {
         match value {
-            serde_json::Value::String(s) => s,
-            serde_json::Value::Null => "".to_string(),
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Null => String::new(),
             other => other.to_string(),
         }
+    }
+
+    /// 根据路径获取值，支持 varName.field.subfield
+    fn get_value_by_path(
+        context: &HashMap<String, serde_json::Value>,
+        path: &str,
+        overlay: Option<(&str, &serde_json::Value)>,
+    ) -> String {
+        let parts: Vec<&str> = path.split('.').collect();
+        if parts.is_empty() {
+            return String::new();
+        }
+
+        let root = if overlay.is_some_and(|(name, _)| name == parts[0]) {
+            overlay.unwrap().1
+        } else {
+            let Some(value) = context.get(parts[0]) else {
+                return format!("{{{{{}}}}}", path);
+            };
+            value
+        };
+        Self::json_to_template_string(Self::lookup_json_path(root, &parts[1..]))
     }
 
     /// 解析 JSON 中的模板变量
@@ -1184,16 +1232,17 @@ SELECT EXISTS (
                     // 直接返回原始值（保持类型）
                     let parts: Vec<&str> = path.split('.').collect();
                     if !parts.is_empty() {
-                        if let Some(mut val) = context.get(parts[0]).cloned() {
+                        if let Some(root) = context.get(parts[0]) {
+                            let mut current = root;
                             for part in &parts[1..] {
-                                val = match val {
-                                    serde_json::Value::Object(ref map) => {
-                                        map.get(*part).cloned().unwrap_or(serde_json::Value::Null)
+                                current = match current {
+                                    serde_json::Value::Object(map) => {
+                                        map.get(*part).unwrap_or(Self::json_null())
                                     }
-                                    _ => serde_json::Value::Null,
+                                    _ => Self::json_null(),
                                 };
                             }
-                            return val;
+                            return current.clone();
                         }
                     }
                 }
@@ -1229,40 +1278,16 @@ SELECT EXISTS (
         template: Option<&str>,
     ) -> serde_json::Value {
         // 获取输入值
-        let input_value = context
-            .get(input)
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-
-        // 如果有 extract，使用简单路径提取
+        let input_value = context.get(input).unwrap_or(Self::json_null());
         let extracted = if let Some(path) = extract {
             let parts: Vec<&str> = path.split('.').collect();
-            let mut val = input_value.clone();
-            for part in parts {
-                val = match val {
-                    serde_json::Value::Object(ref map) => {
-                        map.get(part).cloned().unwrap_or(serde_json::Value::Null)
-                    }
-                    serde_json::Value::Array(ref arr) => {
-                        if let Ok(idx) = part.parse::<usize>() {
-                            arr.get(idx).cloned().unwrap_or(serde_json::Value::Null)
-                        } else {
-                            serde_json::Value::Null
-                        }
-                    }
-                    _ => serde_json::Value::Null,
-                };
-            }
-            val
+            Self::lookup_json_path(input_value, &parts).clone()
         } else {
-            input_value
+            input_value.clone()
         };
 
-        // 如果有模板，应用模板
         if let Some(tpl) = template {
-            let mut temp_context = context.clone();
-            temp_context.insert("_input".to_string(), extracted);
-            serde_json::Value::String(Self::resolve_template(tpl, &temp_context))
+            serde_json::Value::String(Self::resolve_template_with_input(tpl, context, &extracted))
         } else {
             extracted
         }
@@ -1499,19 +1524,15 @@ SELECT EXISTS (
 
     /// 前端回执只补齐最终状态；total_runs 已在 dispatch 时增加。
     async fn update_task_after_frontend_completion(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         task: &tapp_scheduled_tasks::Model,
         status: &ExecutionStatus,
         result: Option<serde_json::Value>,
         error: Option<String>,
     ) -> Result<(), String> {
-        let txn = db
-            .begin()
-            .await
-            .map_err(|error| scheduler_store_failed("begin frontend stats", error))?;
         let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
             .lock_exclusive()
-            .one(&txn)
+            .one(db)
             .await
             .map_err(|error| scheduler_store_failed("lock frontend stats", error))?
             .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
@@ -1532,12 +1553,9 @@ SELECT EXISTS (
         active.stats = Set(serde_json::to_value(&stats).unwrap_or(json!({})));
         active.updated_at = Set(Utc::now().into());
         active
-            .update(&txn)
+            .update(db)
             .await
             .map_err(|error| scheduler_store_failed("finalize frontend task stats", error))?;
-        txn.commit()
-            .await
-            .map_err(|error| scheduler_store_failed("commit frontend stats", error))?;
         Ok(())
     }
 
@@ -1799,27 +1817,6 @@ impl TappSchedulerEngine {
         retry_config: Option<serde_json::Value>,
     ) -> Result<tapp_scheduled_tasks::Model, String> {
         let now = Utc::now();
-
-        // 幂等：同 user/tapp/task_id 重复注册返回已有行。
-        let existing = tapp_scheduled_tasks::Entity::find()
-            .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
-            .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id))
-            .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id))
-            .one(&self.db)
-            .await
-            .map_err(|error| scheduler_store_failed("register scheduled task", error))?;
-
-        if let Some(existing) = existing {
-            tracing::debug!(
-                "[TappScheduler] Task {} already registered for tapp {} (user {}) — idempotent reuse",
-                task_id,
-                tapp_id,
-                user_id
-            );
-            return Ok(existing);
-        }
-
-        // 计算首次执行时间
         let next_run_at = Self::calculate_next_run(&schedule_type, &schedule_config, now)?;
 
         let task = tapp_scheduled_tasks::ActiveModel {
@@ -1843,18 +1840,47 @@ impl TappSchedulerEngine {
             ..Default::default()
         };
 
-        let task = task
-            .insert(&self.db)
+        let on_conflict = OnConflict::columns([
+            tapp_scheduled_tasks::Column::UserId,
+            tapp_scheduled_tasks::Column::TappId,
+            tapp_scheduled_tasks::Column::TaskId,
+        ])
+        .do_nothing()
+        .to_owned();
+        let task = match tapp_scheduled_tasks::Entity::insert(task)
+            .on_conflict(on_conflict)
+            .exec_with_returning(&self.db)
             .await
-            .map_err(|error| scheduler_store_failed("create scheduled task", error))?;
-
-        tracing::info!(
-            "[TappScheduler] Registered task {} for tapp {} (user {})",
-            task_id,
-            tapp_id,
-            user_id
-        );
-
+        {
+            Ok(task) => {
+                tracing::info!(
+                    "[TappScheduler] Registered task {} for tapp {} (user {})",
+                    task_id,
+                    tapp_id,
+                    user_id
+                );
+                task
+            }
+            Err(sea_orm::DbErr::RecordNotInserted) => {
+                tracing::debug!(
+                    "[TappScheduler] Task {} already registered for tapp {} (user {}) — idempotent reuse",
+                    task_id,
+                    tapp_id,
+                    user_id
+                );
+                tapp_scheduled_tasks::Entity::find()
+                    .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
+                    .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id))
+                    .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id))
+                    .one(&self.db)
+                    .await
+                    .map_err(|error| scheduler_store_failed("load scheduled task", error))?
+                    .ok_or_else(|| "Failed to create scheduled task".to_string())?
+            }
+            Err(error) => {
+                return Err(scheduler_store_failed("create scheduled task", error));
+            }
+        };
         Ok(task)
     }
 

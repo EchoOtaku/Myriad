@@ -1676,6 +1676,20 @@ pub(crate) async fn build_config(
                     required: false,
                 },
                 ConfigField {
+                    key: "site_seo_review_cadence".to_string(),
+                    label: "How often Agent checks public copy".to_string(),
+                    field_type: "select".to_string(),
+                    value: crate::api::seo_policy::normalize_seo_review_cadence(
+                        db_config
+                            .as_ref()
+                            .map(|c| c.site_seo_review_cadence.as_str())
+                            .unwrap_or(""),
+                    )
+                    .to_string(),
+                    placeholder: "off".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "ga_measurement_id".to_string(),
                     label: "Google Analytics".to_string(),
                     field_type: "text".to_string(),

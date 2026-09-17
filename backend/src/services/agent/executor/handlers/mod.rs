@@ -8,6 +8,7 @@ mod data_write;
 mod external;
 mod model3d;
 mod resource_create;
+mod seo;
 mod system_op;
 mod ui_control;
 
@@ -125,6 +126,7 @@ mod coverage {
                 "database.artist",
                 "random.content",
                 "report.list",
+                "seo.inspect",
             ]),
         );
         map.insert(
@@ -137,6 +139,7 @@ mod coverage {
                 "phantasi.subscribe",
                 "phantasi.mark",
                 "content.write",
+                "seo.apply",
             ]),
         );
         map.insert(
@@ -158,6 +161,7 @@ mod coverage {
                 "translate.text",
                 "code.explain",
                 "ai.image",
+                "seo.generate",
             ]),
         );
         map.insert(
@@ -277,7 +281,7 @@ mod coverage {
         );
         assert_eq!(
             registry.get_all().len(),
-            117,
+            120,
             "update handler_ids_by_category when adding a capability"
         );
     }

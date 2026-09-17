@@ -71,6 +71,7 @@ pub async fn execute(
         "phantasi.subscribe" => execute_phantasi_subscribe(params, ctx).await,
         "phantasi.mark" => execute_phantasi_mark(params, ctx).await,
         "content.write" => execute_content_write(params, ctx).await,
+        "seo.apply" => super::seo::execute_seo_apply(params, ctx).await,
         _ => Err(format!("Unknown data_write capability: {}", capability_id)),
     }
 }

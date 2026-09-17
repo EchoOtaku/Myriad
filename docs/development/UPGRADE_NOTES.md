@@ -1,5 +1,13 @@
 # 升级说明
 
+## 出站代理与 API 镜像不再写 `.env`
+
+管理台保存不再把 `PROXY_ENABLED` / `PROXY_URL` / `PROXY_BYPASS` /
+`GEMINI_BASE_URL` / `GITHUB_API_BASE_URL` 双写进 `.env`。运行时一直读
+`configurations`（`/config` → 高级）。宿主 `.env` 里残留的这些键可以删，
+删不删都不影响行为。站点公网 origin 仍写 `BASE_URL`（以及随之适配的
+`FRONTEND_URL` / `CORS_ORIGINS`）。
+
 ## Phantasi / 手帐品牌硬切（破坏性变更）
 
 Brew 内部名改为 Phantasi，用户界面改为 **手帐**（en: Journal）。**没有新的 SeaORM 迁移编号。** 绿场直接跑改名后的 `003_phantasi_system`。已有库在 `Migrator::up` 里、退役 007–020 清理之前，走一次性临时改名：把 `brew_*` 表、列内 URL/JSON、TAPP 批准权限和 `seaql_migrations` 的 `003_brew_system` 行改成 phantasi。两套表同时存在会启动失败。无 301，旧路径 `/brew`、`/api/brew`、`/api/brewlia`、`Tapp.brewList`、`brew:*` 一律失效。

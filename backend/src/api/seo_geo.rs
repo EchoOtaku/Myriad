@@ -10,7 +10,7 @@ use crate::error::HttpError;
 use crate::services::ai::create_ai_analyzer_for_tier;
 use myriad_error::AppError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct GenerateSiteSeoRequest {
     /// Current site title (required for quality output).
     #[serde(default)]
@@ -117,10 +117,10 @@ impl FieldSet {
         }
         if self.ai_intro {
             parts.push(match language {
-                "zh" | "zh-TW" => "site_ai_intro：写入 /llms.txt 的「引用友好」简介，供生成式搜索与 AI 助手理解站点。2～4 句、约 120～350 字（上限 ~400 字符）。结构：① 一句话实体定义（谁的站、基于何种用途）；② 公开内容类型（文库/Phantasi/报告/Tapp 等仅在合理时提及）；③ 引用时请以公开页面为准。事实优先、可被引用；禁止广告腔、禁止承诺未给出的功能。owner hint 是身份与主题的权威来源。",
-                "ja" => "site_ai_intro：/llms.txt 用の引用しやすい紹介。生成 AI がサイトを理解するための 2～4 文（目安 120～350 文字、上限 ~400）。① 誰のサイトか・何のためか；② 公開コンテンツの種類；③ 公開ページを優先して引用する旨。事実ベースで宣伝調を避ける。owner hint を最優先の根拠にする。",
-                "ko" => "site_ai_intro: /llms.txt용 인용하기 쉬운 소개. 생성 AI가 사이트를 이해하기 위한 2–4문장(대략 120–350자, 상한 ~400). ① 누구의 사이트인지·무엇을 위한지 ② 공개 콘텐츠 종류 ③ 공개 페이지를 우선 인용할 것. 사실 위주, 홍보 문체 금지. owner hint를 최우선 근거로 한다.",
-                _ => "site_ai_intro: citation-friendly blurb for /llms.txt so generative search and AI assistants can ground answers. 2–4 plain sentences, prefer 150–380 characters (cap ~400). Structure: (1) one-sentence entity definition—whose site and purpose; (2) what public content types exist (Library/Phantasi/Reports/Tapp only when plausible); (3) prefer citing public routes, not inventing admin areas. Answer-first, factual, quotable; no marketing hype. Treat owner hint as ground truth for identity and topics.",
+                "zh" | "zh-TW" => "site_ai_intro：写入 /llms.txt 的「引用友好」简介。2～4 句、约 120～350 字（上限 ~400 字符）。结构：① 一句话实体定义（谁的站、做什么）；② 公开内容类型——只写 Public surface 里访客可见的模块/应用/写作；③ 引用以公开页面为准。事实优先；禁止广告腔。身份与主题以 owner hint 为准。",
+                "ja" => "site_ai_intro：/llms.txt 用の引用しやすい紹介。2～4 文（目安 120～350 文字、上限 ~400）。① 誰のサイトか・何をするか；② 公開コンテンツは Public surface にゲスト公開とあるものだけ；③ 公開ページを優先して引用。事実ベース。身分・主題は owner hint が根拠。",
+                "ko" => "site_ai_intro: /llms.txt용 인용하기 쉬운 소개. 2–4문장(대략 120–350자, 상한 ~400). ① 누구의 사이트인지·무엇을 하는지 ② 공개 콘텐츠는 Public surface에 손님에게 열린 것만 ③ 공개 페이지를 우선 인용. 사실 위주. 정체성·주제는 owner hint가 근거.",
+                _ => "site_ai_intro: citation-friendly blurb for /llms.txt. 2–4 plain sentences, prefer 150–380 characters (cap ~400). (1) one-sentence entity definition; (2) public content types only from the Public surface guest-visible list; (3) cite public pages, do not invent admin areas. Factual, no hype. Owner hint is identity/topics.",
             });
         }
         parts.join("\n")
@@ -128,28 +128,31 @@ impl FieldSet {
 }
 
 /// Shared system prompt: role, output contract, anti-hallucination, language.
-const SYSTEM_PROMPT: &str = r#"You are a specialist copywriter for personal-site SEO and GEO (generative-engine optimization).
+const SYSTEM_PROMPT: &str = r#"You are the copywriter for Agent SEO/GEO on one personal Myriad site (self-hosted digital-life homepage). You write settings fields the owner can paste. You are not advertising Myriad the product unless the site title itself is "Myriad".
 
-Context: Myriad is a self-hosted personal digital-life platform. The site aggregates the owner's public content (e.g. library, phantasi/blog-like posts, reports, tapp apps). You write short, accurate fields the owner can paste into settings—not ads, not product pitches for Myriad itself unless the title clearly is "Myriad".
+Ground truth (highest wins):
+1. Public surface in the user message — which modules/apps/writing actually exist for guests.
+2. Owner hint — identity, topics, tone. Weave it in; do not paste it back as a block.
+3. Existing description — keep verifiable claims, drop fluff, do not invent a new biography.
 
 Output contract:
-- Return ONLY one JSON object (no markdown fences, no commentary before/after).
+- Return ONLY one JSON object. No markdown fences, no commentary.
 - Include ONLY the keys listed in the user message.
-- Every string value must be fully in the requested language (zh / zh-TW / en / ja / ko / fr / de).
-- Values are plain text: no HTML, no markdown links, no bullet lists, no emoji spam.
+- Every string value fully in the requested language (zh / zh-TW / en / ja / ko / fr / de).
+- Plain text only: no HTML, no markdown links, no bullets, no emoji spam.
+- The three fields must not share the same sentence. Each field has a different job.
 
 Quality bar:
-- Prefer concrete entities (person role, topics, media types) over vague adjectives.
-- If owner hint is non-empty, treat it as the primary source of identity, topics, and tone; weave it in naturally—do not quote it verbatim as a whole block.
-- If existing description is non-empty and you are rewriting description/intro, improve clarity and specificity; keep verifiable claims, drop fluff.
-- Do NOT invent: real names, employers, cities, social handles, unmentioned hobbies, private admin features, or third-party product claims not implied by title/hint.
-- Do NOT mention robots.txt, sitemap, or technical SEO settings in the copy.
-- Character limits are approximate hard targets; slightly under is better than over.
+- Concrete entities (role, topics, media types) over vague adjectives.
+- Mention Library / Journal / Reports / Tapp / apps only when the public surface lists them as guest-visible.
+- Do NOT invent: real names, employers, cities, social handles, unmentioned hobbies, private admin features, brands or platforms not in title/hint/public surface.
+- Do NOT mention robots.txt, sitemap, llms.txt, or other technical SEO settings inside the copy values.
+- Character limits are hard-ish; slightly under is better than over.
 
-Field meanings (write only requested keys):
-- site_description → HTML meta description / OG description for humans in search & social previews.
-- site_keywords → classic meta keywords list (phrases, comma-separated).
-- site_ai_intro → short site summary for AI systems; becomes the blockquote intro in public /llms.txt."#;
+Field jobs (write only requested keys):
+- site_description → humans: search snippet and social card. Who/what, 1–2 sentences.
+- site_keywords → phrase list, comma-separated, no hashtags.
+- site_ai_intro → machines: citation-friendly blurb that becomes the /llms.txt intro. Entity definition, then public content types, then “cite public pages”."#;
 
 /// Max UTF-8 bytes accepted per free-text input before building the AI prompt.
 const MAX_SITE_TITLE_BYTES: usize = 200;
@@ -165,6 +168,13 @@ pub async fn generate_site_seo_copy(
     State(db): State<DatabaseConnection>,
     Json(payload): Json<GenerateSiteSeoRequest>,
 ) -> Result<Json<GenerateSiteSeoResponse>, HttpError> {
+    Ok(Json(generate_site_seo_copy_with_db(&db, payload).await?))
+}
+
+pub async fn generate_site_seo_copy_with_db(
+    db: &DatabaseConnection,
+    payload: GenerateSiteSeoRequest,
+) -> Result<GenerateSiteSeoResponse, HttpError> {
     let title = payload.site_title.trim();
     let desc_in = payload.site_description.trim();
     let hint_in = payload.hint.trim();
@@ -220,7 +230,7 @@ pub async fn generate_site_seo_copy(
         _ => "English, natural phrasing",
     };
 
-    let inventory = crate::api::seo::public_geo_prompt_facts(&db).await;
+    let inventory = crate::api::seo::public_geo_prompt_facts(db).await;
     let inventory_block = if inventory.trim().is_empty() {
         "Guest-visible modules unknown; stay generic about a personal digital-life site and do not invent sections.".to_string()
     } else {
@@ -228,24 +238,24 @@ pub async fn generate_site_seo_copy(
     };
 
     let user_prompt = format!(
-        "Task: draft SEO/GEO copy for one personal Myriad site.\n\n\
+        "Task: Agent SEO/GEO — draft settings copy for one personal site.\n\n\
 ## Constraints\n\
 - Output language: {lang_label} (code: {language}). Entire JSON string values in this language.\n\
 - Return JSON with ONLY these keys: {keys}\n\
-- Single-purpose fields: optimize each key for its use (see briefs); do not copy-paste the same sentence into every field.\n\n\
+- Each key has a different job (see briefs). Do not paste the same sentence into every field.\n\n\
 ## Site inputs\n\
 - Site title: {title}\n\
 - Existing site description: {desc}\n\
-- Owner hint (optional, authoritative when present): {hint}\n\n\
-## Public surface (authoritative; do not invent other sections)\n\
+- Owner hint (identity/topics/tone; authoritative when present): {hint}\n\n\
+## Public surface (ground truth for what exists; do not invent other sections)\n\
 {inventory}\n\n\
 ## Field briefs\n\
 {briefs}\n\n\
 ## Final check before answering\n\
-- Only requested keys present.\n\
-- No markdown fences.\n\
+- Only requested keys.\n\
+- No markdown fences, no commentary.\n\
 - No invented personal facts.\n\
-- Mention Library / Journal / Reports / Tapp only when they appear as guest-visible above.\n\
+- Modules/apps/writing mentioned only if listed as guest-visible above.\n\
 - Length within each field brief.",
         lang_label = lang_label,
         language = language,
@@ -270,7 +280,7 @@ pub async fn generate_site_seo_copy(
         {
             Ok(raw) => {
                 if let Some(parsed) = parse_seo_json(&raw) {
-                    return Ok(Json(filter_response(want, parsed, "ai")));
+                    return Ok(filter_response(want, parsed, "ai"));
                 }
                 tracing::warn!("SEO AI response was not valid JSON; using fallback");
             }
@@ -281,7 +291,7 @@ pub async fn generate_site_seo_copy(
     }
 
     let fb = fallback_copy(title, desc, hint, language);
-    Ok(Json(filter_response(want, fb, "fallback")))
+    Ok(filter_response(want, fb, "fallback"))
 }
 
 fn filter_response(

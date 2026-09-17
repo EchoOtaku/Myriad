@@ -1,6 +1,17 @@
 //! Agent API — heartbeat_mcp
 use super::*;
 use crate::error::HttpError;
+use crate::services::agent::heartbeat::{is_reserved_heartbeat_task, reserved_heartbeat_error};
+
+fn reject_reserved_heartbeat(task_id: &str) -> Result<(), HttpError> {
+    if is_reserved_heartbeat_task(task_id) {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(AppError::public_json(reserved_heartbeat_error())),
+        )));
+    }
+    Ok(())
+}
 
 // 队列状态
 
@@ -30,7 +41,7 @@ pub(crate) async fn heartbeat_tasks(
         ))
     })?;
 
-    let tasks = manager.get_tasks().await;
+    let tasks = manager.get_tasks_for_ui().await;
     Ok(Json(json!({ "tasks": tasks })))
 }
 
@@ -41,6 +52,7 @@ pub(crate) async fn toggle_heartbeat(
     Path(task_id): Path<String>,
 ) -> Result<Json<Value>, HttpError> {
     require_current_admin(&claims, &db).await?;
+    reject_reserved_heartbeat(&task_id)?;
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -73,6 +85,7 @@ pub(crate) async fn update_heartbeat(
     Json(body): Json<UpdateHeartbeatBody>,
 ) -> Result<Json<Value>, HttpError> {
     require_current_admin(&claims, &db).await?;
+    reject_reserved_heartbeat(&task_id)?;
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -153,6 +166,7 @@ pub(crate) async fn delete_heartbeat(
     Path(task_id): Path<String>,
 ) -> Result<Json<Value>, HttpError> {
     require_current_admin(&claims, &db).await?;
+    reject_reserved_heartbeat(&task_id)?;
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,

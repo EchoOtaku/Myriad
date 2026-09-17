@@ -72,6 +72,12 @@
       "frontend": "字段标题旁 SettingTitleTag；调用 /api/seo/generate-copy，fields 仅含当前字段。",
       "notes": "点「AI 生成」先弹补充说明（可选）再请求；fields 仅含当前字段。"
     },
+    "siteSeoReviewCadence": {
+      "what": "Agent 隔多久对照自有公开内容，检查站点公开简介是否过时。",
+      "chain": "① 关闭 / 每天 / 每周 → 底部保存配置。\n② 到点后 Agent 只检查并通知，不改文案、不改可见性。",
+      "frontend": "「SEO 与 AI 可见性」里的分段开关。",
+      "notes": "不出现在通用定时任务列表。默认关闭。"
+    },
     "pwaEnabled": {
       "what": "是否启用 PWA（Service Worker + 可安装清单），与标题/图标同属「站点名片与应用」。",
       "chain": "① 开启后，生产环境注册 /sw.js 并保留 web app manifest。\n② 保存后立即生效，不必整页硬刷。",

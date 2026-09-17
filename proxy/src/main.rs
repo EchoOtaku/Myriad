@@ -882,17 +882,15 @@ impl HeaderPolicy {
     }
 
     fn should_strip(&self, name: &str, transfer: HeaderTransfer) -> bool {
-        let normalized = name.to_ascii_lowercase();
-        if self.connection_tokens.contains(&normalized) {
+        // HeaderName::as_str is already lowercase; Connection tokens are stored lower.
+        if self.connection_tokens.contains(name) {
             return true;
         }
-        if transfer == HeaderTransfer::WebSocket
-            && matches!(normalized.as_str(), "connection" | "upgrade")
-        {
+        if transfer == HeaderTransfer::WebSocket && matches!(name, "connection" | "upgrade") {
             // The caller adds the canonical Connection/Upgrade fields below.
             return false;
         }
-        is_hop_by_hop(&normalized)
+        is_hop_by_hop(name)
     }
 
     /// Copy end-to-end request headers and add only proxy-owned forwarding
@@ -906,10 +904,10 @@ impl HeaderPolicy {
     ) -> HeaderMap {
         let mut out = HeaderMap::new();
         for (name, value) in headers.iter() {
-            let normalized = name.as_str().to_ascii_lowercase();
+            let normalized = name.as_str();
             if normalized == "host"
-                || is_proxy_managed_forwarded_header(&normalized)
-                || self.should_strip(&normalized, transfer)
+                || is_proxy_managed_forwarded_header(normalized)
+                || self.should_strip(normalized, transfer)
             {
                 continue;
             }
@@ -937,13 +935,13 @@ impl HeaderPolicy {
     fn response_headers(&self, headers: &HeaderMap, transfer: HeaderTransfer) -> HeaderMap {
         let mut out = HeaderMap::new();
         for (name, value) in headers.iter() {
-            let normalized = name.as_str().to_ascii_lowercase();
+            let normalized = name.as_str();
             if transfer == HeaderTransfer::WebSocket
-                && matches!(normalized.as_str(), "connection" | "upgrade")
+                && matches!(normalized, "connection" | "upgrade")
             {
                 continue;
             }
-            if self.should_strip(&normalized, transfer) {
+            if self.should_strip(normalized, transfer) {
                 continue;
             }
             out.append(name.clone(), value.clone());
@@ -967,7 +965,7 @@ impl HeaderPolicy {
 
 fn is_hop_by_hop(name: &str) -> bool {
     matches!(
-        name.to_ascii_lowercase().as_str(),
+        name,
         "connection"
             | "keep-alive"
             | "proxy-authenticate"
@@ -983,7 +981,7 @@ fn is_hop_by_hop(name: &str) -> bool {
 
 fn is_proxy_managed_forwarded_header(name: &str) -> bool {
     matches!(
-        name.to_ascii_lowercase().as_str(),
+        name,
         "x-forwarded-for"
             | "x-real-ip"
             | "x-forwarded-host"

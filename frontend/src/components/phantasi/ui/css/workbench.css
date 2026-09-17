@@ -120,10 +120,12 @@ html.dark .phantasi-workbench {
   margin-bottom: 0;
 }
 
-.phantasi-workbench .setting-section > .section-header .section-header-right {
-  justify-content: flex-end;
-  max-width: none;
-  flex: 0 1 auto;
+@media (width >= 1024px) {
+  .phantasi-workbench .setting-section > .section-header .section-header-right {
+    justify-content: flex-end;
+    max-width: none;
+    flex: 0 1 auto;
+  }
 }
 
 .phantasi-workbench .section-header-left:has(.phantasi-workbench__title-search) {
@@ -896,6 +898,39 @@ html.dark
     opacity: 1;
     pointer-events: auto;
   }
+
+  .phantasi-workbench
+    .managed-list:not(.managed-list--grid)
+    .phantasi-workbench__hover-actions
+    .managed-list-row-side {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    padding: 0.55rem 0.75rem 0.55rem 0.25rem;
+    border-radius: 0;
+    background: none;
+  }
+}
+
+@media (width <= 520px) {
+  .phantasi-workbench
+    .managed-list:not(.managed-list--grid)
+    .phantasi-workbench__hover-actions
+    .managed-list-row-side {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    padding: 0 0.75rem 0.55rem;
+    border-radius: 0;
+    background: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .phantasi-workbench .phantasi-workbench__note .managed-list-row-head,
@@ -994,13 +1029,23 @@ html.dark
 
   .phantasi-workbench .phantasi-workbench__note .managed-list-row-hit {
     gap: 0.65rem;
-    padding: 0.6rem 0.15rem 0.6rem 0.6rem;
+    padding: 0.6rem;
   }
 
   .phantasi-workbench__home-row.has-face .phantasi-workbench__cover {
     width: 4.6rem;
     height: 3.05rem;
     border-radius: 0.45rem;
+  }
+
+  .phantasi-workbench__home-row-copy {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.16rem;
+  }
+
+  .phantasi-workbench__home-row-meta {
+    white-space: normal;
   }
 }
 

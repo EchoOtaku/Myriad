@@ -71,6 +71,7 @@ pub async fn execute(
         }
         "random.content" => execute_random_content(params).await,
         "report.list" => execute_report_list(params, ctx).await,
+        "seo.inspect" => super::super::seo::execute_seo_inspect(ctx).await,
         _ => Err(format!("Unknown data_read capability: {}", capability_id)),
     }
 }
@@ -125,6 +126,7 @@ mod dispatcher_contract_tests {
             "database.artist",
             "random.content",
             "report.list",
+            "seo.inspect",
         ] {
             assert!(
                 match_body.contains(&format!("\"{id}\"")),

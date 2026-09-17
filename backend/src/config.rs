@@ -505,6 +505,9 @@ pub struct DynamicConfig {
     pub site_visibility_policy: String,
     /// 面向 AI 引擎的站点简介（写入 llms.txt；可空则回退 site_description）
     pub site_ai_intro: Option<String>,
+    /// Agent 对照自有公开内容检查 SEO/GEO 文案的节奏：off | daily | weekly
+    #[serde(default)]
+    pub site_seo_review_cadence: String,
     /// Google Analytics 4 Measurement ID（如 G-XXXXXXXXXX）；空则不加载 gtag
     pub ga_measurement_id: Option<String>,
     /// Umami website id（UUID）；空则不加载
@@ -870,6 +873,7 @@ impl Default for DynamicConfig {
             site_noindex: false,
             site_visibility_policy: String::new(),
             site_ai_intro: None,
+            site_seo_review_cadence: String::new(),
             ga_measurement_id: None,
             umami_website_id: None,
             umami_script_url: None,

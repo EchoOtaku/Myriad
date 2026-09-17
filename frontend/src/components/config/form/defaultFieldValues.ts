@@ -80,6 +80,7 @@ export function defaultUiFieldValue(key: string): string {
   if (key === 'site_og_image') return ''
   if (key === 'google_site_verification') return ''
   if (key === 'site_ai_intro') return ''
+  if (key === 'site_seo_review_cadence') return 'off'
   if (key === 'ga_measurement_id') return ''
   if (key === 'umami_website_id') return ''
   if (key === 'umami_script_url') return ''

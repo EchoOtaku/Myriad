@@ -8,6 +8,7 @@ mod model3d;
 mod phantasi;
 mod platform;
 mod report;
+mod seo;
 mod system;
 mod tapp;
 mod ui;
@@ -23,6 +24,7 @@ pub fn register_all(registry: &mut CapabilityRegistry) {
     tapp::register(registry);
     report::register(registry);
     system::register(registry);
+    seo::register(registry);
     external::register(registry);
     ui::register(registry);
 }

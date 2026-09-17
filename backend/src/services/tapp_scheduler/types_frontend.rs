@@ -62,9 +62,15 @@ pub fn scheduler_counters() -> SchedulerCounters {
 pub fn normalize_backend_actions(
     actions: Option<serde_json::Value>,
 ) -> Result<Option<serde_json::Value>, String> {
+    Ok(normalize_backend_actions_parsed(actions)?.0)
+}
+
+pub fn normalize_backend_actions_parsed(
+    actions: Option<serde_json::Value>,
+) -> Result<(Option<serde_json::Value>, Vec<BackendActionWrapper>), String> {
     let Some(serde_json::Value::Array(actions)) = actions else {
         return match actions {
-            None => Ok(None),
+            None => Ok((None, Vec::new())),
             Some(_) => Err("backendActions must be an array".to_string()),
         };
     };
@@ -75,6 +81,7 @@ pub fn normalize_backend_actions(
     }
 
     let mut normalized = Vec::with_capacity(actions.len());
+    let mut wrappers = Vec::with_capacity(actions.len());
     for mut value in actions {
         let object = value
             .as_object_mut()
@@ -86,32 +93,40 @@ pub fn normalize_backend_actions(
             object.insert("action".to_string(), action_type);
         }
 
-        serde_json::from_value::<BackendActionWrapper>(value.clone()).map_err(|error| {
-            tracing::error!(%error, "invalid backend action");
-            "Invalid backend action".to_string()
-        })?;
-        normalized.push(value);
-    }
-
-    Ok(Some(serde_json::Value::Array(normalized)))
-}
-
-/// Resolve the dynamic Tapp permissions needed by a validated backend action
-/// pipeline. Registration and delayed execution both use this list.
-pub fn backend_action_permissions(
-    actions: &Option<serde_json::Value>,
-) -> Result<Vec<TappPermission>, String> {
-    let Some(serde_json::Value::Array(actions)) = actions else {
-        return Ok(Vec::new());
-    };
-
-    let mut permissions = Vec::new();
-    for value in actions {
         let wrapper: BackendActionWrapper =
             serde_json::from_value(value.clone()).map_err(|error| {
                 tracing::error!(%error, "invalid backend action");
                 "Invalid backend action".to_string()
             })?;
+        wrappers.push(wrapper);
+        normalized.push(value);
+    }
+
+    Ok((Some(serde_json::Value::Array(normalized)), wrappers))
+}
+
+/// Resolve the dynamic Tapp permissions needed by a validated backend action
+/// pipeline. Registration and delayed execution both use this list.
+pub fn parse_backend_action_wrappers(
+    actions: &Option<serde_json::Value>,
+) -> Result<Vec<BackendActionWrapper>, String> {
+    let Some(serde_json::Value::Array(actions)) = actions else {
+        return Ok(Vec::new());
+    };
+    actions
+        .iter()
+        .map(|value| {
+            serde_json::from_value(value.clone()).map_err(|error| {
+                tracing::error!(%error, "invalid backend action");
+                "Invalid backend action".to_string()
+            })
+        })
+        .collect()
+}
+
+pub fn backend_action_permissions_of(wrappers: &[BackendActionWrapper]) -> Vec<TappPermission> {
+    let mut permissions = Vec::new();
+    for wrapper in wrappers {
         let permission = match wrapper.action {
             BackendAction::PlatformSync { .. } => Some(TappPermission::PlatformWrite),
             BackendAction::StorageSet { .. } | BackendAction::StorageDelete { .. } => {
@@ -129,7 +144,15 @@ pub fn backend_action_permissions(
     }
     permissions.sort_by_key(|permission| permission.as_str());
     permissions.dedup();
-    Ok(permissions)
+    permissions
+}
+
+pub fn backend_action_permissions(
+    actions: &Option<serde_json::Value>,
+) -> Result<Vec<TappPermission>, String> {
+    Ok(backend_action_permissions_of(
+        &parse_backend_action_wrappers(actions)?,
+    ))
 }
 
 /// Validate delayed backend actions against the installed Manifest contract.
@@ -138,17 +161,16 @@ pub fn validate_backend_action_declarations(
     manifest: &serde_json::Value,
     actions: &Option<serde_json::Value>,
 ) -> Result<Option<ModelTier>, String> {
-    let Some(serde_json::Value::Array(actions)) = actions else {
-        return Ok(None);
-    };
-    let uses_ai_generate = actions.iter().try_fold(false, |uses_ai, value| {
-        let wrapper: BackendActionWrapper =
-            serde_json::from_value(value.clone()).map_err(|error| {
-                tracing::error!(%error, "invalid backend action");
-                "Invalid backend action".to_string()
-            })?;
-        Ok::<_, String>(uses_ai || matches!(wrapper.action, BackendAction::AiGenerate { .. }))
-    })?;
+    validate_backend_action_declarations_of(manifest, &parse_backend_action_wrappers(actions)?)
+}
+
+pub fn validate_backend_action_declarations_of(
+    manifest: &serde_json::Value,
+    wrappers: &[BackendActionWrapper],
+) -> Result<Option<ModelTier>, String> {
+    let uses_ai_generate = wrappers
+        .iter()
+        .any(|wrapper| matches!(wrapper.action, BackendAction::AiGenerate { .. }));
     if !uses_ai_generate {
         return Ok(None);
     }
@@ -230,6 +252,20 @@ pub async fn register_frontend_connection(
     connection_id: &str,
 ) -> Result<(), String> {
     let expires_at = Utc::now().timestamp() + SCHEDULER_PRESENCE_TTL_SECONDS;
+    if shared_registry::touch_live(
+        db,
+        SCHEDULER_PRESENCE_NAMESPACE,
+        connection_id,
+        user_id,
+        expires_at,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "failed to refresh scheduler connection");
+        "Failed to register scheduler connection".to_string()
+    })? {
+        return Ok(());
+    }
     let inserted = shared_registry::put_with_subject_limit(
         db,
         SCHEDULER_PRESENCE_NAMESPACE,
@@ -289,9 +325,9 @@ pub async fn drain_frontend_messages(
 }
 
 pub async fn active_frontend_subject_count(db: &DatabaseConnection) -> Result<usize, String> {
-    shared_registry::list_subject_ids(db, SCHEDULER_PRESENCE_NAMESPACE)
+    shared_registry::count_distinct_subjects(db, SCHEDULER_PRESENCE_NAMESPACE)
         .await
-        .map(|subjects| subjects.len())
+        .map(|count| count as usize)
         .map_err(|error| {
             tracing::error!(%error, "failed to count scheduler subjects");
             "Failed to count scheduler subjects".to_string()

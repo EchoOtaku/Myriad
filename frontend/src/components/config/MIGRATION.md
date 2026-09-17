@@ -84,7 +84,7 @@
 
 | Section | bag keys | 导出常量 |
 | ------- | -------- | -------- |
-| **UI**（基础） | `wallpaper_url` `wallpaper_blur` · `site_title` `site_description` `site_favicon` · `site_keywords` `site_og_image` `site_noindex` `site_visibility_policy` `site_ai_intro` `pwa_enabled` · `site_icp` `site_gongan` `cloud_sponsors` `site_footer_custom` · `evocative_*` | `UI_RESET_KEYS`（**不含** `base_url`：域名走 `SiteUrlField` 独立 API） |
+| **UI**（基础） | `wallpaper_url` `wallpaper_blur` · `site_title` `site_description` `site_favicon` · `site_keywords` `site_og_image` `site_noindex` `site_visibility_policy` `site_ai_intro` `site_seo_review_cadence` `pwa_enabled` · `site_icp` `site_gongan` `cloud_sponsors` `site_footer_custom` · `evocative_*` | `UI_RESET_KEYS`（**不含** `base_url`：域名走 `SiteUrlField` 独立 API） |
 | **Platforms**（数据及统计） | `analytics_enabled` · `ga_measurement_id` `umami_website_id` `umami_script_url` | `PLATFORMS_UI_RESET_KEYS` |
 | **Modules** | `music_enabled` `music_source` `music_playlist_id` | `MODULE_UI_RESET_KEYS` |
 | **Advanced** | `proxy_enabled` `proxy_url` `proxy_bypass` `gemini_base_url` `github_api_base_url` | `ADVANCED_RESET_KEYS` |
@@ -101,6 +101,7 @@
 ### 保存语义（踩坑）
 
 - **可清空非敏感串**必须在 `collect_database_updates` 里 early-insert（空串也写库）：`site_*` / `wallpaper_url` / `music_playlist_id` / `proxy_*` / `*_base_url` 镜像等。默认路径 `if !value.is_empty()` 会吞掉「重置本页」写的空串。
+- **出站代理 / API 镜像只写库**：`proxy_*` / `gemini_base_url` / `github_api_base_url` 不双写 `.env`。进程里的 `PROXY_ENABLED` / `PROXY_URL` / `PROXY_BYPASS` / `GEMINI_BASE_URL` / `GITHUB_API_BASE_URL` 不是运行时来源。`base_url` 仍写 `.env`（改域名时适配 `FRONTEND_URL` / `CORS_ORIGINS`）。
 - **`base_url` 空串不得覆盖**已生效域名（改域名走 `SiteUrlField` 独立 API）。
 - **`silent` 更新 bag**（旁路 API 已落库）必须通过 `acceptPatch` 同步更新草稿与已保存快照，否则仍会点亮浮动保存。
 - **多域统一保存并非跨端点事务**：每个端点写入成功立即更新其快照；后续端点失败时保留未保存域的草稿。所有已落库域的生效动作仍执行，不能因为后续失败而跳过。

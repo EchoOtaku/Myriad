@@ -76,6 +76,7 @@ describe('uiBagOwnership', () => {
     assert.equal(configChangesNeedMetadataReload(next, prev), true)
     assert.equal(configChangesNeedMetadataReload(prev, prev), false)
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_keywords'))
+    assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_seo_review_cadence'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_og_image'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('google_site_verification'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_noindex'))

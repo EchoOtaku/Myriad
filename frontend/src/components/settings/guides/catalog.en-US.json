@@ -72,6 +72,12 @@
       "frontend": "Title-adjacent SettingTitleTag; POST /api/seo/generate-copy with a single field.",
       "notes": "AI generate opens an optional hint dialog, then POSTs a single field."
     },
+    "siteSeoReviewCadence": {
+      "what": "How often Agent checks public SEO/GEO copy against your own public writing.",
+      "chain": "1) Off / daily / weekly → save configuration at the bottom.\n2) When due, Agent inspects public copy and notifies if it looks stale.\n3) It does not overwrite copy or change visibility.",
+      "frontend": "Segmented control in Search & AI visibility.",
+      "notes": "Does not appear in the generic scheduled-task list. Default is off."
+    },
     "pwaEnabled": {
       "what": "Whether PWA is enabled (service worker + installable manifest), under “Site identity & app” with the title and icon.",
       "chain": "1) When on, production registers /sw.js and keeps the web app manifest.\n2) Applies right after save — no full hard reload required.",

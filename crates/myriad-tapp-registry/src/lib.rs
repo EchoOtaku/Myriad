@@ -218,14 +218,49 @@ ON CONFLICT (namespace, record_id) DO UPDATE SET
     Ok(true)
 }
 
+/// Extend TTL for a still-live record of this subject. Missing/expired rows
+/// return false so the caller can run full admission.
+pub async fn touch_live(
+    db: &impl ConnectionTrait,
+    namespace: &str,
+    record_id: &str,
+    subject_id: i32,
+    expires_at: i64,
+) -> Result<bool, DbErr> {
+    let result = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE tapp_runtime_registry
+SET expires_at = $4, updated_at = NOW()
+WHERE namespace = $1
+  AND record_id = $2
+  AND subject_id = $3
+  AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT
+"#,
+            vec![
+                namespace.into(),
+                record_id.into(),
+                subject_id.into(),
+                expires_at.into(),
+            ],
+        ))
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
 pub async fn get<T: DeserializeOwned>(
     db: &impl ConnectionTrait,
     namespace: &str,
     record_id: &str,
 ) -> Result<Option<T>, DbErr> {
-    let row = RegistryRow::find_by_statement(Statement::from_sql_and_values(
+    #[derive(FromQueryResult)]
+    struct PayloadRow {
+        payload: Value,
+    }
+    let row = PayloadRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        "SELECT record_id, runtime_id, payload FROM tapp_runtime_registry WHERE namespace = $1 AND record_id = $2 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT",
+        "SELECT payload FROM tapp_runtime_registry WHERE namespace = $1 AND record_id = $2 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT",
         vec![namespace.into(), record_id.into()],
     ))
     .one(db)
@@ -329,6 +364,31 @@ pub async fn count_namespace(db: &impl ConnectionTrait, namespace: &str) -> Resu
     Ok(CountRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "SELECT COUNT(*)::BIGINT AS count FROM tapp_runtime_registry WHERE namespace = $1 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT",
+        vec![namespace.into()],
+    ))
+    .one(db)
+    .await?
+    .map_or(0, |row| row.count))
+}
+
+pub async fn count_distinct_subjects(
+    db: &impl ConnectionTrait,
+    namespace: &str,
+) -> Result<i64, DbErr> {
+    #[derive(FromQueryResult)]
+    struct CountRow {
+        count: i64,
+    }
+
+    Ok(CountRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+SELECT COUNT(DISTINCT subject_id)::BIGINT AS count
+FROM tapp_runtime_registry
+WHERE namespace = $1
+  AND subject_id IS NOT NULL
+  AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT
+"#,
         vec![namespace.into()],
     ))
     .one(db)

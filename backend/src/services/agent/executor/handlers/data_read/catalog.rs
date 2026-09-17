@@ -521,7 +521,10 @@ pub(super) async fn execute_heartbeat_list(
         .get_tasks()
         .await
         .into_iter()
-        .filter(|t| enabled_filter.is_none_or(|en| t.enabled == en))
+        .filter(|t| {
+            !crate::services::agent::heartbeat::is_reserved_heartbeat_task(&t.id)
+                && enabled_filter.is_none_or(|en| t.enabled == en)
+        })
         .map(|t| {
             json!({
                 "id": t.id,

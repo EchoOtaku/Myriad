@@ -24,6 +24,42 @@ pub const HEARTBEAT_TASK_TIMEOUT_SECS: u64 = 600;
 /// 认领卡住后允许重认领的阈值（秒），略长于执行超时
 const CLAIM_STALE_SECS: i64 = 900;
 
+/// Reserved heartbeat managed from site SEO settings, not the task list.
+pub const SEO_REVIEW_TASK_ID: &str = "seo-review";
+const SEO_REVIEW_TASK_NAME: &str = "SEO review";
+const SEO_REVIEW_TASK_ACTION: &str = "\
+Agent SEO/GEO optimization (scheduled). Not a chat. Follow every step.
+
+GOAL: Keep public search copy and /llms.txt intro aligned with guest-visible original content. You draft and notify. The owner publishes.
+
+HARD RULES:
+- Call seo.inspect first. That result is ground truth.
+- Original content only: writing, notes, public apps. Never friend-links or third-party feeds.
+- Never call seo.apply. Never change visibility policy, robots, or sitemap.
+- Never invent names, jobs, cities, or modules inspect did not list as guest-visible.
+- Write the notification in the language of branding title/description/ai_intro (not English unless those fields are English).
+
+STEPS:
+1. seo.inspect.
+2. Judge site_description, site_keywords, site_ai_intro:
+   - empty while writing/notes/apps exist → bad
+   - contradicts inspect (wrong modules, outdated topics) → bad
+   - welcome-to-this-site / marketing fluff → bad
+   - accurate and current → good
+3. If all three are good: stop. No notification. No extra tools.
+4. If any is bad: seo.generate for the bad fields only (omit title so branding is used). Then notify once:
+   - one-line verdict
+   - each bad field: current text, why it fails, ready-to-paste rewrite from seo.generate
+   - tell the owner they must confirm in settings before anything is saved";
+
+pub fn is_reserved_heartbeat_task(id: &str) -> bool {
+    id == SEO_REVIEW_TASK_ID
+}
+
+pub fn reserved_heartbeat_error() -> &'static str {
+    "This task is managed from site SEO settings"
+}
+
 /// Heartbeat 任务定义
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatTask {
@@ -203,6 +239,9 @@ impl HeartbeatManager {
 
     /// 切换任务启用状态（持久化到 HEARTBEAT.md，重启后保留）
     pub async fn toggle_task(&self, task_id: &str) -> Option<bool> {
+        if is_reserved_heartbeat_task(task_id) {
+            return None;
+        }
         // 先同步磁盘上的最新配置，再在其上应用 toggle，防止覆盖外部修改
         self.maybe_reload_if_changed().await;
         let new_state = {
@@ -229,6 +268,9 @@ impl HeartbeatManager {
         action: Option<String>,
         enabled: Option<bool>,
     ) -> Result<HeartbeatTask, String> {
+        if is_reserved_heartbeat_task(task_id) {
+            return Err(reserved_heartbeat_error().to_string());
+        }
         self.maybe_reload_if_changed().await;
         if let Some(ref s) = schedule {
             if !is_valid_cron_expr(s) {
@@ -314,6 +356,9 @@ impl HeartbeatManager {
                 if candidate.is_empty() {
                     return Err("id must contain at least one alphanumeric character".to_string());
                 }
+                if is_reserved_heartbeat_task(&candidate) {
+                    return Err(reserved_heartbeat_error().to_string());
+                }
                 if tasks.iter().any(|t| t.id == candidate) {
                     return Err(format!("Task id '{}' already exists", candidate));
                 }
@@ -341,8 +386,61 @@ impl HeartbeatManager {
         Ok(task)
     }
 
+    /// User-facing task list: hide the SEO review job (managed from site settings).
+    pub async fn get_tasks_for_ui(&self) -> Vec<HeartbeatTask> {
+        self.get_tasks()
+            .await
+            .into_iter()
+            .filter(|t| !is_reserved_heartbeat_task(&t.id))
+            .collect()
+    }
+
+    /// Create or update the reserved SEO review heartbeat from site settings.
+    ///
+    /// `schedule = None` disables the task if it exists (does not delete it).
+    pub async fn upsert_seo_review_task(&self, schedule: Option<&str>) -> Result<(), String> {
+        self.maybe_reload_if_changed().await;
+        if let Some(cron) = schedule {
+            if !is_valid_cron_expr(cron) {
+                return Err(format!(
+                    "Invalid cron schedule '{}': expected 5 fields (min hour dom month dow)",
+                    cron
+                ));
+            }
+        }
+        {
+            let mut tasks = self.tasks.write().await;
+            if let Some(task) = tasks.iter_mut().find(|t| t.id == SEO_REVIEW_TASK_ID) {
+                if let Some(cron) = schedule {
+                    task.schedule = cron.to_string();
+                    task.action = SEO_REVIEW_TASK_ACTION.to_string();
+                    task.name = SEO_REVIEW_TASK_NAME.to_string();
+                    task.enabled = true;
+                } else {
+                    task.enabled = false;
+                }
+            } else if let Some(cron) = schedule {
+                tasks.push(HeartbeatTask {
+                    id: SEO_REVIEW_TASK_ID.to_string(),
+                    name: SEO_REVIEW_TASK_NAME.to_string(),
+                    schedule: cron.to_string(),
+                    action: SEO_REVIEW_TASK_ACTION.to_string(),
+                    enabled: true,
+                    last_run: None,
+                    last_result: None,
+                    last_reserved: None,
+                });
+            }
+        }
+        self.persist().await;
+        Ok(())
+    }
+
     /// 删除任务并持久化（不存在则 Err）
     pub async fn delete_task(&self, task_id: &str) -> Result<(), String> {
+        if is_reserved_heartbeat_task(task_id) {
+            return Err(reserved_heartbeat_error().to_string());
+        }
         self.maybe_reload_if_changed().await;
         let removed = {
             let mut tasks = self.tasks.write().await;
@@ -718,6 +816,19 @@ pub fn get_heartbeat() -> Option<&'static Arc<HeartbeatManager>> {
     HEARTBEAT_MANAGER.get()
 }
 
+/// Align the reserved SEO review heartbeat with the saved cadence. Missing
+/// Heartbeat manager is not a config-save failure.
+pub async fn sync_seo_review_cadence(cadence: &str) {
+    let Some(manager) = get_heartbeat() else {
+        tracing::warn!("Heartbeat not initialized; SEO review cadence saved but not scheduled");
+        return;
+    };
+    let cron = crate::api::seo_policy::seo_review_cron(cadence);
+    if let Err(error) = manager.upsert_seo_review_task(cron).await {
+        tracing::error!(%error, "Failed to sync SEO review heartbeat");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -738,6 +849,16 @@ mod tests {
         assert!(cron_matches("0 9 * * *", &local(2026, 7, 11, 9, 0)));
         assert!(!cron_matches("0 9 * * *", &local(2026, 7, 11, 9, 1)));
         assert!(!cron_matches("0 9 * * *", &local(2026, 7, 11, 10, 0)));
+    }
+
+    #[test]
+    fn test_cron_weekly_monday_morning() {
+        // 2026-07-11 周六；13 周一
+        assert!(cron_matches("0 9 * * 1", &local(2026, 7, 13, 9, 0)));
+        assert!(!cron_matches("0 9 * * 1", &local(2026, 7, 11, 9, 0)));
+        assert!(is_valid_cron_expr("0 9 * * 1"));
+        assert!(is_reserved_heartbeat_task(SEO_REVIEW_TASK_ID));
+        assert!(!is_reserved_heartbeat_task("morning-summary"));
     }
 
     #[test]

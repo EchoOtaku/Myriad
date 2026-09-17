@@ -599,13 +599,15 @@ pub(crate) fn scheduler_create_actions_within_grants(
     granted: &std::collections::HashSet<String>,
 ) -> Result<(), String> {
     use crate::services::agent::system_op_pure::extract_raw_backend_actions;
-    use crate::services::tapp_scheduler::{backend_action_permissions, normalize_backend_actions};
+    use crate::services::tapp_scheduler::{
+        backend_action_permissions_of, normalize_backend_actions_parsed,
+    };
 
     let Some(raw) = extract_raw_backend_actions(params) else {
         return Ok(());
     };
-    let normalized = normalize_backend_actions(Some(raw))?;
-    for permission in backend_action_permissions(&normalized)? {
+    let (_normalized, wrappers) = normalize_backend_actions_parsed(Some(raw))?;
+    for permission in backend_action_permissions_of(&wrappers) {
         if !granted_covers_tapp_permission(granted, permission) {
             return Err(format!(
                 "capability 'scheduler.create' is not available for scheduled action: {}",

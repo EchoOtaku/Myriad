@@ -158,15 +158,16 @@ pub async fn report_schema_drift(db: &DatabaseConnection) -> Result<SchemaDrift,
     let mut drift = SchemaDrift::default();
 
     let existing_tables = get_existing_tables(db).await?;
+    let existing_columns = get_all_table_columns(db).await?;
 
     for table_def in &get_expected_schema() {
         if !existing_tables.contains(&table_def.name) {
             drift.missing_tables.push(table_def.name.clone());
             continue;
         }
-        let existing_columns = get_table_columns(db, &table_def.name).await?;
+        let table_columns = existing_columns.get(&table_def.name);
         for col in &table_def.columns {
-            if !existing_columns.contains(&col.name) {
+            if !table_columns.is_some_and(|columns| columns.contains(&col.name)) {
                 drift.missing_columns.push(DriftItem {
                     label: format!("{}.{}", table_def.name, col.name),
                     ddl: generate_add_column_ddl(&table_def.name, col),

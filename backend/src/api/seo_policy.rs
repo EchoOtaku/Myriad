@@ -26,6 +26,29 @@ pub fn policy_serves_llms_txt(policy: &str) -> bool {
     matches!(policy, VISIBILITY_AI_CITATION | VISIBILITY_AI_FULL)
 }
 
+/// How often Agent should inspect public SEO/GEO copy. Not a visibility policy.
+pub const SEO_REVIEW_OFF: &str = "off";
+pub const SEO_REVIEW_DAILY: &str = "daily";
+pub const SEO_REVIEW_WEEKLY: &str = "weekly";
+
+/// Empty / unknown → off.
+pub fn normalize_seo_review_cadence(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        SEO_REVIEW_DAILY => SEO_REVIEW_DAILY,
+        SEO_REVIEW_WEEKLY => SEO_REVIEW_WEEKLY,
+        _ => SEO_REVIEW_OFF,
+    }
+}
+
+/// Cron for a cadence, in server local time. `None` means do not run.
+pub fn seo_review_cron(cadence: &str) -> Option<&'static str> {
+    match normalize_seo_review_cadence(cadence) {
+        SEO_REVIEW_DAILY => Some("0 9 * * *"),
+        SEO_REVIEW_WEEKLY => Some("0 9 * * 1"),
+        _ => None,
+    }
+}
+
 /// AI training-oriented user-agents blocked under `ai_citation`.
 /// Best-effort public UA names; crawlers not in this list are outside our control.
 const AI_TRAINING_BOTS: &[&str] = &[
@@ -191,6 +214,16 @@ mod tests {
             normalize_visibility_policy("ai_citation", true),
             VISIBILITY_AI_CITATION
         );
+    }
+
+    #[test]
+    fn seo_review_cadence_normalizes_and_maps_cron() {
+        assert_eq!(normalize_seo_review_cadence(""), SEO_REVIEW_OFF);
+        assert_eq!(normalize_seo_review_cadence("DAILY"), SEO_REVIEW_DAILY);
+        assert_eq!(normalize_seo_review_cadence("weekly"), SEO_REVIEW_WEEKLY);
+        assert_eq!(seo_review_cron("off"), None);
+        assert_eq!(seo_review_cron("daily"), Some("0 9 * * *"));
+        assert_eq!(seo_review_cron("weekly"), Some("0 9 * * 1"));
     }
 
     #[test]

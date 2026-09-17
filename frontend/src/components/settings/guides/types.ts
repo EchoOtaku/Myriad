@@ -19,6 +19,7 @@ export interface SettingGuidesCatalog {
     siteVisibilityPolicy: SettingGuideEntry
     siteAiIntro: SettingGuideEntry
     siteAiGenerate: SettingGuideEntry
+    siteSeoReviewCadence: SettingGuideEntry
     pwaEnabled: SettingGuideEntry
     siteFooter: SettingGuideEntry
     siteIcp: SettingGuideEntry

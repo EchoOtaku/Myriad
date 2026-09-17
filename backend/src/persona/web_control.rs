@@ -329,6 +329,8 @@ mod tests {
             "heartbeat.create",
             "ai.generate",
             "config.set",
+            "seo.apply",
+            "seo.generate",
             "",
             "scheduler.delete",
         ] {

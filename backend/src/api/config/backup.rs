@@ -567,9 +567,11 @@ pub async fn restore_settings(
     match config_service.load_config().await {
         Ok(new_config) => {
             // Same Arc as AppState.dynamic_config after from_shared — write via State.
+            let cadence = new_config.site_seo_review_cadence.clone();
             *dynamic_config.write().await = new_config;
             crate::services::http_client::reload_global_client().await;
             crate::services::oauth::registry::REGISTRY.reload().await;
+            crate::services::agent::heartbeat::sync_seo_review_cadence(&cadence).await;
         }
         Err(error) => {
             tracing::error!("Settings restored but runtime reload failed: {}", error);
@@ -614,10 +616,11 @@ mod settings_backup_tests {
     use crate::api::config::{
         AiConfig, ConfigField, ConfigResponse, MODULE_VISIBILITY_PREFERENCES_KEY,
         PlatformAutoFetchConfig, PlatformConfig, collect_database_updates, db_or_env_clearable,
-        is_masked_secret_value, normalize_music_playlist_id, platform_configured_flags,
-        public_ui_config_value, sanitize_google_site_verification, sanitize_http_base_url,
-        sanitize_proxy_url, sanitize_site_favicon_url, sanitize_site_og_image_url,
-        sanitize_umami_script_url, sanitize_wallpaper_url, should_write_env_field, update_env_var,
+        deploy_env_key, is_masked_secret_value, normalize_music_playlist_id,
+        platform_configured_flags, public_ui_config_value, sanitize_google_site_verification,
+        sanitize_http_base_url, sanitize_proxy_url, sanitize_site_favicon_url,
+        sanitize_site_og_image_url, sanitize_umami_script_url, sanitize_wallpaper_url,
+        should_write_env_field, update_env_var,
     };
 
     fn empty_config() -> ConfigResponse {
@@ -1277,6 +1280,7 @@ mod settings_backup_tests {
             ui_field("site_noindex", "false"),
             ui_field("site_visibility_policy", "ai_full"),
             ui_field("site_ai_intro", ""),
+            ui_field("site_seo_review_cadence", "off"),
             ui_field("ga_measurement_id", ""),
             ui_field("umami_website_id", ""),
             ui_field("umami_script_url", ""),
@@ -1306,6 +1310,18 @@ mod settings_backup_tests {
         assert_eq!(updates.get("music_playlist_id"), Some(&json!("")));
         assert_eq!(updates.get("site_icp"), Some(&json!("")));
         assert_eq!(updates.get("site_footer_custom"), Some(&json!("")));
+        assert_eq!(updates.get("site_seo_review_cadence"), Some(&json!("off")));
+    }
+
+    #[test]
+    fn site_seo_review_cadence_normalizes() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field("site_seo_review_cadence", "WEEKLY")];
+        let updates = collect_database_updates(&config);
+        assert_eq!(
+            updates.get("site_seo_review_cadence"),
+            Some(&json!("weekly"))
+        );
     }
 
     #[test]
@@ -1572,6 +1588,17 @@ mod settings_backup_tests {
             "8039305244"
         );
         assert_eq!(normalize_music_playlist_id("  42  "), "42");
+    }
+
+    #[test]
+    fn deploy_env_writes_only_base_url() {
+        assert_eq!(deploy_env_key("base_url"), Some("BASE_URL"));
+        assert_eq!(deploy_env_key("proxy_enabled"), None);
+        assert_eq!(deploy_env_key("proxy_url"), None);
+        assert_eq!(deploy_env_key("proxy_bypass"), None);
+        assert_eq!(deploy_env_key("gemini_base_url"), None);
+        assert_eq!(deploy_env_key("github_api_base_url"), None);
+        assert_eq!(deploy_env_key("jwt_secret"), None);
     }
 
     #[test]

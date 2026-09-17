@@ -1,39 +1,34 @@
 //! DB introspection and DDL helpers.
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::types::{ColumnDef, IndexDef};
 
-pub(crate) async fn get_table_columns(
+pub(crate) async fn get_all_table_columns(
     db: &DatabaseConnection,
-    table_name: &str,
-) -> Result<HashSet<String>, DbErr> {
-    // 安全检查：表名只允许字母、数字、下划线
-    if !table_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return Err(DbErr::Custom(format!("Invalid table name: {}", table_name)));
-    }
-
-    let sql = format!(
-        r#"
-        SELECT column_name
+) -> Result<HashMap<String, HashSet<String>>, DbErr> {
+    let sql = r#"
+        SELECT table_name, column_name
         FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = '{}'
-        "#,
-        table_name
-    );
+        WHERE table_schema = 'public'
+    "#;
 
     let rows = db
         .query_all_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
-            sql,
+            sql.to_string(),
         ))
         .await?;
 
-    let mut columns = HashSet::new();
+    let mut columns: HashMap<String, HashSet<String>> = HashMap::new();
     for row in rows {
-        if let Ok(name) = row.try_get::<String>("", "column_name") {
-            columns.insert(name);
-        }
+        let Ok(table) = row.try_get::<String>("", "table_name") else {
+            continue;
+        };
+        let Ok(column) = row.try_get::<String>("", "column_name") else {
+            continue;
+        };
+        columns.entry(table).or_default().insert(column);
     }
 
     Ok(columns)
@@ -120,18 +115,6 @@ pub(crate) async fn is_schema_version_applied(
     db: &DatabaseConnection,
     version: &str,
 ) -> Result<bool, DbErr> {
-    // 安全检查：版本号只允许字母、数字、点、下划线、连字符
-    if !version
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
-    {
-        return Err(DbErr::Custom(format!(
-            "Invalid version format: {}",
-            version
-        )));
-    }
-
-    // 先确保版本表存在
     db.execute_unprepared(
         r#"
         CREATE TABLE IF NOT EXISTS _schema_versions (
@@ -143,12 +126,10 @@ pub(crate) async fn is_schema_version_applied(
     .await?;
 
     let result = db
-        .query_one_raw(sea_orm::Statement::from_string(
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            format!(
-                "SELECT 1 FROM _schema_versions WHERE version = '{}'",
-                version
-            ),
+            "SELECT 1 FROM _schema_versions WHERE version = $1",
+            [version.into()],
         ))
         .await?;
 
@@ -160,20 +141,10 @@ pub(crate) async fn mark_schema_version_applied(
     db: &DatabaseConnection,
     version: &str,
 ) -> Result<(), DbErr> {
-    // 安全检查：版本号只允许字母、数字、点、下划线、连字符
-    if !version
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
-    {
-        return Err(DbErr::Custom(format!(
-            "Invalid version format: {}",
-            version
-        )));
-    }
-
-    db.execute_unprepared(&format!(
-        "INSERT INTO _schema_versions (version) VALUES ('{}') ON CONFLICT (version) DO NOTHING",
-        version
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        "INSERT INTO _schema_versions (version) VALUES ($1) ON CONFLICT (version) DO NOTHING",
+        [version.into()],
     ))
     .await?;
 

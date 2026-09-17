@@ -690,6 +690,11 @@ fn syndication_robots(site_noindex: bool) -> Option<&'static str> {
     }
 }
 
+pub(crate) async fn site_branding_copy(db: &DatabaseConnection) -> (String, String, String) {
+    let branding = load_site_branding(db).await;
+    (branding.title, branding.description, branding.ai_intro)
+}
+
 async fn load_site_branding(db: &DatabaseConnection) -> SiteBranding {
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
@@ -1451,70 +1456,6 @@ fn sanitize_geo_label(s: &str) -> String {
     }
 }
 
-/// Guest-visible modules plus a sample of public apps/writing for SEO/GEO copy.
-pub(crate) async fn public_geo_prompt_facts(db: &DatabaseConnection) -> String {
-    let prefs = load_module_visibility_preferences(db).await;
-    let modules = &prefs.modules;
-    let mut lines = Vec::new();
-    let mut visible = vec!["Home".to_string()];
-    let mut hidden = Vec::new();
-    for (key, label) in [
-        ("library", "Library"),
-        ("phantasi", "Journal"),
-        ("reports", "Reports"),
-        ("tapp", "Tapp"),
-    ] {
-        let level = modules.get(key).map(String::as_str).unwrap_or("all");
-        if module_is_public_all(level) {
-            visible.push(label.to_string());
-        } else {
-            hidden.push(label);
-        }
-    }
-    lines.push(format!("Guest-visible modules: {}", visible.join(", ")));
-    if !hidden.is_empty() {
-        lines.push(format!(
-            "Not guest-visible (do not mention): {}",
-            hidden.join(", ")
-        ));
-    }
-
-    if module_is_public_all(modules.get("tapp").map(String::as_str).unwrap_or("all")) {
-        let apps = public_tapp_links(db, None).await;
-        if apps.is_empty() {
-            lines.push("Public apps: none listed.".into());
-        } else {
-            let names: Vec<String> = apps
-                .into_iter()
-                .take(GEO_PROMPT_ITEM_LIMIT)
-                .map(|(_, name, _)| sanitize_geo_label(&name))
-                .filter(|s| !s.is_empty())
-                .collect();
-            lines.push(format!("Public apps (sample): {}", names.join("; ")));
-        }
-    }
-
-    if module_is_public_all(modules.get("phantasi").map(String::as_str).unwrap_or("all")) {
-        let writing = own_phantasi_item_links(db, None).await;
-        if writing.is_empty() {
-            lines.push("Public writing: none listed.".into());
-        } else {
-            let titles: Vec<String> = writing
-                .into_iter()
-                .take(GEO_PROMPT_ITEM_LIMIT)
-                .map(|(_, title, _)| sanitize_geo_label(&title))
-                .filter(|s| !s.is_empty())
-                .collect();
-            lines.push(format!(
-                "Public writing titles (sample): {}",
-                titles.join("; ")
-            ));
-        }
-    }
-
-    lines.join("\n")
-}
-
 async fn own_phantasi_note_links(
     db: &DatabaseConnection,
     base: Option<&str>,
@@ -1557,6 +1498,168 @@ async fn own_phantasi_note_links(
         links.push((public_absolute_url(base, &path), item.title, blurb));
     }
     links
+}
+
+fn geo_link_json(items: &[(String, String, Option<String>)]) -> Value {
+    Value::Array(
+        items
+            .iter()
+            .map(|(url, title, blurb)| {
+                json!({
+                    "url": url,
+                    "title": title,
+                    "blurb": blurb,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn sample_titles(items: &[(String, String, Option<String>)]) -> Vec<String> {
+    items
+        .iter()
+        .take(GEO_PROMPT_ITEM_LIMIT)
+        .map(|(_, title, _)| sanitize_geo_label(title))
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Guest-visible modules plus a sample of public apps/writing/notes for SEO/GEO copy.
+pub(crate) async fn public_geo_prompt_facts(db: &DatabaseConnection) -> String {
+    let prefs = load_module_visibility_preferences(db).await;
+    let modules = &prefs.modules;
+    let mut lines = Vec::new();
+    let mut visible = vec!["Home".to_string()];
+    let mut hidden = Vec::new();
+    for (key, label) in [
+        ("library", "Library"),
+        ("phantasi", "Journal"),
+        ("reports", "Reports"),
+        ("tapp", "Tapp"),
+    ] {
+        let level = modules.get(key).map(String::as_str).unwrap_or("all");
+        if module_is_public_all(level) {
+            visible.push(label.to_string());
+        } else {
+            hidden.push(label);
+        }
+    }
+    lines.push(format!("Guest-visible modules: {}", visible.join(", ")));
+    if !hidden.is_empty() {
+        lines.push(format!(
+            "Not guest-visible (do not mention): {}",
+            hidden.join(", ")
+        ));
+    }
+
+    if module_is_public_all(modules.get("tapp").map(String::as_str).unwrap_or("all")) {
+        let apps = public_tapp_links(db, None).await;
+        if apps.is_empty() {
+            lines.push("Public apps: none listed.".into());
+        } else {
+            lines.push(format!(
+                "Public apps (sample): {}",
+                sample_titles(&apps).join("; ")
+            ));
+        }
+    }
+
+    if module_is_public_all(modules.get("phantasi").map(String::as_str).unwrap_or("all")) {
+        let writing = own_phantasi_item_links(db, None).await;
+        if writing.is_empty() {
+            lines.push("Public writing: none listed.".into());
+        } else {
+            lines.push(format!(
+                "Public writing titles (sample): {}",
+                sample_titles(&writing).join("; ")
+            ));
+        }
+        let notes = own_phantasi_note_links(db, None).await;
+        if notes.is_empty() {
+            lines.push("Public notes: none listed.".into());
+        } else {
+            lines.push(format!(
+                "Public note titles (sample): {}",
+                sample_titles(&notes).join("; ")
+            ));
+        }
+    }
+
+    lines.join("\n")
+}
+
+/// Branding plus guest-visible original content. No friend-links or third-party feeds.
+pub(crate) async fn public_geo_inspect(db: &DatabaseConnection) -> Value {
+    let branding = load_site_branding(db).await;
+    let prefs = load_module_visibility_preferences(db).await;
+    let modules = &prefs.modules;
+    let mut visible = vec!["Home".to_string()];
+    let mut hidden = Vec::new();
+    for (key, label) in [
+        ("library", "Library"),
+        ("phantasi", "Journal"),
+        ("reports", "Reports"),
+        ("tapp", "Tapp"),
+    ] {
+        let level = modules.get(key).map(String::as_str).unwrap_or("all");
+        if module_is_public_all(level) {
+            visible.push(label.to_string());
+        } else {
+            hidden.push(label.to_string());
+        }
+    }
+
+    let tapp_open = module_is_public_all(modules.get("tapp").map(String::as_str).unwrap_or("all"));
+    let phantasi_open =
+        module_is_public_all(modules.get("phantasi").map(String::as_str).unwrap_or("all"));
+    let apps = if tapp_open {
+        public_tapp_links(db, None).await
+    } else {
+        Vec::new()
+    };
+    let writing = if phantasi_open {
+        own_phantasi_item_links(db, None).await
+    } else {
+        Vec::new()
+    };
+    let notes = if phantasi_open {
+        own_phantasi_note_links(db, None).await
+    } else {
+        Vec::new()
+    };
+
+    let mut owner = json!({});
+    if let Ok(uid) = crate::services::site_owner::site_owner_user_id(db).await {
+        if let Ok(text) = crate::services::profile_text::resolve_profile_text(db, uid).await {
+            if let Some(name) = text.name.filter(|s| !s.trim().is_empty()) {
+                owner["name"] = json!(name);
+            }
+            let bio = text.bio.trim();
+            if !bio.is_empty() && !crate::services::avatar::is_placeholder_bio(bio) {
+                owner["bio"] = json!(bio);
+            }
+        }
+    }
+
+    json!({
+        "branding": {
+            "title": branding.title,
+            "description": branding.description,
+            "keywords": branding.keywords,
+            "ai_intro": branding.ai_intro,
+            "visibility_policy": branding.policy,
+            "noindex": branding.noindex,
+        },
+        "owner": owner,
+        "modules": {
+            "visible": visible,
+            "hidden": hidden,
+        },
+        "apps": geo_link_json(&apps),
+        "writing": geo_link_json(&writing),
+        "notes": geo_link_json(&notes),
+        "facts": public_geo_prompt_facts(db).await,
+    })
 }
 
 fn module_nav_html(modules: &std::collections::HashMap<String, String>) -> String {
@@ -2494,6 +2597,19 @@ mod tests {
         let out = sanitize_geo_label(&long);
         assert!(out.ends_with('…'));
         assert_eq!(out.chars().count(), GEO_PROMPT_LABEL_CHARS);
+    }
+
+    #[test]
+    fn geo_inspect_link_json_keeps_title_and_blurb() {
+        let items = vec![(
+            "/journal/articles/1".into(),
+            "Hello".into(),
+            Some("short".into()),
+        )];
+        let v = geo_link_json(&items);
+        assert_eq!(v[0]["title"], "Hello");
+        assert_eq!(v[0]["url"], "/journal/articles/1");
+        assert_eq!(v[0]["blurb"], "short");
     }
 
     #[test]

@@ -135,6 +135,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         site_noindex: t.config.fieldSiteNoindex,
         site_visibility_policy: t.config.fieldSiteVisibilityPolicy,
         site_ai_intro: t.config.fieldSiteAiIntro,
+        site_seo_review_cadence: t.config.fieldSiteSeoReviewCadence,
       }
       return labels[fieldKey] || originalLabel
     },
@@ -175,6 +176,12 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       return raw
     }
     return getFieldValue('site_noindex') === 'true' ? 'private' : 'ai_full'
+  }, [getFieldValue])
+
+  const seoReviewCadence = useMemo(() => {
+    const raw = getFieldValue('site_seo_review_cadence').trim()
+    if (raw === 'daily' || raw === 'weekly') return raw
+    return 'off'
   }, [getFieldValue])
 
   const visibilityPolicyHint = useMemo(() => {
@@ -658,6 +665,26 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           {...bindGuide('ui.siteAiIntro', g.ui.siteAiIntro)}
           layout="vertical"
         />
+
+        <SettingItemWrapper
+          label={t.config.fieldSiteSeoReviewCadence}
+          description={t.config.fieldSiteSeoReviewCadenceHint}
+          layout="vertical"
+          {...bindGuide('ui.siteSeoReviewCadence', g.ui.siteSeoReviewCadence)}
+        >
+          <SegmentedControl
+            size="sm"
+            columns={3}
+            value={seoReviewCadence}
+            options={[
+              { value: 'off', label: t.config.seoReviewOff },
+              { value: 'daily', label: t.config.seoReviewDaily },
+              { value: 'weekly', label: t.config.seoReviewWeekly },
+            ]}
+            onChange={(v) => updateValue('site_seo_review_cadence', v)}
+            ariaLabel={t.config.fieldSiteSeoReviewCadence}
+          />
+        </SettingItemWrapper>
 
         <InputItem
           itemKey="site_keywords"

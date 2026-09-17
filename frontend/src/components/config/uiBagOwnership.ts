@@ -13,6 +13,7 @@ export const UI_RESET_KEYS: readonly string[] = Object.freeze([
   'site_noindex',
   'site_visibility_policy',
   'site_ai_intro',
+  'site_seo_review_cadence',
   'pwa_enabled',
   'site_icp',
   'site_gongan',

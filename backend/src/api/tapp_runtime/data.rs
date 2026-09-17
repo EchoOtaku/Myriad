@@ -23,7 +23,7 @@ use crate::services::tapp_storage::{
     validate_storage_value_size, write_storage_value,
 };
 
-use super::common::{authorize_tapp_permissions, parse_user_id, verify_tapp_ownership};
+use super::common::parse_user_id;
 use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
@@ -119,7 +119,6 @@ fn storage_subject_id(
 /// POST /api/tapp/data/transform
 pub async fn data_transform(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<DataTransformRequest>,
@@ -148,20 +147,6 @@ pub async fn data_transform(
     }
     for permission in &required_permissions {
         runtime_grant.require(*permission)?;
-    }
-
-    if required_permissions.is_empty() {
-        let user_id = parse_user_id(&claims)?;
-        verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
-    } else {
-        authorize_tapp_permissions(
-            &db,
-            &claims,
-            &req.tapp_id,
-            &required_permissions,
-            &dynamic_config,
-        )
-        .await?;
     }
 
     // Storage I/O always follows the current runtime subject, including when a
@@ -193,7 +178,10 @@ pub async fn data_transform(
             let value = read_storage_value(&db, storage_subject_id, &req.tapp_id, &key)
                 .await
                 .map_err(storage_http_error)?;
-            value.as_array().cloned().unwrap_or_default()
+            match value {
+                Value::Array(items) => items,
+                _ => Vec::new(),
+            }
         }
         DataInput::Inline { data } => tapp_data_transform::items_from_value(data),
     };
