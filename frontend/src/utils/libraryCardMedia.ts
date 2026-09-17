@@ -18,23 +18,34 @@ function pumpQueue() {
   }
 }
 
-export function acquireCoverDecodeSlot(): Promise<Release> {
-  return new Promise((resolve) => {
+export function acquireCoverDecodeSlot(signal?: AbortSignal): Promise<Release> {
+  return new Promise((resolve, reject) => {
+    let granted = false
+    let released = false
+    const release = () => {
+      if (released) return
+      released = true
+      signal?.removeEventListener('abort', abort)
+      if (granted) activeDecodes = Math.max(0, activeDecodes - 1)
+      else {
+        const index = waitQueue.indexOf(grant)
+        if (index !== -1) waitQueue.splice(index, 1)
+      }
+      pumpQueue()
+    }
+    const abort = () => {
+      release()
+      reject(signal?.reason ?? new DOMException('Cancelled', 'AbortError'))
+    }
     const grant = () => {
+      granted = true
       activeDecodes += 1
-      let released = false
-      resolve(() => {
-        if (released) return
-        released = true
-        activeDecodes = Math.max(0, activeDecodes - 1)
-        pumpQueue()
-      })
+      resolve(release)
     }
-    if (activeDecodes < MAX_CONCURRENT_COVER_DECODES) {
-      grant()
-    } else {
-      waitQueue.push(grant)
-    }
+    if (signal?.aborted) { abort(); return }
+    signal?.addEventListener('abort', abort, { once: true })
+    if (activeDecodes < MAX_CONCURRENT_COVER_DECODES) grant()
+    else waitQueue.push(grant)
   })
 }
 

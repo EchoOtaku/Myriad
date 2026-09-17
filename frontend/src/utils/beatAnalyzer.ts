@@ -5,7 +5,73 @@ export interface BeatGrid {
   confidence: number
 }
 
-const gridCache = new Map<string, Promise<BeatGrid | null>>()
+const gridCache = new Map<string, BeatGrid>()
+const MAX_AUDIO_BYTES = 4 * 1024 * 1024
+const MAX_AUDIO_SECONDS = 120
+let analysisTail: Promise<unknown> = Promise.resolve()
+let outstanding = 0
+
+async function readAudio(url: string, signal: AbortSignal): Promise<ArrayBuffer | null> {
+  const response = await fetch(url, { signal })
+  if (!response.ok) { await response.body?.cancel(); return null }
+  if (Number(response.headers.get('content-length')) > MAX_AUDIO_BYTES || !response.body) {
+    await response.body?.cancel()
+    return null
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let bytes = 0
+  const abort = () => { void reader.cancel().catch(() => {}) }
+  signal.addEventListener('abort', abort, { once: true })
+  try {
+    while (true) {
+      signal.throwIfAborted()
+      const { done, value } = await reader.read()
+      signal.throwIfAborted()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > MAX_AUDIO_BYTES) return null
+      chunks.push(value)
+    }
+    const result = new Uint8Array(bytes)
+    let offset = 0
+    for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength }
+    return result.buffer
+  } finally {
+    signal.removeEventListener('abort', abort)
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
+}
+
+/** Reject long media before Web Audio allocates a full PCM buffer. */
+async function hasBoundedDuration(raw: ArrayBuffer, signal: AbortSignal): Promise<boolean> {
+  const url = URL.createObjectURL(new Blob([raw]))
+  const audio = new Audio()
+  try {
+    return await new Promise<boolean>((resolve, reject) => {
+      const abort = () => finish(false, signal.reason)
+      const finish = (valid: boolean, error?: unknown) => {
+        signal.removeEventListener('abort', abort)
+        audio.onloadedmetadata = null
+        audio.onerror = null
+        if (error) reject(error)
+        else resolve(valid)
+      }
+      signal.addEventListener('abort', abort, { once: true })
+      if (signal.aborted) { abort(); return }
+      audio.preload = 'metadata'
+      audio.onloadedmetadata = () => finish(Number.isFinite(audio.duration) && audio.duration >= 10 && audio.duration <= MAX_AUDIO_SECONDS)
+      audio.onerror = () => finish(false)
+      audio.src = url
+      audio.load()
+    })
+  } finally {
+    audio.src = ''
+    audio.load()
+    URL.revokeObjectURL(url)
+  }
+}
 
 function fft(re: Float32Array, im: Float32Array): void {
   const n = re.length
@@ -47,15 +113,15 @@ function fft(re: Float32Array, im: Float32Array): void {
   }
 }
 
-async function analyze(url: string): Promise<BeatGrid | null> {
-  const resp = await fetch(url)
-  if (!resp.ok) return null
-  const raw = await resp.arrayBuffer()
+async function analyze(url: string, signal: AbortSignal): Promise<BeatGrid | null> {
+  const raw = await readAudio(url, signal)
+  if (!raw || !await hasBoundedDuration(raw, signal)) return null
+  signal.throwIfAborted()
   const AC =
     window.AudioContext ||
     (window as unknown as { webkitAudioContext: typeof AudioContext })
       .webkitAudioContext
-  const ctx = new AC()
+  const ctx = new AC({ sampleRate: 11025 })
   let audio: AudioBuffer
   try {
     audio = await ctx.decodeAudioData(raw)
@@ -63,7 +129,8 @@ async function analyze(url: string): Promise<BeatGrid | null> {
     void ctx.close()
   }
   // Skip overly long audio (memory).
-  if (audio.duration > 900 || audio.duration < 10) return null
+  signal.throwIfAborted()
+  if (audio.duration > MAX_AUDIO_SECONDS || audio.duration < 10) return null
 
   const sr = audio.sampleRate
   const down = Math.max(1, Math.round(sr / 11025))
@@ -89,6 +156,7 @@ async function analyze(url: string): Promise<BeatGrid | null> {
   for (let i = 0; i < win; i++) {
     hann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / win)
   }
+  let sliceStart = performance.now()
   for (let f = 0; f < frames; f++) {
     const off = f * hop
     for (let i = 0; i < win; i++) {
@@ -104,8 +172,10 @@ async function analyze(url: string): Promise<BeatGrid | null> {
       prevMag[k] = mag
     }
     env[f] = flux
-    if ((f & 2047) === 2047) {
+    if (performance.now() - sliceStart >= 8) {
       await new Promise((r) => setTimeout(r, 0))
+      signal.throwIfAborted()
+      sliceStart = performance.now()
     }
   }
 
@@ -130,6 +200,11 @@ async function analyze(url: string): Promise<BeatGrid | null> {
   let scoreSum = 0
   let scoreCnt = 0
   for (let lag = minLag; lag <= maxLag; lag++) {
+    if (performance.now() - sliceStart >= 8) {
+      await new Promise((r) => setTimeout(r, 0))
+      signal.throwIfAborted()
+      sliceStart = performance.now()
+    }
     let r = 0
     for (let i = 0; i + lag < frames; i += 2) {
       r += smooth[i] * smooth[i + lag]
@@ -202,18 +277,28 @@ async function analyze(url: string): Promise<BeatGrid | null> {
 export function analyzeBeatGrid(
   url: string,
   cacheKey: string,
+  signal?: AbortSignal,
 ): Promise<BeatGrid | null> {
-  let p = gridCache.get(cacheKey)
-  if (!p) {
-    p = analyze(url).catch((e) => {
-      console.warn('[beatAnalyzer] analysis failed:', e)
+  if (signal?.aborted) return Promise.resolve(null)
+  const cached = gridCache.get(cacheKey)
+  if (cached) return Promise.resolve(cached)
+  if (outstanding >= 5) return Promise.resolve(null)
+  outstanding++
+  const timeout = AbortSignal.timeout(30_000)
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
+  const task = analysisTail.then(async () => {
+    if (combined.aborted) return null
+    try {
+      const grid = await analyze(url, combined)
+      if (grid && !combined.aborted) {
+        gridCache.set(cacheKey, grid)
+        if (gridCache.size > 20) gridCache.delete(gridCache.keys().next().value!)
+      }
+      return grid
+    } catch {
       return null
-    })
-    gridCache.set(cacheKey, p)
-    if (gridCache.size > 20) {
-      const first = gridCache.keys().next().value
-      if (first) gridCache.delete(first)
     }
-  }
-  return p
+  }).finally(() => { outstanding-- })
+  analysisTail = task
+  return task
 }

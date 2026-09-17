@@ -33,7 +33,12 @@ mod unbounded_read_tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        for pattern in [".bytes().await", ".text().await", ".json::<"] {
+        for pattern in [
+            ".bytes().await",
+            ".text().await",
+            ".json::<",
+            ".json().await",
+        ] {
             assert!(
                 !code.contains(pattern),
                 "unbounded `{pattern}` in proxy — use \

@@ -19,3 +19,12 @@ test('long history initially mounts only its latest page, then every older messa
   assert.equal(revealEarlierHistory(0), 0)
   assert.equal(historyStart(3), 0)
 })
+
+test('the live window follows new messages without accumulating DOM rows', async () => {
+  const { conversationWindow } = await import('./conversationHistory')
+  const first = conversationWindow(0, 10000)
+  assert.ok(first.end - first.start <= 80)
+  const older = conversationWindow(100, 10000)
+  assert.equal(older.start, 100)
+  assert.ok(older.end - older.start <= 80)
+})

@@ -73,3 +73,22 @@ describe('agentAttachments', () => {
     assert.ok(result.attachments[0].text !== undefined)
   })
 })
+
+it('image previews decode at thumbnail size and release their bitmap', async () => {
+  let closed = false
+  const previousBitmap = globalThis.createImageBitmap
+  const previousDocument = globalThis.document
+  globalThis.createImageBitmap = (async (_file: unknown, options: ImageBitmapOptions) => {
+    assert.ok((options.resizeWidth ?? Infinity) <= 384)
+    return { width: 384, height: 192, close: () => { closed = true } }
+  }) as typeof createImageBitmap
+  globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage: () => {} }), toDataURL: () => 'data:image/webp;base64,small' }) } as unknown as Document
+  try {
+    const result = await collectAttachments([file('large.png', 'image/png', 1024)], [])
+    assert.equal(result.attachments[0].previewUrl, 'data:image/webp;base64,small')
+    assert.equal(closed, true)
+  } finally {
+    globalThis.createImageBitmap = previousBitmap
+    globalThis.document = previousDocument
+  }
+})

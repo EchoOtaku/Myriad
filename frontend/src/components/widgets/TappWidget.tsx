@@ -13,6 +13,7 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import { loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
+import { hiddenWidgetPool } from '../../tapp/runtime/resourceBounds'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { widgetPerfMark } from '../../tapp/runtime/WidgetLoadPerf'
 import { onTappWidgetInvalidate } from '../../tapp/runtime/WidgetRuntimeSignals'
@@ -370,6 +371,14 @@ function TappWidgetRuntime({
 
   // iframe 仅近视口挂载。0×0/未撑开不能当离屏；400ms×3 复查后再判离屏。
   const [inViewport, setInViewport] = useState(true)
+  const [retained, setRetained] = useState(true)
+  const poolKey = useRef({})
+  useEffect(() => {
+    const key = poolKey.current
+    if (inViewport) setRetained(true)
+    else if (retained) hiddenWidgetPool.add(key, () => setRetained(false))
+    return () => hiddenWidgetPool.remove(key)
+  }, [inViewport, retained])
   const viewportObserverRef = useRef<IntersectionObserver | null>(null)
   const viewportNodeRef = useRef<HTMLDivElement | null>(null)
   const viewportRecheckRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -963,11 +972,13 @@ function TappWidgetRuntime({
       style={pointerEventsStyle}
       data-no-ripple
     >
-      {/* sandboxHostRef 常驻作观察目标；沙箱按 inViewport 挂/卸。 */}
+      {/* 隐藏时 iframe 原地保留，只有暂存池淘汰才销毁。 */}
       <div ref={sandboxHostRef} className="w-full h-full">
-        {inViewport ? (
+        {(inViewport || retained) ? (
           <TappWidgetSandbox
             key={refreshGeneration}
+            paused={!inViewport}
+            style={{ visibility: inViewport ? undefined : 'hidden' }}
             tappInstance={tappInstance}
             code={code}
             widgetId={widget.config.id || widget.id.split('.').pop() || ''}

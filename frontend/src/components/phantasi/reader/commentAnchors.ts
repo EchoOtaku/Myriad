@@ -67,7 +67,9 @@ export function unwrapTextDecorations(
   selector = 'mark.user-comment-highlight, mark.phantasiai-annotation',
 ): void {
   for (const mark of [...root.querySelectorAll(selector)]) {
+    const parent = mark.parentNode
     mark.replaceWith(...mark.childNodes)
+    parent?.normalize()
   }
 }
 
@@ -87,39 +89,57 @@ function commentMarkColors(theme: ThemeKey): { background: string; border: strin
   return { background: backgrounds[theme], border: borders[theme] }
 }
 
+interface TextPart { node: Text; offset: number; excluded: boolean }
+
+function indexText(root: HTMLElement): TextPart[] {
+  const walker = root.ownerDocument.createTreeWalker(root, 4)
+  const parts: TextPart[] = []
+  let offset = 0
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    parts.push({ node, offset, excluded: !!node.parentElement?.closest(MEDIA_EXEMPT) })
+    offset += node.length
+  }
+  return parts
+}
+
 function wrapPlainTextRange(
   root: HTMLElement,
+  parts: TextPart[],
   start: number,
   end: number,
   createMark: (doc: Document) => HTMLElement,
 ): boolean {
   if (end <= start) return false
-  const walker = root.ownerDocument.createTreeWalker(root, 4)
-  const parts: { node: Text; start: number; end: number }[] = []
-  let offset = 0
-  let excludedOverlap = false
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text
-    const next = offset + node.length
-    if (offset < end && next > start) {
-      if (node.parentElement?.closest(MEDIA_EXEMPT)) excludedOverlap = true
-      parts.push({
-        node,
-        start: Math.max(0, start - offset),
-        end: Math.min(node.length, end - offset),
-      })
-    }
-    offset = next
+  let low = 0
+  let high = parts.length
+  while (low < high) {
+    const mid = (low + high) >>> 1
+    if (parts[mid].offset + parts[mid].node.length <= start) low = mid + 1
+    else high = mid
   }
-  if (excludedOverlap || parts.length === 0) return false
-  for (const part of parts) {
-    const selected = part.node.splitText(part.start)
-    selected.splitText(part.end - part.start)
+  const first = low
+  while (low < parts.length && parts[low].offset < end) {
+    if (parts[low].excluded) return false
+    low++
+  }
+  // Work backwards so splitting does not invalidate remaining indices.
+  for (let i = low - 1; i >= first; i--) {
+    const part = parts[i]
+    const from = Math.max(0, start - part.offset)
+    const to = Math.min(part.node.length, end - part.offset)
+    const selected = from ? part.node.splitText(from) : part.node
+    const tail = to - from < selected.length ? selected.splitText(to - from) : null
     const mark = createMark(root.ownerDocument)
     selected.replaceWith(mark)
     mark.appendChild(selected)
+    parts.splice(i, 1,
+      ...(from ? [{ ...part }] : []),
+      { ...part, node: selected, offset: part.offset + from },
+      ...(tail ? [{ ...part, node: tail, offset: part.offset + to }] : []),
+    )
   }
-  return true
+  return low > first
 }
 
 const COMMENT_HIGHLIGHT = 'phantasi-comment'
@@ -162,12 +182,13 @@ export function paintAnchoredComments(
     return
   }
   const text = root.textContent ?? ''
+  const parts = indexText(root)
   const colors = commentMarkColors(theme)
   for (const comment of comments) {
     if (!Number.isFinite(Number(comment.id)) || comment.parent_id) continue
     const start = resolveCommentAnchor(text, comment)
     if (start === null) continue
-    wrapPlainTextRange(root, start, start + comment.selected_text.length, (doc) => {
+    wrapPlainTextRange(root, parts, start, start + comment.selected_text.length, (doc) => {
       const mark = doc.createElement('mark')
       mark.className = 'user-comment-highlight'
       mark.dataset.commentId = String(Number(comment.id))
@@ -196,6 +217,7 @@ export function paintAnchoredAnnotations(
   unwrapTextDecorations(root, 'mark.phantasiai-annotation')
   if (!annotations.length) return
   const text = root.textContent ?? ''
+  const parts = indexText(root)
   const seen = new Set<string>()
   const ordered = annotations.toSorted((a, b) => b.term.length - a.term.length)
   for (const [index, annotation] of ordered.entries()) {
@@ -207,7 +229,7 @@ export function paintAnchoredAnnotations(
     })
     if (start === null) continue
     seen.add(`${annotation.type}:${quote}`)
-    wrapPlainTextRange(root, start, start + quote.length, (doc) => {
+    wrapPlainTextRange(root, parts, start, start + quote.length, (doc) => {
       const mark = doc.createElement('mark')
       mark.className = 'phantasiai-annotation'
       const rawId = annotation.id || `${annotation.type}-${index}`

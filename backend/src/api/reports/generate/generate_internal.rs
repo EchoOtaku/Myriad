@@ -1027,15 +1027,11 @@ async fn get_platform_data(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<SmartFilteredData, String> {
+    use crate::services::keyed_lock::KeyedLocks;
     use once_cell::sync::Lazy;
-    use std::collections::HashMap;
     use std::fs;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
 
-    // 每个平台独立的处理锁
-    type PlatformLocks = Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>;
-    static PLATFORM_LOCKS: Lazy<PlatformLocks> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+    static PLATFORM_LOCKS: Lazy<KeyedLocks> = Lazy::new(KeyedLocks::default);
 
     // 1. 尝试从独立平台缓存加载
     if let Ok(cached_data) = SmartFilter::load_platform_cache(platform) {
@@ -1046,13 +1042,7 @@ async fn get_platform_data(
     tracing::info!("Platform cache miss for {}, processing...", platform);
 
     // 2. 获取平台特定的锁
-    let lock = {
-        let mut locks = PLATFORM_LOCKS.lock().await;
-        locks
-            .entry(platform.to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
-    };
+    let lock = PLATFORM_LOCKS.get(platform);
 
     let _guard = lock.lock().await;
 

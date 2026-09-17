@@ -87,6 +87,9 @@ static AI_TASKS: Lazy<RwLock<HashMap<String, LocalAiTask>>> =
 
 fn clean_tasks(tasks: &mut HashMap<String, LocalAiTask>, now: i64) {
     tasks.retain(|_, task| !task.snapshot.status.terminal() || task.retain_until > now);
+    if tasks.capacity() > tasks.len().saturating_mul(4).max(64) {
+        tasks.shrink_to(tasks.len().max(64));
+    }
 }
 
 /// Insert a local task after durable registration succeeded.
@@ -96,18 +99,65 @@ pub async fn insert_local(task: LocalAiTask) {
     tasks.insert(task.snapshot.task_id.clone(), task);
 }
 
+/// Release terminal snapshots even when no new request reaches admission.
+pub async fn cleanup_local_tasks() {
+    let abandoned = {
+        let mut tasks = AI_TASKS.write().await;
+        clean_tasks(&mut tasks, Utc::now().timestamp());
+        // A receiver lives in the producer future, including while queued for
+        // polling or performing quota/ledger settlement. Age alone must never
+        // terminate an executor which still owns its receiver.
+        tasks
+            .values()
+            .filter(|task| !task.snapshot.status.terminal() && task.cancel.receiver_count() == 0)
+            .take(8)
+            .map(|task| task.snapshot.task_id.clone())
+            .collect::<Vec<_>>()
+    };
+    for task_id in abandoned {
+        // No detached cleanup jobs, and one stalled registry cannot stall the
+        // maintenance loop. Local terminal state is set before database I/O.
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), finish_task(
+            &task_id, AiTaskStatus::Cancelled, None,
+            Some(serde_json::json!({"code": "AI_TASK_CANCELLED", "message": "AI task executor stopped"})), None,
+        )).await;
+    }
+}
+
+/// Run a local task while its caller awaits the result.
+pub async fn run_owned_local(
+    task: LocalAiTask,
+    execution: impl std::future::Future<Output = ()> + Send + 'static,
+) {
+    struct CancelOnDrop(watch::Sender<bool>);
+    impl Drop for CancelOnDrop {
+        fn drop(&mut self) {
+            let _ = self.0.send(true);
+        }
+    }
+    let _cancel_on_drop = CancelOnDrop(task.cancel.clone());
+    let task_id = task.snapshot.task_id.clone();
+    insert_local(task).await;
+    // The caller owns cancellation, while this registered executor owns its
+    // terminal control path (quota, ledger, durable snapshot and mailbox).
+    // Dropping a JoinHandle detaches it; the guard signals cooperative cancel.
+    if let Err(error) = tokio::spawn(execution).await {
+        tracing::error!(%error, %task_id, "[TAPP] AI task executor stopped unexpectedly");
+        cleanup_local_tasks().await;
+    }
+}
+
 /// Snapshot of a local task if still present.
 pub async fn local_snapshot(task_id: &str) -> Option<AiTaskSnapshot> {
-    AI_TASKS
-        .read()
-        .await
-        .get(task_id)
-        .map(|task| task.snapshot.clone())
+    let mut tasks = AI_TASKS.write().await;
+    clean_tasks(&mut tasks, Utc::now().timestamp());
+    tasks.get(task_id).map(|task| task.snapshot.clone())
 }
 
 /// Count active + retained local tasks for a subject (preflight).
 pub async fn local_subject_counts(subject_id: i32) -> (usize, usize) {
-    let tasks = AI_TASKS.read().await;
+    let mut tasks = AI_TASKS.write().await;
+    clean_tasks(&mut tasks, Utc::now().timestamp());
     let mut active = 0usize;
     let mut retained = 0usize;
     for task in tasks.values() {
@@ -401,5 +451,122 @@ mod tests {
         map.insert("ait_done".into(), done);
         clean_tasks(&mut map, 101);
         assert!(map.is_empty());
+    }
+
+    fn local_task(
+        id: &str,
+        subject: i32,
+        status: AiTaskStatus,
+    ) -> (LocalAiTask, tokio::sync::watch::Receiver<bool>) {
+        LocalAiTask::new(
+            "rt".into(),
+            subject,
+            subject,
+            "test".into(),
+            None,
+            [0; 32],
+            AiTaskSnapshot {
+                task_id: id.into(),
+                status,
+                operation: TappAiOperation::Generate,
+                delivery: AiTaskDelivery::Result,
+                created_at: "t".into(),
+                updated_at: "t".into(),
+                result: None,
+                error: None,
+                usage: usage(),
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn preflight_releases_all_expired_terminal_records() {
+        let subject = -91001;
+        let mut tasks = super::AI_TASKS.write().await;
+        for i in 0..64 {
+            let (mut task, _) =
+                local_task(&format!("expired-{i}"), subject, AiTaskStatus::Completed);
+            task.retain_until = 1;
+            tasks.insert(task.snapshot.task_id.clone(), task);
+        }
+        drop(tasks);
+        assert_eq!(super::local_subject_counts(subject).await, (0, 0));
+    }
+
+    #[tokio::test]
+    async fn expired_result_is_not_returned_by_local_snapshot() {
+        let (mut task, _) = local_task("expired-snapshot", -91002, AiTaskStatus::Completed);
+        task.retain_until = 1;
+        super::AI_TASKS
+            .write()
+            .await
+            .insert(task.snapshot.task_id.clone(), task);
+        assert!(super::local_snapshot("expired-snapshot").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn dropping_governed_caller_allows_executor_terminal_cleanup() {
+        let (task, mut cancel) = local_task("cancelled-producer", -91003, AiTaskStatus::Queued);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let parent = tokio::spawn(super::run_owned_local(task, async move {
+            super::update_task_state("cancelled-producer", AiTaskStatus::Running).await;
+            let _ = started_tx.send(());
+            cancel.changed().await.unwrap();
+            assert!(*cancel.borrow());
+            super::finish_task(
+                "cancelled-producer",
+                AiTaskStatus::Cancelled,
+                None,
+                None,
+                None,
+            )
+            .await;
+            let _ = finished_tx.send(());
+        }));
+        started_rx.await.unwrap();
+        parent.abort();
+        let _ = parent.await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), finished_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            super::local_snapshot("cancelled-producer")
+                .await
+                .unwrap()
+                .status,
+            AiTaskStatus::Cancelled
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_cleanup_reaps_abandoned_producers_but_keeps_live_work() {
+        let (mut live, live_receiver) = local_task("live-producer", -91004, AiTaskStatus::Running);
+        live.retain_until = 1;
+        let (orphan, orphan_receiver) =
+            local_task("orphan-producer", -91004, AiTaskStatus::Running);
+        super::insert_local(live).await;
+        super::insert_local(orphan).await;
+        drop(orphan_receiver);
+        super::cleanup_local_tasks().await;
+        assert_eq!(
+            super::local_snapshot("orphan-producer")
+                .await
+                .unwrap()
+                .status,
+            AiTaskStatus::Cancelled
+        );
+        assert_eq!(
+            super::local_snapshot("live-producer").await.unwrap().status,
+            AiTaskStatus::Running
+        );
+        let mut tasks = super::AI_TASKS.write().await;
+        tasks.get_mut("orphan-producer").unwrap().retain_until = 1;
+        drop(tasks);
+        super::cleanup_local_tasks().await;
+        assert!(super::local_snapshot("orphan-producer").await.is_none());
+        super::AI_TASKS.write().await.remove("live-producer");
+        drop(live_receiver);
     }
 }

@@ -32,3 +32,22 @@ describe('acquireCoverDecodeSlot', () => {
     assert.equal(__coverDecodeSlotStatsForTest().waiting, 0)
   })
 })
+
+describe('cover cancellation', () => {
+  it('removes aborted waiters and releases aborted active loads', async () => {
+    const controller = new AbortController()
+    const releases = await Promise.all(Array.from({ length: 8 }, () => acquireCoverDecodeSlot()))
+    const queued = acquireCoverDecodeSlot(controller.signal)
+    const rejected = assert.rejects(queued, { name: 'AbortError' })
+    controller.abort()
+    try {
+      assert.equal(__coverDecodeSlotStatsForTest().waiting, 0)
+      await rejected
+    } finally { releases.forEach((release) => release()) }
+    const active = new AbortController()
+    const release = await acquireCoverDecodeSlot(active.signal)
+    active.abort()
+    assert.equal(__coverDecodeSlotStatsForTest().active, 0)
+    release()
+  })
+})

@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use sea_orm::{ConnectionTrait, DbBackend, FromQueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::{Mutex, RwLock, broadcast};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
 use crate::services::tapp_registry as shared_registry;
 
@@ -20,6 +20,8 @@ use super::notifications::get_notification_manager;
 
 /// 单 run 内存事件环：加长以减少超长任务 re-subscribe 丢中间步骤
 const EVENT_HISTORY_LIMIT: usize = 512;
+const PERSISTENCE_QUEUE_LIMIT: usize = 128;
+const COMPLETED_RUN_CACHE_LIMIT: usize = 256;
 const RUN_REGISTRY_NAMESPACE: &str = "agent_run";
 const RUN_EVENT_REGISTRY_NAMESPACE: &str = "agent_run_event";
 const RUN_RETENTION_HOURS: i64 = 24;
@@ -69,6 +71,8 @@ pub struct AgentRun {
     session_id: Option<String>,
     created_at: chrono::DateTime<Utc>,
     state: Mutex<AgentRunState>,
+    publish_order: Mutex<()>,
+    persistence_tx: mpsc::Sender<(AgentRunEnvelope, PersistedAgentRun)>,
     events_tx: broadcast::Sender<AgentRunEnvelope>,
 }
 
@@ -80,6 +84,8 @@ impl AgentRun {
         let (events_tx, _) = broadcast::channel(EVENT_HISTORY_LIMIT);
         Arc::new(Self {
             execution: std::sync::Mutex::new(None),
+            publish_order: Mutex::new(()),
+            persistence_tx: Self::persistence_channel(),
             playback_direction: Default::default(),
             run_id,
             user_id,
@@ -99,6 +105,27 @@ impl AgentRun {
         })
     }
 
+    /// One ordered writer per run. The receiver owns snapshots, never the run,
+    /// and drains accepted events before exiting when the last sender is dropped.
+    fn persistence_channel() -> mpsc::Sender<(AgentRunEnvelope, PersistedAgentRun)> {
+        let (tx, mut rx) =
+            mpsc::channel::<(AgentRunEnvelope, PersistedAgentRun)>(PERSISTENCE_QUEUE_LIMIT);
+        tokio::spawn(async move {
+            while let Some((envelope, snapshot)) = rx.recv().await {
+                if tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    Self::persist(&envelope, &snapshot),
+                )
+                .await
+                .is_err()
+                {
+                    tracing::warn!(run_id = %snapshot.run_id, sequence = envelope.sequence, "[Agent Run] Persistence timed out");
+                }
+            }
+        });
+        tx
+    }
+
     #[cfg(test)]
     pub(crate) fn new_for_test(run_id: impl Into<String>, user_id: i32) -> Arc<Self> {
         Self::new(run_id.into(), user_id, None)
@@ -113,6 +140,8 @@ impl AgentRun {
         playback_direction.close(); // Restored history must never revive a live director.
         Arc::new(Self {
             execution: std::sync::Mutex::new(None),
+            publish_order: Mutex::new(()),
+            persistence_tx: Self::persistence_channel(),
             playback_direction,
             run_id: persisted.run_id,
             user_id: persisted.user_id,
@@ -176,12 +205,13 @@ impl AgentRun {
         !state.completed && state.status != "waiting_for_input"
     }
 
-    async fn updated_at(&self) -> chrono::DateTime<Utc> {
-        self.state.lock().await.updated_at
-    }
-
+    #[cfg(test)]
     async fn persisted_snapshot(&self) -> PersistedAgentRun {
         let state = self.state.lock().await;
+        self.snapshot_from_state(&state)
+    }
+
+    fn snapshot_from_state(&self, state: &AgentRunState) -> PersistedAgentRun {
         PersistedAgentRun {
             run_id: self.run_id.clone(),
             user_id: self.user_id,
@@ -232,33 +262,32 @@ ORDER BY record_id ASC
             .collect()
     }
 
-    async fn persist(&self, envelope: &AgentRunEnvelope) {
+    async fn persist(envelope: &AgentRunEnvelope, snapshot: &PersistedAgentRun) {
         let Ok(db) = shared_registry::database().await else {
-            tracing::warn!(run_id = %self.run_id, "[Agent Run] Database unavailable; run snapshot remains local");
+            tracing::warn!(run_id = %snapshot.run_id, "[Agent Run] Database unavailable; run snapshot remains local");
             return;
         };
-        let snapshot = self.persisted_snapshot().await;
         let expires_at =
             (snapshot.updated_at + chrono::Duration::hours(RUN_RETENTION_HOURS)).timestamp();
         let snapshot_payload = match serde_json::to_value(&snapshot) {
             Ok(payload) => payload,
             Err(error) => {
-                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to serialize run snapshot");
+                tracing::warn!(run_id = %snapshot.run_id, %error, "[Agent Run] Failed to serialize run snapshot");
                 return;
             }
         };
         let event_payload = match serde_json::to_value(envelope) {
             Ok(payload) => payload,
             Err(error) => {
-                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to serialize run event");
+                tracing::warn!(run_id = %snapshot.run_id, %error, "[Agent Run] Failed to serialize run event");
                 return;
             }
         };
-        let event_record_id = format!("{}:{:020}", self.run_id, envelope.sequence);
+        let event_record_id = format!("{}:{:020}", snapshot.run_id, envelope.sequence);
         let transaction = match db.begin().await {
             Ok(transaction) => transaction,
             Err(error) => {
-                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to begin persistence transaction");
+                tracing::warn!(run_id = %snapshot.run_id, %error, "[Agent Run] Failed to begin persistence transaction");
                 return;
             }
         };
@@ -267,7 +296,7 @@ ORDER BY record_id ASC
                 .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                    vec![format!("agent_run:{}", self.run_id).into()],
+                    vec![format!("agent_run:{}", snapshot.run_id).into()],
                 ))
                 .await?;
             transaction
@@ -282,8 +311,8 @@ ON CONFLICT (namespace, record_id) DO NOTHING
                     vec![
                         RUN_EVENT_REGISTRY_NAMESPACE.into(),
                         event_record_id.into(),
-                        self.user_id.into(),
-                        self.run_id.clone().into(),
+                        snapshot.user_id.into(),
+                        snapshot.run_id.clone().into(),
                         event_payload.into(),
                         expires_at.into(),
                     ],
@@ -307,8 +336,8 @@ WHERE COALESCE((tapp_runtime_registry.payload ->> 'next_sequence')::BIGINT, 0)
 "#,
                     vec![
                         RUN_REGISTRY_NAMESPACE.into(),
-                        self.run_id.clone().into(),
-                        self.user_id.into(),
+                        snapshot.run_id.clone().into(),
+                        snapshot.user_id.into(),
                         snapshot_payload.into(),
                         expires_at.into(),
                     ],
@@ -330,7 +359,7 @@ WHERE namespace = $1 AND runtime_id = $2
 "#,
                     vec![
                         RUN_EVENT_REGISTRY_NAMESPACE.into(),
-                        self.run_id.clone().into(),
+                        snapshot.run_id.clone().into(),
                         (EVENT_HISTORY_LIMIT as i64).into(),
                     ],
                 ))
@@ -339,7 +368,7 @@ WHERE namespace = $1 AND runtime_id = $2
         }
         .await;
         if let Err(error) = result {
-            tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to persist shared run snapshot");
+            tracing::warn!(run_id = %snapshot.run_id, %error, "[Agent Run] Failed to persist shared run snapshot");
         } else {
             shared_registry::maybe_cleanup(&db).await;
         }
@@ -395,8 +424,8 @@ WHERE namespace = $1 AND runtime_id = $2
 
     /// Publish a progress event to live subscribers first, then durable storage.
     ///
-    /// Live SSE must not wait on registry DB writes: a slow persist would fill the
-    /// mpsc forwarder and freeze step progress. Persistence is best-effort async.
+    /// Live SSE precedes its DB write. Sustained DB slowdown applies backpressure
+    /// once the bounded persistence queue is full; accepted events remain ordered.
     /// Data-plane frames (visemes, spectrum, VAD) must never reach this method.
     pub async fn publish(self: &Arc<Self>, event: AgentProgressEvent) {
         if matches!(
@@ -404,14 +433,24 @@ WHERE namespace = $1 AND runtime_id = $2
             AgentProgressEvent::Error { .. }
                 | AgentProgressEvent::TaskCompleted { success: false, .. }
         ) {
-            self.playback_direction.close();
+            // Cleanup from an old producer may race a successful terminal.
+            // Check under the same lock as that transition before closing its
+            // playback, while still closing active failures before DB backpressure.
+            let state = self.state.lock().await;
+            if !state.completed {
+                self.playback_direction.close();
+            }
         }
         if super::turn::event_plane(&event) == super::turn::EventPlane::Data {
             tracing::error!("[Agent Run] data-plane event dropped from run hub");
             return;
         }
+        let _order = self.publish_order.lock().await;
+        // Reserve before mutating/broadcasting: a cancelled publisher cannot
+        // leave a visible event without its matching persistence obligation.
+        let persistence = self.persistence_tx.reserve().await.ok();
         let mut notify = false;
-        let (envelope, task_id, status, progress, message, success) = {
+        let (envelope, snapshot, task_id, status, progress, message, success) = {
             let mut state = self.state.lock().await;
             // A terminal envelope is the run's hard boundary. SSE consumers
             // close on it, so accepting anything later only creates durable
@@ -538,6 +577,7 @@ WHERE namespace = $1 AND runtime_id = $2
             state.updated_at = Utc::now();
             (
                 envelope,
+                self.snapshot_from_state(&state),
                 state.task_id.clone(),
                 state.status.clone(),
                 state.progress,
@@ -549,12 +589,12 @@ WHERE namespace = $1 AND runtime_id = $2
         // Live path: broadcast immediately so SSE subscribers never wait on DB.
         let _ = self.events_tx.send(envelope.clone());
 
-        // Durable path: best-effort, off the hot path.
-        let this = Arc::clone(self);
-        let envelope_for_persist = envelope;
-        tokio::spawn(async move {
-            this.persist(&envelope_for_persist).await;
-        });
+        if let Some(permit) = persistence {
+            permit.send((envelope, snapshot));
+        } else {
+            tracing::error!(run_id = %self.run_id, "[Agent Run] Persistence worker unavailable");
+        }
+        drop(_order);
 
         if notify {
             if let Some(manager) = get_notification_manager() {
@@ -583,27 +623,43 @@ WHERE namespace = $1 AND runtime_id = $2
     }
 }
 
-pub async fn create_run(user_id: i32, session_id: Option<String>) -> Arc<AgentRun> {
-    let cutoff = Utc::now() - chrono::Duration::hours(24);
-    let candidates = {
-        let runs = AGENT_RUNS.read().await;
-        runs.iter()
-            .map(|(id, run)| (id.clone(), run.clone()))
-            .collect::<Vec<_>>()
-    };
-    let mut stale_ids = Vec::new();
-    for (id, run) in candidates {
-        if run.updated_at().await < cutoff {
-            stale_ids.push(id);
+/// Reclaim completed replay caches and expired cached replicas during idle periods.
+/// Never evict a locally executing run merely because its progress is quiet;
+/// removing a stale cached replica neither aborts Work nor deletes durable state.
+pub(crate) async fn cleanup_retained_runs() {
+    let cutoff = Utc::now() - chrono::Duration::hours(RUN_RETENTION_HOURS);
+    let mut runs = AGENT_RUNS.write().await;
+    let mut completed = Vec::new();
+    let mut stale_replicas = Vec::new();
+    for (id, run) in runs.iter() {
+        let state = run.state.lock().await;
+        if state.completed {
+            completed.push((state.updated_at, id.clone()));
+        } else if state.updated_at < cutoff
+            && !run
+                .execution
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|handle| !handle.is_finished())
+        {
+            stale_replicas.push(id.clone());
         }
     }
-    if !stale_ids.is_empty() {
-        let mut runs = AGENT_RUNS.write().await;
-        for id in stale_ids {
+    for id in stale_replicas {
+        runs.remove(&id);
+    }
+    completed.sort_unstable();
+    let surplus = completed.len().saturating_sub(COMPLETED_RUN_CACHE_LIMIT);
+    for (index, (updated_at, id)) in completed.into_iter().enumerate() {
+        if updated_at < cutoff || index < surplus {
             runs.remove(&id);
         }
     }
+}
 
+pub async fn create_run(user_id: i32, session_id: Option<String>) -> Arc<AgentRun> {
+    cleanup_retained_runs().await;
     let run_id = format!("run_{}", uuid::Uuid::new_v4().simple());
     let run = AgentRun::new(run_id.clone(), user_id, session_id.clone());
     AGENT_RUNS.write().await.insert(run_id.clone(), run.clone());
@@ -676,6 +732,92 @@ pub(crate) async fn get_live_run_for_user(run_id: &str, user_id: i32) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn persistence_queue_applies_backpressure_without_losing_order_or_terminal() {
+        let mut run = AgentRun::new("bounded-writer".into(), 702, None);
+        let (tx, mut rx) = mpsc::channel(2);
+        Arc::get_mut(&mut run).unwrap().persistence_tx = tx;
+        for token in ["one", "two"] {
+            run.publish(AgentProgressEvent::SummaryToken {
+                token: token.into(),
+                done: false,
+            })
+            .await;
+        }
+        let producer_run = run.clone();
+        let mut producer = tokio::spawn(async move {
+            producer_run
+                .publish(AgentProgressEvent::SummaryToken {
+                    token: "three".into(),
+                    done: false,
+                })
+                .await;
+        });
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), &mut producer)
+                .await
+                .is_err()
+        );
+        assert_eq!(run.state.lock().await.next_sequence, 3);
+        let (first, snapshot) = rx.recv().await.unwrap();
+        assert_eq!(first.sequence, 1);
+        assert_eq!(snapshot.next_sequence, 2);
+        producer.await.unwrap();
+        for sequence in [2, 3] {
+            let (event, snapshot) = rx.recv().await.unwrap();
+            assert_eq!(event.sequence, sequence);
+            assert_eq!(snapshot.next_sequence, sequence + 1);
+        }
+        run.publish(AgentProgressEvent::TaskCompleted {
+            task_id: "task".into(),
+            success: true,
+            response: Box::new(serde_json::json!({"message":"done"})),
+        })
+        .await;
+        let (terminal, snapshot) = rx.recv().await.unwrap();
+        assert_eq!(terminal.sequence, 4);
+        assert!(snapshot.completed);
+    }
+
+    #[tokio::test]
+    async fn run_cleanup_keeps_live_execution_and_reclaims_stale_replicas() {
+        let run_id = format!("old-active-{}", uuid::Uuid::new_v4());
+        let run = AgentRun::new(run_id.clone(), 709, None);
+        run.state.lock().await.updated_at = Utc::now() - chrono::Duration::hours(25);
+        let execution = tokio::spawn(std::future::pending::<()>());
+        run.register_execution(execution.abort_handle());
+        AGENT_RUNS.write().await.insert(run_id.clone(), run.clone());
+        let trigger = create_run(709, None).await;
+        assert!(get_live_run_for_user(&run_id, 709).await.is_some());
+        execution.abort();
+        let _ = execution.await;
+        cleanup_retained_runs().await;
+        assert!(get_live_run_for_user(&run_id, 709).await.is_none());
+        // A caller's existing run handle remains valid; cleanup did not abort it.
+        assert!(!run.snapshot().await.2);
+        AGENT_RUNS.write().await.remove(&run_id);
+        AGENT_RUNS.write().await.remove(trigger.run_id());
+    }
+
+    #[tokio::test]
+    async fn event_burst_keeps_persistence_workers_bounded() {
+        // This current-thread burst gives persistence no scheduler time, just as
+        // a slow database can keep older writes pending while events arrive.
+        let run = AgentRun::new("persistence-burst".into(), 701, None);
+        for _ in 0..2_000 {
+            run.publish(AgentProgressEvent::SummaryToken {
+                token: "chunk".into(),
+                done: false,
+            })
+            .await;
+        }
+        assert!(
+            Arc::strong_count(&run) <= 2,
+            "one persistence worker per run, not one per event"
+        );
+        assert_eq!(run.snapshot().await.0.len(), 512);
+    }
 
     #[tokio::test]
     async fn events_survive_subscriber_disconnect_and_replay() {
@@ -775,6 +917,33 @@ mod tests {
             history.last().map(|event| &event.event),
             Some(AgentProgressEvent::TaskCompleted { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn late_failure_does_not_close_successful_playback() {
+        let run = AgentRun::new_for_test("run_late_failure", 7433);
+        run.publish(AgentProgressEvent::TaskCompleted {
+            task_id: "task".into(),
+            success: true,
+            response: Box::new(serde_json::json!({"success": true})),
+        })
+        .await;
+        run.publish(AgentProgressEvent::Error {
+            task_id: None,
+            message: "late producer cleanup".into(),
+            code: "AUTONOMY_DISPATCH_FAILED".into(),
+        })
+        .await;
+        run.playback_direction
+            .observe(super::super::playback_direction::PlaybackObservation {
+                upcoming_text: "still playing".into(),
+                rig: serde_json::json!({}),
+            });
+        assert!(
+            run.playback_direction.observation().is_some(),
+            "late error closed successful playback"
+        );
+        assert_eq!(run.snapshot().await.0.len(), 1);
     }
 
     #[tokio::test]

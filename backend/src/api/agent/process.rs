@@ -1279,7 +1279,7 @@ fn spawn_answer_resume(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let session_from_waiting = {
-            let map = WAITING_TASKS.read().await;
+            let map = WAITING_TASKS.lock().unwrap();
             map.get(&task_id)
                 .filter(|ctx| ctx.user_id == user_id)
                 .map(|ctx| ctx.session_id.clone())
@@ -1348,8 +1348,8 @@ fn spawn_answer_resume(
         };
         let original_progress = if is_work {
             WAITING_TASKS
-                .read()
-                .await
+                .lock()
+                .unwrap()
                 .get(&task_id)
                 .filter(|ctx| ctx.user_id == user_id)
                 .map(|ctx| ctx.progress_tx.clone())

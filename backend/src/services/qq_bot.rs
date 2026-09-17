@@ -280,7 +280,11 @@ async fn gateway_session(
     info!(gateway = %gw_url, "QQ Gateway connecting");
     let (ws, _) = tokio::select! {
         _ = cancel.changed() => return Ok(()),
-        result = tokio::time::timeout(WS_CONNECT_TIMEOUT, tokio_tungstenite::connect_async(gw_url)) => {
+        result = tokio::time::timeout(WS_CONNECT_TIMEOUT, tokio_tungstenite::connect_async_with_config(gw_url, Some(
+                tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+                    .max_message_size(Some(crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES))
+                    .max_frame_size(Some(crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES)),
+            ), false)) => {
             match result {
                 Ok(Ok(stream)) => stream,
                 Ok(Err(err)) => {
@@ -499,7 +503,32 @@ fn payload_is_ready(text: &str, seq: &mut u64) -> bool {
 }
 
 fn handle_payload(text: &str, seq: &mut u64, auth_header: &str) -> Option<ConnectFailureKind> {
+    if text.len() > crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES {
+        warn!("Bot Gateway payload too large; reconnecting before accepting sequence");
+        return Some(ConnectFailureKind::Transient);
+    }
     let payload: GatewayPayload = serde_json::from_str(text).ok()?;
+    let ingress = if payload.op == 0 && payload.t.as_deref() == Some("C2C_MESSAGE_CREATE") {
+        match crate::services::bot_ingress::try_acquire(
+            crate::services::bot_ingress::Channel::Qq,
+            payload
+                .d
+                .as_ref()
+                .map_or(0, crate::services::bot_ingress::json_bytes)
+                .saturating_mul(2)
+                .saturating_add(auth_header.len()),
+        ) {
+            Some(permit) => Some(permit),
+            None => {
+                // QQ replay is upstream-controlled. Reject visibly and reconnect;
+                // do not report the rejected event as the last handled sequence.
+                warn!("QQ ingress busy; event rejected and Gateway reconnect required");
+                return Some(ConnectFailureKind::Transient);
+            }
+        }
+    } else {
+        None
+    };
     if let Some(s) = payload.s {
         *seq = s;
     }
@@ -510,6 +539,7 @@ fn handle_payload(text: &str, seq: &mut u64, auth_header: &str) -> Option<Connec
                 if let Some(event) = inbound_c2c_from_dispatch(payload.d.as_ref()) {
                     let auth = auth_header.to_string();
                     tokio::spawn(async move {
+                        let _permit = ingress;
                         mark_inbound().await;
                         crate::services::qq_pairing::handle_inbound_c2c(event, &auth).await;
                     });
@@ -795,4 +825,23 @@ pub(crate) async fn outbound_auth_header() -> Result<String, ConnectFailureKind>
     let header = token.header.clone();
     *cached = Some((scope, token));
     Ok(header)
+}
+
+#[cfg(test)]
+mod ingress_tests {
+    use super::*;
+
+    #[test]
+    fn rejected_ingress_keeps_qq_sequence() {
+        let text = serde_json::json!({"op": 0, "t": "C2C_MESSAGE_CREATE", "s": 99,
+            "d": {"dense": vec![0; 300_000]}})
+        .to_string();
+        assert!(text.len() < crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES);
+        let mut seq = 7;
+        assert!(matches!(
+            handle_payload(&text, &mut seq, "token"),
+            Some(ConnectFailureKind::Transient)
+        ));
+        assert_eq!(seq, 7);
+    }
 }

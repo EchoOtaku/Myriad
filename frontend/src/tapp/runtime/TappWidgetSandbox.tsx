@@ -72,6 +72,7 @@ export interface TappWidgetSandboxProps {
   widgetId: string
   widgetProps: WidgetRenderProps
   /** Playground 预览。无 Runtime Grant；不得把声明权限当作已安装授予。 */
+  paused?: boolean
   previewMode?: boolean
   previewStores?: {
     storage: Map<string, unknown>
@@ -252,6 +253,7 @@ export const TappWidgetSandbox = memo(
     code,
     widgetId,
     widgetProps,
+    paused = false,
     previewMode = false,
     previewStores,
     onReady,
@@ -338,7 +340,7 @@ export const TappWidgetSandbox = memo(
       onReady?.()
     }, [onReady, tappInstance.id, widgetId, widgetProps.size])
 
-    useSandboxSubscriptions(bridgeRef, isReady)
+    useSandboxSubscriptions(bridgeRef, isReady, paused)
 
     useEffect(
       () =>

@@ -563,12 +563,6 @@ pub async fn restore_settings(
         );
     }
 
-    crate::services::agent::notification_preferences::cache_restored(
-        user_id,
-        notification_preferences,
-    )
-    .await;
-
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     match config_service.load_config().await {
         Ok(new_config) => {

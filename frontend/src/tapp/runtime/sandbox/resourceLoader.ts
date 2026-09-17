@@ -1,5 +1,6 @@
 import type { TappInstance } from '../../types'
 import * as TappApiService from '../../services/TappApiService'
+import { BoundedResourceCache } from '../resourceBounds'
 import { generateOnDemandTailwindCSS } from './styles'
 
 export interface CoreResources {
@@ -36,54 +37,15 @@ export interface PageResources {
   i18n?: Record<string, unknown>
 }
 
-interface ResourceCacheEntry<T> {
-  data: T
-  timestamp: number
-  ttl: number
+interface ResourceCacheEntry<T> { data: T; timestamp: number; ttl: number }
+const CACHE_TTL = { widget: 5 * 60 * 1000, page: 10 * 60 * 1000, separatedCss: 60 * 60 * 1000 }
+const CACHE_LIMIT = { widget: 60, page: 30, raw: 30, widgetCss: 60, pageCss: 30 }
+function getCachedEntry<T>(cache: BoundedResourceCache<T>, key: string): { data: T } | undefined {
+  const data = cache.get(key)
+  return data === undefined ? undefined : { data }
 }
-
-const CACHE_TTL = {
-  widget: 5 * 60 * 1000,
-  page: 10 * 60 * 1000,
-  separatedCss: 60 * 60 * 1000,
-}
-
-const CACHE_LIMIT = {
-  widget: 60,
-  page: 30,
-  raw: 30,
-  widgetCss: 60,
-  pageCss: 30,
-} as const
-
-function getCachedEntry<T>(
-  cache: Map<string, ResourceCacheEntry<T>>,
-  key: string,
-): ResourceCacheEntry<T> | undefined {
-  const entry = cache.get(key)
-  if (!entry) return undefined
-  if (Date.now() - entry.timestamp >= entry.ttl) {
-    cache.delete(key)
-    return undefined
-  }
-  cache.delete(key)
-  cache.set(key, entry)
-  return entry
-}
-
-function setCachedEntry<T>(
-  cache: Map<string, ResourceCacheEntry<T>>,
-  key: string,
-  entry: ResourceCacheEntry<T>,
-  maxEntries: number,
-): void {
-  cache.delete(key)
-  cache.set(key, entry)
-  while (cache.size > maxEntries) {
-    const oldestKey = cache.keys().next().value
-    if (oldestKey === undefined) break
-    cache.delete(oldestKey)
-  }
+function setCachedEntry<T>(cache: BoundedResourceCache<T>, key: string, entry: ResourceCacheEntry<T>, _maxEntries: number): void {
+  cache.set(key, entry.data, entry.ttl)
 }
 
 class RequestDeduplicator {
@@ -116,20 +78,17 @@ class CssSeparator {
 export class TappResourceLoader {
   private static instance: TappResourceLoader | null = null
 
-  private widgetCache = new Map<string, ResourceCacheEntry<WidgetResources>>()
+  private widgetCache = new BoundedResourceCache<WidgetResources>(60, 8 * 1024 * 1024)
 
-  private pageCache = new Map<string, ResourceCacheEntry<PageResources>>()
+  private pageCache = new BoundedResourceCache<PageResources>(30, 8 * 1024 * 1024)
 
-  private coreCache = new Map<string, ResourceCacheEntry<CoreResources>>()
+  private coreCache = new BoundedResourceCache<CoreResources>(30, 4 * 1024 * 1024)
 
-  private rawResourceCache = new Map<
-    string,
-    ResourceCacheEntry<TappApiService.TappResources>
-  >()
+  private rawResourceCache = new BoundedResourceCache<TappApiService.TappResources>(30, 8 * 1024 * 1024)
 
-  private widgetCssCache = new Map<string, ResourceCacheEntry<string>>()
+  private widgetCssCache = new BoundedResourceCache<string>(60, 2 * 1024 * 1024)
 
-  private pageCssCache = new Map<string, ResourceCacheEntry<string>>()
+  private pageCssCache = new BoundedResourceCache<string>(60, 2 * 1024 * 1024)
 
   private deduplicator = new RequestDeduplicator()
 

@@ -1,7 +1,7 @@
+use crate::services::retained_cache::RetainedCache;
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Serialize;
-use std::collections::HashSet;
 use std::future::Future;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -36,11 +36,21 @@ pub struct AiAnalyzer {
 ///
 /// 只记「请求形状被拒」（4xx，且不含鉴权和限流，见
 /// [`ProviderCallFailure::rejected_request`]）。进程内有效：配置换了、网关升级
-/// 了，重启就重新试一次，不需要另造失效机制。
-static SHAPE_REFUSED: OnceLock<std::sync::RwLock<HashSet<String>>> = OnceLock::new();
+/// 了，最多一天后重新尝试；容量上限避免配置轮换积累。
+static SHAPE_REFUSED: OnceLock<std::sync::RwLock<RetainedCache<String, ()>>> = OnceLock::new();
 
-fn shape_memo() -> &'static std::sync::RwLock<HashSet<String>> {
-    SHAPE_REFUSED.get_or_init(Default::default)
+fn shape_memo() -> &'static std::sync::RwLock<RetainedCache<String, ()>> {
+    SHAPE_REFUSED.get_or_init(|| {
+        std::sync::RwLock::new(RetainedCache::new(256, Duration::from_secs(24 * 3600)))
+    })
+}
+
+pub(crate) fn cleanup_shape_memo() {
+    if let Some(memo) = SHAPE_REFUSED.get() {
+        if let Ok(mut memo) = memo.write() {
+            memo.purge_expired();
+        }
+    }
 }
 
 /// 记忆分两类，因为它们是两组不同的参数，网关可能只拒其中一组。
@@ -125,13 +135,16 @@ impl AiAnalyzer {
 
     fn refused(&self, shape: RequestShape) -> bool {
         let key = format!("{}#{}", self.capability_key(), shape.tag());
-        shape_memo().read().is_ok_and(|seen| seen.contains(&key))
+        shape_memo()
+            .write()
+            .is_ok_and(|mut seen| seen.get(&key).is_some())
     }
 
     fn remember_refusal(&self, shape: RequestShape) {
         let key = format!("{}#{}", self.capability_key(), shape.tag());
         if let Ok(mut seen) = shape_memo().write() {
-            if seen.insert(key) {
+            if seen.get(&key).is_none() {
+                seen.insert(key, ());
                 tracing::warn!(
                     model = %self.model,
                     shape = shape.tag(),
@@ -922,12 +935,11 @@ impl AiAnalyzer {
         result
     }
 
-    async fn analyze_stream_inner<F, Fut>(&self, prompt: &str, mut on_delta: F) -> Result<String>
+    async fn analyze_stream_inner<F, Fut>(&self, prompt: &str, on_delta: F) -> Result<String>
     where
         F: FnMut(StreamDelta) -> Fut + Send,
         Fut: Future<Output = bool> + Send,
     {
-        let mut full_text = String::new();
         match self.provider {
             AiProvider::Gemini => {
                 let request_body = GeminiRequest {
@@ -945,7 +957,7 @@ impl AiAnalyzer {
                     base_url, self.model
                 );
 
-                let mut response = self
+                let response = self
                     .client
                     .post(&url)
                     .header("x-goog-api-key", &self.api_key)
@@ -967,38 +979,7 @@ impl AiAnalyzer {
                     ));
                 }
 
-                let mut buffer = String::new();
-
-                loop {
-                    let chunk = response.chunk().await.context("Stream read error")?;
-                    match chunk {
-                        Some(bytes) => buffer.push_str(&String::from_utf8_lossy(&bytes)),
-                        None => break,
-                    }
-
-                    // Parse SSE lines: "data: {...}\n\n"
-                    while let Some(pos) = buffer.find("\n\n") {
-                        let event_block = buffer[..pos].to_string();
-                        buffer = buffer[pos + 2..].to_string();
-
-                        for line in event_block.lines() {
-                            let line = line.trim();
-                            if let Some(data) = line.strip_prefix("data: ") {
-                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                                    for delta in gemini_stream_deltas(&json) {
-                                        if let StreamDelta::Text(ref content) = delta {
-                                            full_text.push_str(content);
-                                        }
-                                        if !on_delta(delta).await {
-                                            return Ok(full_text);
-                                        }
-                                        tokio::task::yield_now().await;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                super::sse::consume_text_sse(response, on_delta, gemini_stream_deltas).await
             }
             AiProvider::OpenAI => {
                 #[derive(Serialize)]
@@ -1045,11 +1026,9 @@ impl AiAnalyzer {
                     )));
                 }
 
-                return consume_openai_sse(response, on_delta).await;
+                consume_openai_sse(response, on_delta).await
             }
         }
-
-        Ok(full_text)
     }
 }
 

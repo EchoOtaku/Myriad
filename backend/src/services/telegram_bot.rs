@@ -215,15 +215,27 @@ async fn run_session(
                 match result {
                     Ok(body) => {
                         let inbounds = parse_telegram_private_inbounds(200, &body)?;
-                        if let Some(max_id) = telegram_max_update_id(200, &body)? {
-                            offset = Some(max_id + 1);
-                        }
+                        let next_offset = telegram_max_update_id(200, &body)?.map(|id| id + 1);
                         if !inbounds.is_empty() {
                             mark_inbound().await;
                         }
                         for event in inbounds {
+                            // The polling loop itself is the sole waiter. Keep the
+                            // batch unacknowledged until every event is admitted.
+                            let permit = tokio::select! {
+                                _ = cancel.changed() => return Ok(()),
+                                permit = crate::services::bot_ingress::acquire(
+                                    crate::services::bot_ingress::Channel::Telegram,
+                                    body.len().saturating_add(token.len()),
+                                ) => permit,
+                            };
+                            let Some(permit) = permit else {
+                                warn!("Telegram ingress payload exceeds budget; batch not acknowledged");
+                                return Err(ConnectFailureKind::Transient);
+                            };
                             let token = token.to_string();
                             tokio::spawn(async move {
+                                let _permit = permit;
                                 match event {
                                     TelegramPrivateInbound::Text(text) => {
                                         crate::services::telegram_pairing::handle_inbound(
@@ -239,6 +251,9 @@ async fn run_session(
                                     }
                                 }
                             });
+                        }
+                        if next_offset.is_some() {
+                            offset = next_offset;
                         }
                     }
                     Err(GetUpdatesError::RetryAfter(secs)) => {
@@ -272,6 +287,7 @@ async fn get_me(token: &str) -> Result<TelegramBotIdentity, ConnectFailureKind> 
 async fn get_updates(token: &str, offset: Option<i64>) -> Result<String, GetUpdatesError> {
     let mut payload = serde_json::json!({
         "timeout": LONG_POLL_SECS,
+        "limit": 32,
         "allowed_updates": ["message", "callback_query"],
     });
     if let Some(offset) = offset {

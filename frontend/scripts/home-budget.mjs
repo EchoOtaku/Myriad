@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 /**
  * First-paint JS/CSS budget for the home shell.
  * Counts compressed (gzip) bytes of assets referenced by index.html plus
- * statically imported chunks. Agora / Config route chunks must stay out of
+ * statically imported chunks, including the lazy Home route. Agora / Config must stay out of
  * that set.
  */
 import { promisify } from 'node:util'
@@ -58,9 +58,9 @@ function walkStaticImports(entryFiles) {
     for (const match of source.matchAll(importRe)) {
       const spec = match[1] || match[2]
       if (!spec) continue
-      // Dynamic import() of Config / Agora must not be followed as first-paint.
+      // Home is lazy at the router boundary but required for the home screen.
       const isDynamic = match[0].startsWith('import(')
-      if (isDynamic) continue
+      if (isDynamic && !/(?:^|\/)Home-[^/]+\.js$/.test(spec)) continue
       const next = resolve(dirname(file), spec)
       if (!seen.has(next) && existsSync(next)) {
         seen.add(next)

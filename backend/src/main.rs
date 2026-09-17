@@ -68,6 +68,7 @@ mod federation;
 mod held_stream;
 mod i18n;
 mod memory_audit_invariants;
+mod memory_cleanup;
 mod middleware;
 mod models;
 mod oauth_url_builder;
@@ -189,6 +190,7 @@ async fn main() -> anyhow::Result<()> {
         role == runtime_role::RuntimeRole::PersonaWorker,
         Ordering::Release,
     );
+    let _memory_cleanup = memory_cleanup::start();
     if role == runtime_role::RuntimeRole::PersonaWorker {
         return persona::worker::run().await;
     }

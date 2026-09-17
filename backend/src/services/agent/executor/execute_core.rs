@@ -118,6 +118,7 @@ impl Executor {
     ) -> Result<TaskState, String> {
         // 创建任务状态
         let mut task_state = TaskState::new(recipe);
+        let _cancellation = task_store::CancellationGuard::new(&task_state.task_id);
         task_state.status = TaskStatus::Running;
         task_state.lane_id = recipe.lane_key.clone();
 

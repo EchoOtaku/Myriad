@@ -13,9 +13,8 @@ use regex::Regex;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::sync::Arc;
 use std::time::Duration as StdDuration;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::OwnedSemaphorePermit;
 
 use crate::error::HttpError;
 use crate::middleware::auth::{
@@ -51,20 +50,20 @@ const PASSWORD_HASH_ACQUIRE_TIMEOUT: StdDuration = StdDuration::from_secs(15);
 async fn acquire_password_hash_permit() -> Result<OwnedSemaphorePermit, HttpError> {
     let permits = crate::services::memory_profile::argon2_permits();
     acquire_password_hash_permit_from(
-        crate::services::memory_profile::argon2_semaphore(),
+        crate::services::memory_profile::acquire_argon2_permit(),
         PASSWORD_HASH_ACQUIRE_TIMEOUT,
         permits,
     )
     .await
 }
 
-/// Internal/testable permit acquire with an explicit wait budget and semaphore.
+/// Bound the entire admission wait, including a concurrent profile change.
 async fn acquire_password_hash_permit_from(
-    semaphore: Arc<Semaphore>,
+    acquire: impl std::future::Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>>,
     timeout: StdDuration,
     permits_for_log: usize,
 ) -> Result<OwnedSemaphorePermit, HttpError> {
-    match tokio::time::timeout(timeout, semaphore.acquire_owned()).await {
+    match tokio::time::timeout(timeout, acquire).await {
         Ok(Ok(permit)) => Ok(permit),
         Ok(Err(e)) => {
             // Semaphore closed — should not happen for a static; treat as internal.
@@ -724,11 +723,23 @@ fn blocking_pool_error<T>(e: tokio::task::JoinError) -> Result<T, HttpError> {
     )))
 }
 
+// The permit belongs to the non-cancellable blocking computation, not its caller.
+async fn run_password_worker<T: Send + 'static>(
+    permit: OwnedSemaphorePermit,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, tokio::task::JoinError> {
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work()
+    })
+    .await
+}
+
 /// Hash password using Argon2id (on the blocking pool, concurrency-capped).
 async fn hash_password(password: &str) -> Result<String, HttpError> {
-    let _permit = acquire_password_hash_permit().await?;
+    let permit = acquire_password_hash_permit().await?;
     let password = password.to_owned();
-    let joined = tokio::task::spawn_blocking(move || {
+    let joined = run_password_worker(permit, move || {
         Argon2::default()
             .hash_password(password.as_bytes())
             .map(|h| h.to_string())
@@ -750,7 +761,7 @@ async fn hash_password(password: &str) -> Result<String, HttpError> {
 
 /// Verify password against hash (on the blocking pool, concurrency-capped).
 async fn verify_password(password: &str, hash: &str) -> Result<(), HttpError> {
-    let _permit = acquire_password_hash_permit().await?;
+    let permit = acquire_password_hash_permit().await?;
     let password = password.to_owned();
     let hash = hash.to_owned();
 
@@ -761,7 +772,7 @@ async fn verify_password(password: &str, hash: &str) -> Result<(), HttpError> {
         Internal,
     }
 
-    let joined = tokio::task::spawn_blocking(move || {
+    let joined = run_password_worker(permit, move || {
         let parsed_hash = PasswordHash::new(&hash).map_err(|e| {
             tracing::error!("Failed to parse password hash: {:?}", e);
             VerifyFail::Internal
@@ -1462,7 +1473,7 @@ mod tests {
         assert_eq!(sem.available_permits(), 0);
 
         let err = acquire_password_hash_permit_from(
-            Arc::clone(&sem),
+            Arc::clone(&sem).acquire_owned(),
             StdDuration::from_millis(40),
             permits,
         )
@@ -1481,13 +1492,38 @@ mod tests {
 
         drop(held);
         let permit = acquire_password_hash_permit_from(
-            Arc::clone(&sem),
+            Arc::clone(&sem).acquire_owned(),
             StdDuration::from_millis(200),
             permits,
         )
         .await
         .expect("permit available after release");
         drop(permit);
+    }
+
+    #[tokio::test]
+    async fn cancelled_password_caller_keeps_slot_until_worker_exits() {
+        let pool = Arc::new(Semaphore::new(1));
+        let permit = pool.clone().acquire_owned().await.unwrap();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, finish) = tokio::sync::oneshot::channel();
+        let caller = tokio::spawn(run_password_worker(permit, move || {
+            let _ = started.send(());
+            let _ = finish.blocking_recv();
+        }));
+        ready.await.unwrap();
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        let available = pool.available_permits();
+        let _ = release.send(());
+        assert_eq!(
+            available, 0,
+            "running password work must still own its slot"
+        );
+        let _permit = tokio::time::timeout(StdDuration::from_secs(2), pool.acquire_owned())
+            .await
+            .unwrap()
+            .unwrap();
     }
 
     #[tokio::test]

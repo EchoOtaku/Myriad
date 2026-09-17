@@ -780,6 +780,7 @@ pub async fn delete_user(
     }
 
     txn.commit().await.map_err(db_error("commit user delete"))?;
+    crate::services::agent::consciousness::clear_user_attention(user_id);
 
     // Invalidate locally after the destructive commit, then fan out a best-
     // effort PostgreSQL notification.  If the notification is missed, the

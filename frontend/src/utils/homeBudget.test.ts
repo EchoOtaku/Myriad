@@ -54,6 +54,21 @@ describe('home first-paint budget', () => {
     assert.equal(measured.loadsConfigRoute, false)
   })
 
+  it('includes the lazy Home entry and its static dependencies', async () => {
+    const { measureHomeBudget } = await import('../../scripts/home-budget.mjs')
+    const root = mkdtempSync(join(tmpdir(), 'home-budget-lazy-'))
+    mkdirSync(join(root, 'assets'))
+    writeFileSync(join(root, 'index.html'), '<script src="/assets/App-test.js"></script>')
+    writeFileSync(join(root, 'assets/App-test.js'), 'import("./Home-test.js"); import("./Config-test.js")')
+    writeFileSync(join(root, 'assets/Home-test.js'), 'import "./widgets-test.js"')
+    writeFileSync(join(root, 'assets/widgets-test.js'), 'export default 42')
+    writeFileSync(join(root, 'assets/Config-test.js'), 'export default 99')
+    const measured = await measureHomeBudget(root)
+    assert.ok(measured.files.some((file) => file.file.endsWith('Home-test.js')))
+    assert.ok(measured.files.some((file) => file.file.endsWith('widgets-test.js')))
+    assert.equal(measured.loadsConfigRoute, false)
+  })
+
   it('flags a statically imported Config chunk', async () => {
     const { measureHomeBudget } = await import('../../scripts/home-budget.mjs')
     const root = mkdtempSync(join(tmpdir(), 'home-budget-config-'))

@@ -1,6 +1,7 @@
 import type { AgentPanelMode } from './agentPanelMode'
 import type { ChatMessage, ExecutionStep, TaskExecution } from './engineTypes'
 import { useCallback, useRef, useState } from 'react'
+import { boundMessage, retainHotMessages } from './messageBudget'
 
 export type MessagesByMode = Record<AgentPanelMode, ChatMessage[]>
 
@@ -14,7 +15,7 @@ export function writeModeMessages(
   next: ChatMessage[],
 ): MessagesByMode {
   if (bag[mode] === next) return bag
-  return { ...bag, [mode]: next }
+  return { ...bag, [mode]: retainHotMessages(next) }
 }
 
 export function findMessageInBag(
@@ -71,8 +72,9 @@ export function mapMessagesById(
     }
     const position = index.get(messageId)
     if (position === undefined) continue
-    const updated = update(list[position])
-    if (updated === list[position]) continue
+    const rawUpdated = update(list[position])
+    if (rawUpdated === list[position]) continue
+    const updated = boundMessage(rawUpdated)
     const mapped = list.slice()
     mapped[position] = updated
     indices.set(mapped, index)

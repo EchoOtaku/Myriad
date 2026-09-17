@@ -38,9 +38,7 @@ pub(crate) struct MdFence {
 
 impl MdFence {
     pub(crate) fn closer(self) -> String {
-        std::iter::repeat(self.ch as char)
-            .take(self.n.max(3))
-            .collect()
+        std::iter::repeat_n(self.ch as char, self.n.max(3)).collect()
     }
 }
 

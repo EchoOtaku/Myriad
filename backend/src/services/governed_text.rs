@@ -20,7 +20,7 @@ use crate::services::{
         AiTaskDelivery, AiTaskRegistration, AiTaskSnapshot, AiTaskStatus,
         register_ai_task_atomically, task_id_for_request,
     },
-    ai_task_runtime::{LocalAiTask, insert_local, local_snapshot},
+    ai_task_runtime::{LocalAiTask, local_snapshot, run_owned_local},
     permission_service::UserRole,
     tapp_rate_limit::{check_anonymous_rate_limit, check_rate_limit},
 };
@@ -174,31 +174,32 @@ pub async fn execute_governed_text(
             return Err("AI_TASK_REGISTRY_UNAVAILABLE: task registry is unavailable".to_string());
         }
     }
-    insert_local(stored).await;
-
-    execute_task(AiTaskExecution {
-        task_id: task_id.clone(),
-        db: db.clone(),
-        role,
-        subject_id,
-        owner_id,
-        tapp_id: tapp_id.clone(),
-        request,
-        prepared: PreparedTask {
-            prompt,
-            output: AiTaskOutputRequest {
-                format: TappAiOutputFormat::Text,
-                schema: None,
+    run_owned_local(
+        stored,
+        execute_task(AiTaskExecution {
+            task_id: task_id.clone(),
+            db: db.clone(),
+            role,
+            subject_id,
+            owner_id,
+            tapp_id: tapp_id.clone(),
+            request,
+            prepared: PreparedTask {
+                prompt,
+                output: AiTaskOutputRequest {
+                    format: TappAiOutputFormat::Text,
+                    schema: None,
+                },
+                provenance: Vec::new(),
+                image_references: Vec::new(),
             },
-            provenance: Vec::new(),
-            image_references: Vec::new(),
-        },
-        model,
-        system_prompt: Some(system_prompt),
-        reservation,
-        cancel: cancel_receiver,
-        ledger_source: format!("internal:{source}"),
-    })
+            model,
+            system_prompt: Some(system_prompt),
+            reservation,
+            cancel: cancel_receiver,
+            ledger_source: format!("internal:{source}"),
+        }),
+    )
     .await;
 
     let snapshot = local_snapshot(&task_id)

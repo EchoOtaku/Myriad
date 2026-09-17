@@ -718,8 +718,6 @@ export default function Home() {
   }
 
   const handleTitleChange = async (newTitle: string) => {
-    setDashboardTitle(newTitle)
-
     if (!isAdmin) return
 
     try {
@@ -865,7 +863,8 @@ export default function Home() {
                     type="text"
                     aria-label="Dashboard Title"
                     value={dashboardTitle}
-                    onChange={(e) => handleTitleChange(e.target.value)}
+                    onChange={(e) => setDashboardTitle(e.target.value)}
+                    onBlur={(e) => void handleTitleChange(e.target.value)}
                     className={`absolute left-1 whitespace-nowrap z-0 bg-transparent border-none outline-none p-0 m-0 w-full ${
                       isNotPhoneBand ? 'block' : 'hidden'
                     }`}

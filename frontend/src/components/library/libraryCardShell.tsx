@@ -983,20 +983,32 @@ export const LibraryCardShell = memo(
       }
 
       let cancelled = false
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => {
+        controller.abort()
+        releaseCoverImageElement(imgRef.current)
+        setActiveSrc(null)
+        setMediaReady(true)
+      }, 15000)
       setMediaReady(false)
       setActiveSrc(null)
 
-      void acquireCoverDecodeSlot().then((release) => {
+      void acquireCoverDecodeSlot(controller.signal).then((release) => {
         if (cancelled) {
           release()
           return
         }
-        releaseSlotRef.current = release
+        releaseSlotRef.current = () => {
+          window.clearTimeout(timeout)
+          release()
+        }
         setActiveSrc(cover)
-      })
+      }).catch(() => { /* cancellation owns cleanup */ })
 
       return () => {
         cancelled = true
+        window.clearTimeout(timeout)
+        controller.abort()
         releaseSlotRef.current?.()
         releaseSlotRef.current = null
         releaseCoverImageElement(imgRef.current)

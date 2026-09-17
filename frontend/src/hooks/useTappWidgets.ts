@@ -105,6 +105,7 @@ function createTappWidgetType(
   runtime?: {
     getTapp?: (id: string) => { manifest?: { themeColor?: string } } | undefined
   },
+  previousComponent?: WidgetType['component'],
 ): TappWidgetType {
   const config = widget.config || {}
   const accent = resolveTappAccent(widget, runtime)
@@ -124,7 +125,7 @@ function createTappWidgetType(
     id: widget.id,
     name: config.name || 'Unknown Widget',
     defaultSize: mapTappSize(config.defaultSize),
-    component: WrappedComponent,
+    component: previousComponent || WrappedComponent,
     supportedSizes: mapTappSizes(config.sizes),
     settings: config.settings,
 
@@ -141,6 +142,12 @@ export function useTappWidgets(enabled = true): {
   error: string | null
   refreshWidgets: () => void
 } {
+  const componentsRef = useRef(new Map<string, WidgetType['component']>())
+  const mapWidgets = useCallback((widgets: RegisteredWidget[], runtime: Parameters<typeof createTappWidgetType>[1]) => {
+    const types = widgets.map(widget => createTappWidgetType(widget, runtime, componentsRef.current.get(widget.id)))
+    componentsRef.current = new Map(types.map(type => [type.id, type.component]))
+    return types
+  }, [])
   const [tappWidgets, setTappWidgets] = useState<TappWidgetType[]>([])
   const [isLoading, setIsLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
@@ -176,9 +183,7 @@ export function useTappWidgets(enabled = true): {
         }
 
         const registeredWidgets = runtime.getRegisteredWidgets()
-        const widgetTypes = registeredWidgets.map((w) =>
-          createTappWidgetType(w, runtime),
-        )
+        const widgetTypes = mapWidgets(registeredWidgets, runtime)
 
         if (widgetTypes.length > 0) {
           // 有注册小组件时预热 chunk，避免渲染时才拉。
@@ -209,7 +214,7 @@ export function useTappWidgets(enabled = true): {
         if (isMounted()) setIsLoading(false)
       }
     }
-  }, [])
+  }, [mapWidgets])
 
   useEffect(() => {
     if (!enabled) {
@@ -233,7 +238,7 @@ export function useTappWidgets(enabled = true): {
           try {
             const registeredWidgets = runtime.getRegisteredWidgets()
             setTappWidgets(
-              registeredWidgets.map((w) => createTappWidgetType(w, runtime)),
+              mapWidgets(registeredWidgets, runtime),
             )
             setError(null)
           } catch (err) {
@@ -258,7 +263,7 @@ export function useTappWidgets(enabled = true): {
       disposed = true
       unsubs.forEach((unsub) => unsub())
     }
-  }, [enabled])
+  }, [enabled, mapWidgets])
 
   return {
     tappWidgets,

@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
@@ -42,20 +43,63 @@ const GEO_CACHE_TTL: Duration = Duration::from_secs(600);
 // API 响应缓存
 
 struct CacheEntry {
-    data: Value,
-    /// Approximate JSON size for byte-budget eviction.
+    // Keep wire bytes, not a Value tree whose array/object allocation can be
+    // many times larger. Cache hits share these bytes until parsing outside the lock.
+    data: Arc<[u8]>,
     size_bytes: usize,
     expires_at: Instant,
     cached_at: Instant,
 }
 
-fn approx_json_bytes(value: &Value) -> usize {
-    serde_json::to_vec(value).map(|v| v.len()).unwrap_or(0)
+/// Bound serialization itself, including builtin results that did not pass an
+/// HTTP response limit. Oversized results can still be returned without caching.
+struct CachePayloadWriter {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+
+impl std::io::Write for CachePayloadWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+            return Err(std::io::Error::other("API cache payload exceeds budget"));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 static API_CACHE: Lazy<RwLock<HashMap<String, CacheEntry>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 const MAX_TAPP_HTTP_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+
+/// Periodic maintenance also applies a newly lowered memory profile to idle caches.
+pub(crate) async fn cleanup_response_cache() {
+    let mut cache = API_CACHE.write().await;
+    let now = Instant::now();
+    cache.retain(|_, entry| entry.expires_at > now);
+    let cap = crate::services::memory_profile::max_api_cache_entries();
+    let byte_cap = crate::services::memory_profile::max_api_cache_bytes();
+    while cache.len() > cap
+        || cache.values().map(|entry| entry.size_bytes).sum::<usize>() > byte_cap
+    {
+        let Some(oldest) = cache
+            .iter()
+            .min_by_key(|(_, entry)| entry.cached_at)
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        cache.remove(&oldest);
+    }
+    if cache.capacity() > cache.len().saturating_mul(4).max(64) {
+        let retained_capacity = cache.len().max(64);
+        cache.shrink_to(retained_capacity);
+    }
+}
 
 // 上下文类型
 
@@ -1253,37 +1297,62 @@ impl TappApiService {
 
     /// 获取缓存
     async fn get_cached(key: &str) -> Option<Value> {
-        let cache = API_CACHE.read().await;
-        cache.get(key).and_then(|entry| {
-            if entry.expires_at > Instant::now() {
-                Some(entry.data.clone())
-            } else {
-                None
+        let bytes = {
+            let mut cache = API_CACHE.write().await;
+            let entry = cache.get(key)?;
+            if entry.expires_at <= Instant::now() {
+                cache.remove(key);
+                return None;
             }
-        })
+            Arc::clone(&entry.data)
+        };
+        // Decoding is request-owned; no large Value clone or JSON work under the lock.
+        serde_json::from_slice(&bytes).ok()
     }
 
     /// 设置缓存
     async fn set_cached(key: &str, data: &Value, ttl: u32) {
+        let api_cap = crate::services::memory_profile::max_api_cache_entries();
+        let api_bytes_cap = crate::services::memory_profile::max_api_cache_bytes();
+        if ttl == 0 || api_cap == 0 {
+            return;
+        }
+        // Include key allocation, Arc counters, and conservative hash bucket
+        // slack, rather than treating the response text as the entire entry.
+        let overhead = key
+            .len()
+            .saturating_add(2 * std::mem::size_of::<usize>())
+            .saturating_add(
+                2 * (std::mem::size_of::<CacheEntry>() + std::mem::size_of::<String>() + 1),
+            );
+        let limit = api_bytes_cap
+            .saturating_sub(overhead)
+            .min(MAX_TAPP_HTTP_RESPONSE_BYTES);
+        let mut writer = CachePayloadWriter {
+            bytes: Vec::new(),
+            limit,
+        };
+        if serde_json::to_writer(&mut writer, data).is_err() {
+            return;
+        }
+        let size_bytes = writer.bytes.len().saturating_add(overhead);
+        let data: Arc<[u8]> = writer.bytes.into_boxed_slice().into();
         let mut cache = API_CACHE.write().await;
         let now = Instant::now();
         cache.retain(|_, entry| entry.expires_at > now);
-        let api_cap = crate::services::memory_profile::max_api_cache_entries();
-        let api_bytes_cap = crate::services::memory_profile::max_api_cache_bytes();
-        let size_bytes = approx_json_bytes(data);
-        // Skip caching absurd single values that alone exceed the byte budget.
-        if size_bytes > api_bytes_cap {
-            return;
-        }
-        // Replace: drop old entry first so size accounting is accurate.
         cache.remove(key);
         while cache.len() >= api_cap
-            || cache.values().map(|e| e.size_bytes).sum::<usize>() + size_bytes > api_bytes_cap
+            || cache
+                .values()
+                .map(|e| e.size_bytes)
+                .sum::<usize>()
+                .saturating_add(size_bytes)
+                > api_bytes_cap
         {
             let Some(oldest) = cache
                 .iter()
                 .min_by_key(|(_, entry)| entry.cached_at)
-                .map(|(k, _)| k.clone())
+                .map(|(key, _)| key.clone())
             else {
                 break;
             };
@@ -1292,7 +1361,7 @@ impl TappApiService {
         cache.insert(
             key.to_string(),
             CacheEntry {
-                data: data.clone(),
+                data,
                 size_bytes,
                 expires_at: now + Duration::from_secs(ttl as u64),
                 cached_at: now,
@@ -2313,5 +2382,77 @@ mod tests {
             .unwrap();
 
         assert!(encoded.bytes.len() > MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES);
+    }
+}
+
+#[cfg(test)]
+mod response_cache_tests {
+    use super::*;
+
+    trait RetainedPayloadBytes {
+        fn retained_bytes(&self) -> usize;
+    }
+    impl RetainedPayloadBytes for Value {
+        fn retained_bytes(&self) -> usize {
+            match self {
+                Value::Array(values) => values.capacity() * std::mem::size_of::<Value>(),
+                _ => 0,
+            }
+        }
+    }
+    impl RetainedPayloadBytes for std::sync::Arc<[u8]> {
+        fn retained_bytes(&self) -> usize {
+            self.len()
+        }
+    }
+
+    #[tokio::test]
+    async fn response_cache_budget_covers_dense_payload_and_key_allocations() {
+        let key = format!("dense-budget-{}", "k".repeat(4096));
+        let value = Value::Array(vec![json!(0); 4096]);
+        TappApiService::set_cached(&key, &value, 60).await;
+        assert_eq!(TappApiService::get_cached(&key).await, Some(value));
+        let mut cache = API_CACHE.write().await;
+        let entry = cache.remove(&key).unwrap();
+        let minimum = entry.data.retained_bytes()
+            + key.len()
+            + std::mem::size_of::<CacheEntry>()
+            + std::mem::size_of::<String>();
+        assert!(
+            entry.size_bytes >= minimum,
+            "budget {} misses retained payload/key allocations {}",
+            entry.size_bytes,
+            minimum
+        );
+    }
+
+    #[tokio::test]
+    async fn response_cache_idle_cleanup_releases_expired_payloads() {
+        let key = "expired-idle-reclaims";
+        TappApiService::set_cached(key, &json!("payload"), 60).await;
+        API_CACHE.write().await.get_mut(key).unwrap().expires_at = Instant::now();
+        cleanup_response_cache().await;
+        assert!(!API_CACHE.read().await.contains_key(key));
+    }
+
+    #[tokio::test]
+    async fn response_cache_oversized_refresh_does_not_displace_valid_value() {
+        let key = "oversized-refresh";
+        TappApiService::set_cached(key, &json!("original"), 60).await;
+        TappApiService::set_cached(key, &json!("x".repeat(MAX_TAPP_HTTP_RESPONSE_BYTES)), 60).await;
+        assert_eq!(
+            TappApiService::get_cached(key).await,
+            Some(json!("original"))
+        );
+        API_CACHE.write().await.remove(key);
+    }
+
+    #[tokio::test]
+    async fn response_cache_expired_read_releases_the_entry() {
+        let key = "expired-read-reclaims";
+        TappApiService::set_cached(key, &json!({"data": "retained"}), 60).await;
+        API_CACHE.write().await.get_mut(key).unwrap().expires_at = Instant::now();
+        assert!(TappApiService::get_cached(key).await.is_none());
+        assert!(!API_CACHE.read().await.contains_key(key));
     }
 }

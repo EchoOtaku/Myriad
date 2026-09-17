@@ -1023,7 +1023,7 @@ async fn resolve_qq_audio_url(song_mid: &str) -> Result<String, String> {
             }
         };
 
-        let data: Value = match resp.json().await {
+        let data: Value = match read_limited_json(resp).await {
             Ok(v) => v,
             Err(e) => {
                 tracing::debug!("QQ GetEVkey parse failed for {}: {}", filename, e);

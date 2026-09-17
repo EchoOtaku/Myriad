@@ -69,8 +69,9 @@ export function useNoteCloudSave({
 }: UseNoteCloudSaveOptions): NoteCloudSaveHandle {
   const recoveryOwner = useRef(userId)
   const recoveryWriter = useRef(new NoteRecoveryWriter())
-  const loadRecovery = useCallback<NoteRecoveryWriter['load']>((scope) => recoveryWriter.current.load(scope), [])
-  const discardRecovery = useCallback(() => recoveryWriter.current.discard(), [])
+  const recoveryDiscarded = useRef(false)
+  const loadRecovery = useCallback<NoteRecoveryWriter['load']>((scope) => { recoveryDiscarded.current = false; return recoveryWriter.current.load(scope) }, [])
+  const discardRecovery = useCallback(() => { recoveryDiscarded.current = true; recoveryWriter.current.discard() }, [])
   const latestRef = useRef(fields)
   latestRef.current = fields
   const baseRef = useRef(fields)
@@ -87,6 +88,7 @@ export function useNoteCloudSave({
   const pendingRef = useRef<PendingReceipt | null>(null)
   const receiptsRef = useRef(new Map<string, PendingReceipt>())
   const deferredRef = useRef<NoteRemoteSnapshot | null>(null)
+  const recoveryFlushRef = useRef<() => void>(() => {})
   const aliveRef = useRef(true)
   const activeIdRef = useRef(cloudId)
   activeIdRef.current = cloudId
@@ -97,7 +99,7 @@ export function useNoteCloudSave({
 
   useEffect(() => {
     aliveRef.current = true
-    return () => { aliveRef.current = false; wakeWaiters() }
+    return () => { recoveryFlushRef.current(); aliveRef.current = false; wakeWaiters() }
   }, [wakeWaiters])
 
   const ack = useCallback((next: NoteCloudFields) => {
@@ -107,7 +109,7 @@ export function useNoteCloudSave({
   const persistRecovery = useCallback(() => {
     const id = activeIdRef.current
     const user = activeUserRef.current
-    if (!aliveRef.current || id == null || user == null || user !== recoveryOwner.current) return
+    if (recoveryDiscarded.current || !aliveRef.current || id == null || user == null || user !== recoveryOwner.current) return
     const pending = pendingRef.current
     recoveryWriter.current.write({ userId: user, docId: id }, latestRef.current, baseRef.current, revisionRef.current,
       pending && !pending.confirmed ? { requestId: pending.requestId, fields: pending.fields, ...(pending.expectedFields ? { expectedFields: pending.expectedFields } : {}) } : undefined)
@@ -323,10 +325,25 @@ export function useNoteCloudSave({
     }, 0)
   }, [flush, receiveSnapshot, wakeWaiters])
 
+  recoveryFlushRef.current = () => {
+    if (!loading) persistRecovery()
+  }
   useEffect(() => {
     if (loading || cloudId == null || userId == null || userId !== recoveryOwner.current) return
-    persistRecovery()
-  })
+    const timer = setTimeout(persistRecovery, 300)
+    return () => clearTimeout(timer)
+  }, [loading, cloudId, userId, fields.title, fields.contentMd, fields.topic, fields.cover, fields.publishedAt, persistRecovery])
+
+  useEffect(() => {
+    const flush = () => recoveryFlushRef.current()
+    const visibility = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', visibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [])
 
   useEffect(() => {
     if (loading || cloudId == null || sameCloudFields(fields, baseRef.current)) return

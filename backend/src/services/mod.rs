@@ -101,6 +101,7 @@ pub mod tencent_speech_service;
 pub mod tripo; // Tripo v3 3D generation + Web GLB persistence
 pub mod updater_client;
 
+pub(crate) mod bot_ingress;
 pub mod channel_pairing; // Shared pairing mint/consume/unbind
 pub mod channel_work; // Shared private-chat Work: session, pending, delivery
 pub mod discord_bot; // Discord DM Gateway worker
@@ -128,3 +129,6 @@ pub mod rsshub_service;
 pub mod telegram_bot; // Telegram DM getUpdates worker
 pub mod telegram_pairing; // Telegram DM pairing codes + user_identities
 pub mod telegram_work; // Telegram DM send adapter + Work entry
+
+pub(crate) mod keyed_lock;
+pub(crate) mod retained_cache;

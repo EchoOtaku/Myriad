@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::future::Future;
 
 use super::types::{OpenAIResponse, StreamDelta, json_token};
@@ -153,48 +153,14 @@ pub fn openai_stream_deltas(json: &serde_json::Value) -> Vec<StreamDelta> {
 }
 
 pub(super) async fn consume_openai_sse<F, Fut>(
-    mut response: reqwest::Response,
-    mut on_delta: F,
+    response: reqwest::Response,
+    on_delta: F,
 ) -> Result<String>
 where
     F: FnMut(StreamDelta) -> Fut + Send,
     Fut: Future<Output = bool> + Send,
 {
-    let mut full_text = String::new();
-    let mut buffer = String::new();
-    loop {
-        let chunk = response.chunk().await.context("Stream read error")?;
-        match chunk {
-            Some(bytes) => buffer.push_str(&String::from_utf8_lossy(&bytes)),
-            None => break,
-        }
-        while let Some(pos) = buffer.find('\n') {
-            let line = buffer[..pos].trim().to_string();
-            buffer = buffer[pos + 1..].to_string();
-            if line.is_empty() {
-                continue;
-            }
-            let Some(data) = line.strip_prefix("data: ") else {
-                continue;
-            };
-            if data.trim() == "[DONE]" {
-                return Ok(full_text);
-            }
-            let Ok(json) = serde_json::from_str::<serde_json::Value>(data) else {
-                continue;
-            };
-            for delta in openai_stream_deltas(&json) {
-                if let StreamDelta::Text(ref content) = delta {
-                    full_text.push_str(content);
-                }
-                if !on_delta(delta).await {
-                    return Ok(full_text);
-                }
-                tokio::task::yield_now().await;
-            }
-        }
-    }
-    Ok(full_text)
+    super::sse::consume_text_sse(response, on_delta, openai_stream_deltas).await
 }
 
 pub(crate) fn openai_chat_completions_url(base_url: Option<&str>) -> String {

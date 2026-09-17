@@ -39,7 +39,7 @@ impl Agent {
             Ok(AgentResponse {
                 response_type: AgentResponseType::Answer,
                 message: reply.clone(),
-                data: Some(chat_reply_with_overlay(&request, &reply)),
+                data: Some(chat_reply_with_overlay(&self.db, &request, &reply).await),
                 data_display: None,
                 suggestions: vec![],
                 task: None,
@@ -197,7 +197,7 @@ impl Agent {
         return Ok(AgentResponse {
             response_type: AgentResponseType::Answer,
             message: reply.clone(),
-            data: Some(chat_reply_with_overlay(&request, &reply)),
+            data: Some(chat_reply_with_overlay(&self.db, &request, &reply).await),
             data_display: None,
             suggestions: vec![],
             task: None,
@@ -218,7 +218,11 @@ fn chat_music_frontend_action(
     })
 }
 
-fn chat_reply_with_overlay(request: &UserRequest, reply: &str) -> Value {
+async fn chat_reply_with_overlay(
+    db: &sea_orm::DatabaseConnection,
+    request: &UserRequest,
+    reply: &str,
+) -> Value {
     let mut data = crate::services::agent::chat_prompt::chat_reply_data(reply, &request.raw_input);
     let session_id = request
         .context
@@ -228,7 +232,9 @@ fn chat_reply_with_overlay(request: &UserRequest, reply: &str) -> Value {
     if let Some(object) = data.as_object_mut() {
         object.insert(
             "outfitId".into(),
-            match crate::services::agent::merope::overlay_outfit_id(request.user_id, session_id) {
+            match crate::services::agent::merope::overlay_outfit_id(db, request.user_id, session_id)
+                .await
+            {
                 Some(id) => Value::String(id),
                 None => Value::Null,
             },

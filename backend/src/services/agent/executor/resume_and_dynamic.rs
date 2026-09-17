@@ -25,6 +25,7 @@ impl Executor {
         user_id: i32,
         progress_tx: Option<tokio::sync::mpsc::Sender<types::AgentProgressEvent>>,
     ) -> Result<TaskState, String> {
+        let _cancellation = task_store::CancellationGuard::new(task_id);
         // 先复制持久化恢复态；答案校验和 context 变换都只作用于这份副本。
         // 真正开始执行前再通过数据库 CAS 争抢跨副本 resume 权。
         let mut task_state = {

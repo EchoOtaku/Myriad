@@ -411,18 +411,16 @@ pub(crate) async fn spawn_restored_wait_loop(
     };
     loop {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel::<serde_json::Value>();
-        {
-            let mut map = WAITING_TASKS.write().await;
-            map.insert(
-                task_id.clone(),
-                WaitingTaskCtx {
-                    user_id,
-                    progress_tx: tx.clone(),
-                    done_tx,
-                    session_id: session_id.clone(),
-                },
-            );
-        }
+        let _waiting = WaitingTaskRegistration::insert(
+            &task_id,
+            WaitingTaskCtx {
+                registration: Arc::new(()),
+                user_id,
+                progress_tx: tx.clone(),
+                done_tx,
+                session_id: session_id.clone(),
+            },
+        );
         tracing::info!(
             task_id = %task_id,
             run_id = %run_id,
@@ -714,6 +712,70 @@ pub(crate) async fn spawn_restored_wait_loop(
 #[cfg(test)]
 mod tests {
     use super::{RunningRecovery, classify_stranded_running, wait_response_still_waiting};
+    #[tokio::test]
+    async fn abort_wait_loop_releases_context_and_progress_sender() {
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let execution = tokio::spawn(super::spawn_restored_wait_loop(
+            7319,
+            task_id.clone(),
+            "session".into(),
+            "run".into(),
+            tx,
+            None,
+            None,
+        ));
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if super::WAITING_TASKS.lock().unwrap().contains_key(&task_id) {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        execution.abort();
+        let _ = execution.await;
+        assert!(
+            super::take_waiting_task(&task_id, 7319).await.is_none(),
+            "aborted wait loop retained its context"
+        );
+        assert!(
+            rx.recv().await.is_none(),
+            "retained progress sender kept the run alive"
+        );
+    }
+
+    #[tokio::test]
+    async fn old_wait_registration_preserves_replacement_and_owner_check() {
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let context = |user_id| {
+            let (tx, _) = tokio::sync::mpsc::channel(1);
+            let (done_tx, _) = tokio::sync::oneshot::channel();
+            super::WaitingTaskCtx {
+                registration: std::sync::Arc::new(()),
+                user_id,
+                progress_tx: tx,
+                done_tx,
+                session_id: "session".into(),
+            }
+        };
+        let old = super::WaitingTaskRegistration::insert(&task_id, context(7319));
+        let replacement = super::WaitingTaskRegistration::insert(&task_id, context(7320));
+        drop(old);
+        assert!(super::take_waiting_task(&task_id, 7319).await.is_none());
+        assert_eq!(
+            super::take_waiting_task(&task_id, 7320)
+                .await
+                .unwrap()
+                .user_id,
+            7320
+        );
+        drop(replacement);
+        assert!(!super::WAITING_TASKS.lock().unwrap().contains_key(&task_id));
+    }
+
     #[test]
     fn recovery_does_not_attach_two_waiters_and_releases_on_exit() {
         let task_id = uuid::Uuid::new_v4().to_string();

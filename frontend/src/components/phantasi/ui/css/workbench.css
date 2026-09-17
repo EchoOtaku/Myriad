@@ -1016,6 +1016,22 @@ html.dark
     max-height: none;
   }
 
+  .phantasi-workbench__rail .config-sidebar-header,
+  .phantasi-workbench__rail .config-sidebar-scroll,
+  .phantasi-workbench__rail .config-nav-group {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  .phantasi-workbench__rail .config-nav-item {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 2.75rem;
+  }
+
   .phantasi-workbench[data-mobile-pane='nav'] .phantasi-workbench__main {
     display: none;
   }

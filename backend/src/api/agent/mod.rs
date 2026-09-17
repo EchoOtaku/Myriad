@@ -39,6 +39,7 @@ use crate::services::agent::{
 /// 等待用户回答的任务上下文
 /// `spawn_restored_wait_loop` 注册后等待 oneshot；answer / cancel / interrupt 都可 send `done_tx`
 struct WaitingTaskCtx {
+    registration: Arc<()>,
     /// 任务所有者；take 时必须匹配，防止跨用户抢 oneshot
     user_id: i32,
     /// 后端 run 的进度 sender；answer 阶段继续写入同一个 run hub
@@ -50,8 +51,41 @@ struct WaitingTaskCtx {
 }
 
 static WAITING_TASKS: once_cell::sync::Lazy<
-    tokio::sync::RwLock<std::collections::HashMap<String, WaitingTaskCtx>>,
-> = once_cell::sync::Lazy::new(|| tokio::sync::RwLock::new(std::collections::HashMap::new()));
+    std::sync::Mutex<std::collections::HashMap<String, WaitingTaskCtx>>,
+> = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Each polling round owns exactly its context, including during task abort.
+/// A synchronous lock makes Drop cleanup immediate; no map lock crosses await.
+struct WaitingTaskRegistration {
+    task_id: String,
+    identity: Arc<()>,
+}
+
+impl WaitingTaskRegistration {
+    fn insert(task_id: &str, context: WaitingTaskCtx) -> Self {
+        let identity = context.registration.clone();
+        WAITING_TASKS
+            .lock()
+            .unwrap()
+            .insert(task_id.to_owned(), context);
+        Self {
+            task_id: task_id.to_owned(),
+            identity,
+        }
+    }
+}
+
+impl Drop for WaitingTaskRegistration {
+    fn drop(&mut self) {
+        let mut tasks = WAITING_TASKS.lock().unwrap();
+        if tasks
+            .get(&self.task_id)
+            .is_some_and(|context| Arc::ptr_eq(&context.registration, &self.identity))
+        {
+            tasks.remove(&self.task_id);
+        }
+    }
+}
 
 /// Channel stop / HTTP cancel share this so a waiting run does not hang.
 pub(crate) async fn cancel_task_and_wake(
@@ -81,7 +115,7 @@ pub(crate) async fn cancel_task_and_wake(
 
 /// 仅任务所有者可取出 waiting 上下文；错误用户不 remove，避免抢 oneshot
 async fn take_waiting_task(task_id: &str, user_id: i32) -> Option<WaitingTaskCtx> {
-    let mut map = WAITING_TASKS.write().await;
+    let mut map = WAITING_TASKS.lock().unwrap();
     match map.get(task_id) {
         Some(ctx) if ctx.user_id != user_id => {
             tracing::warn!(

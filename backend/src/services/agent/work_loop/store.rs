@@ -130,20 +130,27 @@ async fn save_inner(
 }
 
 /// A heartbeat only extends the live lease. It never overwrites task state.
-pub(super) struct Lease(tokio::task::JoinHandle<()>);
+pub(super) struct Lease {
+    heartbeat: tokio::task::JoinHandle<()>,
+    _cancellation: executor::task_store::CancellationGuard,
+}
 impl Drop for Lease {
     fn drop(&mut self) {
-        self.0.abort();
+        self.heartbeat.abort();
     }
 }
 pub(super) fn lease(db: sea_orm::DatabaseConnection, task_id: String, lease_id: String) -> Lease {
-    Lease(tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-            let _ = db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+    let cancellation = executor::task_store::CancellationGuard::new(&task_id);
+    Lease {
+        heartbeat: tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                let _ = db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
                 "UPDATE agent_tasks SET updated_at = NOW() WHERE id = $1 AND status = 'running' AND EXISTS (SELECT 1 FROM tapp_runtime_registry WHERE namespace = 'agent_work_checkpoint' AND record_id = $1 AND payload->>'lease_id' = $2)",[task_id.clone().into(),lease_id.clone().into()])).await;
-        }
-    }))
+            }
+        }),
+        _cancellation: cancellation,
+    }
 }
 
 /// An old timeout observer can only expire the exact question it observed.

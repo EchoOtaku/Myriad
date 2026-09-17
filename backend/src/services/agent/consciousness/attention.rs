@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 const ATTENTION_TTL_SECS: i64 = 15 * 60;
 const EVENT_ID_CAP: usize = 16;
+const SEGMENT_CAP: usize = 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AttentionSegment {
@@ -23,16 +24,28 @@ pub struct AttentionSegment {
 static SEGMENTS: Lazy<RwLock<HashMap<i32, AttentionSegment>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
+fn prune_segments(map: &mut HashMap<i32, AttentionSegment>, now: DateTime<Utc>) {
+    map.retain(|_, segment| {
+        now.signed_duration_since(segment.last_touched_at) <= Duration::seconds(ATTENTION_TTL_SECS)
+    });
+}
+
+pub(crate) fn cleanup_attention() {
+    if let Ok(mut map) = SEGMENTS.write() {
+        prune_segments(&mut map, Utc::now());
+    }
+}
+
+pub(crate) fn clear_user_attention(user_id: i32) {
+    if let Ok(mut map) = SEGMENTS.write() {
+        map.remove(&user_id);
+    }
+}
+
 pub fn last_attention(user_id: i32) -> Option<AttentionSegment> {
-    let now = Utc::now();
-    SEGMENTS
-        .read()
-        .ok()
-        .and_then(|map| map.get(&user_id).cloned())
-        .filter(|segment| {
-            now.signed_duration_since(segment.last_touched_at)
-                <= Duration::seconds(ATTENTION_TTL_SECS)
-        })
+    let mut map = SEGMENTS.write().ok()?;
+    prune_segments(&mut map, Utc::now());
+    map.get(&user_id).cloned()
 }
 
 pub fn next_attention_segment(
@@ -76,9 +89,18 @@ pub fn touch_attention(user_id: i32, topic: &str, inner: &str, event_id: &str, n
     if user_id <= 0 {
         return;
     }
-    let current = last_attention(user_id);
-    let next = next_attention_segment(current.as_ref(), topic, inner, event_id, now);
     if let Ok(mut map) = SEGMENTS.write() {
+        prune_segments(&mut map, now);
+        let next = next_attention_segment(map.get(&user_id), topic, inner, event_id, now);
+        if map.len() >= SEGMENT_CAP && !map.contains_key(&user_id) {
+            if let Some(oldest) = map
+                .iter()
+                .min_by_key(|(_, segment)| segment.last_touched_at)
+                .map(|(id, _)| *id)
+            {
+                map.remove(&oldest);
+            }
+        }
         map.insert(user_id, next);
     }
 }
@@ -86,6 +108,17 @@ pub fn touch_attention(user_id: i32, topic: &str, inner: &str, event_id: &str, n
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distinct_user_churn_stays_bounded() {
+        let now = Utc::now();
+        for user_id in 10_000..12_000 {
+            touch_attention(user_id, "topic", "inner", "event", now);
+        }
+        let mut map = SEGMENTS.write().unwrap();
+        assert!(map.len() <= SEGMENT_CAP);
+        map.retain(|user_id, _| !(10_000..12_000).contains(user_id));
+    }
 
     #[test]
     fn same_topic_continues_the_segment() {
@@ -129,6 +162,7 @@ mod tests {
             map.insert(401, stale);
         }
         assert!(last_attention(401).is_none());
+        assert!(!SEGMENTS.read().unwrap().contains_key(&401));
     }
 
     #[test]

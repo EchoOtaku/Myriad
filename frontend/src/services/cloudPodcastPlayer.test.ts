@@ -50,3 +50,42 @@ it('destroy cancels pending synthesis and prevents late audio allocation', async
     else Reflect.deleteProperty(globalThis, 'sessionStorage')
   }
 })
+
+it('podcast fetches and retains only current and next dialogue across seeks', async () => {
+  const originalFetch = globalThis.fetch
+  const originalAudio = globalThis.Audio
+  const storage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
+  const audioInstances: Array<{ src: string }> = []
+  globalThis.Audio = class {
+    src = ''; preload = ''; currentTime = 0; readyState = 0
+    onended = null; onerror = null
+    constructor() { audioInstances.push(this) }
+    load() {} pause() {} async play() {}
+  } as unknown as typeof Audio
+  const requests: number[][] = []
+  globalThis.fetch = async (input, options) => {
+    if (String(input).includes('csrf-token')) return Response.json({ csrf_token: null })
+    const body = JSON.parse(String(options?.body))
+    requests.push(body.dialogues.map((d: { index: number }) => d.index))
+    return Response.json({ success: true, cache_hits: 0, generated: body.dialogues.length, audios: body.dialogues.map((d: { index: number }) => ({ index: d.index, audio: 'AA==' })) })
+  }
+  const player = new CloudPodcastPlayer()
+  try {
+    await player.load(Array.from({ length: 20 }, () => ({ speaker: 'host', text: 'hello' })), { sourceId: 1, articleId: 2 })
+    assert.deepEqual(requests, [[0, 1]])
+    assert.equal(audioInstances.filter(audio => audio.src).length, 2)
+    await player.seekTo(10)
+    assert.deepEqual(requests, [[0, 1], [10, 11]])
+    assert.equal(audioInstances.filter(audio => audio.src).length, 2)
+    await player.seekTo(0)
+    assert.deepEqual(requests.at(-1), [0, 1])
+    assert.equal(audioInstances.filter(audio => audio.src).length, 2)
+  } finally {
+    player.destroy()
+    globalThis.fetch = originalFetch
+    globalThis.Audio = originalAudio
+    if (storage) Object.defineProperty(globalThis, 'sessionStorage', storage)
+    else Reflect.deleteProperty(globalThis, 'sessionStorage')
+  }
+})

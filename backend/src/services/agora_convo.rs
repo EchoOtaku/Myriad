@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 
 use super::agora_rtc_token::{AgoraTokenError, build_rtc_rtm_token_now};
 use super::http_client::{ProxyConfig, apply_proxy};
@@ -71,16 +71,27 @@ impl OwnedSession {
     }
 }
 
-static SESSIONS: LazyLock<Mutex<HashMap<String, OwnedSession>>> =
+// Only the registry owns cancellation. Temporary control requests clone the
+// session data, so they cannot keep an already removed expiry task alive.
+struct SessionRegistration {
+    identity: Arc<()>,
+    session: OwnedSession,
+    _cancel_expiry: oneshot::Sender<()>,
+}
+
+static SESSIONS: LazyLock<Mutex<HashMap<String, SessionRegistration>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-async fn owned_session(user_id: i32, agent_id: &str) -> Result<OwnedSession, AgoraConvoError> {
+async fn owned_session(
+    user_id: i32,
+    agent_id: &str,
+) -> Result<(OwnedSession, Arc<()>), AgoraConvoError> {
     SESSIONS
         .lock()
         .await
         .get(agent_id)
-        .filter(|session| session.permits(user_id, Instant::now()))
-        .cloned()
+        .filter(|entry| entry.session.permits(user_id, Instant::now()))
+        .map(|entry| (entry.session.clone(), entry.identity.clone()))
         .ok_or(AgoraConvoError::SessionUnavailable)
 }
 
@@ -412,7 +423,7 @@ pub async fn start_session(
         status = %agent_status,
         "Agora conversational agent joined"
     );
-    SESSIONS.lock().await.insert(
+    register_session(
         agent_id.clone(),
         OwnedSession {
             user_id,
@@ -420,26 +431,8 @@ pub async fn start_session(
             endpoint: agora.clone(),
             chat,
         },
-    );
-    let expiring_id = agent_id.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep_until(expires_at.into()).await;
-        let expired = {
-            let mut sessions = SESSIONS.lock().await;
-            if sessions
-                .get(&expiring_id)
-                .is_some_and(|session| session.expires_at == expires_at)
-            {
-                sessions.remove(&expiring_id)
-            } else {
-                None
-            }
-        };
-        if let Some(session) = expired {
-            session.chat.close().await;
-            let _ = post_agent_action(&session.endpoint, &expiring_id, "leave").await;
-        }
-    });
+    )
+    .await;
     Ok(ConvoSession {
         app_id: app_id.clone(),
         channel,
@@ -450,22 +443,64 @@ pub async fn start_session(
     })
 }
 
+async fn register_session(agent_id: String, session: OwnedSession) {
+    let expires_at = session.expires_at;
+    let identity = Arc::new(());
+    let (cancel_expiry, cancelled) = oneshot::channel();
+    let mut sessions = SESSIONS.lock().await;
+    sessions.insert(
+        agent_id.clone(),
+        SessionRegistration {
+            identity: identity.clone(),
+            session,
+            _cancel_expiry: cancel_expiry,
+        },
+    );
+    // Removal (including replacement) drops the sender and wakes the timer.
+    // Once expiry wins, dropping that sender must not abort remote leave.
+    tokio::spawn(async move {
+        tokio::select! {
+            biased;
+            _ = cancelled => return,
+            _ = tokio::time::sleep_until(expires_at.into()) => {},
+        }
+        if let Some(session) = remove_session(&agent_id, &identity).await {
+            session.chat.close().await;
+            let _ = post_agent_action(&session.endpoint, &agent_id, "leave").await;
+        }
+    });
+}
+
+/// An old stop/expiry may finish after a replacement is registered under the
+/// same provider ID. Only remove the exact registration that initiated it.
+async fn remove_session(agent_id: &str, identity: &Arc<()>) -> Option<OwnedSession> {
+    let mut sessions = SESSIONS.lock().await;
+    if sessions
+        .get(agent_id)
+        .is_some_and(|entry| Arc::ptr_eq(&entry.identity, identity))
+    {
+        sessions.remove(agent_id).map(|entry| entry.session)
+    } else {
+        None
+    }
+}
+
 fn transport_uids(seed: uuid::Uuid) -> (u32, u32) {
     let user_uid = ((seed.as_u128() as u32) & 0x7fff_fffe).max(2);
     (user_uid, user_uid + 1)
 }
 
 pub async fn stop_session(user_id: i32, agent_id: &str) -> Result<(), AgoraConvoError> {
-    let session = owned_session(user_id, agent_id).await?;
+    let (session, identity) = owned_session(user_id, agent_id).await?;
     session.chat.close().await;
     // Keep the owner until a failed leave can be retried or the lease expires.
     post_agent_action(&session.endpoint, agent_id, "leave").await?;
-    SESSIONS.lock().await.remove(agent_id);
+    remove_session(agent_id, &identity).await;
     Ok(())
 }
 
 pub async fn interrupt_session(user_id: i32, agent_id: &str) -> Result<(), AgoraConvoError> {
-    let session = owned_session(user_id, agent_id).await?;
+    let (session, _) = owned_session(user_id, agent_id).await?;
     session.chat.interrupt().await;
     post_agent_action(&session.endpoint, agent_id, "interrupt").await
 }
@@ -474,7 +509,7 @@ pub async fn chat_session(
     user_id: i32,
     agent_id: &str,
 ) -> Result<Arc<super::agora_chat::ChatSession>, AgoraConvoError> {
-    Ok(owned_session(user_id, agent_id).await?.chat)
+    Ok(owned_session(user_id, agent_id).await?.0.chat)
 }
 
 async fn post_agent_action(
@@ -582,6 +617,208 @@ mod tests {
             stop_session(8, "unknown").await,
             Err(AgoraConvoError::SessionUnavailable)
         ));
+    }
+
+    async fn expiry_fixture(user_id: i32, api_base: String) -> OwnedSession {
+        let (chat, _) = super::super::agora_chat::ChatSession::register(
+            crate::middleware::auth::mint_session_claims(user_id, "expiry-tester", false, false, 0),
+            format!("convo-expiry-{user_id}"),
+        )
+        .await
+        .unwrap();
+        OwnedSession {
+            user_id,
+            expires_at: Instant::now() + Duration::from_secs(3600),
+            endpoint: Arc::new(AgoraEndpoint {
+                app_id: "app".into(),
+                certificate: String::new(),
+                customer_id: "test".into(),
+                customer_secret: "test".into(),
+                api_base,
+            }),
+            chat,
+        }
+    }
+
+    async fn wait_for_tasks(baseline: usize) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            let metrics = tokio::runtime::Handle::current().metrics();
+            while metrics.num_alive_tasks() > baseline {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("removed sessions must release expiry tasks promptly");
+    }
+
+    async fn leave_server(statuses: Vec<u16>) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            let mut paths = Vec::new();
+            for status in statuses {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                loop {
+                    let mut chunk = [0u8; 1024];
+                    let read = socket.read(&mut chunk).await.unwrap();
+                    assert!(read > 0, "client closed before sending request headers");
+                    bytes.extend_from_slice(&chunk[..read]);
+                    if bytes.windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+                    assert!(bytes.len() < 8192);
+                }
+                paths.push(
+                    String::from_utf8_lossy(&bytes)
+                        .lines()
+                        .next()
+                        .unwrap()
+                        .to_owned(),
+                );
+                socket.write_all(format!("HTTP/1.1 {status} Result\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").as_bytes()).await.unwrap();
+            }
+            paths
+        });
+        (base, task)
+    }
+
+    #[tokio::test]
+    async fn removed_or_replaced_sessions_do_not_retain_expiry_tasks() {
+        let baseline = tokio::runtime::Handle::current()
+            .metrics()
+            .num_alive_tasks();
+        let session = expiry_fixture(7192, String::new()).await;
+        for id in 0..1000 {
+            let key = format!("convo-churn-{id}");
+            register_session(key.clone(), session.clone()).await;
+            register_session(key.clone(), session.clone()).await;
+            SESSIONS.lock().await.remove(&key);
+        }
+        // A cloned session held by a caller must not own registry cancellation.
+        session.chat.close().await;
+        wait_for_tasks(baseline).await;
+    }
+
+    #[tokio::test]
+    async fn failed_leave_keeps_expiry_and_successful_retry_releases_it() {
+        let baseline = tokio::runtime::Handle::current()
+            .metrics()
+            .num_alive_tasks();
+        let (base, server) = leave_server(vec![500, 200]).await;
+        let session = expiry_fixture(7193, base).await;
+        let key = "convo-leave-retry";
+        register_session(key.into(), session.clone()).await;
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(3), stop_session(7193, key))
+                .await
+                .unwrap(),
+            Err(AgoraConvoError::Api { status: 500, .. })
+        ));
+        {
+            let sessions = SESSIONS.lock().await;
+            let retained = sessions.get(key).expect("failed leave remains retryable");
+            assert!(
+                !retained._cancel_expiry.is_closed(),
+                "expiry must still be waiting after failed leave"
+            );
+        }
+        tokio::time::timeout(Duration::from_secs(3), stop_session(7193, key))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!SESSIONS.lock().await.contains_key(key));
+        let paths = server.await.unwrap();
+        assert_eq!(paths.len(), 2);
+        assert!(
+            paths
+                .iter()
+                .all(|path| path.contains("/agents/convo-leave-retry/leave"))
+        );
+        wait_for_tasks(baseline).await;
+    }
+
+    #[tokio::test]
+    async fn natural_expiry_closes_chat_and_sends_leave_after_registry_removal() {
+        let baseline = tokio::runtime::Handle::current()
+            .metrics()
+            .num_alive_tasks();
+        let (base, server) = leave_server(vec![200]).await;
+        let mut session = expiry_fixture(7194, base).await;
+        session.expires_at = Instant::now();
+        let chat = session.chat.clone();
+        let key = "convo-natural-expiry";
+        register_session(key.into(), session).await;
+        let paths = tokio::time::timeout(Duration::from_secs(3), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].contains("/agents/convo-natural-expiry/leave"));
+        assert!(!SESSIONS.lock().await.contains_key(key));
+        assert!(
+            chat.start_or_replay(1, "late", || async {
+                panic!("expired chat must be closed")
+            })
+            .await
+            .is_err()
+        );
+        wait_for_tasks(baseline).await;
+    }
+
+    #[tokio::test]
+    async fn old_stop_cannot_remove_a_replacement_session() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (entered, mut seen) = tokio::sync::mpsc::channel(1);
+        let release = Arc::new(tokio::sync::Notify::new());
+        let router = axum::Router::new().fallback({
+            let release = release.clone();
+            move || {
+                let entered = entered.clone();
+                let release = release.clone();
+                async move {
+                    entered.send(()).await.unwrap();
+                    release.notified().await;
+                    axum::http::StatusCode::OK
+                }
+            }
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let old = expiry_fixture(7195, base.clone()).await;
+        let key = "convo-stale-stop";
+        register_session(key.into(), old).await;
+        let stopping = tokio::spawn(stop_session(7195, key));
+        tokio::time::timeout(Duration::from_secs(3), seen.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let replacement = expiry_fixture(7195, base).await;
+        register_session(key.into(), replacement.clone()).await;
+        release.notify_one();
+        tokio::time::timeout(Duration::from_secs(3), stopping)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let current = chat_session(7195, key)
+            .await
+            .expect("old stop must preserve new registration");
+        assert!(Arc::ptr_eq(&current, &replacement.chat));
+        assert!(
+            !SESSIONS
+                .lock()
+                .await
+                .get(key)
+                .unwrap()
+                ._cancel_expiry
+                .is_closed()
+        );
+        SESSIONS.lock().await.remove(key);
+        replacement.chat.close().await;
+        server.abort();
+        let _ = server.await;
     }
 
     #[test]

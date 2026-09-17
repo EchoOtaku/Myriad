@@ -84,6 +84,8 @@ export class ObjectPool<T> {
   release(obj: T): void {
     this.activeCount = Math.max(0, this.activeCount - 1)
 
+    this.config.reset(obj)
+
     if (this.pool.length < this.config.maxSize) {
       this.pool.push({
         obj,

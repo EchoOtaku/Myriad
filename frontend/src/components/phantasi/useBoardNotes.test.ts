@@ -60,7 +60,10 @@ it('notes expose early pages, retain them on failure, and retry the failed page'
       state.notes.map((note) => note.id),
       [2],
     )
-    assert.equal(state.loading, true)
+    assert.equal(state.loading, false)
+    assert.equal(calls, 1)
+    assert.equal(state.hasMore, true)
+    await act(async () => state.loadMore())
     await act(async () => {
       second.reject(new Error('offline'))
     })

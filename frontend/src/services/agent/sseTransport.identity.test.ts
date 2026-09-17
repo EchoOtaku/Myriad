@@ -17,7 +17,7 @@ function stream(events: unknown[]): Response {
     headers: { 'content-type': 'text/event-stream' },
   })
 }
-function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
+function harness(csrf: () => Promise<string>, fetcher: typeof fetch, raf?: (callback: FrameRequestCallback) => number) {
   const subject = new AuthSubjectScope()
   const dependencies: Record<string, unknown> = {
     '../../i18n/hostLocaleHeaders': { hostLocaleHeaders: () => ({}) },
@@ -35,7 +35,7 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
     exports,
       require: (id: string) => { assert.ok(Object.hasOwn(dependencies, id), id); return dependencies[id] },
     AbortController, AbortSignal, setTimeout, clearTimeout, TextDecoder, Error, console,
-    fetch: fetcher,
+    fetch: fetcher, requestAnimationFrame: raf,
   })
   const activeControllers = new Set<AbortController>()
   const options = {
@@ -145,4 +145,30 @@ test('a cancelled polling fallback cannot publish late progress or completion', 
   held.resolve()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(progress, 1)
+})
+
+test('a token burst finishes when animation frames are suspended', async () => {
+  const h = harness(async () => 'token', async () => stream([
+    ...Array.from({ length: 100 }, () => ({ type: 'summary_token', token: 'x' })),
+    { type: 'task_completed', response: final },
+  ]), () => 1)
+  const result = await Promise.race([
+    h.executeSSERequest(h.options).then(() => 'done'),
+    new Promise(resolve => setTimeout(() => resolve('hung'), 100)),
+  ])
+  h.abortSseSubscriptions(h.activeControllers)
+  assert.equal(result, 'done')
+})
+
+test('terminal stream errors cancel and unlock the unread response body', async () => {
+  let cancelled = false
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new TextEncoder().encode('data: {"type":"error","message":"failure"}\n\n')) },
+    cancel() { cancelled = true },
+  })
+  const h = harness(async () => 'token', async () => new Response(body))
+  await assert.rejects(h.executeSSERequest(h.options), /failure/)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(cancelled, true)
+  assert.equal(body.locked, false)
 })

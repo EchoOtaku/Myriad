@@ -4,11 +4,12 @@ import {
   markdownToVisualHtml,
   runVisualCommand,
 } from './noteVisual'
+import { trimVisualHistory } from './noteVisualHistory'
 import { replaceNoteHtml } from './noteWidgetMount'
 import { hydrateVisualMath } from './renderMath'
 
 export const VISUAL_UNDO_GROUP_MS = 600
-export const VISUAL_UNDO_LIMIT = 200
+export { VISUAL_UNDO_LIMIT } from './noteVisualHistory'
 
 export interface NoteVisualHistory {
   past: string[]
@@ -54,8 +55,8 @@ export function useNoteVisual({
     const now = Date.now()
     if (now - history.lastPush > VISUAL_UNDO_GROUP_MS || history.past.length === 0) {
       history.past.push(history.recorded)
-      if (history.past.length > VISUAL_UNDO_LIMIT) history.past.shift()
       history.future = []
+      trimVisualHistory(history)
     }
     history.lastPush = now
     history.recorded = contentMd
@@ -90,6 +91,7 @@ export function useNoteVisual({
       const next = from.pop()
       if (next === undefined) return
       to.push(contentMdRef.current)
+      trimVisualHistory(history)
       history.restoring = true
       history.lastPush = 0
       syncVisualFromMarkdown(next)

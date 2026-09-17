@@ -3,11 +3,7 @@
 //! Chat can point the live face at another saved set. It does not write
 //! persona, the worn outfit, or the live rig pointer.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-use once_cell::sync::Lazy;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 
 use super::store::get_persona;
 use myriad_merope::{
@@ -15,29 +11,52 @@ use myriad_merope::{
     resolve_wear_directive, wardrobe_look, worn_outfit_id,
 };
 
-static OVERLAYS: Lazy<Mutex<HashMap<(i32, String), String>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-
-pub fn overlay_outfit_id(user_id: i32, session_id: &str) -> Option<String> {
-    OVERLAYS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(&(user_id, session_id.to_string()))
-        .cloned()
+/// Session state is durable; reading it does not retain a process-wide entry.
+/// It never updates persona, the worn outfit, or the active rig pointer.
+pub async fn overlay_outfit_id(
+    db: &DatabaseConnection,
+    user_id: i32,
+    session_id: &str,
+) -> Option<String> {
+    if session_id.is_empty() {
+        return None;
+    }
+    match db.query_one_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT context->>'chat_outfit_overlay' AS outfit_id FROM agent_sessions WHERE id = $1 AND user_id = $2 AND archived = FALSE",
+        [session_id.into(), user_id.into()],
+    )).await {
+        Ok(Some(row)) => row.try_get::<Option<String>>("", "outfit_id").ok().flatten(),
+        Ok(None) => None,
+        Err(error) => { tracing::warn!(%error, "Failed to read chat outfit overlay"); None }
+    }
 }
 
-pub fn clear_overlay(user_id: i32, session_id: &str) {
-    OVERLAYS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(&(user_id, session_id.to_string()));
-}
-
-fn set_overlay(user_id: i32, session_id: &str, outfit_id: &str) {
-    OVERLAYS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert((user_id, session_id.to_string()), outfit_id.to_string());
+async fn set_overlay(
+    db: &DatabaseConnection,
+    user_id: i32,
+    session_id: &str,
+    outfit_id: Option<&str>,
+) -> bool {
+    let statement = match outfit_id {
+        Some(id) => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE agent_sessions SET context = jsonb_set(COALESCE(context::jsonb, '{}'::jsonb), '{chat_outfit_overlay}', to_jsonb($3::text)) WHERE id = $1 AND user_id = $2 AND archived = FALSE",
+            vec![session_id.into(), user_id.into(), id.into()],
+        ),
+        None => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE agent_sessions SET context = COALESCE(context::jsonb, '{}'::jsonb) - 'chat_outfit_overlay' WHERE id = $1 AND user_id = $2 AND archived = FALSE",
+            vec![session_id.into(), user_id.into()],
+        ),
+    };
+    match db.execute_raw(statement).await {
+        Ok(result) => result.rows_affected() == 1,
+        Err(error) => {
+            tracing::warn!(%error, "Failed to save chat outfit overlay");
+            false
+        }
+    }
 }
 
 /// Apply Lite's wardrobe choice. `Some` means the showing outfit changed;
@@ -63,7 +82,7 @@ pub async fn apply_model_wear_directive(
         return None;
     }
     let worn = worn_outfit_id(profile).unwrap_or(DEFAULT_WARDROBE_ID);
-    let current = live_overlay(user_id, session_id, &looks);
+    let current = live_overlay(db, user_id, session_id, &looks).await;
     match resolve_wear_directive(directive, &looks, worn, current.as_deref()) {
         OverlayDecision::Unchanged => {
             tracing::debug!(user_id, session_id, "chat outfit overlay unchanged");
@@ -71,8 +90,9 @@ pub async fn apply_model_wear_directive(
         }
         OverlayDecision::Clear => {
             tracing::info!(user_id, session_id, "chat outfit overlay cleared");
-            clear_overlay(user_id, session_id);
-            Some(None)
+            set_overlay(db, user_id, session_id, None)
+                .await
+                .then_some(None)
         }
         OverlayDecision::Wear(id) => {
             tracing::info!(
@@ -81,8 +101,9 @@ pub async fn apply_model_wear_directive(
                 outfit_id = %id,
                 "chat outfit overlay wear"
             );
-            set_overlay(user_id, session_id, id);
-            Some(Some(id.to_string()))
+            set_overlay(db, user_id, session_id, Some(id))
+                .await
+                .then(|| Some(id.to_string()))
         }
     }
 }
@@ -101,26 +122,73 @@ pub async fn chat_wardrobe_section(
     let profile = persona.visual_profile.as_ref()?;
     let looks = looks_from_visual_profile(profile);
     let worn = worn_outfit_id(profile).unwrap_or(DEFAULT_WARDROBE_ID);
-    let overlay = live_overlay(user_id, session_id, &looks);
+    let overlay = live_overlay(db, user_id, session_id, &looks).await;
     myriad_merope::format_chat_wardrobe_section(&looks, worn, overlay.as_deref())
 }
 
-fn live_overlay(
+async fn live_overlay(
+    db: &DatabaseConnection,
     user_id: i32,
     session_id: &str,
     looks: &[myriad_merope::WardrobeLook],
 ) -> Option<String> {
-    let current = overlay_outfit_id(user_id, session_id)?;
+    let current = overlay_outfit_id(db, user_id, session_id).await?;
     if wardrobe_look(looks, &current).is_some_and(|look| look.playable()) {
         Some(current)
     } else {
-        clear_overlay(user_id, session_id);
+        set_overlay(db, user_id, session_id, None).await;
         None
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    #[ignore = "requires MYRIAD_MEMORY_TEST_DATABASE_URL pointing to a disposable PostgreSQL database"]
+    async fn durable_overlay_survives_session_churn_and_preserves_ownership_and_context() {
+        use super::*;
+        let url = std::env::var("MYRIAD_MEMORY_TEST_DATABASE_URL").expect("disposable test DB");
+        let mut options = sea_orm::ConnectOptions::new(url);
+        options.max_connections(1);
+        let db = sea_orm::Database::connect(options).await.unwrap();
+        db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "CREATE TEMP TABLE agent_sessions (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, context JSON, archived BOOLEAN NOT NULL DEFAULT FALSE)")).await.unwrap();
+        db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+            r#"INSERT INTO agent_sessions VALUES ('active', 7, '{"mode":"chat","other":123}', FALSE), ('archived', 7, '{}', TRUE)"#)).await.unwrap();
+        assert!(set_overlay(&db, 7, "active", Some("look-a")).await);
+        assert!(!set_overlay(&db, 8, "active", Some("unauthorized")).await);
+        assert!(!set_overlay(&db, 7, "archived", Some("look-a")).await);
+        assert!(overlay_outfit_id(&db, 8, "active").await.is_none());
+        db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "INSERT INTO agent_sessions SELECT 'churn-' || n::text, 7, '{}'::jsonb, FALSE FROM generate_series(1, 2000) n")).await.unwrap();
+        assert_eq!(
+            overlay_outfit_id(&db, 7, "active").await.as_deref(),
+            Some("look-a")
+        );
+        assert!(set_overlay(&db, 7, "active", None).await);
+        assert!(overlay_outfit_id(&db, 7, "active").await.is_none());
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT context FROM agent_sessions WHERE id = 'active'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.try_get::<serde_json::Value>("", "context").unwrap(),
+            serde_json::json!({"mode":"chat", "other":123})
+        );
+        assert!(set_overlay(&db, 7, "active", Some("look-b")).await);
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "UPDATE agent_sessions SET archived = TRUE WHERE id = 'active'",
+        ))
+        .await
+        .unwrap();
+        assert!(overlay_outfit_id(&db, 7, "active").await.is_none());
+    }
+
     #[test]
     fn overlay_memory_does_not_write_persona_or_the_live_pointer() {
         let source = include_str!("outfit_overlay.rs");

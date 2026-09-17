@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
 import { phantasiItemState } from '../../utils/phantasiItemState'
 import { RequestTurn } from './logic/requestTurn'
+import { connectSourceUpdates } from './logic/sourceConnection'
 import { reportPhantasiError } from './phantasiNotice'
 
 function applyReadMutation(
@@ -106,42 +107,10 @@ export function usePhantasiSources(
 
   useEffect(() => {
     if (!isAuthenticated) return
-    let closed = false
-    let ws: WebSocket | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-
-    const connect = () => {
-      if (closed) return
-      try {
-        ws = phantasiApi.createPhantasiWebSocket(
-          () => {
-            refreshRef.current()
-          },
-          () => {
-            if (closed) return
-            reconnectTimer = setTimeout(connect, 5000)
-          },
-        )
-        ws.onclose = () => {
-          if (closed) return
-          reconnectTimer = setTimeout(connect, 5000)
-        }
-      } catch (err) {
-        console.warn('[Phantasi] WS connect failed', err)
-        reconnectTimer = setTimeout(connect, 8000)
-      }
-    }
-    connect()
-
-    return () => {
-      closed = true
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-      try {
-        ws?.close()
-      } catch {
-        /* ignore */
-      }
-    }
+    return connectSourceUpdates(
+      phantasiApi.createPhantasiWebSocket,
+      () => refreshRef.current(),
+    )
   }, [isAuthenticated])
 
   const reloadBoard = useCallback(() => {

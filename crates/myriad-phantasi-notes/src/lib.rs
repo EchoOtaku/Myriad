@@ -393,10 +393,10 @@ fn close_fence_before_trailing_defs(markdown: &str) -> String {
                 opener = Some((index, open));
                 continue;
             }
-        } else if let Some(open) = fence {
-            if fence_close(line, open) {
-                fence = None;
-            }
+        } else if let Some(open) = fence
+            && fence_close(line, open)
+        {
+            fence = None;
         }
     }
     let Some((open_at, open)) = opener.filter(|_| fence.is_some()) else {
@@ -552,8 +552,8 @@ fn next_def_index(text: &str) -> Option<usize> {
     }
 }
 
-fn find_ascii_marker<'a>(
-    text: &'a str,
+fn find_ascii_marker(
+    text: &str,
     open: &str,
     close: &str,
     ok: impl Fn(&str) -> bool,
@@ -562,10 +562,10 @@ fn find_ascii_marker<'a>(
     while let Some(rel) = text[from..].find(open) {
         let at = from + rel;
         let inner_at = at + open.len();
-        if let Some(end) = text[inner_at..].find(close) {
-            if ok(&text[inner_at..inner_at + end]) {
-                return Some(at);
-            }
+        if let Some(end) = text[inner_at..].find(close)
+            && ok(&text[inner_at..inner_at + end])
+        {
+            return Some(at);
         }
         from = at + open.len();
     }
@@ -663,9 +663,7 @@ fn footnote_definition_start(html: &str) -> Option<usize> {
     while let Some(rel) = html[from..].find("<div") {
         let at = from + rel;
         let rest = &html[at..];
-        let Some(gt) = rest.find('>') else {
-            return None;
-        };
+        let gt = rest.find('>')?;
         let tag = &rest[..=gt];
         if tag.contains("class=\"footnote-definition\"") {
             return Some(at);

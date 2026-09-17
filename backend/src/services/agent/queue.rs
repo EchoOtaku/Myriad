@@ -4,10 +4,10 @@
 //! 防止同一 lane 的并发请求竞态，控制系统整体负载。
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 
-use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, RwLock, Semaphore};
+use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore};
 
 /// Lane Queue 全局管理器
 ///
@@ -23,7 +23,7 @@ use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, RwLock, Semaphor
 /// ```
 pub struct LaneQueue {
     /// lane_key -> 串行锁
-    lanes: RwLock<HashMap<String, Arc<Mutex<()>>>>,
+    lanes: Arc<StdMutex<HashMap<String, LaneEntry>>>,
     /// 全局并发上限
     global_semaphore: Arc<Semaphore>,
     /// 最大并发数（用于状态查询）
@@ -38,7 +38,7 @@ impl LaneQueue {
     /// `max_concurrent`: 全局最大并发执行数（推荐 4）
     pub fn new(max_concurrent: usize) -> Self {
         Self {
-            lanes: RwLock::new(HashMap::new()),
+            lanes: Arc::new(StdMutex::new(HashMap::new())),
             global_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             max_concurrent,
             waiting: AtomicUsize::new(0),
@@ -73,21 +73,23 @@ impl LaneQueue {
         Self::make_lane_key(user_id, session_id)
     }
 
-    /// 获取或创建 lane 的串行锁
-    async fn get_or_create_lane(&self, lane_key: &str) -> Arc<Mutex<()>> {
-        // 快路径：读锁检查
-        {
-            let lanes = self.lanes.read().await;
-            if let Some(mutex) = lanes.get(lane_key) {
-                return mutex.clone();
-            }
-        }
-        // 慢路径：写锁创建
-        let mut lanes = self.lanes.write().await;
-        lanes
+    /// Register before waiting: even an aborted acquire owns a cleanup guard.
+    fn register_lane(&self, lane_key: &str) -> (Arc<Mutex<()>>, LaneRegistration) {
+        let mut lanes = self.lanes.lock().unwrap();
+        let entry = lanes
             .entry(lane_key.to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+            .or_insert_with(|| LaneEntry {
+                mutex: Arc::new(Mutex::new(())),
+                users: 0,
+            });
+        entry.users += 1;
+        (
+            entry.mutex.clone(),
+            LaneRegistration {
+                lanes: self.lanes.clone(),
+                key: lane_key.to_string(),
+            },
+        )
     }
 
     /// Default max wait for a free execution slot (user-visible, avoids silent hang).
@@ -115,8 +117,9 @@ impl LaneQueue {
         lane_key: &str,
         timeout: Option<std::time::Duration>,
     ) -> Result<LaneGuard, String> {
-        let lane_mutex = self.get_or_create_lane(lane_key).await;
+        let (lane_mutex, registration) = self.register_lane(lane_key);
         self.waiting.fetch_add(1, Ordering::Relaxed);
+        let _waiting = WaitingGuard(&self.waiting);
 
         let acquire_fut = async {
             // 先获取 lane 串行锁（按 `lane_key`，会话不同则不共享）
@@ -144,11 +147,12 @@ impl LaneQueue {
             Ok::<LaneGuard, String>(LaneGuard {
                 _lane_lock: lane_lock,
                 _permit: permit,
+                _registration: registration,
                 lane_key: lane_key.to_string(),
             })
         };
 
-        let result = match timeout {
+        match timeout {
             None => acquire_fut.await,
             Some(dur) => match tokio::time::timeout(dur, acquire_fut).await {
                 Ok(result) => result,
@@ -157,14 +161,12 @@ impl LaneQueue {
                     dur.as_secs().max(1)
                 )),
             },
-        };
-        self.waiting.fetch_sub(1, Ordering::Relaxed);
-        result
+        }
     }
 
     /// 获取队列状态
     pub async fn get_status(&self) -> QueueStatus {
-        let lanes = self.lanes.read().await;
+        let lanes = self.lanes.lock().unwrap();
         QueueStatus {
             total_lanes: lanes.len(),
             max_concurrent: self.max_concurrent,
@@ -173,13 +175,42 @@ impl LaneQueue {
         }
     }
 
-    /// 清理空闲 Lane（请求驱动调用，防止 HashMap 无限增长）
+    /// Entries are reclaimed by their final registration, including on cancellation.
+    #[cfg(test)]
     pub async fn cleanup_idle_lanes(&self) {
-        let mut lanes = self.lanes.write().await;
-        // Map 自身持有一个 Arc；执行中的 guard 和等待者各自还会持有一个。
-        // 只有 strong_count == 1 时才能安全删除，否则后续请求可能创建第二把锁，
-        // 破坏同 lane 串行执行保证。
-        lanes.retain(|_, mutex| Arc::strong_count(mutex) > 1);
+        self.lanes
+            .lock()
+            .unwrap()
+            .retain(|_, entry| entry.users > 0);
+    }
+}
+
+struct LaneEntry {
+    mutex: Arc<Mutex<()>>,
+    users: usize,
+}
+
+struct LaneRegistration {
+    lanes: Arc<StdMutex<HashMap<String, LaneEntry>>>,
+    key: String,
+}
+
+impl Drop for LaneRegistration {
+    fn drop(&mut self) {
+        let mut lanes = self.lanes.lock().unwrap();
+        if let Some(entry) = lanes.get_mut(&self.key) {
+            entry.users -= 1;
+            if entry.users == 0 {
+                lanes.remove(&self.key);
+            }
+        }
+    }
+}
+
+struct WaitingGuard<'a>(&'a AtomicUsize);
+impl Drop for WaitingGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
@@ -190,6 +221,8 @@ impl LaneQueue {
 pub struct LaneGuard {
     _lane_lock: OwnedMutexGuard<()>,
     _permit: OwnedSemaphorePermit,
+    // Last: release the lock before removing its registry entry.
+    _registration: LaneRegistration,
     /// Lane key（用于日志）
     pub lane_key: String,
 }
@@ -218,18 +251,45 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn released_lanes_are_reclaimed_without_another_request() {
+        let queue = LaneQueue::new(2);
+        for index in 0..1_000 {
+            drop(queue.acquire(&format!("session-{index}")).await.unwrap());
+        }
+        assert_eq!(queue.get_status().await.total_lanes, 0);
+    }
+
+    #[tokio::test]
+    async fn aborted_waiter_releases_registration_and_wait_count() {
+        let queue = Arc::new(LaneQueue::new(1));
+        let holder = queue.acquire("holder").await.unwrap();
+        let waiter_queue = queue.clone();
+        let waiter = tokio::spawn(async move { waiter_queue.acquire("waiting").await });
+        while queue.get_status().await.waiting == 0 {
+            tokio::task::yield_now().await;
+        }
+        waiter.abort();
+        assert!(waiter.await.is_err());
+        assert_eq!(queue.get_status().await.waiting, 0);
+        assert_eq!(queue.get_status().await.total_lanes, 1);
+        drop(holder);
+        assert_eq!(queue.get_status().await.total_lanes, 0);
+    }
+
+    #[tokio::test]
     async fn cleanup_removes_only_idle_lanes() {
         let queue = LaneQueue::new(2);
         let active = queue.acquire("active").await.unwrap();
-        let idle = queue.get_or_create_lane("idle").await;
+        let idle = queue.register_lane("idle");
         drop(idle);
 
         queue.cleanup_idle_lanes().await;
 
-        let lanes = queue.lanes.read().await;
-        assert!(lanes.contains_key("active"));
-        assert!(!lanes.contains_key("idle"));
-        drop(lanes);
+        {
+            let lanes = queue.lanes.lock().unwrap();
+            assert!(lanes.contains_key("active"));
+            assert!(!lanes.contains_key("idle"));
+        }
         drop(active);
 
         queue.cleanup_idle_lanes().await;
@@ -240,8 +300,8 @@ mod tests {
     async fn cleanup_keeps_waiters_on_the_same_lane_lock() {
         let queue = Arc::new(LaneQueue::new(2));
         let active = queue.acquire("shared").await.unwrap();
-        let waiter_lock = queue.get_or_create_lane("shared").await;
-        let waiter = tokio::spawn(async move { waiter_lock.lock_owned().await });
+        let (waiter_lock, registration) = queue.register_lane("shared");
+        let waiter = tokio::spawn(async move { (waiter_lock.lock_owned().await, registration) });
 
         queue.cleanup_idle_lanes().await;
         assert_eq!(queue.get_status().await.total_lanes, 1);

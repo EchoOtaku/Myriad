@@ -76,7 +76,7 @@ export type StreamAbortIntent = 'user' | 'replace' | 'timeout'
 
 const controllerIntents = new WeakMap<AbortController, StreamAbortIntent>()
 
-/** Yield between token reads; React 18 batches a sync for-loop. */
+/** Token events participate in the bounded cooperative parsing batch. */
 export function shouldYieldSsePaint(type: string): boolean {
   return type === 'thinking_token' || type === 'summary_token'
 }
@@ -258,6 +258,9 @@ export async function executeSSERequest({
         let capturedTaskId: string | null = null
         let capturedRunId: string | null = null
         let currentSequence: number | null = null
+        let tokensSinceYield = 0
+        const cancelReader = () => { void reader.cancel().catch(() => {}) }
+        requestSignal.addEventListener('abort', cancelReader, { once: true })
 
         try {
           while (true) {
@@ -295,14 +298,12 @@ export async function executeSSERequest({
                 }
 
                 onProgress?.(event)
-                if (shouldYieldSsePaint(event.type)) {
-                  await new Promise<void>((resolve) => {
-                    if (typeof requestAnimationFrame === 'function') {
-                      requestAnimationFrame(() => resolve())
-                    } else {
-                      setTimeout(resolve, 0)
-                    }
-                  })
+                if (shouldYieldSsePaint(event.type) && ++tokensSinceYield >= 64) {
+                  tokensSinceYield = 0
+                  // A hidden tab may suspend RAF indefinitely. Yield per batch,
+                  // not per token, so buffered completion is never frame-gated.
+                  await new Promise<void>(resolve => setTimeout(resolve, 0))
+                  requestSignal.throwIfAborted()
                 }
                 if (event.type === 'task_completed') {
                   finalResponse = (event as TaskCompletedEvent).response
@@ -328,6 +329,8 @@ export async function executeSSERequest({
         } catch (error) {
           streamError = error
         } finally {
+          requestSignal.removeEventListener('abort', cancelReader)
+          await reader.cancel().catch(() => {})
           reader.releaseLock()
           clearTimeout(timeoutId)
         }

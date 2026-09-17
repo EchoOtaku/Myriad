@@ -161,3 +161,19 @@ it('paints comment marks on a live tree without serializing the article', () => 
   )
   live.window.close()
 })
+
+it('repainting comments keeps text fragments bounded and traverses the text tree once per batch', () => {
+  const dom = new JSDOM('<p>before highlighted after</p>')
+  const root = dom.window.document.body
+  const comments = [{ id: 1, selected_text: 'highlighted' }, { id: 2, selected_text: 'light' }] as CommentItem[]
+  let walks = 0
+  const createWalker = root.ownerDocument.createTreeWalker.bind(root.ownerDocument)
+  root.ownerDocument.createTreeWalker = (...args: Parameters<Document['createTreeWalker']>) => { walks++; return createWalker(...args) }
+  for (let i = 0; i < 100; i++) paintAnchoredComments(root, comments, 'light')
+  const walker = createWalker(root, 4)
+  let nodes = 0
+  while (walker.nextNode()) nodes++
+  assert.ok(nodes <= 7, `retained ${nodes} text nodes`)
+  assert.equal(walks, 100)
+  dom.window.close()
+})

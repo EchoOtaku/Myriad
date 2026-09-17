@@ -138,7 +138,6 @@ async function request<T>(
         : controller.signal,
     })
 
-    clearTimeout(timeoutId)
     options.signal?.throwIfAborted()
 
     if (!response.ok) {
@@ -158,6 +157,8 @@ async function request<T>(
         errorDetails = parsed.details
         errorHint = parsed.hint
       } catch {
+        controller.signal.throwIfAborted()
+        options.signal?.throwIfAborted()
       }
 
       // CSRF: force-refresh and retry once.
@@ -209,6 +210,8 @@ async function request<T>(
     }
 
     throw new ApiError(currentCopy().errors.networkError, 0, 'NETWORK_ERROR')
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -216,6 +219,7 @@ async function requestBlob(
   endpoint: string,
   options: ApiRequestOptions = {},
 ): Promise<{ blob: Blob; filename?: string; contentType?: string }> {
+  options.signal?.throwIfAborted()
   const {
     requireAuth: _requireAuth = false,
     timeout = 120000,
@@ -240,9 +244,11 @@ async function requestBlob(
       method: 'GET',
       headers,
       credentials: 'include',
-      signal: controller.signal,
+      signal: options.signal
+        ? AbortSignal.any([options.signal, controller.signal])
+        : controller.signal,
     })
-    clearTimeout(timeoutId)
+    options.signal?.throwIfAborted()
 
     if (!response.ok) {
       let errorMessage = httpStatusMessage(response.status)
@@ -256,7 +262,8 @@ async function requestBlob(
         errorDetails = parsed.details
         errorHint = parsed.hint
       } catch {
-        /* ignore */
+        controller.signal.throwIfAborted()
+        options.signal?.throwIfAborted()
       }
       throw new ApiError(
         errorMessage,
@@ -288,12 +295,14 @@ async function requestBlob(
       contentType: response.headers.get('content-type') || undefined,
     }
   } catch (error) {
-    clearTimeout(timeoutId)
+    options.signal?.throwIfAborted()
     if (error instanceof ApiError) throw error
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ApiError(currentCopy().errors.timeout, 408, 'TIMEOUT')
     }
     throw new ApiError(currentCopy().errors.networkError, 0, 'NETWORK_ERROR')
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 

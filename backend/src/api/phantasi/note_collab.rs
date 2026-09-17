@@ -31,46 +31,73 @@ pub struct NoteCollabEvent {
 }
 
 pub struct NoteCollabHub {
-    rooms: Mutex<HashMap<i32, broadcast::Sender<NoteCollabEvent>>>,
+    rooms: Arc<Mutex<HashMap<i32, broadcast::Sender<NoteCollabEvent>>>>,
+}
+
+/// Owns one receiver and atomically removes its room when the final receiver
+/// disappears. Dropping the task that owns this subscription performs cleanup.
+pub struct NoteCollabSubscription {
+    rooms: Arc<Mutex<HashMap<i32, broadcast::Sender<NoteCollabEvent>>>>,
+    doc_id: i32,
+    rx: Option<broadcast::Receiver<NoteCollabEvent>>,
+}
+
+impl NoteCollabSubscription {
+    pub async fn recv(&mut self) -> Result<NoteCollabEvent, broadcast::error::RecvError> {
+        self.rx.as_mut().expect("live subscription").recv().await
+    }
+}
+
+impl Drop for NoteCollabSubscription {
+    fn drop(&mut self) {
+        // Serialize the final receiver drop with a concurrent subscription so
+        // an abort cannot remove a room that a reconnect just joined.
+        let mut rooms = self
+            .rooms
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        drop(self.rx.take());
+        if rooms
+            .get(&self.doc_id)
+            .is_some_and(|sender| sender.receiver_count() == 0)
+        {
+            rooms.remove(&self.doc_id);
+        }
+    }
 }
 
 impl NoteCollabHub {
     fn new() -> Self {
         Self {
-            rooms: Mutex::new(HashMap::new()),
+            rooms: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub fn subscribe(&self, doc_id: i32) -> broadcast::Receiver<NoteCollabEvent> {
-        self.sender(doc_id).subscribe()
+    pub fn subscribe(&self, doc_id: i32) -> NoteCollabSubscription {
+        let rx = {
+            let mut rooms = self
+                .rooms
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            rooms
+                .entry(doc_id)
+                .or_insert_with(|| broadcast::channel(ROOM_CAP).0)
+                .subscribe()
+        };
+        NoteCollabSubscription {
+            rooms: self.rooms.clone(),
+            doc_id,
+            rx: Some(rx),
+        }
     }
 
     pub fn publish(&self, doc_id: i32, event: NoteCollabEvent) {
-        let _ = self.sender(doc_id).send(event);
-    }
-
-    fn sender(&self, doc_id: i32) -> broadcast::Sender<NoteCollabEvent> {
-        let mut rooms = self
+        let rooms = self
             .rooms
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        rooms
-            .entry(doc_id)
-            .or_insert_with(|| broadcast::channel(ROOM_CAP).0)
-            .clone()
-    }
-
-    /// 最后一个人走了就把房间拆掉；调用方先把自己的 receiver drop 掉再来。
-    pub fn release(&self, doc_id: i32) {
-        let mut rooms = self
-            .rooms
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if rooms
-            .get(&doc_id)
-            .is_some_and(|sender| sender.receiver_count() == 0)
-        {
-            rooms.remove(&doc_id);
+        if let Some(sender) = rooms.get(&doc_id) {
+            let _ = sender.send(event);
         }
     }
 
@@ -93,6 +120,23 @@ pub fn note_collab_hub() -> Arc<NoteCollabHub> {
 mod tests {
     use super::*;
 
+    fn event(kind: &str) -> NoteCollabEvent {
+        NoteCollabEvent {
+            kind: kind.into(),
+            peer_id: String::new(),
+            user_id: 1,
+            name: None,
+            revision: None,
+            client_request_id: None,
+            published_at: None,
+            cursor: None,
+            title: None,
+            content_md: None,
+            topic: None,
+            image: None,
+        }
+    }
+
     #[test]
     fn client_presence_needs_no_server_assigned_identity() {
         let event: NoteCollabEvent =
@@ -107,23 +151,11 @@ mod tests {
     async fn room_broadcasts_to_subscribers() {
         let hub = NoteCollabHub::new();
         let mut rx = hub.subscribe(7);
-        hub.publish(
-            7,
-            NoteCollabEvent {
-                kind: "join".into(),
-                peer_id: "a".into(),
-                user_id: 1,
-                name: Some("Ada".into()),
-                revision: None,
-                client_request_id: None,
-                published_at: None,
-                cursor: Some(4),
-                title: None,
-                content_md: None,
-                topic: None,
-                image: None,
-            },
-        );
+        let mut join = event("join");
+        join.peer_id = "a".into();
+        join.name = Some("Ada".into());
+        join.cursor = Some(4);
+        hub.publish(7, join);
         let event = rx.recv().await.expect("event");
         assert_eq!(event.kind, "join");
         assert_eq!(event.peer_id, "a");
@@ -131,36 +163,52 @@ mod tests {
     }
 
     #[test]
-    fn empty_rooms_are_released_and_occupied_ones_stay() {
+    fn publish_without_subscribers_does_not_create_rooms() {
+        let hub = NoteCollabHub::new();
+
+        for doc_id in 0..1_000 {
+            hub.publish(doc_id, event("doc"));
+        }
+
+        assert_eq!(hub.room_count(), 0);
+    }
+
+    #[test]
+    fn simultaneous_subscribers_own_room_until_the_last_drop() {
         let hub = NoteCollabHub::new();
         let rx_a = hub.subscribe(1);
         let rx_b = hub.subscribe(1);
         assert_eq!(hub.room_count(), 1);
+
         drop(rx_a);
-        hub.release(1);
-        assert_eq!(hub.room_count(), 1, "someone is still in the room");
+        assert_eq!(hub.room_count(), 1, "the second subscriber still owns it");
+
         drop(rx_b);
-        hub.release(1);
+        assert_eq!(hub.room_count(), 0, "the final drop must remove it");
+    }
+
+    #[test]
+    fn repeated_subscription_churn_reclaims_every_room() {
+        let hub = NoteCollabHub::new();
+        for doc_id in 0..1_000 {
+            drop(hub.subscribe(doc_id));
+        }
         assert_eq!(hub.room_count(), 0);
-        // 没人订阅时 publish 也不能把房间悄悄建回来留着
-        hub.publish(
-            2,
-            NoteCollabEvent {
-                kind: "doc".into(),
-                peer_id: String::new(),
-                user_id: 1,
-                name: None,
-                revision: Some(1),
-                client_request_id: Some("save-1".into()),
-                published_at: None,
-                cursor: None,
-                title: None,
-                content_md: None,
-                topic: None,
-                image: None,
-            },
-        );
-        hub.release(2);
+    }
+
+    #[tokio::test]
+    async fn aborting_subscription_owner_reclaims_room() {
+        let hub = Arc::new(NoteCollabHub::new());
+        let task_hub = hub.clone();
+        let task = tokio::spawn(async move {
+            let _subscription = task_hub.subscribe(42);
+            std::future::pending::<()>().await;
+        });
+        tokio::task::yield_now().await;
+        assert_eq!(hub.room_count(), 1);
+
+        task.abort();
+        let _ = task.await;
         assert_eq!(hub.room_count(), 0);
     }
 }

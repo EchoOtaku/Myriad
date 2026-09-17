@@ -189,6 +189,9 @@ pub async fn list_tasks(State(_db): State<DatabaseConnection>) -> (StatusCode, J
 
 /// 后台处理函数
 async fn process_platform_task(task_id: String, platform: String) {
+    if !BACKGROUND_PROCESSOR.try_start_task(&task_id).await {
+        return;
+    }
     let task_id = task_id.as_str();
     let platform = platform.as_str();
     use crate::services::background_processor::TaskStatus;

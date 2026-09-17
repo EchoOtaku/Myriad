@@ -113,7 +113,7 @@ mod cancel_during_step_tests {
         // Synthetic long future + cancel flag: must fail with cancel, not timeout.
         let task_id = format!("cancel_test_{}", uuid::Uuid::new_v4().simple());
         {
-            let mut tokens = task_store::CANCELLATION_TOKENS.write().await;
+            let mut tokens = task_store::CANCELLATION_TOKENS.lock().unwrap();
             tokens.insert(task_id.clone());
         }
 
@@ -145,7 +145,7 @@ mod cancel_during_step_tests {
         };
 
         {
-            let mut tokens = task_store::CANCELLATION_TOKENS.write().await;
+            let mut tokens = task_store::CANCELLATION_TOKENS.lock().unwrap();
             tokens.remove(&task_id);
         }
 

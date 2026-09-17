@@ -492,17 +492,29 @@ pub fn create_playground_routes(
         .route_layer(from_fn_with_state(app_state.clone(), admin_middleware))
 }
 
+/// No waiting request queue: request bodies can contain 12 MiB of project
+/// history. Reserve one of the two active slots before validation/spawning so
+/// disconnected or slow clients cannot accumulate retained generation jobs.
+fn acquire_generation_permit() -> Result<tokio::sync::SemaphorePermit<'static>, ApiError> {
+    PLAYGROUND_AGENT_CONCURRENCY
+        .try_acquire()
+        .map_err(|error| match error {
+            tokio::sync::TryAcquireError::NoPermits => api_error(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Tapp Playground is busy; retry after an active generation finishes",
+            ),
+            tokio::sync::TryAcquireError::Closed => api_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Tapp Playground agent is shutting down",
+            ),
+        })
+}
+
 async fn generate_project(
     Json(request): Json<PlaygroundGenerateRequest>,
 ) -> Result<Json<PlaygroundGenerateResponse>, ApiError> {
+    let _agent_permit = acquire_generation_permit()?;
     validate_generate_request(&request)?;
-
-    let _agent_permit = PLAYGROUND_AGENT_CONCURRENCY.acquire().await.map_err(|_| {
-        api_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Tapp Playground agent is shutting down",
-        )
-    })?;
 
     // Inline future: client abort drops this handler (and in-flight AI) and
     // releases the semaphore permit via `_agent_permit` Drop.
@@ -523,31 +535,25 @@ async fn generate_project(
 /// Admin-only (same route layer as `/generate`). Timeouts align with the
 /// one-shot path (per-model-call [`MODEL_REQUEST_TIMEOUT`]).
 /// Client disconnect / AbortController cancel sets the cancel watch so the
-/// worker stops after the current AI HTTP returns (or sooner if reqwest drop
-/// aborts) and does not start the next attempt.
+/// worker drops the generation future, including model I/O and setup, and does
+/// not start the next attempt. Busy requests fail before a worker is spawned.
 async fn generate_project_stream(
     Json(request): Json<PlaygroundGenerateRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let permit = acquire_generation_permit()?;
     validate_generate_request(&request)?;
 
     let (event_tx, event_rx) = mpsc::channel::<PlaygroundStreamEvent>(32);
     let (cancel_tx, cancel_rx) = watch::channel(false);
 
     tokio::spawn(async move {
-        let permit = match PLAYGROUND_AGENT_CONCURRENCY.acquire().await {
-            Ok(permit) => permit,
-            Err(_) => {
-                let _ = event_tx
-                    .send(PlaygroundStreamEvent::Error {
-                        message: "Tapp Playground agent is shutting down".to_string(),
-                    })
-                    .await;
-                return;
-            }
+        // Observe disconnection around the entire future, including owner/config
+        // lookup before the model loop first checks its cancellation watch.
+        let result = tokio::select! {
+            biased;
+            _ = event_tx.closed() => return,
+            result = run_playground_generation(request, Some(event_tx.clone()), Some(cancel_rx)) => result,
         };
-
-        let result =
-            run_playground_generation(request, Some(event_tx.clone()), Some(cancel_rx)).await;
         // Hold permit until generation fully stops (success, error, or cancel).
         drop(permit);
 
@@ -1784,5 +1790,65 @@ mod prompt_contract_tests {
             ),
             "playground_payload_too_large"
         );
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    fn request() -> PlaygroundGenerateRequest {
+        PlaygroundGenerateRequest {
+            instruction: "Create a notes widget".into(),
+            current_project: None,
+            runtime_feedback: vec![],
+            history: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn full_generation_capacity_rejects_stream_before_spawning_a_waiter() {
+        let _serial = TEST_LOCK.lock().await;
+        let _active = PLAYGROUND_AGENT_CONCURRENCY.acquire_many(2).await.unwrap();
+        let result = generate_project_stream(Json(request())).await;
+        let Err(error) = result else {
+            panic!("full capacity accepted a queued SSE worker");
+        };
+        assert_eq!(error.0.status_u16(), 429);
+    }
+
+    #[tokio::test]
+    async fn dropping_stream_before_worker_poll_releases_only_its_active_slot() {
+        let _serial = TEST_LOCK.lock().await;
+        let active = PLAYGROUND_AGENT_CONCURRENCY.acquire().await.unwrap();
+        let stream = generate_project_stream(Json(request())).await.unwrap();
+        assert_eq!(PLAYGROUND_AGENT_CONCURRENCY.available_permits(), 0);
+        drop(stream);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while PLAYGROUND_AGENT_CONCURRENCY.available_permits() == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("disconnected stream kept its active slot");
+        assert_eq!(PLAYGROUND_AGENT_CONCURRENCY.available_permits(), 1);
+        drop(active);
+    }
+
+    #[tokio::test]
+    async fn full_generation_capacity_rejects_nonstream_without_waiting() {
+        let _serial = TEST_LOCK.lock().await;
+        let _active = PLAYGROUND_AGENT_CONCURRENCY.acquire_many(2).await.unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            generate_project(Json(request())),
+        )
+        .await
+        .expect("full capacity retained a waiting request");
+        let Err(error) = result else {
+            panic!("full capacity unexpectedly generated a project");
+        };
+        assert_eq!(error.0.status_u16(), 429);
     }
 }

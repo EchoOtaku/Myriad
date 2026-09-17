@@ -393,9 +393,10 @@ for (const outcome of ['success', 'network-failure'] as const) {
     await h.edit('a')
     await h.tick()
     await h.edit('ab')
-    const before = readNoteRecovery({ userId: 1, docId: 1 })!
-    assert.equal(before.pending?.requestId, h.requests[0].input.client_request_id)
     await act(async () => root.unmount())
+    const before = readNoteRecovery({ userId: 1, docId: 1 })!
+    assert.equal(before.fields.contentMd, 'ab')
+    assert.equal(before.pending?.requestId, h.requests[0].input.client_request_id)
     await act(async () => {
       if (outcome === 'success') h.requests[0].resolve(doc('a', 2))
       else h.requests[0].reject(new Error('connection lost'))
@@ -480,4 +481,13 @@ it('a lost history-restore receipt is confirmed by its expected result without r
   assert.equal(h.fields.contentMd, 'historical draft')
   await act(async () => h.writeDoc(async () => doc('historical draft', 4)))
   assert.equal(h.revision, 4)
+})
+
+it('coalesces typing recovery writes and flushes the latest edit on pagehide', async () => {
+  const h = await harness()
+  await h.edit('a')
+  await h.edit('ab')
+  assert.equal(readNoteRecovery({ userId: 1, docId: 1 }), null)
+  await act(async () => window.dispatchEvent(new window.Event('pagehide')))
+  assert.equal(readNoteRecovery({ userId: 1, docId: 1 })?.fields.contentMd, 'ab')
 })

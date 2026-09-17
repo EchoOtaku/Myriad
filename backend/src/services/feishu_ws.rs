@@ -33,6 +33,19 @@ const HEADER_HANDSHAKE_STATUS: &str = "Handshake-Status";
 const HEADER_HANDSHAKE_MSG: &str = "Handshake-Msg";
 const HEADER_HANDSHAKE_AUTH_ERR_CODE: &str = "Handshake-Autherrcode";
 const WS_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const MAX_FRAGMENT_COUNT: usize = 64;
+const MAX_EVENT_BYTES: usize = 1024 * 1024;
+const MAX_FRAME_BYTES: usize = MAX_EVENT_BYTES + 16 * 1024;
+const MAX_PENDING_MESSAGES: usize = 32;
+const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
+const FRAGMENT_TTL: Duration = Duration::from_secs(5);
+
+fn expire_fragments(pending: &mut HashMap<String, FragEntry>) {
+    pending.retain(|_, entry| !entry.expired());
+    if pending.is_empty() {
+        pending.shrink_to_fit();
+    }
+}
 
 #[derive(Clone, PartialEq, prost::Message)]
 pub struct Header {
@@ -92,7 +105,7 @@ impl FragEntry {
     }
 
     fn expired(&self) -> bool {
-        self.created.elapsed() > Duration::from_secs(5)
+        self.created.elapsed() >= FRAGMENT_TTL
     }
 }
 
@@ -127,7 +140,11 @@ pub async fn run_session(
         _ = cancel.changed() => return Ok(()),
         result = tokio::time::timeout(
             WS_CONNECT_TIMEOUT,
-            tokio_tungstenite::connect_async(ws_url),
+            tokio_tungstenite::connect_async_with_config(ws_url, Some(
+                tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+                    .max_message_size(Some(MAX_FRAME_BYTES))
+                    .max_frame_size(Some(MAX_FRAME_BYTES)),
+            ), false),
         ) => {
             match result {
                 Ok(Ok(stream)) => stream,
@@ -159,7 +176,7 @@ pub async fn run_session(
     let write = Arc::new(Mutex::new(write));
     let ping_write = write.clone();
     let ping_secs = ping_interval.max(Duration::from_secs(1)).as_secs();
-    let ping_handle = tokio::spawn(async move {
+    let _ping_task = crate::services::channel_work::AbortTask(tokio::spawn(async move {
         let mut timer = tokio::time::interval(Duration::from_secs(ping_secs));
         timer.tick().await;
         loop {
@@ -181,16 +198,19 @@ pub async fn run_session(
                 break;
             }
         }
-    });
+    }));
 
     let mut pending_frags: HashMap<String, FragEntry> = HashMap::new();
-    let result = loop {
+    let mut expiry = tokio::time::interval(Duration::from_secs(1));
+    expiry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
         tokio::select! {
             _ = cancel.changed() => {
                 let mut w = write.lock().await;
                 let _ = (*w).close().await;
                 break Ok(());
             }
+            _ = expiry.tick() => expire_fragments(&mut pending_frags),
             msg = read.next() => {
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
@@ -217,9 +237,7 @@ pub async fn run_session(
                 }
             }
         }
-    };
-    ping_handle.abort();
-    result
+    }
 }
 
 fn classify_handshake(
@@ -252,7 +270,12 @@ async fn handle_binary<S>(
 where
     S: futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
 {
-    let frame = Frame::decode(data).map_err(|_| ConnectFailureKind::Transient)?;
+    expire_fragments(pending_frags);
+    if data.len() > MAX_FRAME_BYTES {
+        warn!("Feishu frame exceeds ingress byte limit; reconnecting without ACK");
+        return Err(ConnectFailureKind::Transient);
+    }
+    let mut frame = Frame::decode(data).map_err(|_| ConnectFailureKind::Transient)?;
     match frame.method {
         METHOD_CONTROL => {
             let msg_type = get_header(&frame.headers, HEADER_TYPE).unwrap_or_default();
@@ -282,14 +305,66 @@ where
             let sum = get_header_int(&frame.headers, HEADER_SUM);
             let seq = get_header_int(&frame.headers, HEADER_SEQ);
             let msg_id = get_header(&frame.headers, HEADER_MESSAGE_ID).unwrap_or_default();
+            let fragment = frame.payload.take().unwrap_or_default();
+            if sum < 0 || sum as usize > MAX_FRAGMENT_COUNT || fragment.len() > MAX_EVENT_BYTES {
+                warn!("Feishu fragment exceeds count/size limit; reconnecting without ACK");
+                return Err(ConnectFailureKind::Transient);
+            }
             let payload = if sum <= 1 {
-                frame.payload.clone().unwrap_or_default()
+                fragment
             } else {
-                pending_frags.retain(|_, v| !v.expired());
+                if seq < 0 || seq >= sum || msg_id.is_empty() || msg_id.len() > 256 {
+                    return Err(ConnectFailureKind::Transient);
+                }
+                let existing = pending_frags.get(&msg_id);
+                if existing.is_some_and(|entry| entry.frames.len() != sum as usize) {
+                    return Err(ConnectFailureKind::Transient);
+                }
+                if existing.is_none() && pending_frags.len() >= MAX_PENDING_MESSAGES {
+                    warn!("Feishu pending fragment count exhausted; reconnecting without ACK");
+                    return Err(ConnectFailureKind::Transient);
+                }
+                let replaced = existing
+                    .and_then(|entry| entry.frames[seq as usize].as_ref())
+                    .map_or(0, Vec::capacity);
+                let message_bytes = existing.map_or(0, |entry| {
+                    entry
+                        .frames
+                        .iter()
+                        .flatten()
+                        .map(Vec::capacity)
+                        .sum::<usize>()
+                }) - replaced
+                    + fragment.capacity();
+                let retained: usize = pending_frags
+                    .iter()
+                    .map(|(key, entry)| {
+                        key.capacity()
+                            + entry.frames.capacity() * std::mem::size_of::<Option<Vec<u8>>>()
+                            + entry
+                                .frames
+                                .iter()
+                                .flatten()
+                                .map(Vec::capacity)
+                                .sum::<usize>()
+                    })
+                    .sum();
+                let additional_slots = if existing.is_none() {
+                    msg_id.len() + sum as usize * std::mem::size_of::<Option<Vec<u8>>>()
+                } else {
+                    0
+                };
+                if message_bytes > MAX_EVENT_BYTES
+                    || retained - replaced + fragment.capacity() + additional_slots
+                        > MAX_PENDING_BYTES
+                {
+                    warn!("Feishu fragment byte budget exhausted; reconnecting without ACK");
+                    return Err(ConnectFailureKind::Transient);
+                }
                 let entry = pending_frags
                     .entry(msg_id.clone())
                     .or_insert_with(|| FragEntry::new(sum as usize));
-                entry.insert(seq as usize, frame.payload.clone().unwrap_or_default());
+                entry.insert(seq as usize, fragment);
                 if entry.complete() {
                     match pending_frags.remove(&msg_id) {
                         Some(e) => e.assemble(),
@@ -300,7 +375,9 @@ where
                 }
             };
             let start = Instant::now();
-            dispatch_event(payload);
+            // ACK only after admission. On saturation reconnect so the upstream
+            // can retry the unacknowledged message; never block the heartbeat.
+            dispatch_event(payload)?;
             let biz_rt = start.elapsed().as_millis().to_string();
             let ack_payload =
                 serde_json::to_vec(&serde_json::json!({ "code": 200u16 })).unwrap_or_default();
@@ -326,11 +403,28 @@ where
     }
 }
 
-fn dispatch_event(payload: Vec<u8>) {
+fn dispatch_event(payload: Vec<u8>) -> Result<(), ConnectFailureKind> {
     let Some((event_type, event_id, event)) = parse_feishu_event_envelope(&payload) else {
-        return;
+        return Ok(());
+    };
+    if !matches!(
+        event_type.as_str(),
+        FEISHU_MESSAGE_RECEIVE_V1 | FEISHU_CARD_ACTION_TRIGGER
+    ) {
+        return Ok(());
+    }
+    let Some(permit) = crate::services::bot_ingress::try_acquire(
+        crate::services::bot_ingress::Channel::Feishu,
+        crate::services::bot_ingress::json_bytes(&event)
+            .saturating_mul(2)
+            .saturating_add(event_type.capacity())
+            .saturating_add(event_id.capacity()),
+    ) else {
+        warn!("Feishu ingress busy; reconnecting without acknowledging event");
+        return Err(ConnectFailureKind::Transient);
     };
     tokio::spawn(async move {
+        let _permit = permit;
         crate::services::feishu_bot::mark_inbound().await;
         match event_type.as_str() {
             FEISHU_MESSAGE_RECEIVE_V1 => {
@@ -350,6 +444,7 @@ fn dispatch_event(payload: Vec<u8>) {
             _ => {}
         }
     });
+    Ok(())
 }
 
 fn sanitize_ws_url(url: &str) -> String {
@@ -395,5 +490,244 @@ mod tests {
         entry.insert(0, b"a".to_vec());
         assert!(entry.complete());
         assert_eq!(entry.assemble(), b"ab");
+    }
+
+    #[tokio::test]
+    async fn heartbeat_stops_when_session_parent_is_aborted() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (_cancel_tx, cancel_rx) = watch::channel(false);
+        let parent = tokio::spawn(async move {
+            run_session(
+                &format!("ws://{addr}"),
+                1,
+                Duration::from_secs(1),
+                cancel_rx,
+            )
+            .await
+        });
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
+        let first = tokio::time::timeout(Duration::from_secs(3), ws.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(first.is_binary());
+
+        parent.abort();
+        let _ = parent.await;
+        let deadline = tokio::time::sleep(Duration::from_millis(1_500));
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                _ = &mut deadline => break,
+                after = ws.next() => match after {
+                    Some(Ok(message)) => {
+                        assert!(!message.is_binary(), "detached ping outlived run_session")
+                    }
+                    Some(Err(_)) | None => break,
+                }
+            }
+        }
+    }
+    fn fragment_frame(id: &str, sum: i32, seq: i32, bytes: usize) -> Vec<u8> {
+        Frame {
+            seq_id: 1,
+            log_id: 1,
+            service: 1,
+            method: METHOD_DATA,
+            headers: vec![
+                make_header(HEADER_TYPE, MSG_TYPE_EVENT),
+                make_header(HEADER_SUM, &sum.to_string()),
+                make_header(HEADER_SEQ, &seq.to_string()),
+                make_header(HEADER_MESSAGE_ID, id),
+            ],
+            payload_encoding: None,
+            payload_type: None,
+            payload: Some(vec![b'x'; bytes]),
+            log_id_new: None,
+        }
+        .encode_to_vec()
+    }
+
+    fn accepting_sink() -> Arc<
+        Mutex<impl futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin>,
+    > {
+        Arc::new(Mutex::new(Box::pin(futures::sink::unfold(
+            (),
+            |(), _: Message| async { Ok::<(), tokio_tungstenite::tungstenite::Error>(()) },
+        ))))
+    }
+
+    #[tokio::test]
+    async fn rejects_fragment_counts_and_indexes_before_allocating() {
+        let write = accepting_sink();
+        for (sum, seq) in [(1_000_000, 0), (2, -1), (2, 2)] {
+            let mut pending = HashMap::new();
+            assert!(
+                handle_binary(&fragment_frame("bad", sum, seq, 1), &mut pending, &write)
+                    .await
+                    .is_err()
+            );
+            assert!(pending.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn fragment_message_cannot_exceed_one_mib_or_change_count() {
+        let write = accepting_sink();
+        let mut pending = HashMap::new();
+        handle_binary(&fragment_frame("big", 2, 0, 600_000), &mut pending, &write)
+            .await
+            .unwrap();
+        assert!(
+            handle_binary(&fragment_frame("big", 2, 1, 600_000), &mut pending, &write)
+                .await
+                .is_err()
+        );
+        pending.clear();
+        handle_binary(&fragment_frame("changed", 2, 0, 1), &mut pending, &write)
+            .await
+            .unwrap();
+        assert!(
+            handle_binary(&fragment_frame("changed", 3, 1, 1), &mut pending, &write)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_fragment_count_and_total_bytes_are_bounded() {
+        let write = accepting_sink();
+        let mut pending = HashMap::new();
+        for id in 0..32 {
+            handle_binary(
+                &fragment_frame(&id.to_string(), 2, 0, 1),
+                &mut pending,
+                &write,
+            )
+            .await
+            .unwrap();
+        }
+        assert!(
+            handle_binary(&fragment_frame("overflow", 2, 0, 1), &mut pending, &write)
+                .await
+                .is_err()
+        );
+        pending.clear();
+        for id in 0..6 {
+            handle_binary(
+                &fragment_frame(&id.to_string(), 2, 0, 600_000),
+                &mut pending,
+                &write,
+            )
+            .await
+            .unwrap();
+        }
+        assert!(
+            handle_binary(
+                &fragment_frame("byte-overflow", 2, 0, 600_000),
+                &mut pending,
+                &write
+            )
+            .await
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_fragments_are_released_on_control_traffic() {
+        let write = accepting_sink();
+        let mut pending = HashMap::new();
+        handle_binary(&fragment_frame("expired", 2, 0, 1), &mut pending, &write)
+            .await
+            .unwrap();
+        pending.get_mut("expired").unwrap().created -= Duration::from_secs(6);
+        let frame = Frame {
+            seq_id: 1,
+            log_id: 1,
+            service: 1,
+            method: METHOD_CONTROL,
+            headers: vec![make_header(HEADER_TYPE, MSG_TYPE_PONG)],
+            payload_encoding: None,
+            payload_type: None,
+            payload: None,
+            log_id_new: None,
+        };
+        handle_binary(&frame.encode_to_vec(), &mut pending, &write)
+            .await
+            .unwrap();
+        assert!(pending.is_empty());
+    }
+    #[test]
+    fn idle_fragment_sweep_releases_expired_payloads_and_bucket_allocation() {
+        let mut pending = HashMap::new();
+        let mut entry = FragEntry::new(2);
+        entry.insert(0, vec![0; 128]);
+        entry.created -= Duration::from_secs(6);
+        pending.insert("idle".into(), entry);
+        expire_fragments(&mut pending);
+        assert!(pending.is_empty());
+        assert_eq!(pending.capacity(), 0);
+    }
+
+    #[tokio::test]
+    async fn repeated_fragment_replaces_bytes_and_completion_is_acked_once() {
+        let sent = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = sent.clone();
+        let write = Arc::new(Mutex::new(Box::pin(futures::sink::unfold(
+            (),
+            move |(), _: Message| {
+                let count = count.clone();
+                async move {
+                    count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok::<(), tokio_tungstenite::tungstenite::Error>(())
+                }
+            },
+        ))));
+        let mut pending = HashMap::new();
+        let partial = fragment_frame("retry", 2, 0, 600_000);
+        for _ in 0..10 {
+            handle_binary(&partial, &mut pending, &write).await.unwrap();
+        }
+        assert_eq!(pending.len(), 1);
+        assert_eq!(sent.load(std::sync::atomic::Ordering::SeqCst), 0);
+        handle_binary(&fragment_frame("retry", 2, 1, 1), &mut pending, &write)
+            .await
+            .unwrap();
+        assert!(pending.is_empty());
+        assert_eq!(sent.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+    #[tokio::test]
+    async fn rejected_ingress_does_not_ack_feishu_event() {
+        let sent = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = sent.clone();
+        let write = Arc::new(Mutex::new(Box::pin(futures::sink::unfold(
+            (),
+            move |(), _: Message| {
+                let count = count.clone();
+                async move {
+                    count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok::<(), tokio_tungstenite::tungstenite::Error>(())
+                }
+            },
+        ))));
+        let mut frame = Frame::decode(fragment_frame("busy", 1, 0, 0).as_slice()).unwrap();
+        frame.payload = Some(
+            serde_json::to_vec(&serde_json::json!({
+                "header": {"event_type": FEISHU_MESSAGE_RECEIVE_V1, "event_id": "busy"},
+                "event": {"dense": vec![0; 300_000]},
+            }))
+            .unwrap(),
+        );
+        let frame = frame.encode_to_vec();
+        assert!(frame.len() < MAX_FRAME_BYTES);
+        assert!(
+            handle_binary(&frame, &mut HashMap::new(), &write)
+                .await
+                .is_err()
+        );
+        assert_eq!(sent.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 }

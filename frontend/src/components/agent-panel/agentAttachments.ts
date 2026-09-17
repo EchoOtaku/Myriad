@@ -51,7 +51,7 @@ export async function fileToAttachment(file: File): Promise<AgentAttachment> {
     size: file.size,
   }
   if (file.type.startsWith('image/')) {
-    const previewUrl = await readAsDataUrl(file)
+    const previewUrl = await thumbnailDataUrl(file)
     return { ...base, previewUrl }
   }
   const raw = await file.text()
@@ -59,13 +59,23 @@ export async function fileToAttachment(file: File): Promise<AgentAttachment> {
   return { ...base, text }
 }
 
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
+/** Decode a small bitmap, retain only the thumbnail, and release native pixels. */
+async function thumbnailDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file, { resizeWidth: 384, resizeQuality: 'high' })
+  try {
+    const scale = Math.min(1, 384 / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Image preview unavailable')
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const preview = canvas.toDataURL('image/webp', 0.7)
+    canvas.width = canvas.height = 0
+    return preview
+  } finally {
+    bitmap.close()
+  }
 }
 
 export function attachmentsForRequest(

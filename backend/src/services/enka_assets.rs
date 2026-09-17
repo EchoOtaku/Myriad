@@ -11,12 +11,15 @@
 
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::services::outbound_security::build_public_http_client;
+
+const MAX_DOC_BYTES: usize = 32 * 1024 * 1024;
 
 const CACHE_DIR: &str = "cache/enka_assets";
 const DISK_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
@@ -92,7 +95,10 @@ async fn fetch_doc(url: &str) -> Result<Value, String> {
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    resp.json::<Value>().await.map_err(|error| {
+    let bytes = crate::services::outbound_security::read_limited_body(resp, MAX_DOC_BYTES)
+        .await
+        .map_err(|_| "enka asset exceeds response limit".to_string())?;
+    serde_json::from_slice(&bytes).map_err(|error| {
         tracing::warn!(%error, "enka asset parse failed");
         "parse failed".to_string()
     })
@@ -109,8 +115,23 @@ fn load_disk(key: &str) -> Option<Value> {
     if age > DISK_TTL {
         return None;
     }
-    let content = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&content).ok()
+    read_disk_doc(&path)
+}
+
+fn read_disk_doc(path: &Path) -> Option<Value> {
+    let file = std::fs::File::open(path).ok()?;
+    if file.metadata().ok()?.len() > MAX_DOC_BYTES as u64 {
+        return None;
+    }
+    // Limit the read as well: the file may grow after its metadata was checked.
+    let mut bytes = Vec::new();
+    file.take(MAX_DOC_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() > MAX_DOC_BYTES {
+        return None;
+    }
+    serde_json::from_slice(&bytes).ok()
 }
 
 fn save_disk(key: &str, doc: &Value) {
@@ -156,9 +177,7 @@ async fn get_doc(key: &'static str) -> Option<Arc<Value>> {
             Err(e) => {
                 tracing::warn!("enka asset {key} fetch failed: {e}");
                 // 磁盘上有过期副本也比没有强
-                let stale = std::fs::read_to_string(disk_path(key))
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok());
+                let stale = read_disk_doc(&disk_path(key));
                 match stale {
                     Some(doc) => doc,
                     None => return None,
@@ -314,4 +333,25 @@ pub async fn zzz_character(avatar_id: i64, lang: &str) -> CharacterMeta {
         }
     }
     meta
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    #[test]
+    fn disk_documents_reject_oversize_before_allocation() {
+        let path = std::env::temp_dir().join(format!(
+            "myriad-enka-limit-{}-{}.json",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_DOC_BYTES as u64 + 1).unwrap();
+        assert!(read_disk_doc(&path).is_none());
+        drop(file);
+        std::fs::write(&path, br#"{"valid":true}"#).unwrap();
+        assert_eq!(read_disk_doc(&path).unwrap()["valid"], true);
+        std::fs::remove_file(path).unwrap();
+    }
 }

@@ -1,12 +1,13 @@
 // 跨域一律不拦截：SW 内 fetch() 是 CORS，对端无 ACAO 会失败并被 FetchEvent 打成 uncaught。
 // 图片 / CSS / JS / 字体分支只处理 GET；非 GET 放行，避免 Cache API put 报错。
-const CACHE_VERSION = 'myriad-v2.7'
+const CACHE_VERSION = 'myriad-v2.8'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`
 const IMAGE_CACHE = `${CACHE_VERSION}-images`
 
 const STATIC_ASSETS = ['/', '/logo.webp', '/wallpapers/default.webp']
 
+const MAX_STATIC_CACHE_SIZE = 180
 const MAX_DYNAMIC_CACHE_SIZE = 50
 // Must exceed the app's own icon set (~64 files) or the LRU eviction thrashes:
 // icons get evicted then re-downloaded on the next screen. Headroom left for
@@ -39,8 +40,8 @@ globalThis.addEventListener('activate', (event) => {
   console.log('[SW] Activating Service Worker...')
 
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
+    caches.keys().then(async (keys) => {
+      await Promise.all(
         keys
           .filter(
             (key) =>
@@ -54,29 +55,52 @@ globalThis.addEventListener('activate', (event) => {
             return caches.delete(key)
           }),
       )
+      await Promise.all([
+        limitCacheSize(STATIC_CACHE, MAX_STATIC_CACHE_SIZE, CACHE_MAX_AGE.static),
+        limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE, CACHE_MAX_AGE.images),
+        limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE, CACHE_MAX_AGE.images),
+      ])
     }),
   )
 
   return globalThis.clients.claim()
 })
 
-async function limitCacheSize(cacheName, maxSize) {
+async function limitCacheSize(cacheName, maxSize, maxAge) {
   const cache = await caches.open(cacheName)
   const keys = await cache.keys()
-
-  if (keys.length > maxSize) {
-    const keysToDelete = keys.slice(0, keys.length - maxSize)
-    await Promise.all(keysToDelete.map((key) => cache.delete(key)))
+  const retained = []
+  for (const key of keys) {
+    const response = await cache.match(key)
+    if (response && maxAge && isCacheExpired(response, maxAge)) await cache.delete(key)
+    else retained.push(key)
   }
+  await Promise.all(retained.slice(0, Math.max(0, retained.length - maxSize)).map((key) => cache.delete(key)))
+}
+
+// Serialize writes and eviction per cache so parallel requests cannot exceed the cap.
+const cacheWrites = new Map()
+function scheduleCacheWrite(event, cacheName, request, response, maxSize, maxAge) {
+  const writing = (cacheWrites.get(cacheName) ?? Promise.resolve())
+    .then(async () => {
+      await cacheWithTimestamp(cacheName, request, response)
+      await limitCacheSize(cacheName, maxSize, maxAge)
+    })
+    .catch((error) => console.warn('[SW] Cache write failed:', error))
+  cacheWrites.set(cacheName, writing)
+  const cleanup = writing.finally(() => {
+    if (cacheWrites.get(cacheName) === writing) cacheWrites.delete(cacheName)
+  })
+  event.waitUntil(cleanup)
 }
 
 function isCacheExpired(response, maxAge) {
   const cachedDate = response.headers.get('sw-cached-date')
-  if (!cachedDate) return false
+  if (!cachedDate) return true
 
   const cacheTime = new Date(cachedDate).getTime()
   const now = Date.now()
-  return now - cacheTime > maxAge
+  return !Number.isFinite(cacheTime) || now - cacheTime > maxAge
 }
 
 async function cacheWithTimestamp(cacheName, request, response) {
@@ -93,8 +117,7 @@ async function cacheWithTimestamp(cacheName, request, response) {
   const headers = new Headers(response.headers)
   headers.set('sw-cached-date', new Date().toISOString())
 
-  const blob = await response.blob()
-  const cachedResponse = new Response(blob, {
+  const cachedResponse = new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers,
@@ -144,8 +167,7 @@ globalThis.addEventListener('fetch', (event) => {
 
           if (response.ok && response.status !== 206) {
             const responseClone = response.clone()
-            await cacheWithTimestamp(IMAGE_CACHE, request, responseClone)
-            limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE)
+            scheduleCacheWrite(event, IMAGE_CACHE, request, responseClone, MAX_IMAGE_CACHE_SIZE, cacheMaxAge)
           }
           return response
         } catch (error) {
@@ -184,7 +206,7 @@ globalThis.addEventListener('fetch', (event) => {
           const response = await fetch(request)
           if (response.ok) {
             const responseClone = response.clone()
-            await cacheWithTimestamp(STATIC_CACHE, request, responseClone)
+            scheduleCacheWrite(event, STATIC_CACHE, request, responseClone, MAX_STATIC_CACHE_SIZE, CACHE_MAX_AGE.static)
           }
           return response
         } catch (error) {
@@ -207,10 +229,7 @@ globalThis.addEventListener('fetch', (event) => {
           response.status !== 206
         ) {
           const responseClone = response.clone()
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, responseClone)
-            limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE)
-          })
+          scheduleCacheWrite(event, DYNAMIC_CACHE, request, responseClone, MAX_DYNAMIC_CACHE_SIZE, CACHE_MAX_AGE.images)
         }
         return response
       })

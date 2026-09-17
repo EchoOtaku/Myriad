@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 /// 后台数据处理系统
 ///
 /// In-memory task records + `processing_platforms` dedup.
-/// Offload spawn lives in `api/tasks.rs`; `queue` is push-only (never drained).
+/// Execution lives in `api/tasks.rs`; only task records and active platforms are retained.
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TaskStatus {
@@ -31,8 +31,6 @@ pub struct ProcessingTask {
 pub struct BackgroundProcessor {
     /// All task records (Pending/Processing/Completed/Failed) until cleanup.
     tasks: Arc<RwLock<HashMap<String, ProcessingTask>>>,
-    /// 任务队列
-    queue: Arc<Mutex<Vec<String>>>,
     /// 正在处理的平台（防止重复）
     processing_platforms: Arc<RwLock<HashMap<String, String>>>, // platform -> task_id
 }
@@ -41,7 +39,6 @@ impl BackgroundProcessor {
     pub fn new() -> Self {
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
-            queue: Arc::new(Mutex::new(Vec::new())),
             processing_platforms: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -49,7 +46,7 @@ impl BackgroundProcessor {
     /// 提交新的处理任务
     pub async fn submit_task(&self, platform: String) -> Result<String, String> {
         // 检查是否已有该平台的处理任务
-        let processing = self.processing_platforms.read().await;
+        let mut processing = self.processing_platforms.write().await;
         if let Some(existing_task_id) = processing.get(&platform) {
             // 检查任务状态
             let tasks = self.tasks.read().await;
@@ -67,10 +64,9 @@ impl BackgroundProcessor {
                 }
             }
         }
-        drop(processing);
 
         // 创建新任务
-        let task_id = format!("{}_{}", platform, Utc::now().timestamp_millis());
+        let task_id = format!("{}_{}", platform, uuid::Uuid::new_v4());
         let task = ProcessingTask {
             id: task_id.clone(),
             platform: platform.clone(),
@@ -83,22 +79,31 @@ impl BackgroundProcessor {
         };
 
         // 保存任务
+        self.cleanup_old_tasks().await;
         let mut tasks = self.tasks.write().await;
         tasks.insert(task_id.clone(), task);
         drop(tasks);
 
         // 注册处理中的平台
-        let mut processing = self.processing_platforms.write().await;
         processing.insert(platform.clone(), task_id.clone());
         drop(processing);
 
-        // 添加到队列
-        let mut queue = self.queue.lock().await;
-        queue.push(task_id.clone());
-        drop(queue);
-
         tracing::info!("✓ Task {} created for platform {}", task_id, platform);
         Ok(task_id)
+    }
+
+    /// Claim execution once, including when concurrent submitters receive one ID.
+    pub async fn try_start_task(&self, task_id: &str) -> bool {
+        let mut tasks = self.tasks.write().await;
+        let Some(task) = tasks.get_mut(task_id) else {
+            return false;
+        };
+        if task.status != TaskStatus::Pending {
+            return false;
+        }
+        task.status = TaskStatus::Processing;
+        task.updated_at = Utc::now();
+        true
     }
 
     /// 获取任务状态
@@ -123,6 +128,7 @@ impl BackgroundProcessor {
         progress: f32,
         error: Option<String>,
     ) {
+        let mut processing = self.processing_platforms.write().await;
         let mut tasks = self.tasks.write().await;
         if let Some(task) = tasks.get_mut(task_id) {
             task.status = status.clone();
@@ -135,9 +141,9 @@ impl BackgroundProcessor {
 
                 // 从处理中列表移除
                 let platform = task.platform.clone();
-                drop(tasks);
-                let mut processing = self.processing_platforms.write().await;
-                processing.remove(&platform);
+                if processing.get(&platform).is_some_and(|id| id == task_id) {
+                    processing.remove(&platform);
+                }
             }
         }
     }
@@ -154,11 +160,11 @@ impl BackgroundProcessor {
             .await;
     }
 
-    /// 总数 > 100 时，在已有 `completed_at` 的任务里只留最近 50 个。
+    /// 总数达到 100 时，在已有 `completed_at` 的任务里只留最近 50 个。
     pub async fn cleanup_old_tasks(&self) {
         let mut tasks = self.tasks.write().await;
 
-        if tasks.len() <= 100 {
+        if tasks.len() < 100 {
             return;
         }
 
@@ -217,3 +223,64 @@ impl BackgroundProcessor {
 // 全局后台处理器实例
 use once_cell::sync::Lazy;
 pub static BACKGROUND_PROCESSOR: Lazy<BackgroundProcessor> = Lazy::new(BackgroundProcessor::new);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn completed_task_churn_is_bounded_without_waiting_for_cleanup() {
+        let processor = BackgroundProcessor::new();
+        for _ in 0..250 {
+            let id = processor.submit_task("github".into()).await.unwrap();
+            processor.complete_task(&id).await;
+        }
+        assert!(processor.get_task_stats().await.0 <= 100);
+    }
+
+    #[tokio::test]
+    async fn repeated_completion_does_not_remove_new_platform_task() {
+        let processor = BackgroundProcessor::new();
+        let old = processor.submit_task("github".into()).await.unwrap();
+        processor.complete_task(&old).await;
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        let new = processor.submit_task("github".into()).await.unwrap();
+        processor.complete_task(&old).await;
+        assert_eq!(processor.get_platform_task("github").await.unwrap().id, new);
+    }
+
+    #[tokio::test]
+    async fn concurrent_submissions_share_one_execution_claim() {
+        let processor = Arc::new(BackgroundProcessor::new());
+        let mut submitters = tokio::task::JoinSet::new();
+        for _ in 0..64 {
+            let processor = processor.clone();
+            submitters.spawn(async move {
+                let id = processor.submit_task("github".into()).await.unwrap();
+                let claimed = processor.try_start_task(&id).await;
+                (id, claimed)
+            });
+        }
+        let mut ids = std::collections::HashSet::new();
+        let mut claims = 0;
+        while let Some(result) = submitters.join_next().await {
+            let (id, claimed) = result.unwrap();
+            ids.insert(id);
+            claims += usize::from(claimed);
+        }
+        assert_eq!(ids.len(), 1);
+        assert_eq!(claims, 1);
+        assert_eq!(processor.get_task_stats().await, (1, 0, 1, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn successive_tasks_have_unique_ids_without_clock_delay() {
+        let processor = BackgroundProcessor::new();
+        let mut ids = std::collections::HashSet::new();
+        for _ in 0..250 {
+            let id = processor.submit_task("github".into()).await.unwrap();
+            assert!(ids.insert(id.clone()));
+            processor.complete_task(&id).await;
+        }
+    }
+}

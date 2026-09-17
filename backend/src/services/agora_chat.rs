@@ -3,12 +3,12 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex as StdMutex, Weak};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, oneshot, watch};
 
 use super::agent::run_hub::AgentRun;
 use crate::middleware::auth::Claims;
@@ -53,6 +53,7 @@ pub struct ChatSession {
     admission: Mutex<()>,
     state: Mutex<SessionState>,
     changed: watch::Sender<u64>,
+    expiry_cancel: StdMutex<Option<oneshot::Sender<()>>>,
 }
 
 impl ChatSession {
@@ -82,6 +83,7 @@ impl ChatSession {
             return Err("Too many active realtime sessions".into());
         }
         let (changed, _) = watch::channel(0);
+        let (expiry_cancel, cancelled) = oneshot::channel();
         let session = Arc::new(Self {
             claims,
             session_id,
@@ -90,15 +92,14 @@ impl ChatSession {
             admission: Mutex::new(()),
             state: Mutex::new(SessionState::default()),
             changed,
+            expiry_cancel: StdMutex::new(Some(expiry_cancel)),
         });
         callbacks.insert(key_hash, session.clone());
-        let expiring = Arc::downgrade(&session);
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(3600)).await;
-            if let Some(expiring) = expiring.upgrade() {
-                expiring.close().await;
-            }
-        });
+        tokio::spawn(expire_callback(
+            Arc::downgrade(&session),
+            cancelled,
+            session.expires_at,
+        ));
         Ok((session, key))
     }
 
@@ -222,9 +223,15 @@ impl ChatSession {
     }
 
     pub async fn close(&self) {
-        CALLBACKS.lock().await.remove(&self.key_hash);
         let latest = {
             let mut state = self.state.lock().await;
+            // No await between removing the callback, cancelling expiry and
+            // closing state: dropping a close future cannot strand a live entry.
+            CALLBACKS.lock().await.remove(&self.key_hash);
+            self.expiry_cancel
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take();
             let latest = state
                 .recent
                 .back()
@@ -242,6 +249,23 @@ impl ChatSession {
             )
             .await;
         }
+    }
+}
+
+/// The registry owns the session, while expiry holds only a Weak reference.
+/// Closing or dropping the owner wakes this task without waiting for the TTL.
+async fn expire_callback(
+    session: Weak<ChatSession>,
+    cancelled: oneshot::Receiver<()>,
+    deadline: Instant,
+) {
+    tokio::select! {
+        biased;
+        _ = cancelled => return,
+        _ = tokio::time::sleep_until(deadline.into()) => {},
+    }
+    if let Some(session) = session.upgrade() {
+        session.close().await;
     }
 }
 
@@ -467,6 +491,48 @@ mod tests {
         release.notify_one();
         assert!(task.await.unwrap().is_err());
         assert!(session.notices().await.0.is_empty());
+    }
+
+    #[tokio::test]
+    async fn closed_sessions_release_expiry_tasks_without_waiting_an_hour() {
+        let metrics = tokio::runtime::Handle::current().metrics();
+        let baseline = metrics.num_alive_tasks();
+        for id in 0..1000 {
+            let (session, _) = ChatSession::register(claims(7190), format!("expiry-churn-{id}"))
+                .await
+                .unwrap();
+            session.close().await;
+        }
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while metrics.num_alive_tasks() > baseline {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("closed sessions must release their expiry tasks immediately");
+    }
+
+    #[tokio::test]
+    async fn expiry_closes_callbacks_but_cancelled_expiry_leaves_them_live() {
+        let (session, key) = ChatSession::register(claims(7191), "expiry-boundary".into())
+            .await
+            .unwrap();
+        let (cancel, cancelled) = oneshot::channel();
+        drop(cancel);
+        expire_callback(Arc::downgrade(&session), cancelled, Instant::now()).await;
+        assert!(ChatSession::from_key(&key).await.is_some());
+        let (_cancel, cancelled) = oneshot::channel();
+        expire_callback(Arc::downgrade(&session), cancelled, Instant::now()).await;
+        assert!(ChatSession::from_key(&key).await.is_none());
+        assert!(session.state.lock().await.closed);
+        assert!(
+            session
+                .start_or_replay(1, "late", || async {
+                    panic!("expired callback must not execute")
+                })
+                .await
+                .is_err()
+        );
     }
 
     #[test]

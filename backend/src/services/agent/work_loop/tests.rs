@@ -610,3 +610,24 @@ async fn postgres_fencing_recovery_and_observation_driven_execution() {
     assert!(!public.contains("lease_id"));
     server.abort();
 }
+
+#[tokio::test]
+async fn stopping_work_lease_reclaims_cancellation_marker() {
+    let task_id = format!("work-cancel-{}", uuid::Uuid::new_v4());
+    let lease = store::lease(
+        sea_orm::DatabaseConnection::default(),
+        task_id.clone(),
+        "lease".into(),
+    );
+    executor::task_store::CANCELLATION_TOKENS
+        .lock()
+        .unwrap()
+        .insert(task_id.clone());
+    drop(lease);
+    assert!(
+        !executor::task_store::CANCELLATION_TOKENS
+            .lock()
+            .unwrap()
+            .contains(&task_id)
+    );
+}

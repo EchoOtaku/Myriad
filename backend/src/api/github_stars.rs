@@ -7,13 +7,13 @@ use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::error::HttpError;
 use crate::services::fetcher::{GithubRepoSummary, PlatformFetcher};
 use crate::services::http_client::GitHubApiUrl;
+use crate::services::retained_cache::RetainedCache;
 use axum::Json;
 use axum::extract::Query;
 use myriad_error::AppError;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const STAR_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
 const ERROR_TTL: Duration = Duration::from_secs(60);
@@ -52,15 +52,18 @@ impl RepoResponse {
     }
 }
 
-struct CacheEntry {
-    body: RepoResponse,
-    ok: bool,
-    fetched_at: Instant,
+const CACHE_CAPACITY: usize = 512;
+const MAX_ENTRY_BYTES: usize = 8 * 1024;
+
+fn cache() -> &'static Mutex<RetainedCache<String, RepoResponse>> {
+    static CACHE: OnceLock<Mutex<RetainedCache<String, RepoResponse>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(RetainedCache::new(CACHE_CAPACITY, STAR_TTL)))
 }
 
-fn cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, CacheEntry>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+pub(crate) fn cleanup_cache() {
+    if let Ok(mut cache) = cache().lock() {
+        cache.purge_expired();
+    }
 }
 
 fn cache_key(owner: &str, repo: &str) -> String {
@@ -91,29 +94,20 @@ pub fn valid_repo_segment(value: &str) -> bool {
 }
 
 fn read_cache(key: &str) -> Option<RepoResponse> {
-    let Ok(guard) = cache().lock() else {
-        return None;
-    };
-    let entry = guard.get(key)?;
-    let ttl = if entry.ok { STAR_TTL } else { ERROR_TTL };
-    if entry.fetched_at.elapsed() >= ttl {
-        return None;
-    }
-    Some(entry.body.clone())
+    cache().lock().ok()?.get(key).cloned()
 }
 
 fn write_cache(key: String, body: RepoResponse, ok: bool) {
-    let Ok(mut guard) = cache().lock() else {
+    // Keep the response intact, but don't retain unusually large upstream text.
+    let bytes = key.len()
+        + body.description.as_ref().map_or(0, String::len)
+        + body.language.as_ref().map_or(0, String::len);
+    if bytes > MAX_ENTRY_BYTES {
         return;
-    };
-    guard.insert(
-        key,
-        CacheEntry {
-            body,
-            ok,
-            fetched_at: Instant::now(),
-        },
-    );
+    }
+    if let Ok(mut cache) = cache().lock() {
+        cache.insert_with_ttl(key, body, if ok { STAR_TTL } else { ERROR_TTL });
+    }
 }
 
 pub async fn get_repo(Query(query): Query<RepoQuery>) -> Result<Json<RepoResponse>, HttpError> {
@@ -166,6 +160,25 @@ mod tests {
     use super::*;
     use crate::services::fetcher::parse_github_repo_summary;
     use serde_json::json;
+
+    #[test]
+    fn cache_churn_oversize_and_expiry_release_retained_responses() {
+        for n in 0..2000 {
+            write_cache(format!("churn/{n}"), RepoResponse::empty(), false);
+        }
+        assert!(cache().lock().unwrap().len() <= CACHE_CAPACITY);
+        let mut huge = RepoResponse::empty();
+        huge.description = Some("x".repeat(MAX_ENTRY_BYTES + 1));
+        write_cache("oversize/repo".into(), huge, true);
+        assert!(read_cache("oversize/repo").is_none());
+        cache().lock().unwrap().insert_with_ttl(
+            "expired/repo".into(),
+            RepoResponse::empty(),
+            Duration::ZERO,
+        );
+        cleanup_cache();
+        assert!(read_cache("expired/repo").is_none());
+    }
 
     #[test]
     fn valid_repo_segment_accepts_github_names() {

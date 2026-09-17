@@ -89,3 +89,5 @@ mod scratch_state_tests {
         }
     }
 }
+
+pub(crate) use attention::{cleanup_attention, clear_user_attention};

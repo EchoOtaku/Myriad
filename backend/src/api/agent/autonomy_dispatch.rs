@@ -86,6 +86,8 @@ async fn dispatch_one(db: &DatabaseConnection, intent: IntentRecord) -> Result<(
         }
     };
     let run = create_run(intent.user_id, Some(session_id.clone())).await;
+    let (progress_tx, progress_rx) = tokio::sync::mpsc::channel(256);
+    tokio::spawn(forward_autonomy_progress(run.clone(), progress_rx));
     let run_id = run.run_id().to_string();
     if let Err(error) = store
         .reattach_work(
@@ -125,13 +127,6 @@ async fn dispatch_one(db: &DatabaseConnection, intent: IntentRecord) -> Result<(
         ctx.lane_key = Some(lane_key.clone());
     }
     let _ = persist_user_message(db, &session_id, &intent.proposal.instruction).await;
-    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel(256);
-    let run_for_forwarder = run.clone();
-    tokio::spawn(async move {
-        while let Some(event) = progress_rx.recv().await {
-            run_for_forwarder.publish(event).await;
-        }
-    });
     let _ = progress_tx
         .send(AgentProgressEvent::SessionCreated {
             session_id: session_id.clone(),
@@ -187,6 +182,33 @@ async fn dispatch_one(db: &DatabaseConnection, intent: IntentRecord) -> Result<(
         }
     }
     Ok(())
+}
+
+async fn forward_autonomy_progress(
+    run: Arc<AgentRun>,
+    mut events: tokio::sync::mpsc::Receiver<AgentProgressEvent>,
+) {
+    // The producer is installed immediately after create_run, before any
+    // fallible work. Its final sender is also dropped if the driver is aborted.
+    let mut outcome_emitted = false;
+    while let Some(event) = events.recv().await {
+        outcome_emitted |= matches!(
+            &event,
+            AgentProgressEvent::TaskCompleted { .. } | AgentProgressEvent::Error { .. }
+        );
+        run.publish(event).await;
+    }
+    // A confirmation uses a nonterminal TaskCompleted to park the run. A
+    // waiting question keeps a sender in its wait loop. Preserve both, and
+    // never publish an error over a run already completed by another observer.
+    if !outcome_emitted && !run.snapshot().await.2 {
+        run.publish(AgentProgressEvent::Error {
+            task_id: None,
+            message: "Autonomous task stopped before producing a result".into(),
+            code: "AUTONOMY_DISPATCH_FAILED".into(),
+        })
+        .await;
+    }
 }
 
 async fn finish_autonomy_turn(
@@ -373,6 +395,79 @@ fn intention_status_from_response(response: &AgentResponse) -> IntentStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn autonomy_producer_error_closes_running_run() {
+        let run = AgentRun::new_for_test("autonomy-producer-error", 7431);
+        let (tx, rx) = tokio::sync::mpsc::channel(4);
+        tx.send(AgentProgressEvent::SessionCreated {
+            session_id: "session".into(),
+        })
+        .await
+        .unwrap();
+        tx.send(AgentProgressEvent::WaitingForInput {
+            task_id: "task".into(),
+            question_id: "question".into(),
+            question_type: "free_text".into(),
+            question: "provisional".into(),
+            context: None,
+            options: None,
+            required: true,
+            default_value: None,
+        })
+        .await
+        .unwrap();
+        drop(tx); // Queue/quota errors and dropped dispatch futures release the producer.
+        forward_autonomy_progress(run.clone(), rx).await;
+        let (events, _, completed) = run.snapshot().await;
+        assert!(completed, "failed autonomy dispatch left a running orphan");
+        assert!(matches!(
+            events.last().map(|event| &event.event),
+            Some(AgentProgressEvent::Error { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn aborted_autonomy_producer_closes_run_after_sender_drop() {
+        let run = AgentRun::new_for_test("autonomy-producer-abort", 7434);
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let forwarder = tokio::spawn(forward_autonomy_progress(run.clone(), rx));
+        let (ready, entered) = tokio::sync::oneshot::channel();
+        let producer = tokio::spawn(async move {
+            let _sender = tx;
+            let _ = ready.send(());
+            std::future::pending::<()>().await;
+        });
+        entered.await.unwrap();
+        assert!(
+            !run.snapshot().await.2,
+            "a live producer must retain its run"
+        );
+        producer.abort();
+        let _ = producer.await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), forwarder)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(run.snapshot().await.2);
+    }
+
+    #[tokio::test]
+    async fn autonomy_forwarder_preserves_success_and_confirmation_wait() {
+        for waiting in [false, true] {
+            let run = AgentRun::new_for_test(format!("autonomy-closed-{waiting}"), 7432);
+            let (tx, rx) = tokio::sync::mpsc::channel(4);
+            tx.send(AgentProgressEvent::TaskCompleted {
+                task_id: "task".into(), success: true,
+                response: Box::new(json!({"task": {"status": if waiting { "waiting_for_input" } else { "completed" }}})),
+            }).await.unwrap();
+            drop(tx);
+            forward_autonomy_progress(run.clone(), rx).await;
+            let (events, _, completed) = run.snapshot().await;
+            assert_eq!(events.len(), 1, "forwarder replaced an existing outcome");
+            assert_eq!(completed, !waiting);
+        }
+    }
 
     #[test]
     fn confirmation_stays_waiting() {

@@ -18,7 +18,7 @@ use sea_orm::{
 use serde_json::json;
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
 /// 全局任务状态存储
@@ -30,8 +30,38 @@ static DB_FOR_TASKS: Lazy<Arc<RwLock<Option<DatabaseConnection>>>> =
     Lazy::new(|| Arc::new(RwLock::new(None)));
 
 /// 全局任务取消标记存储
-pub static CANCELLATION_TOKENS: Lazy<Arc<RwLock<HashSet<String>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashSet::new())));
+pub static CANCELLATION_TOKENS: Lazy<Mutex<HashSet<String>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
+static ACTIVE_TASK_EXECUTIONS: Lazy<Mutex<HashMap<String, usize>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Own the process-local cancellation marker only while execution is alive.
+/// Drop runs for errors and aborted futures as well as normal completion.
+pub(crate) struct CancellationGuard(String);
+impl CancellationGuard {
+    pub(crate) fn new(task_id: &str) -> Self {
+        *ACTIVE_TASK_EXECUTIONS
+            .lock()
+            .unwrap()
+            .entry(task_id.to_string())
+            .or_default() += 1;
+        Self(task_id.to_string())
+    }
+}
+impl Drop for CancellationGuard {
+    fn drop(&mut self) {
+        let mut active = ACTIVE_TASK_EXECUTIONS.lock().unwrap();
+        if let Some(count) = active.get_mut(&self.0) {
+            *count -= 1;
+            if *count == 0 {
+                active.remove(&self.0);
+                CANCELLATION_TOKENS.lock().unwrap().remove(&self.0);
+            }
+        }
+    }
+}
+
+const TERMINAL_CACHE_LIMIT: usize = 256;
 
 const STEERING_REGISTRY_NAMESPACE: &str = "agent_task_steering";
 
@@ -82,7 +112,15 @@ pub async fn take_steering(db: &DatabaseConnection, task_id: &str) -> Vec<String
 
 /// 检查任务是否被请求取消
 pub async fn is_cancelled(task_id: &str) -> bool {
-    if CANCELLATION_TOKENS.read().await.contains(task_id) {
+    if CANCELLATION_TOKENS.lock().unwrap().contains(task_id) {
+        return true;
+    }
+    if TASK_STORE
+        .read()
+        .await
+        .get(task_id)
+        .is_some_and(|task| task.status == TaskStatus::Cancelled)
+    {
         return true;
     }
     let Some(db) = DB_FOR_TASKS.read().await.clone() else {
@@ -99,7 +137,7 @@ pub async fn is_cancelled(task_id: &str) -> bool {
 
 /// 清除取消标记（任务完成或已处理取消后）
 pub async fn clear_cancellation(task_id: &str) {
-    let mut tokens = CANCELLATION_TOKENS.write().await;
+    let mut tokens = CANCELLATION_TOKENS.lock().unwrap();
     tokens.remove(task_id);
 }
 
@@ -120,6 +158,7 @@ impl TaskStore {
             ids.push(task.task_id.clone());
         }
         self.tasks.insert(task.task_id.clone(), task);
+        self.trim_terminal_cache();
     }
     pub fn new() -> Self {
         Self {
@@ -130,25 +169,13 @@ impl TaskStore {
 
     /// 存储任务（同时异步保存到数据库）
     pub fn store(&mut self, user_id: i32, task: TaskState) {
-        let task_id = task.task_id.clone();
-
-        // 先 insert 到内存，再从内存里借出一份 clone 给异步任务
-        // 避免 task 被 move 前的额外 clone
-        self.tasks.insert(task_id.clone(), task);
-        self.user_tasks
-            .entry(user_id)
-            .or_default()
-            .push(task_id.clone());
-
-        // 从内存中取出已存储的任务做一次 clone 用于持久化
-        // 这样可在 TaskState 较大时只 clone 一次，而非两次
-        if let Some(task_for_db) = self.tasks.get(&task_id).cloned() {
-            tokio::spawn(async move {
-                if let Err(e) = save_task_to_db(user_id, &task_for_db).await {
-                    tracing::warn!("保存任务到数据库失败: {}", e);
-                }
-            });
-        }
+        let task_for_db = task.clone();
+        self.cache_committed(user_id, task);
+        tokio::spawn(async move {
+            if let Err(e) = save_task_to_db(user_id, &task_for_db).await {
+                tracing::warn!("保存任务到数据库失败: {}", e);
+            }
+        });
     }
 
     /// 获取任务
@@ -174,36 +201,65 @@ impl TaskStore {
         status_counts_from_iter(self.tasks.values().map(|t| &t.status))
     }
 
-    /// 清理过期任务
-    ///
-    /// - 已完成/失败超过24小时的任务
-    /// - WaitingForInput 超过2小时未响应的任务（标记为超时失败）
-    pub async fn cleanup_expired(&mut self) {
-        let now = Utc::now();
-        let mut expired_ids: Vec<String> = Vec::new();
-        let mut timed_out: Vec<(i32, TaskState)> = Vec::new();
+    fn remove_cached(&mut self, ids: &HashSet<String>) {
+        self.tasks.retain(|id, _| !ids.contains(id));
+        self.user_tasks.retain(|_, tasks| {
+            tasks.retain(|id| !ids.contains(id));
+            !tasks.is_empty()
+        });
+    }
 
+    fn trim_terminal_cache(&mut self) {
+        let mut terminal = self
+            .tasks
+            .values()
+            .filter(|task| {
+                matches!(
+                    task.status,
+                    TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+                )
+            })
+            .map(|task| {
+                (
+                    task.completed_at.unwrap_or(task.started_at),
+                    task.task_id.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        if terminal.len() > TERMINAL_CACHE_LIMIT {
+            terminal.sort_unstable();
+            let remove = terminal.len() - TERMINAL_CACHE_LIMIT;
+            self.remove_cached(
+                &terminal
+                    .into_iter()
+                    .take(remove)
+                    .map(|(_, id)| id)
+                    .collect(),
+            );
+        }
+    }
+
+    /// Reclaim only cached terminal snapshots; durable history stays in the DB.
+    /// Live and waiting Work is never evicted by age or capacity pressure.
+    fn reclaim_expired(&mut self) -> Vec<(i32, TaskState)> {
+        let now = Utc::now();
+        let mut expired = HashSet::new();
+        let mut timed_out = Vec::new();
         for (id, task) in &mut self.tasks {
-            // 已完成的任务：终态保留窗口后清理
-            if let Some(completed_at) = &task.completed_at {
-                if is_terminal_past_retention(*completed_at, now) {
-                    expired_ids.push(id.clone());
+            if matches!(
+                task.status,
+                TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+            ) {
+                if is_terminal_past_retention(task.completed_at.unwrap_or(task.started_at), now) {
+                    expired.insert(id.clone());
                 }
-            }
-            // WaitingForInput 任务：超时未响应则标记为失败终态（本轮不删除）
-            else if task.status == TaskStatus::WaitingForInput
+            } else if task.status == TaskStatus::WaitingForInput
                 && !task
                     .recipe
                     .as_ref()
                     .is_some_and(crate::services::agent::work_loop::is_work_recipe)
                 && is_waiting_input_timed_out(task.started_at, now)
             {
-                let age_hours = (now - task.started_at).num_hours();
-                tracing::info!(
-                    task_id = %id,
-                    age_hours = age_hours,
-                    "[TaskStore] Expiring abandoned WaitingForInput task"
-                );
                 task.status = TaskStatus::Failed;
                 task.error = Some(waiting_input_timeout_error());
                 task.completed_at = Some(now);
@@ -214,31 +270,15 @@ impl TaskStore {
                 }
             }
         }
+        self.remove_cached(&expired);
+        self.trim_terminal_cache();
+        timed_out
+    }
 
-        // 超时是一个可查询的失败终态，不应在同一轮清理中立即删除。
-        // 先持久化，后续按上面的统一 24 小时终态保留策略删除。
-        for (user_id, task) in timed_out {
-            if let Err(error) = save_task_to_db(user_id, &task).await {
-                tracing::warn!(
-                    task_id = %task.task_id,
-                    %error,
-                    "持久化等待输入超时状态失败"
-                );
-            }
-        }
-
-        for id in &expired_ids {
-            self.tasks.remove(id);
-            for task_list in self.user_tasks.values_mut() {
-                task_list.retain(|tid| tid != id);
-            }
-        }
-
-        // 同步清理数据库中的过期任务
-        if !expired_ids.is_empty() {
-            if let Err(e) = cleanup_expired_tasks_from_db(&expired_ids).await {
-                tracing::warn!("清理数据库过期任务失败: {}", e);
-            }
+    #[cfg(test)]
+    async fn cleanup_expired(&mut self) {
+        for (user_id, task) in self.reclaim_expired() {
+            let _ = save_task_to_db(user_id, &task).await;
         }
     }
 }
@@ -500,24 +540,6 @@ pub(crate) async fn save_task_on(
     Ok(())
 }
 
-/// 从数据库清理过期任务
-async fn cleanup_expired_tasks_from_db(task_ids: &[String]) -> Result<(), String> {
-    let db_guard = DB_FOR_TASKS.read().await;
-    let db = db_guard.as_ref().ok_or("Database is not connected")?;
-
-    for task_id in task_ids {
-        agent_tasks::Entity::delete_by_id(task_id)
-            .exec(db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to delete task: {e}");
-                "Failed to delete task".to_string()
-            })?;
-    }
-
-    Ok(())
-}
-
 /// 异步持久化任务（fire-and-forget）
 pub fn persist_task_async(user_id: i32, task: TaskState) {
     tokio::spawn(async move {
@@ -570,11 +592,7 @@ pub async fn refresh_task_for_user(task_id: &str, user_id: i32) -> Option<TaskSt
         .ok()??;
     let task = task_model_to_state(&model).ok()?;
     let mut store = TASK_STORE.write().await;
-    store.tasks.insert(task_id.to_string(), task.clone());
-    let ids = store.user_tasks.entry(user_id).or_default();
-    if !ids.iter().any(|id| id == task_id) {
-        ids.push(task_id.to_string());
-    }
+    store.cache_committed(user_id, task.clone());
     Some(task)
 }
 
@@ -647,11 +665,7 @@ WHERE id = $1 AND user_id = $2
 ///
 /// 写入取消标记 + DB 状态，执行器在步骤边界通过 [`is_cancelled`] 退出。
 pub async fn request_cancel(task_id: &str, reason: &str) -> bool {
-    {
-        let mut tokens = CANCELLATION_TOKENS.write().await;
-        tokens.insert(task_id.to_string());
-    }
-
+    mark_cancelled_in_memory(task_id, reason).await;
     let Some(db) = DB_FOR_TASKS.read().await.clone() else {
         // 无 DB 时仍保留内存标记，执行器可协作退出
         mark_cancelled_in_memory(task_id, reason).await;
@@ -689,15 +703,20 @@ WHERE id = $1
 }
 
 async fn mark_cancelled_in_memory(task_id: &str, reason: &str) {
-    {
-        let mut tokens = CANCELLATION_TOKENS.write().await;
-        tokens.insert(task_id.to_string());
-    }
     let mut store = TASK_STORE.write().await;
     if let Some(task) = store.get_mut(task_id) {
         task.status = TaskStatus::Cancelled;
         task.error = Some(reason.to_string());
         task.completed_at = Some(Utc::now());
+    }
+    // Serialize with owner Drop so cancellation cannot recreate an orphan
+    // marker after its worker has exited. Durable rows cover remote/waiting work.
+    let active = ACTIVE_TASK_EXECUTIONS.lock().unwrap();
+    if active.contains_key(task_id) {
+        CANCELLATION_TOKENS
+            .lock()
+            .unwrap()
+            .insert(task_id.to_string());
     }
 }
 
@@ -754,27 +773,155 @@ pub async fn get_user_tasks(user_id: i32) -> Vec<TaskState> {
     tasks
 }
 
-/// 请求驱动清理：每 20 次 `cleanup_expired`，每 100 次 idle lane。
+/// Preserve the existing 24-hour terminal-row retention independently of hot
+/// cache eviction. Never delete live/waiting Work to reclaim process memory.
+async fn cleanup_expired_tasks_from_db(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
+    db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+        "DELETE FROM agent_tasks WHERE id IN (SELECT id FROM agent_tasks WHERE status IN ('completed', 'failed', 'cancelled') AND completed_at < NOW() - INTERVAL '24 hours' ORDER BY completed_at LIMIT 256)"
+    )).await?;
+    Ok(())
+}
+
+/// Called by the process-owned periodic sweep, independent of HTTP/SSE traffic.
+/// Database I/O runs after releasing the task-store lock.
+pub(crate) async fn cleanup_retained_state() {
+    let timed_out = TASK_STORE.write().await.reclaim_expired();
+    for (user_id, task) in timed_out {
+        if let Err(error) = save_task_to_db(user_id, &task).await {
+            tracing::warn!(task_id = %task.task_id, %error, "Failed to persist input timeout");
+        }
+    }
+    crate::services::agent::run_hub::cleanup_retained_runs().await;
+    if let Some(db) = DB_FOR_TASKS.read().await.clone() {
+        if let Err(error) = cleanup_expired_tasks_from_db(&db).await {
+            tracing::warn!(%error, "Failed to expire terminal task rows");
+        }
+    }
+}
+
+/// Retain request-driven opportunistic cleanup in addition to the idle sweep.
 pub async fn maybe_cleanup_tasks() {
     use std::sync::atomic::{AtomicU32, Ordering};
     static COUNTER: AtomicU32 = AtomicU32::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    // 每 20 次请求清理一次过期任务
-    if n.is_multiple_of(20) {
-        let mut store = TASK_STORE.write().await;
-        store.cleanup_expired().await;
-    }
-    // 每 100 次请求清理一次空闲 Lane（防止 HashMap 无限增长）
-    if n.is_multiple_of(100) {
-        crate::services::agent::LANE_QUEUE
-            .cleanup_idle_lanes()
-            .await;
+    if COUNTER.fetch_add(1, Ordering::Relaxed).is_multiple_of(20) {
+        cleanup_retained_state().await;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires MYRIAD_MEMORY_TEST_DATABASE_URL pointing to a disposable PostgreSQL database"]
+    async fn durable_retention_only_deletes_expired_terminal_rows_in_bounded_batches() {
+        let url = std::env::var("MYRIAD_MEMORY_TEST_DATABASE_URL").expect("disposable test DB");
+        let mut options = sea_orm::ConnectOptions::new(url);
+        options.max_connections(1);
+        let db = sea_orm::Database::connect(options).await.unwrap();
+        db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "CREATE TEMP TABLE agent_tasks (id TEXT PRIMARY KEY, status TEXT, completed_at TIMESTAMPTZ)")).await.unwrap();
+        db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "INSERT INTO agent_tasks SELECT n::text, 'completed', NOW() - INTERVAL '25 hours' FROM generate_series(1, 300) n")).await.unwrap();
+        db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "INSERT INTO agent_tasks VALUES ('running', 'running', NOW() - INTERVAL '25 hours'), ('waiting', 'waiting_for_input', NULL), ('recent', 'completed', NOW())")).await.unwrap();
+        cleanup_expired_tasks_from_db(&db).await.unwrap();
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT COUNT(*)::BIGINT AS count FROM agent_tasks",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.try_get::<i64>("", "count").unwrap(), 47);
+        cleanup_expired_tasks_from_db(&db).await.unwrap();
+        let row = db.query_one_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "SELECT COUNT(*)::BIGINT AS count FROM agent_tasks WHERE id IN ('running', 'waiting', 'recent')")).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "count").unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn cancelled_execution_retains_marker_until_last_owner_exits() {
+        let id = format!("owned-cancel-{}", uuid::Uuid::new_v4());
+        let owner = CancellationGuard::new(&id);
+        let second_owner = CancellationGuard::new(&id);
+        mark_cancelled_in_memory(&id, "cancelled").await;
+        assert!(is_cancelled(&id).await);
+        drop(second_owner);
+        assert!(CANCELLATION_TOKENS.lock().unwrap().contains(&id));
+        drop(owner);
+        assert!(!CANCELLATION_TOKENS.lock().unwrap().contains(&id));
+        mark_cancelled_in_memory(&id, "late duplicate").await;
+        assert!(!CANCELLATION_TOKENS.lock().unwrap().contains(&id));
+    }
+
+    #[tokio::test]
+    async fn cancelling_inactive_or_missing_tasks_does_not_retain_markers() {
+        let id = format!("inactive-cancel-{}", uuid::Uuid::new_v4());
+        mark_cancelled_in_memory(&id, "cancelled").await;
+        assert!(!CANCELLATION_TOKENS.lock().unwrap().contains(&id));
+    }
+
+    fn retained_task(id: &str, status: TaskStatus, hours_old: i64) -> TaskState {
+        let mut task = TaskState::new(&Recipe::new(
+            "retention",
+            "retention",
+            ExecutionType::Instant,
+        ));
+        task.task_id = id.into();
+        task.status = status;
+        task.started_at = Utc::now() - chrono::Duration::hours(hours_old);
+        task.completed_at = Some(task.started_at);
+        task
+    }
+
+    #[tokio::test]
+    async fn cleanup_drops_empty_user_indexes_and_keeps_live_work() {
+        let mut store = TaskStore::new();
+        store.cache_committed(7001, retained_task("expired", TaskStatus::Completed, 25));
+        store.cache_committed(7002, retained_task("running", TaskStatus::Running, 25));
+        store.cleanup_expired().await;
+        assert!(store.get("expired").is_none());
+        assert!(!store.user_tasks.contains_key(&7001));
+        assert!(
+            store.get("running").is_some(),
+            "stale timestamps must not evict active tasks"
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_task_cache_writes_do_not_duplicate_user_index() {
+        let mut store = TaskStore::new();
+        let task = retained_task("same", TaskStatus::Completed, 0);
+        store.store(7003, task.clone());
+        store.store(7003, task);
+        assert_eq!(store.get_user_tasks(7003).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn cleanup_bounds_terminal_cache_but_keeps_active_and_waiting_tasks() {
+        let mut store = TaskStore::new();
+        for index in 0..2_000 {
+            store.cache_committed(
+                7004,
+                retained_task(&format!("done-{index}"), TaskStatus::Completed, 0),
+            );
+        }
+        let mut live = retained_task("live", TaskStatus::Running, 0);
+        live.completed_at = None;
+        store.cache_committed(7004, live);
+        let mut waiting = retained_task("waiting", TaskStatus::WaitingForInput, 0);
+        waiting.completed_at = None;
+        store.cache_committed(7004, waiting);
+        store.cleanup_expired().await;
+        assert!(
+            store.tasks.len() <= TERMINAL_CACHE_LIMIT + 2,
+            "terminal hot cache must stay bounded"
+        );
+        assert!(store.get("live").is_some());
+        assert!(store.get("waiting").is_some());
+    }
 
     #[test]
     fn cancellable_statuses_reexport_matches_domain() {

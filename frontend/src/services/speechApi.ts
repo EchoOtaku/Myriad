@@ -445,7 +445,12 @@ export class CloudPodcastPlayer {
   private destroyed = false
   private dialogues: Array<{ speaker: string; text: string }> = []
   private audioElements: Map<number, HTMLAudioElement> = new Map()
-  private audioUrls: string[] = []
+  private audioUrls = new Map<number, string>()
+  private batchRequest: BatchTTSRequest | null = null
+  private windowController: AbortController | null = null
+  private windowIndex = -1
+  private windowPromise: Promise<BatchTTSResponse> | null = null
+  private generatedIndices = new Set<number>()
   private currentIndex = 0
   private isPlaying = false
   private isPaused = false
@@ -521,83 +526,11 @@ export class CloudPodcastPlayer {
         force_regenerate: options.forceRegenerate,
       }
 
-      console.log(
-        '[CloudPodcastPlayer] Loading TTS for',
-        dialogues.length,
-        'dialogues',
-      )
-      console.log('[CloudPodcastPlayer] Options:', {
-        sourceId: options.sourceId,
-        articleId: options.articleId,
-        hostVoiceId: options?.hostVoiceId,
-        guestVoiceId: options?.guestVoiceId,
-        forceRegenerate: options.forceRegenerate,
-      })
-
-      const response = await batchTextToSpeech(batchReq, controller.signal)
+      this.batchRequest = batchReq
+      const response = await this.warmPlaybackWindow(0)
       controller.signal.throwIfAborted()
-
-      console.log('[CloudPodcastPlayer] Response:', {
-        success: response.success,
-        audios_count: response.audios?.length || 0,
-        cache_hits: response.cache_hits,
-        generated: response.generated,
-        errors: response.errors,
-        error: response.error,
-      })
-
-      if (!response.audios || response.audios.length === 0) {
-        if (response.errors && response.errors.length > 0) {
-          const firstError = response.errors[0]
-          throw new Error(
-            userFacingError(
-              firstError.error === 'empty_dialogue_text'
-                ? currentCopy().errors.emptyDialogueText
-                : firstError.error,
-              currentCopy().phantasi.generateFailed,
-            ),
-          )
-        } else if (response.error) {
-          throw new Error(
-            userFacingError(
-              response.error,
-              currentCopy().phantasi.generatePodcastFailed,
-            ),
-          )
-        } else {
-          throw new Error(currentCopy().phantasi.generatePodcastFailed)
-        }
-      }
-
-      if (response.errors && response.errors.length > 0) {
-        console.warn(
-          '[CloudPodcastPlayer] Some dialogues failed:',
-          response.errors,
-        )
-      }
-
-      console.log('[CloudPodcastPlayer] TTS loaded:', {
-        cache_hits: response.cache_hits,
-        generated: response.generated,
-        errors: response.errors?.length || 0,
-      })
-
-      // Preload current+next only.
-      if (response.audios) {
-        for (const item of response.audios) {
-          const url = base64ToAudioUrl(item.audio, 'audio/mp3')
-          this.audioUrls.push(url)
-
-          const audio = new Audio()
-          audio.preload = item.index <= 1 ? 'auto' : 'none'
-          audio.src = url
-          if (item.index <= 1) {
-            audio.load()
-          }
-          this.audioElements.set(item.index, audio)
-
-          this.onLoadProgress?.(this.audioElements.size, dialogues.length)
-        }
+      if (!this.audioElements.size) {
+        throw new Error(userFacingError(response.error || response.errors?.[0]?.error, currentCopy().phantasi.generatePodcastFailed))
       }
 
       this.isLoading = false
@@ -681,8 +614,9 @@ export class CloudPodcastPlayer {
     this.currentIndex = index
     this.onProgress?.(this.currentIndex, this.dialogues.length)
 
-    if (this.isPlaying && !this.isPaused) {
-      this.playNext()
+    await this.warmPlaybackWindow(index)
+    if (this.currentIndex === index && this.isPlaying && !this.isPaused) {
+      void this.playNext()
     }
   }
 
@@ -704,18 +638,46 @@ export class CloudPodcastPlayer {
     return this.audioElements.size > 0
   }
 
-  /** Preload current+next only. */
-  private warmPlaybackWindow(index: number) {
-    for (const offset of [0, 1]) {
-      const audio = this.audioElements.get(index + offset)
-      if (!audio) continue
-      if (audio.preload !== 'auto') {
-        audio.preload = 'auto'
-      }
-      if (audio.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        audio.load()
-      }
+  /** Fetch and retain only the current dialogue and its successor. */
+  private warmPlaybackWindow(index: number): Promise<BatchTTSResponse> {
+    if (this.windowIndex === index && this.windowPromise) return this.windowPromise
+    this.windowController?.abort()
+    const controller = new AbortController()
+    this.windowController = controller
+    this.windowIndex = index
+    const signal = AbortSignal.any([controller.signal, this.loadController!.signal])
+    for (const [key, audio] of this.audioElements) {
+      if (key >= index && key <= index + 1) continue
+      audio.pause()
+      audio.onended = null
+      audio.onerror = null
+      audio.src = ''
+      audio.load()
+      this.audioElements.delete(key)
+      URL.revokeObjectURL(this.audioUrls.get(key)!)
+      this.audioUrls.delete(key)
     }
+    const request = this.batchRequest!
+    const missing = request.dialogues.filter(d => d.index >= index && d.index <= index + 1 && !this.audioElements.has(d.index))
+    this.windowPromise = (async () => {
+      if (!missing.length) return { success: true, cache_hits: 0, generated: 0 }
+      const response = await batchTextToSpeech({ ...request, dialogues: missing, force_regenerate: request.force_regenerate && missing.some(d => !this.generatedIndices.has(d.index)) }, signal)
+      signal.throwIfAborted()
+      for (const item of response.audios || []) {
+        if (!missing.some(d => d.index === item.index) || this.audioElements.has(item.index)) continue
+        const url = base64ToAudioUrl(item.audio, 'audio/mp3')
+        const audio = new Audio()
+        audio.preload = 'auto'
+        audio.src = url
+        audio.load()
+        this.audioUrls.set(item.index, url)
+        this.audioElements.set(item.index, audio)
+        this.generatedIndices.add(item.index)
+      }
+      this.onLoadProgress?.(this.generatedIndices.size, this.dialogues.length)
+      return response
+    })()
+    return this.windowPromise
   }
 
   private async playNext() {
@@ -727,7 +689,16 @@ export class CloudPodcastPlayer {
       return
     }
 
-    this.warmPlaybackWindow(this.currentIndex)
+    const requestedIndex = this.currentIndex
+    try {
+      await this.warmPlaybackWindow(requestedIndex)
+    } catch (error) {
+      if (this.destroyed || this.currentIndex !== requestedIndex || !this.isPlaying) return
+      this.isPlaying = false
+      console.error('[CloudPodcastPlayer] Load failed:', error)
+      return
+    }
+    if (!this.isPlaying || this.isPaused || this.currentIndex !== requestedIndex) return
 
     const audio = this.audioElements.get(this.currentIndex)
     if (!audio) {
@@ -776,16 +747,23 @@ export class CloudPodcastPlayer {
   }
 
   private cleanup() {
-    for (const url of this.audioUrls) {
+    this.windowController?.abort()
+    this.windowController = null
+    this.windowPromise = null
+    this.windowIndex = -1
+    this.batchRequest = null
+    this.generatedIndices.clear()
+    for (const url of this.audioUrls.values()) {
       URL.revokeObjectURL(url)
     }
-    this.audioUrls = []
+    this.audioUrls.clear()
 
     for (const audio of this.audioElements.values()) {
       audio.pause()
       audio.onended = null
       audio.onerror = null
       audio.src = ''
+      audio.load()
     }
     this.audioElements.clear()
   }

@@ -9,7 +9,7 @@ export enum LoadPriority {
 interface LoadTask {
   id: string
   priority: LoadPriority
-  loader: () => Promise<void>
+  loader: (signal: AbortSignal) => Promise<void>
   timeout?: number
   retryCount?: number
 }
@@ -27,7 +27,9 @@ const MAX_COMPLETED_LOADS = 200
 const MAX_FAILED_LOADS = 50
 
 class ResourceLoader {
-  private queue: LoadTask[] = []
+  private queue: Array<LoadTask & { readyAt: number }> = []
+  private wakeTimer: ReturnType<typeof setTimeout> | null = null
+  private running = new Map<string, { task: LoadTask; controller: AbortController }>()
   private activeLoads: Set<string> = new Set()
   /** Map insertion order = LRU. */
   private completedLoads: Map<string, number> = new Map()
@@ -84,13 +86,14 @@ class ResourceLoader {
     const existingIndex = this.queue.findIndex((t) => t.id === task.id)
     if (existingIndex !== -1) {
       if (task.priority < this.queue[existingIndex].priority) {
-        this.queue[existingIndex] = task
+        this.queue[existingIndex] = { ...task, readyAt: Date.now() + this.getDelayForPriority(task.priority) }
         this.sortQueue()
+        this.processQueue()
       }
       return
     }
 
-    this.queue.push(task)
+    this.queue.push({ ...task, readyAt: Date.now() + this.getDelayForPriority(task.priority) })
     this.sortQueue()
     this.processQueue()
   }
@@ -105,41 +108,38 @@ class ResourceLoader {
       this.queue = this.queue.toSpliced(index, 1)
     }
     this.cancelScheduledIdleTask(id)
+    this.running.get(id)?.controller.abort()
+    this.processQueue()
   }
 
   clearPriority(priority: LoadPriority): void {
-    this.queue = this.queue.filter((t) => t.priority !== priority)
+    for (const task of this.queue.filter((t) => t.priority === priority)) this.cancelTask(task.id)
+    for (const { task } of this.running.values()) {
+      if (task.priority === priority) this.cancelTask(task.id)
+    }
+    if (priority === LoadPriority.IDLE) {
+      for (const id of this.scheduledIdleTasks.keys()) this.cancelScheduledIdleTask(id)
+    }
   }
 
   private sortQueue(): void {
     this.queue = this.queue.toSorted((a, b) => a.priority - b.priority)
   }
 
-  private async processQueue(): Promise<void> {
-    if (this.queue.length === 0) {
-      return
+  private processQueue(): void {
+    if (this.wakeTimer !== null) clearTimeout(this.wakeTimer)
+    this.wakeTimer = null
+    while (this.activeLoads.size < this.config.maxConcurrent) {
+      const now = Date.now()
+      const index = this.queue.findIndex((task) => task.readyAt <= now)
+      if (index === -1) break
+      const [task] = this.queue.splice(index, 1)
+      void this.executeTask(task)
     }
-
-    if (this.activeLoads.size >= this.config.maxConcurrent) {
-      return
+    if (this.queue.length && this.activeLoads.size < this.config.maxConcurrent) {
+      const next = Math.min(...this.queue.map((task) => task.readyAt))
+      this.wakeTimer = setTimeout(() => this.processQueue(), Math.max(0, next - Date.now()))
     }
-
-    const task = this.queue.shift()
-    if (!task) return
-
-    const delay = this.getDelayForPriority(task.priority)
-    if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay))
-
-      if (this.isCompleted(task.id) || this.activeLoads.has(task.id)) {
-        this.processQueue()
-        return
-      }
-    }
-
-    this.executeTask(task)
-
-    this.processQueue()
   }
 
   private getDelayForPriority(priority: LoadPriority): number {
@@ -168,27 +168,20 @@ class ResourceLoader {
 
   private async executeTask(task: LoadTask): Promise<void> {
     this.activeLoads.add(task.id)
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    const controller = new AbortController()
+    this.running.set(task.id, { task, controller })
+    const timeoutId = task.timeout
+      ? setTimeout(() => controller.abort(new Error('Task timeout')), task.timeout)
+      : null
 
     try {
-      const timeoutPromise = task.timeout
-        ? new Promise<void>((_, reject) => {
-            timeoutId = setTimeout(
-              () => reject(new Error('Task timeout')),
-              task.timeout,
-            )
-          })
-        : null
-
-      if (timeoutPromise) {
-        await Promise.race([task.loader(), timeoutPromise])
-      } else {
-        await task.loader()
-      }
-
+      // Keep the slot until the operation settles, even when a loader ignores abort.
+      await task.loader(controller.signal)
+      if (controller.signal.aborted) return
       this.markCompleted(task.id)
       this.failedLoads.delete(task.id)
     } catch (error) {
+      if (controller.signal.aborted) return
       console.warn(`Resource load failed for task ${task.id}:`, error)
 
       const failCount = (this.failedLoads.get(task.id) || 0) + 1
@@ -203,6 +196,7 @@ class ResourceLoader {
       if (task.retryCount && failCount < task.retryCount) {
         this.queue.push({
           ...task,
+          readyAt: Date.now() + this.getDelayForPriority(LoadPriority.IDLE),
           priority: Math.min(
             task.priority + 1,
             LoadPriority.IDLE,
@@ -214,12 +208,13 @@ class ResourceLoader {
       if (timeoutId !== null) {
         clearTimeout(timeoutId)
       }
+      this.running.delete(task.id)
       this.activeLoads.delete(task.id)
       this.processQueue()
     }
   }
 
-  scheduleIdleTask(id: string, loader: () => Promise<void>): void {
+  scheduleIdleTask(id: string, loader: (signal: AbortSignal) => Promise<void>): void {
     if (
       this.scheduledIdleTasks.has(id) ||
       this.isCompleted(id) ||
@@ -267,10 +262,7 @@ class ResourceLoader {
   async waitForCritical(): Promise<void> {
     while (
       this.queue.some((t) => t.priority <= LoadPriority.HIGH) ||
-      Iterator.from(this.activeLoads).some((id) => {
-        const task = this.queue.find((t) => t.id === id)
-        return task && task.priority <= LoadPriority.HIGH
-      })
+      Array.from(this.running.values()).some(({ task }) => task.priority <= LoadPriority.HIGH)
     ) {
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
@@ -316,7 +308,9 @@ class ResourceLoader {
 
   clear(): void {
     this.queue = []
-    this.activeLoads.clear()
+    if (this.wakeTimer !== null) clearTimeout(this.wakeTimer)
+    this.wakeTimer = null
+    for (const { controller } of this.running.values()) controller.abort()
     for (const id of Iterator.from(this.scheduledIdleTasks.keys()).toArray()) {
       this.cancelScheduledIdleTask(id)
     }
@@ -342,7 +336,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 }
 
 export const loadResource = {
-  critical: (id: string, loader: () => Promise<void>) => {
+  critical: (id: string, loader: (signal: AbortSignal) => Promise<void>) => {
     globalResourceLoader.addTask({
       id,
       priority: LoadPriority.CRITICAL,
@@ -350,15 +344,15 @@ export const loadResource = {
     })
   },
 
-  high: (id: string, loader: () => Promise<void>) => {
+  high: (id: string, loader: (signal: AbortSignal) => Promise<void>) => {
     globalResourceLoader.addTask({ id, priority: LoadPriority.HIGH, loader })
   },
 
-  medium: (id: string, loader: () => Promise<void>) => {
+  medium: (id: string, loader: (signal: AbortSignal) => Promise<void>) => {
     globalResourceLoader.addTask({ id, priority: LoadPriority.MEDIUM, loader })
   },
 
-  low: (id: string, loader: () => Promise<void>) => {
+  low: (id: string, loader: (signal: AbortSignal) => Promise<void>) => {
     globalResourceLoader.addTask({
       id,
       priority: LoadPriority.LOW,
@@ -367,7 +361,7 @@ export const loadResource = {
     })
   },
 
-  idle: (id: string, loader: () => Promise<void>) => {
+  idle: (id: string, loader: (signal: AbortSignal) => Promise<void>) => {
     globalResourceLoader.scheduleIdleTask(id, loader)
   },
 }

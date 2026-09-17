@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use futures::{SinkExt, StreamExt};
@@ -32,16 +32,71 @@ const POLL: Duration = Duration::from_secs(2);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const API_BASE: &str = "https://discord.com/api/v10";
 const USER_AGENT: &str = "DiscordBot (https://github.com/myriad, 1.0)";
+const CHANNEL_TYPE_CACHE_CAP: usize = 256;
+const CHANNEL_TYPE_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 
 /// Channel id → Discord channel type. Gateway `MESSAGE_CREATE` usually omits type.
-static CHANNEL_TYPES: OnceLock<RwLock<HashMap<String, i64>>> = OnceLock::new();
+#[derive(Clone, Copy)]
+struct ChannelTypeCacheEntry {
+    kind: i64,
+    touched_at: Instant,
+}
 
-fn channel_types() -> &'static RwLock<HashMap<String, i64>> {
+type ChannelTypeCache = HashMap<String, ChannelTypeCacheEntry>;
+
+static CHANNEL_TYPES: OnceLock<RwLock<ChannelTypeCache>> = OnceLock::new();
+
+fn channel_types() -> &'static RwLock<ChannelTypeCache> {
     CHANNEL_TYPES.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn prune_channel_types(cache: &mut ChannelTypeCache, now: Instant) {
+    cache.retain(|_, entry| {
+        now.saturating_duration_since(entry.touched_at) < CHANNEL_TYPE_CACHE_TTL
+    });
+    while cache.len() > CHANNEL_TYPE_CACHE_CAP {
+        let Some(oldest) = cache
+            .iter()
+            .min_by_key(|(_, entry)| entry.touched_at)
+            .map(|(channel_id, _)| channel_id.clone())
+        else {
+            break;
+        };
+        cache.remove(&oldest);
+    }
+}
+
+fn cached_channel_type(
+    cache: &mut ChannelTypeCache,
+    channel_id: &str,
+    now: Instant,
+) -> Option<i64> {
+    prune_channel_types(cache, now);
+    let entry = cache.get_mut(channel_id)?;
+    entry.touched_at = now;
+    Some(entry.kind)
+}
+
+fn cache_channel_type(cache: &mut ChannelTypeCache, channel_id: String, kind: i64, now: Instant) {
+    prune_channel_types(cache, now);
+    cache.insert(
+        channel_id,
+        ChannelTypeCacheEntry {
+            kind,
+            touched_at: now,
+        },
+    );
+    prune_channel_types(cache, now);
 }
 
 async fn clear_channel_type_cache() {
     channel_types().write().await.clear();
+}
+
+/// Periodic maintenance releases expired entries even when Discord is idle.
+pub(crate) async fn cleanup_channel_types() {
+    let mut cache = channel_types().write().await;
+    prune_channel_types(&mut cache, Instant::now());
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -273,7 +328,11 @@ async fn gateway_session(
 
     let (ws, _) = tokio::select! {
         _ = cancel.changed() => return Ok(resume),
-        result = tokio_tungstenite::connect_async(&connect_url) => {
+        result = tokio_tungstenite::connect_async_with_config(&connect_url, Some(
+                tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+                    .max_message_size(Some(crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES))
+                    .max_frame_size(Some(crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES)),
+            ), false) => {
             result.map_err(|err| {
                 log_transport("Discord Gateway connect failed", &err, token);
                 (ConnectFailureKind::Transient, resume.clone())
@@ -406,17 +465,45 @@ async fn handle_payload<S>(
 where
     S: SinkExt<Message> + Unpin,
 {
+    if text.len() > crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES {
+        warn!("Bot Gateway payload too large; reconnecting before accepting sequence");
+        return Some(ConnectFailureKind::Transient);
+    }
     let payload: Value = serde_json::from_str(text).ok()?;
+    let op = payload
+        .get("op")
+        .and_then(Value::as_u64)
+        .unwrap_or(u64::MAX);
+    let mut ingress = if op == 0
+        && matches!(
+            payload.get("t").and_then(Value::as_str),
+            Some("MESSAGE_CREATE" | "INTERACTION_CREATE")
+        ) {
+        match crate::services::bot_ingress::try_acquire(
+            crate::services::bot_ingress::Channel::Discord,
+            payload
+                .get("d")
+                .map_or(0, crate::services::bot_ingress::json_bytes)
+                .saturating_mul(2)
+                .saturating_add(token.len())
+                .saturating_add(bot_user_id.len()),
+        ) {
+            Some(permit) => Some(permit),
+            None => {
+                // Do not advance the Resume cursor past an event we did not own.
+                warn!("Discord ingress busy; reconnecting with previous Resume sequence");
+                return Some(ConnectFailureKind::Transient);
+            }
+        }
+    } else {
+        None
+    };
     if let Some(s) = payload.get("s").and_then(Value::as_u64) {
         *seq = s;
         if let Some(stored) = state.as_mut() {
             stored.seq = s;
         }
     }
-    let op = payload
-        .get("op")
-        .and_then(Value::as_u64)
-        .unwrap_or(u64::MAX);
     match op {
         0 => {
             let event = payload.get("t").and_then(Value::as_str).unwrap_or("");
@@ -442,26 +529,25 @@ where
                     }
                     if let Some(user) = data.get("user") {
                         if let Some(identity) = parse_discord_bot_identity(user) {
-                            let identity = identity;
-                            tokio::spawn(async move {
-                                publish_identity(&identity).await;
-                                publish_phase(DiscordBotPhase::Online).await;
-                            });
+                            publish_identity(&identity).await;
+                            publish_phase(DiscordBotPhase::Online).await;
                         }
                     } else {
-                        tokio::spawn(async { publish_phase(DiscordBotPhase::Online).await });
+                        publish_phase(DiscordBotPhase::Online).await;
                     }
                 }
             }
             if event == "RESUMED" {
-                tokio::spawn(async { publish_phase(DiscordBotPhase::Online).await });
+                publish_phase(DiscordBotPhase::Online).await;
             }
             if event == "MESSAGE_CREATE" {
                 if let Some(data) = data {
                     let token = token.to_string();
                     let bot_user_id = bot_user_id.to_string();
                     let mut data = data.clone();
+                    let permit = ingress.take();
                     tokio::spawn(async move {
+                        let _permit = permit;
                         if !ensure_discord_dm_payload(&token, &mut data).await {
                             return;
                         }
@@ -477,7 +563,9 @@ where
                 if let Some(data) = data {
                     let token = token.to_string();
                     let mut data = data.clone();
+                    let permit = ingress.take();
                     tokio::spawn(async move {
+                        let _permit = permit;
                         if !ensure_discord_dm_payload(&token, &mut data).await {
                             return;
                         }
@@ -618,8 +706,11 @@ async fn ensure_discord_dm_payload(token: &str, data: &mut Value) -> bool {
 }
 
 async fn resolve_channel_type(token: &str, channel_id: &str) -> Option<i64> {
-    if let Some(cached) = channel_types().read().await.get(channel_id).copied() {
-        return Some(cached);
+    {
+        let mut cache = channel_types().write().await;
+        if let Some(cached) = cached_channel_type(&mut cache, channel_id, Instant::now()) {
+            return Some(cached);
+        }
     }
     let path = format!("/channels/{channel_id}");
     let (status, body) = discord_request(token, reqwest::Method::GET, &path, None)
@@ -633,10 +724,8 @@ async fn resolve_channel_type(token: &str, channel_id: &str) -> Option<i64> {
         return None;
     }
     let kind = parse_discord_channel_type(&body)?;
-    channel_types()
-        .write()
-        .await
-        .insert(channel_id.to_string(), kind);
+    let mut cache = channel_types().write().await;
+    cache_channel_type(&mut cache, channel_id.to_string(), kind, Instant::now());
     Some(kind)
 }
 
@@ -943,5 +1032,98 @@ mod tests {
             "content": "hi"
         });
         assert!(discord_private_text_from_create(&missing, "99").is_none());
+    }
+
+    #[tokio::test]
+    async fn normal_cache_lookup_prunes_historical_channels_to_capacity() {
+        clear_channel_type_cache().await;
+        {
+            let mut cache = channel_types().write().await;
+            let now = Instant::now();
+            for channel_id in 0..300 {
+                cache_channel_type(
+                    &mut cache,
+                    channel_id.to_string(),
+                    DISCORD_CHANNEL_TYPE_DM,
+                    now + Duration::from_millis(channel_id),
+                );
+            }
+        }
+
+        assert_eq!(
+            resolve_channel_type("unused-on-cache-hit", "299").await,
+            Some(DISCORD_CHANNEL_TYPE_DM)
+        );
+        assert!(channel_types().read().await.len() <= 256);
+        clear_channel_type_cache().await;
+    }
+
+    #[test]
+    fn idle_channel_type_is_a_cache_miss_for_normal_recomputation() {
+        let mut cache = ChannelTypeCache::new();
+        let inserted_at = Instant::now();
+        cache_channel_type(
+            &mut cache,
+            "22".into(),
+            DISCORD_CHANNEL_TYPE_DM,
+            inserted_at,
+        );
+        let refreshed_at = inserted_at + CHANNEL_TYPE_CACHE_TTL - Duration::from_millis(1);
+        assert_eq!(
+            cached_channel_type(&mut cache, "22", refreshed_at),
+            Some(DISCORD_CHANNEL_TYPE_DM)
+        );
+        assert_eq!(
+            cached_channel_type(
+                &mut cache,
+                "22",
+                refreshed_at + CHANNEL_TYPE_CACHE_TTL + Duration::from_millis(1),
+            ),
+            None
+        );
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn periodic_cleanup_reclaims_expired_entries_without_a_lookup() {
+        let mut cache = ChannelTypeCache::new();
+        let inserted_at = Instant::now();
+        cache_channel_type(
+            &mut cache,
+            "22".into(),
+            DISCORD_CHANNEL_TYPE_DM,
+            inserted_at,
+        );
+
+        prune_channel_types(
+            &mut cache,
+            inserted_at + CHANNEL_TYPE_CACHE_TTL + Duration::from_millis(1),
+        );
+
+        assert!(cache.is_empty());
+    }
+    #[tokio::test]
+    async fn rejected_ingress_keeps_discord_resume_sequence() {
+        let text = serde_json::json!({"op": 0, "t": "MESSAGE_CREATE", "s": 99,
+            "d": {"dense": vec![0; 300_000]}})
+        .to_string();
+        assert!(text.len() < crate::services::bot_ingress::MAX_GATEWAY_MESSAGE_BYTES);
+        let mut seq = 7;
+        let mut state = Some(ResumeState {
+            session_id: "fixture".into(),
+            resume_url: "fixture".into(),
+            seq: 7,
+        });
+        let mut acked = true;
+        let mut sink = futures::sink::drain();
+        assert!(matches!(
+            handle_payload(
+                &text, "token", "bot", &mut seq, &mut state, &mut acked, &mut sink
+            )
+            .await,
+            Some(ConnectFailureKind::Transient)
+        ));
+        assert_eq!(seq, 7);
+        assert_eq!(state.unwrap().seq, 7);
     }
 }

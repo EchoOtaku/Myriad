@@ -9,8 +9,8 @@
 //! Runtime-tunable budgets (inbox inflight, chunk inflight, cache caps, Argon2
 //! permits) apply on config save. DB pool min/max apply on next pool create.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
 
 use once_cell::sync::Lazy;
 use tokio::sync::Semaphore;
@@ -25,7 +25,7 @@ pub const DEFAULT_INBOX_INFLIGHT_RAW_BUDGET: usize = 32 * 1024 * 1024;
 pub const DEFAULT_MAX_IN_FLIGHT_CHUNK_BYTES: usize = 128 * 1024 * 1024;
 pub const DEFAULT_MAX_API_CACHE_ENTRIES: usize = 2048;
 pub const DEFAULT_MAX_GEO_CACHE_ENTRIES: usize = 2048;
-/// Approximate total serialized JSON size for API response cache.
+/// Retained serialized payload, key and entry budget for the API response cache.
 pub const DEFAULT_MAX_API_CACHE_BYTES: usize = 96 * 1024 * 1024;
 pub const DEFAULT_MAX_GEO_CACHE_BYTES: usize = 4 * 1024 * 1024;
 pub const DEFAULT_ARGON2_PERMITS: usize = 4;
@@ -147,9 +147,10 @@ static NOTE_VIDEO: AtomicUsize = AtomicUsize::new(DEFAULT_NOTE_VIDEO_LIMIT);
 static DB_MIN: AtomicUsize = AtomicUsize::new(DEFAULT_DB_MIN_CONNECTIONS as usize);
 static DB_MAX: AtomicUsize = AtomicUsize::new(DEFAULT_DB_MAX_CONNECTIONS as usize);
 
-/// Argon2 permit pool; replaced when profile changes (in-flight holds stay valid).
-static ARGON2_SEMAPHORE: Lazy<RwLock<Arc<Semaphore>>> =
-    Lazy::new(|| RwLock::new(Arc::new(Semaphore::new(DEFAULT_ARGON2_PERMITS))));
+/// One lifetime for the whole process. Default work uses one unit; saver work
+/// uses the entire pool, waiting for older work to drain before it starts.
+static ARGON2_SEMAPHORE: Lazy<Arc<Semaphore>> =
+    Lazy::new(|| Arc::new(Semaphore::new(DEFAULT_ARGON2_PERMITS)));
 static ARGON2_PERMITS: AtomicUsize = AtomicUsize::new(DEFAULT_ARGON2_PERMITS);
 static ACTIVE_PROFILE: AtomicUsize = AtomicUsize::new(0); // 0 default, 1 saver
 
@@ -219,10 +220,6 @@ pub fn apply(profile: MemoryProfile) {
     DB_MIN.store(b.db_min_connections as usize, Ordering::Relaxed);
     DB_MAX.store(b.db_max_connections as usize, Ordering::Relaxed);
     ARGON2_PERMITS.store(b.argon2_permits, Ordering::Relaxed);
-    {
-        let mut guard = ARGON2_SEMAPHORE.write().unwrap_or_else(|p| p.into_inner());
-        *guard = Arc::new(Semaphore::new(b.argon2_permits));
-    }
     ACTIVE_PROFILE.store(profile_to_tag(profile), Ordering::Relaxed);
     tracing::info!(
         profile = profile.as_str(),
@@ -352,10 +349,33 @@ pub fn argon2_permits() -> usize {
 }
 
 pub fn argon2_semaphore() -> Arc<Semaphore> {
-    ARGON2_SEMAPHORE
-        .read()
-        .unwrap_or_else(|p| p.into_inner())
-        .clone()
+    ARGON2_SEMAPHORE.clone()
+}
+
+pub async fn acquire_argon2_permit()
+-> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+    acquire_argon2_permit_from(argon2_semaphore(), &ARGON2_PERMITS).await
+}
+
+async fn acquire_argon2_permit_from(
+    pool: Arc<Semaphore>,
+    limit: &AtomicUsize,
+) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+    loop {
+        let units = if limit.load(Ordering::Relaxed) == SAVER_ARGON2_PERMITS {
+            DEFAULT_ARGON2_PERMITS as u32
+        } else {
+            1
+        };
+        let permit = pool.clone().acquire_many_owned(units).await?;
+        // A queued default request may have been admitted after switching to saver.
+        // Return its units and reacquire the full pool before starting any work.
+        if units == 1 && limit.load(Ordering::Relaxed) == SAVER_ARGON2_PERMITS {
+            drop(permit);
+            continue;
+        }
+        return Ok(permit);
+    }
 }
 
 #[cfg(test)]
@@ -450,6 +470,79 @@ mod tests {
             Some(SAVER_NOTE_VIDEO_LIMIT as u64)
         );
         apply(MemoryProfile::Default);
+    }
+
+    #[test]
+    fn applying_profiles_keeps_inflight_argon2_in_same_pool() {
+        let _guard = test_profile_lock();
+        apply(MemoryProfile::Default);
+        let pool = argon2_semaphore();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let held = runtime.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                pool.clone().acquire_many_owned(4),
+            )
+            .await
+            .unwrap()
+            .unwrap()
+        });
+        for profile in [
+            MemoryProfile::Saver,
+            MemoryProfile::Saver,
+            MemoryProfile::Default,
+        ] {
+            apply(profile);
+            assert!(argon2_semaphore().try_acquire_owned().is_err());
+        }
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn queued_argon2_rechecks_tighter_budget_and_releases_on_cancel() {
+        let pool = Arc::new(Semaphore::new(4));
+        let limit = AtomicUsize::new(DEFAULT_ARGON2_PERMITS);
+        let mut held = Vec::new();
+        for _ in 0..4 {
+            held.push(pool.clone().acquire_owned().await.unwrap());
+        }
+        let mut waiting = Box::pin(acquire_argon2_permit_from(pool.clone(), &limit));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), &mut waiting)
+                .await
+                .is_err()
+        );
+        limit.store(SAVER_ARGON2_PERMITS, Ordering::Relaxed);
+        drop(held.pop());
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), &mut waiting)
+                .await
+                .is_err()
+        );
+        drop(held);
+        let saver = waiting.await.unwrap();
+        assert!(pool.clone().try_acquire_owned().is_err());
+        let mut cancelled = Box::pin(acquire_argon2_permit_from(pool.clone(), &limit));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), &mut cancelled)
+                .await
+                .is_err()
+        );
+        drop(cancelled);
+        limit.store(DEFAULT_ARGON2_PERMITS, Ordering::Relaxed);
+        drop(saver);
+        let mut normal = Vec::new();
+        for _ in 0..4 {
+            normal.push(
+                acquire_argon2_permit_from(pool.clone(), &limit)
+                    .await
+                    .unwrap(),
+            );
+        }
+        assert!(pool.try_acquire_owned().is_err());
     }
 
     #[test]

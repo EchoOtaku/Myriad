@@ -4,10 +4,9 @@
 //! manifest. Arm fragments (`rigid-*-arm-fragment`) are required.
 //! Independently articulated limbs are outside this API contract.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::OnceLock,
-};
+use std::{collections::HashMap, sync::OnceLock};
+
+use crate::services::retained_cache::RetainedCache;
 
 use axum::{
     Extension, Json, Router,
@@ -387,10 +386,24 @@ async fn load_stored_manifest(asset_id: &str) -> ApiResult<RigManifest> {
     })
 }
 
+fn verified_packages() -> &'static tokio::sync::RwLock<RetainedCache<String, ()>> {
+    static VERIFIED_PACKAGES: OnceLock<tokio::sync::RwLock<RetainedCache<String, ()>>> =
+        OnceLock::new();
+    VERIFIED_PACKAGES.get_or_init(|| {
+        tokio::sync::RwLock::new(RetainedCache::new(
+            256,
+            std::time::Duration::from_secs(3600),
+        ))
+    })
+}
+
+pub(crate) async fn cleanup_verified_packages() {
+    verified_packages().write().await.purge_expired();
+}
+
 async fn package_identity_matches(asset_id: &str, manifest: &RigManifest) -> ApiResult<bool> {
-    static VERIFIED_PACKAGES: OnceLock<tokio::sync::RwLock<HashSet<String>>> = OnceLock::new();
-    let verified = VERIFIED_PACKAGES.get_or_init(Default::default);
-    if verified.read().await.contains(asset_id) {
+    let verified = verified_packages();
+    if verified.write().await.get(asset_id).is_some() {
         return Ok(true);
     }
     let atlas_bytes = merope_rig::read_atlas_bytes(asset_id)
@@ -400,7 +413,7 @@ async fn package_identity_matches(asset_id: &str, manifest: &RigManifest) -> Api
         merope_rig::package_id_for_manifest(&atlas_bytes, manifest).map_err(internal_error)?;
     let matches = expected == asset_id;
     if matches {
-        verified.write().await.insert(asset_id.to_string());
+        verified.write().await.insert(asset_id.to_string(), ());
     }
     Ok(matches)
 }

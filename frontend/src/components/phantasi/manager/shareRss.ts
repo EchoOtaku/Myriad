@@ -12,7 +12,7 @@ export async function shareRssAddress(
   try {
     if (typeof navigator.share === 'function') {
       try {
-        await navigator.share({ title, text: url, url })
+        await navigator.share({ title, url })
         return
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return

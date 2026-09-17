@@ -3,11 +3,13 @@
 //! `NotificationType` 负责历史记录的展示兼容；这里的 event key 则描述真正的
 //! 业务事件（例如 updater 成功和失败），用于精确过滤。
 
-use std::collections::{BTreeMap, HashMap};
-use std::sync::LazyLock;
+use std::collections::BTreeMap;
+#[cfg(test)]
+use std::{collections::HashMap, sync::LazyLock};
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use tokio::sync::RwLock;
 
 pub const SOURCE_KEYS: [&str; 8] = [
@@ -311,15 +313,11 @@ impl NotificationPreferences {
     }
 }
 
+// Production always reads durable preferences. Only database-free unit tests
+// inject local values; there is no per-user preference cache in a live process.
+#[cfg(test)]
 static PREFERENCES_CACHE: LazyLock<RwLock<HashMap<i32, NotificationPreferences>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
-
-pub async fn cache_restored(user_id: i32, preferences: NotificationPreferences) {
-    PREFERENCES_CACHE
-        .write()
-        .await
-        .insert(user_id, preferences.normalized());
-}
 
 #[cfg(test)]
 pub async fn set_cached_for_test(user_id: i32, preferences: NotificationPreferences) {
@@ -337,12 +335,13 @@ async fn clear_cached_for_test(user_id: i32) {
 pub async fn load(db: Option<&DatabaseConnection>, user_id: i32) -> NotificationPreferences {
     // Persistent producers can run in other processes. A process-local cache
     // must not retain an old opt-in forever after the user changes preferences.
+    #[cfg(test)]
     if db.is_none() {
         if let Some(cached) = PREFERENCES_CACHE.read().await.get(&user_id).cloned() {
             return cached;
         }
     }
-    let preferences = if let Some(db) = db {
+    if let Some(db) = db {
         let result = db
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -369,12 +368,7 @@ pub async fn load(db: Option<&DatabaseConnection>, user_id: i32) -> Notification
         }
     } else {
         NotificationPreferences::default()
-    };
-    PREFERENCES_CACHE
-        .write()
-        .await
-        .insert(user_id, preferences.clone());
-    preferences
+    }
 }
 
 pub async fn save(
@@ -398,10 +392,6 @@ pub async fn save(
     if result.rows_affected() == 0 {
         return Err("User not found".to_string());
     }
-    PREFERENCES_CACHE
-        .write()
-        .await
-        .insert(user_id, preferences.clone());
     Ok(preferences)
 }
 

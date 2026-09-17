@@ -133,35 +133,127 @@ enum CacheLookup {
     Miss,
 }
 
+// Bound retained payload allocations as well as entry count. Hash table metadata is
+// independently bounded by CACHE_MAX_ENTRIES. Oversized results still reach the
+// caller; they are simply not retained.
+const CACHE_MAX_ENTRIES: usize = 256;
+const CACHE_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+fn optional_string_bytes(value: &Option<String>) -> usize {
+    value.as_ref().map_or(0, String::capacity)
+}
+
+fn entry_bytes(key: &str, entry: &CacheEntry) -> usize {
+    let payload = match &entry.result {
+        CachedResult::Err(message) => message.capacity(),
+        CachedResult::Ok(data) => {
+            std::mem::size_of::<GamePresenceData>()
+                + data.platform.capacity()
+                + data.identity.id.capacity()
+                + data.identity.name.capacity()
+                + optional_string_bytes(&data.identity.avatar)
+                + optional_string_bytes(&data.identity.subtitle)
+                + data
+                    .score
+                    .as_ref()
+                    .map_or(0, |score| score.label.capacity() + score.value.capacity())
+                + data.presence.as_ref().map_or(0, |presence| {
+                    presence.status.capacity()
+                        + optional_string_bytes(&presence.title)
+                        + optional_string_bytes(&presence.detail)
+                })
+                + data.highlights.capacity() * std::mem::size_of::<GameHighlight>()
+                + data
+                    .highlights
+                    .iter()
+                    .map(|item| item.label.capacity() + item.value.capacity())
+                    .sum::<usize>()
+                + data.showcase.capacity() * std::mem::size_of::<ShowcaseItem>()
+                + data
+                    .showcase
+                    .iter()
+                    .map(|item| {
+                        item.name.capacity()
+                            + optional_string_bytes(&item.icon)
+                            + optional_string_bytes(&item.art)
+                    })
+                    .sum::<usize>()
+                + optional_string_bytes(&data.profile_url)
+                + data.fetched_at.capacity()
+                + optional_string_bytes(&data.degrade_reason)
+        }
+    };
+    // Cache keys are always allocated from &str by store_cache (no spare capacity).
+    std::mem::size_of::<String>() + key.len() + std::mem::size_of::<CacheEntry>() + payload
+}
+
+fn entry_expired(entry: &CacheEntry, now: Instant) -> bool {
+    let ttl = match entry.result {
+        CachedResult::Ok(_) => CACHE_TTL,
+        CachedResult::Err(_) => ERROR_CACHE_TTL,
+    };
+    now.saturating_duration_since(entry.fetched_at) >= ttl
+}
+
+fn prune_cache(cache: &mut HashMap<String, CacheEntry>, now: Instant) {
+    cache.retain(|key, entry| {
+        !entry_expired(entry, now) && entry_bytes(key, entry) <= CACHE_MAX_BYTES
+    });
+    let mut bytes: usize = cache
+        .iter()
+        .map(|(key, entry)| entry_bytes(key, entry))
+        .sum();
+    while cache.len() > CACHE_MAX_ENTRIES || bytes > CACHE_MAX_BYTES {
+        let Some(oldest) = cache
+            .iter()
+            .min_by_key(|(_, entry)| entry.fetched_at)
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        if let Some(entry) = cache.remove(&oldest) {
+            bytes -= entry_bytes(&oldest, &entry);
+        }
+    }
+    // Release the bucket allocation when an idle cache has fully expired.
+    if cache.is_empty() {
+        cache.shrink_to_fit();
+    }
+}
+
+pub(crate) fn cleanup_cache() {
+    if let Some(cache) = PRESENCE_CACHE.get() {
+        if let Ok(mut guard) = cache.lock() {
+            prune_cache(&mut guard, Instant::now());
+        }
+    }
+}
+
 fn read_cache(key: &str, has_live_presence: bool) -> CacheLookup {
     let Ok(mut guard) = cache_map().lock() else {
         return CacheLookup::Miss;
     };
+    let now = Instant::now();
+    if guard
+        .get(key)
+        .is_some_and(|entry| entry_expired(entry, now))
+    {
+        guard.remove(key);
+        return CacheLookup::Miss;
+    }
     let Some(entry) = guard.get_mut(key) else {
         return CacheLookup::Miss;
     };
-    match &entry.result {
-        CachedResult::Err(_) => {
-            if entry.fetched_at.elapsed() < ERROR_CACHE_TTL {
-                CacheLookup::Hit(entry.result.clone())
-            } else {
-                CacheLookup::Miss
-            }
-        }
-        CachedResult::Ok(data) => {
-            if entry.fetched_at.elapsed() >= CACHE_TTL {
-                return CacheLookup::Miss;
-            }
-            if has_live_presence
-                && !data.degraded
-                && entry.presence_refreshed_at.elapsed() >= PRESENCE_TTL
-            {
-                entry.presence_refreshed_at = Instant::now();
-                return CacheLookup::RefreshPresence(data.clone());
-            }
-            CacheLookup::Hit(entry.result.clone())
+    if let CachedResult::Ok(data) = &entry.result {
+        if has_live_presence
+            && !data.degraded
+            && now.saturating_duration_since(entry.presence_refreshed_at) >= PRESENCE_TTL
+        {
+            entry.presence_refreshed_at = now;
+            return CacheLookup::RefreshPresence(data.clone());
         }
     }
+    CacheLookup::Hit(entry.result.clone())
 }
 
 /// presence 单独刷新成功后回写缓存（不动 fetched_at，快照 6h 过期节奏不变）
@@ -172,31 +264,24 @@ fn update_cached_presence(key: &str, presence: &GamePresenceInfo) {
                 data.presence = Some(presence.clone());
             }
         }
+        prune_cache(&mut guard, Instant::now());
     }
 }
 
 fn store_cache(key: &str, result: CachedResult) {
     if let Ok(mut guard) = cache_map().lock() {
         let now = Instant::now();
-        guard.insert(
-            key.to_string(),
-            CacheEntry {
-                result,
-                fetched_at: now,
-                presence_refreshed_at: now,
-            },
-        );
-        // len>256 时丢掉超过 12h 的条目（新鲜条目不封顶）
-        if guard.len() > 256 {
-            let oldest: Vec<String> = guard
-                .iter()
-                .filter(|(_, e)| e.fetched_at.elapsed() > CACHE_TTL * 2)
-                .map(|(k, _)| k.clone())
-                .collect();
-            for k in oldest {
-                guard.remove(&k);
-            }
+        let entry = CacheEntry {
+            result,
+            fetched_at: now,
+            presence_refreshed_at: now,
+        };
+        if entry_bytes(key, &entry) <= CACHE_MAX_BYTES {
+            guard.insert(key.to_string(), entry);
+        } else {
+            guard.remove(key);
         }
+        prune_cache(&mut guard, now);
     }
 }
 
@@ -312,14 +397,39 @@ pub async fn get_game_presence(
         }));
     }
 
+    // Resolve aliases before touching the cache. Unknown Enka games have always
+    // fallen back to Genshin, while Xbox/PSN ignore game entirely; keep those
+    // response semantics without allowing arbitrary strings to multiply keys.
+    let platform = match platform.as_str() {
+        "hoyolab" | "hoyoverse" | "miyoushe" | "enka" => "hoyolab",
+        "xbox" => "xbox",
+        "psn" | "playstation" => "psn",
+        _ => {
+            return Ok(Json(ApiResponse {
+                success: false,
+                data: None,
+                message: format!("Unsupported platform: {platform}"),
+            }));
+        }
+    };
+    let game = if platform == "hoyolab" {
+        match game.as_str() {
+            "hsr" | "starrail" | "star_rail" => "hsr",
+            "zzz" | "zenless" => "zzz",
+            _ => "genshin",
+        }
+    } else {
+        ""
+    };
+
     let lang = match q.lang.as_deref().map(str::trim) {
         Some(l) if l.starts_with("en") => "en",
         Some(l) if l.starts_with("ja") => "ja",
         _ => "zh",
     };
 
-    let key = cache_key(&platform, &account_id, &game, lang);
-    let has_live_presence = matches!(platform.as_str(), "xbox" | "psn" | "playstation");
+    let key = cache_key(platform, &account_id, game, lang);
+    let has_live_presence = matches!(platform, "xbox" | "psn");
     match read_cache(&key, has_live_presence) {
         CacheLookup::Hit(cached) => {
             return Ok(Json(match cached {
@@ -337,7 +447,7 @@ pub async fn get_game_presence(
             }));
         }
         CacheLookup::RefreshPresence(mut data) => {
-            let refreshed = match platform.as_str() {
+            let refreshed = match platform {
                 "xbox" => refresh_xbox_presence(&data, &dynamic_config).await,
                 _ => refresh_psn_presence(&data, &dynamic_config).await,
             };
@@ -358,10 +468,10 @@ pub async fn get_game_presence(
         CacheLookup::Miss => {}
     }
 
-    let result = match platform.as_str() {
-        "hoyolab" | "hoyoverse" | "miyoushe" | "enka" => fetch_enka(&account_id, &game, lang).await,
+    let result = match platform {
+        "hoyolab" => fetch_enka(&account_id, game, lang).await,
         "xbox" => fetch_xbox(&account_id, &dynamic_config).await,
-        "psn" | "playstation" => fetch_psn(&account_id, &dynamic_config).await,
+        "psn" => fetch_psn(&account_id, &dynamic_config).await,
         _ => Err(format!("Unsupported platform: {platform}")),
     };
 
@@ -1440,4 +1550,255 @@ pub async fn get_game_presence_capabilities(
             }
         }
     }))
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    fn fixture() -> CachedResult {
+        CachedResult::Ok(Box::new(GamePresenceData {
+            platform: "hoyolab".into(),
+            identity: GameIdentity {
+                id: "123456789".into(),
+                name: "Player".into(),
+                avatar: None,
+                subtitle: None,
+            },
+            score: None,
+            presence: None,
+            highlights: vec![],
+            showcase: vec![],
+            profile_url: None,
+            fetched_at: "fixture".into(),
+            degraded: false,
+            degrade_reason: None,
+        }))
+    }
+
+    #[tokio::test]
+    async fn fresh_account_churn_evicts_oldest_entries() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        for id in 0..1_000 {
+            store_cache(&format!("account-{id}"), fixture());
+        }
+        assert!(cache_map().lock().unwrap().len() <= 256);
+        assert!(matches!(
+            read_cache("account-999", false),
+            CacheLookup::Hit(_)
+        ));
+        assert!(matches!(read_cache("account-0", false), CacheLookup::Miss));
+    }
+
+    #[tokio::test]
+    async fn large_values_evict_before_the_entry_limit() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        for id in 0..32 {
+            let mut value = fixture();
+            if let CachedResult::Ok(data) = &mut value {
+                data.identity.name = "x".repeat(1024 * 1024);
+            }
+            store_cache(&format!("large-{id}"), value);
+        }
+        let retained_names: usize = cache_map()
+            .lock()
+            .unwrap()
+            .values()
+            .map(|entry| match &entry.result {
+                CachedResult::Ok(data) => data.identity.name.capacity(),
+                _ => 0,
+            })
+            .sum();
+        assert!(retained_names <= 8 * 1024 * 1024);
+        assert!(matches!(read_cache("large-31", false), CacheLookup::Hit(_)));
+    }
+
+    #[tokio::test]
+    async fn oversized_error_does_not_flush_useful_entries() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        store_cache("useful", fixture());
+        store_cache("oversized", CachedResult::Err("e".repeat(9 * 1024 * 1024)));
+        assert!(matches!(read_cache("oversized", false), CacheLookup::Miss));
+        assert!(matches!(read_cache("useful", false), CacheLookup::Hit(_)));
+    }
+
+    #[tokio::test]
+    async fn expired_reads_release_success_and_error_values() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        store_cache("success", fixture());
+        store_cache("error", CachedResult::Err("upstream rejected".into()));
+        {
+            let mut cache = cache_map().lock().unwrap();
+            cache.get_mut("success").unwrap().fetched_at -= Duration::from_secs(6 * 3600);
+            cache.get_mut("error").unwrap().fetched_at -= Duration::from_secs(30);
+        }
+        assert!(matches!(read_cache("success", false), CacheLookup::Miss));
+        assert!(matches!(read_cache("error", false), CacheLookup::Miss));
+        assert!(cache_map().lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn presence_growth_cannot_bypass_the_byte_budget() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        store_cache("growing", fixture());
+        store_cache("useful", fixture());
+        update_cached_presence(
+            "growing",
+            &GamePresenceInfo {
+                status: "online".into(),
+                title: None,
+                detail: Some("x".repeat(9 * 1024 * 1024)),
+            },
+        );
+        assert!(matches!(read_cache("growing", false), CacheLookup::Miss));
+        assert!(matches!(read_cache("useful", false), CacheLookup::Hit(_)));
+    }
+
+    #[tokio::test]
+    async fn idle_cleanup_uses_each_result_ttl_and_releases_buckets() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        store_cache("fresh", fixture());
+        store_cache("expired-success", fixture());
+        store_cache("expired-error", CachedResult::Err("rejected".into()));
+        {
+            let mut cache = cache_map().lock().unwrap();
+            cache.get_mut("expired-success").unwrap().fetched_at -= Duration::from_secs(6 * 3600);
+            cache.get_mut("expired-error").unwrap().fetched_at -= Duration::from_secs(30);
+        }
+        cleanup_cache();
+        assert_eq!(cache_map().lock().unwrap().len(), 1);
+        assert!(matches!(read_cache("fresh", false), CacheLookup::Hit(_)));
+        cache_map()
+            .lock()
+            .unwrap()
+            .get_mut("fresh")
+            .unwrap()
+            .fetched_at -= Duration::from_secs(6 * 3600);
+        cleanup_cache();
+        let cache = cache_map().lock().unwrap();
+        assert!(cache.is_empty());
+        assert_eq!(cache.capacity(), 0);
+    }
+
+    #[tokio::test]
+    async fn spare_string_and_vector_capacity_counts_toward_the_budget() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        let mut spare_string = String::with_capacity(9 * 1024 * 1024);
+        spare_string.push_str("small visible error");
+        store_cache("spare-string", CachedResult::Err(spare_string));
+        let mut spare_vector = fixture();
+        if let CachedResult::Ok(data) = &mut spare_vector {
+            data.showcase =
+                Vec::with_capacity(9 * 1024 * 1024 / std::mem::size_of::<ShowcaseItem>() + 1);
+        }
+        store_cache("spare-vector", spare_vector);
+        assert!(cache_map().lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn presence_refresh_is_claimed_once_without_extending_snapshot_lifetime() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        store_cache("live", fixture());
+        let snapshot_time = {
+            let mut cache = cache_map().lock().unwrap();
+            let entry = cache.get_mut("live").unwrap();
+            entry.presence_refreshed_at -= Duration::from_secs(90);
+            entry.fetched_at
+        };
+        assert!(matches!(
+            read_cache("live", true),
+            CacheLookup::RefreshPresence(_)
+        ));
+        assert!(matches!(read_cache("live", true), CacheLookup::Hit(_)));
+        update_cached_presence(
+            "live",
+            &GamePresenceInfo {
+                status: "online".into(),
+                title: Some("New game".into()),
+                detail: None,
+            },
+        );
+        assert_eq!(
+            cache_map().lock().unwrap().get("live").unwrap().fetched_at,
+            snapshot_time
+        );
+        let CacheLookup::Hit(CachedResult::Ok(data)) = read_cache("live", true) else {
+            panic!("fresh snapshot should remain cached");
+        };
+        assert_eq!(data.presence.unwrap().title.as_deref(), Some("New game"));
+        cache_map()
+            .lock()
+            .unwrap()
+            .get_mut("live")
+            .unwrap()
+            .fetched_at -= Duration::from_secs(6 * 3600);
+        assert!(matches!(read_cache("live", true), CacheLookup::Miss));
+    }
+
+    #[tokio::test]
+    async fn unsupported_platforms_never_enter_the_cache() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        let config = Arc::new(RwLock::new(DynamicConfig::default()));
+        for id in 0..100 {
+            let response = get_game_presence(
+                State(config.clone()),
+                Query(PresenceQuery {
+                    platform: "unsupported".into(),
+                    id: format!("account-{id}"),
+                    game: None,
+                    lang: None,
+                }),
+            )
+            .await
+            .unwrap();
+            assert!(!response.0.success);
+            assert_eq!(response.0.message, "Unsupported platform: unsupported");
+        }
+        assert!(cache_map().lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn aliases_and_ignored_games_reuse_the_same_cached_response() {
+        let _serial = TEST_LOCK.lock().await;
+        cache_map().lock().unwrap().clear();
+        let config = Arc::new(RwLock::new(DynamicConfig::default()));
+        for (platform, game, canonical_platform, canonical_game) in [
+            (" Hoyoverse ", "StarRail", "hoyolab", "hsr"),
+            ("miyoushe", "star_rail", "hoyolab", "hsr"),
+            ("enka", "zenless", "hoyolab", "zzz"),
+            ("hoyolab", "legacy-unknown-game", "hoyolab", "genshin"),
+            ("xbox", "ignored-game", "xbox", ""),
+            (" PlayStation ", "ignored-game", "psn", ""),
+        ] {
+            store_cache(
+                &cache_key(canonical_platform, "123456789", canonical_game, "zh"),
+                fixture(),
+            );
+            let response = get_game_presence(
+                State(config.clone()),
+                Query(PresenceQuery {
+                    platform: platform.into(),
+                    id: "123456789".into(),
+                    game: Some(game.into()),
+                    lang: None,
+                }),
+            )
+            .await
+            .unwrap();
+            assert!(response.0.success);
+            assert_eq!(response.0.message, "ok (cache)");
+            assert_eq!(response.0.data.unwrap().identity.name, "Player");
+        }
+    }
 }

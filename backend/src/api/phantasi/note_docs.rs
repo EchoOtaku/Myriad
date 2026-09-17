@@ -860,8 +860,6 @@ async fn handle_note_doc_socket(
             image: None,
         },
     );
-    drop(rx);
-    hub.release(doc_id);
 }
 
 #[cfg(test)]

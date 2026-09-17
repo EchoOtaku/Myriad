@@ -20,7 +20,7 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
     '../utils/httpRateLimitToast': { notifyHttpRateLimit: () => {} },
     '../utils/userFacingError': { httpStatusMessage: () => 'error' },
   }
-  const exports: { apiService?: { post: (url: string, body: unknown, options: { signal: AbortSignal; timeout?: number }) => Promise<unknown> } } = {}
+  const exports = {} as { apiService: typeof import('./api').apiService }
   runInNewContext(js, {
     require: (id: string) => {
       assert.ok(Object.hasOwn(dependencies, id), `unmocked dependency: ${id}`)
@@ -89,4 +89,38 @@ test('the independent request timeout still reports TIMEOUT', async () => {
   await assert.rejects(api.post('/agent/presence', {}, {
     signal: new AbortController().signal, timeout: 1,
   }), { code: 'TIMEOUT', status: 408 })
+})
+
+for (const kind of ['json', 'blob'] as const) {
+  test(`${kind} response body remains subject to timeout after headers arrive`, async () => {
+    const api = harness(async () => 'token', async (_input, options) => {
+      const signal = options!.signal!
+      return new Response(new ReadableStream({
+        start(controller) {
+          signal.addEventListener('abort', () => controller.error(signal.reason), { once: true })
+        },
+      }), { headers: { 'content-type': 'application/json' } })
+    })
+    const pending = kind === 'json'
+      ? api.get('/slow', { timeout: 5 })
+      : api.getBlob('/slow', { timeout: 5 })
+    const result = await Promise.race([pending.catch(error => error.code), new Promise(resolve => setTimeout(() => resolve('hung'), 50))])
+    assert.equal(result, 'TIMEOUT')
+  })
+}
+
+test('blob body cancellation propagates caller identity loss', async () => {
+  const subject = new AbortController()
+  const entered = Promise.withResolvers<void>()
+  const api = harness(async () => 'token', async (_input, options) => {
+    const signal = options!.signal!
+    entered.resolve()
+    return new Response(new ReadableStream({ start(controller) {
+      signal.addEventListener('abort', () => controller.error(signal.reason), { once: true })
+    } }))
+  })
+  const pending = api.getBlob('/slow', { signal: subject.signal, timeout: 30 })
+  await entered.promise
+  subject.abort()
+  await assert.rejects(pending, { name: 'AbortError' })
 })
