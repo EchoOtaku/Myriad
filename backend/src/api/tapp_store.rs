@@ -34,11 +34,10 @@ pub(crate) use access::{
     TappStorageAccess, authorize_runtime_storage_write, installation_write_forbidden_error,
 };
 use access::{
-    authorize_runtime_storage, authorize_tapp_permission, can_write_installation_settings,
-    canonical_installation_owner_id, current_is_admin, current_user_role,
-    ensure_tapp_install_allowed, filter_install_permissions, find_admin_user_id, find_visible_tapp,
-    get_admin_user_id, installation_conflict_owner_ids, lock_tapp_lifecycle,
-    optional_authenticated_user_id, require_current_admin,
+    authorize_runtime_storage, can_write_installation_settings, canonical_installation_owner_id,
+    current_is_admin, current_user_role, ensure_tapp_install_allowed, filter_install_permissions,
+    find_admin_user_id, find_visible_tapp, get_admin_user_id, installation_conflict_owner_ids,
+    lock_tapp_lifecycle, optional_authenticated_user_id, require_current_admin,
 };
 #[cfg(test)]
 use catalog::tapp_detail_from_model;

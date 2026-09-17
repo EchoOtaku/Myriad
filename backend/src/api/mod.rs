@@ -38,6 +38,7 @@ pub mod reports;
 pub mod seo;
 pub mod seo_geo;
 pub mod seo_policy;
+pub mod seo_review;
 pub mod setup;
 pub mod setup_bootstrap;
 pub mod site_domain; // BASE_URL / FRONTEND_URL / CORS — not federation Move

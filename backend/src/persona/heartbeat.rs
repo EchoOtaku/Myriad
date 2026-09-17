@@ -57,6 +57,11 @@ async fn execute(
         task.name
     );
 
+    if task.id == agent::heartbeat::SEO_REVIEW_TASK_ID {
+        execute_seo_review(task_db, hb_ref, &task, minute_bucket).await;
+        return;
+    }
+
     let request = agent::UserRequest {
         raw_input: task.action.clone(),
         timestamp: chrono::Utc::now(),
@@ -155,6 +160,80 @@ async fn execute(
                 task_id = %task.id,
                 timeout_secs = agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
                 "[Heartbeat] Task timed out; cancel requested"
+            );
+        }
+    }
+    agent::heartbeat::HeartbeatManager::complete_claim(
+        &task_db,
+        &task.id,
+        minute_bucket,
+        claim_status,
+    )
+    .await;
+}
+
+async fn execute_seo_review(
+    task_db: DatabaseConnection,
+    hb_ref: Arc<agent::heartbeat::HeartbeatManager>,
+    task: &agent::heartbeat::HeartbeatTask,
+    minute_bucket: i64,
+) {
+    let timeout = std::time::Duration::from_secs(agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS);
+    let mut claim_status = "done";
+    match tokio::time::timeout(
+        timeout,
+        crate::api::seo_review::run_scheduled_seo_review(&task_db),
+    )
+    .await
+    {
+        Ok(Ok(crate::api::seo_review::SeoReviewOutcome::Unchanged)) => {
+            hb_ref.record_result(&task.id, "unchanged").await;
+            tracing::info!(task_id = %task.id, "[Heartbeat] SEO review unchanged");
+        }
+        Ok(Ok(crate::api::seo_review::SeoReviewOutcome::Draft {
+            why,
+            site_description,
+            site_keywords,
+            site_ai_intro,
+        })) => {
+            let summary: String = why.chars().take(200).collect();
+            hb_ref.record_result(&task.id, &summary).await;
+            if let Some(nm) = agent::notifications::get_notification_manager() {
+                nm.notify_seo_review_draft(
+                    &why,
+                    site_description.as_deref(),
+                    site_keywords.as_deref(),
+                    site_ai_intro.as_deref(),
+                )
+                .await;
+            }
+            tracing::info!(task_id = %task.id, "[Heartbeat] SEO review drafted");
+        }
+        Ok(Err(error)) => {
+            claim_status = "failed";
+            let err_msg = format!("ERROR: {error}");
+            hb_ref.record_result(&task.id, &err_msg).await;
+            if let Some(nm) = agent::notifications::get_notification_manager() {
+                nm.notify_heartbeat_result(&task.name, &err_msg, false)
+                    .await;
+            }
+            tracing::warn!(task_id = %task.id, %error, "[Heartbeat] SEO review failed");
+        }
+        Err(_elapsed) => {
+            claim_status = "failed";
+            let err_msg = format!(
+                "ERROR: heartbeat task timed out after {}s",
+                agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS
+            );
+            hb_ref.record_result(&task.id, &err_msg).await;
+            if let Some(nm) = agent::notifications::get_notification_manager() {
+                nm.notify_heartbeat_result(&task.name, &err_msg, false)
+                    .await;
+            }
+            tracing::warn!(
+                task_id = %task.id,
+                timeout_secs = agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
+                "[Heartbeat] SEO review timed out"
             );
         }
     }

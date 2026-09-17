@@ -444,5 +444,9 @@ describe('home shell CSS contract', () => {
     assert.equal(home.includes('layoutDependency={isEditMode}'), false)
     assert.equal(home.includes('home-status-bar__actions'), true)
     assert.equal(home.includes('bg-black/5 dark:bg-white/5'), true)
+    assert.match(
+      home,
+      /pointer-events-none z-0 transition-opacity duration-300 hidden md:block/,
+    )
   })
 })

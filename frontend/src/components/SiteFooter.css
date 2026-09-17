@@ -49,18 +49,13 @@ html.dark .site-footer-content:hover {
   letter-spacing: 0.01em;
 }
 
-.version-number {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 0.55rem;
-  opacity: 0.7;
-}
-
 .version-link {
   color: inherit;
   text-decoration: none;
 }
 
-.version-link:hover {
+.version-link:hover,
+.version-link:focus-visible {
   text-decoration: underline;
 }
 
@@ -216,7 +211,8 @@ html.dark .site-footer-content:hover {
   box-sizing: border-box;
 }
 
-.tooltip-wrapper:hover .tooltip-content {
+.tooltip-wrapper:hover .tooltip-content,
+.tooltip-wrapper:focus-within .tooltip-content {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);

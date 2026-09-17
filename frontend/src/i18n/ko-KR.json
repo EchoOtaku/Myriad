@@ -1859,6 +1859,8 @@
     "sourceMcp": "MCP 서버",
     "sourceSystem": "시스템",
     "sourceAro": "연합",
+    "applySeo": "적용",
+    "seoApplied": "사이트 SEO 문구를 저장했습니다",
     "settingsDesc": "어떤 출처와 이벤트가 알림을 보낼지, 어떻게 보여줄지 고릅니다"
   }
 }

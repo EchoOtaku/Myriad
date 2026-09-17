@@ -28,9 +28,9 @@ use crate::services::permission_service::TappPermission;
 use crate::services::tapp_scheduler::{
     MAX_SCHEDULER_RETRIES, MAX_SCHEDULER_RETRY_DELAY_MS, SCHEDULER_MAILBOX_POLL_MILLIS,
     SCHEDULER_PRESENCE_REFRESH_SECONDS, TappSchedulerEngine, backend_action_permissions_of,
-    drain_frontend_messages, normalize_backend_actions, normalize_backend_actions_parsed,
-    register_frontend_connection, scheduler_engine as service_scheduler, try_scheduler_engine,
-    unregister_frontend_connection, validate_backend_action_declarations_of,
+    drain_frontend_messages, normalize_backend_actions_parsed, register_frontend_connection,
+    scheduler_engine as service_scheduler, try_scheduler_engine, unregister_frontend_connection,
+    validate_backend_action_declarations_of,
 };
 use uuid::Uuid;
 
@@ -760,12 +760,12 @@ mod tests {
 
     #[test]
     fn normalizes_sdk_backend_action_tag() {
-        let normalized = normalize_backend_actions(Some(json!([
+        let (normalized, _) = normalize_backend_actions_parsed(Some(json!([
             { "type": "storage.set", "key": "lastSync", "value": 1 },
             { "action": "transform", "input": "lastSync" }
         ])))
-        .expect("actions should normalize")
-        .expect("actions should remain present");
+        .expect("actions should normalize");
+        let normalized = normalized.expect("actions should remain present");
 
         let actions = normalized.as_array().expect("actions array");
         assert_eq!(actions[0]["action"], "storage.set");

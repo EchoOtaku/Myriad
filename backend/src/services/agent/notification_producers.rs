@@ -34,6 +34,60 @@ impl NotificationManager {
         }
     }
 
+    pub async fn notify_seo_review_draft(
+        &self,
+        why: &str,
+        site_description: Option<&str>,
+        site_keywords: Option<&str>,
+        site_ai_intro: Option<&str>,
+    ) {
+        let mut body = why.trim().to_string();
+        let mut push_field = |label: &str, value: Option<&str>| {
+            if let Some(text) = value.map(str::trim).filter(|s| !s.is_empty()) {
+                if !body.is_empty() {
+                    body.push_str("\n\n");
+                }
+                body.push_str(label);
+                body.push('\n');
+                body.push_str(text);
+            }
+        };
+        push_field("site_description", site_description);
+        push_field("site_keywords", site_keywords);
+        push_field("site_ai_intro", site_ai_intro);
+        if body.chars().count() > 4000 {
+            body = body.chars().take(4000).collect();
+        }
+
+        for user_id in self.admin_user_ids().await {
+            let mut metadata = serde_json::json!({
+                "event_key": "heartbeat.seo_review",
+                "task_name": "SEO review",
+                "actions": [{ "id": "apply" }],
+            });
+            if let Some(text) = site_description.map(str::trim).filter(|s| !s.is_empty()) {
+                metadata["site_description"] = serde_json::json!(text);
+            }
+            if let Some(text) = site_keywords.map(str::trim).filter(|s| !s.is_empty()) {
+                metadata["site_keywords"] = serde_json::json!(text);
+            }
+            if let Some(text) = site_ai_intro.map(str::trim).filter(|s| !s.is_empty()) {
+                metadata["site_ai_intro"] = serde_json::json!(text);
+            }
+            let mut notification = Notification::new(
+                user_id,
+                NotificationType::HeartbeatResult,
+                NotificationPriority::Normal,
+                "Agent SEO",
+                body.clone(),
+            )
+            .with_metadata(metadata);
+            notification.id = format!("seo_review_draft_u{user_id}");
+            notification.read = false;
+            self.upsert(notification).await;
+        }
+    }
+
     pub async fn notify_phantasi_new_items(
         &self,
         user_id: i32,

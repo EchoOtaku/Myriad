@@ -843,7 +843,7 @@
   "fieldSiteAiIntro": "AI site intro",
   "fieldSiteAiIntroHint": "2–4 sentences for AI engines (who you are, what content). Written to /llms.txt. Falls back to site description if empty.",
   "fieldSiteSeoReviewCadence": "Agent SEO optimization",
-  "fieldSiteSeoReviewCadenceHint": "Compares public copy to your own writing. Notifies you if it looks stale. Never changes visibility or overwrites copy.",
+  "fieldSiteSeoReviewCadenceHint": "Compares public copy to your own writing. Notifies you if it looks stale; Apply on the notice writes it. Never changes visibility on its own.",
   "seoReviewOff": "Off",
   "seoReviewDaily": "Daily",
   "seoReviewWeekly": "Weekly",

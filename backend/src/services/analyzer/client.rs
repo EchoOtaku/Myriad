@@ -866,6 +866,7 @@ impl AiAnalyzer {
             .map_err(ProviderCallFailure::transport)
     }
 
+    #[cfg(test)]
     async fn analyze_json_streaming_protocol<F, Fut>(
         &self,
         system: &str,

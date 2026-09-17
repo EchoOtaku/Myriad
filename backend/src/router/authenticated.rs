@@ -108,6 +108,13 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::admin_middleware,
             )),
         )
+        .route(
+            "/api/seo/apply-copy",
+            post(api::seo_review::apply_site_seo_copy).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::admin_middleware,
+            )),
+        )
         // Global platform reprocess jobs — admin only (site-level work, not per-user).
         // any authenticated user must not submit/list global reprocess tasks.
         .route(

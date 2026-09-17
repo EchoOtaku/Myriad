@@ -1859,6 +1859,8 @@
     "sourceMcp": "MCP 服務",
     "sourceSystem": "系統",
     "sourceAro": "聯邦",
+    "applySeo": "套用",
+    "seoApplied": "已寫入站點 SEO 文案",
     "settingsDesc": "控制每個來源和具體事件是否通知，以及通知的展示方式"
   }
 }

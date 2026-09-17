@@ -4,6 +4,7 @@ import type { NotificationSourceKey } from '../services/notificationPreferencesA
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { currentCopy } from '../i18n/localeCopy'
+import { apiService } from '../services/api'
 import { federationApi } from '../services/federationApi'
 import { notificationSourceFor } from '../services/notificationDelivery'
 import { getGreeting } from '../utils/dynamicContent'
@@ -11,6 +12,7 @@ import {
   notificationFacingBody,
   notificationFacingTitle,
 } from '../utils/notificationFacing'
+import { showToast } from '../utils/toastManager'
 import { userFacingError } from '../utils/userFacingError'
 import { NotificationSourceIcon } from './notifications/NotificationIcons'
 import { TappResidentNotice } from './TappResidentNotice'
@@ -72,6 +74,31 @@ async function runFederationInviteAction(
     }
   }
   throw new Error(currentCopy().errors.agentUnsupported)
+}
+
+function seoReviewDrafts(
+  n: AppNotification,
+): Record<string, string> {
+  const body: Record<string, string> = {}
+  for (const key of [
+    'site_description',
+    'site_keywords',
+    'site_ai_intro',
+  ] as const) {
+    const value = n.metadata?.[key]
+    if (typeof value === 'string' && value.trim()) {
+      body[key] = value
+    }
+  }
+  return body
+}
+
+async function runSeoReviewApply(n: AppNotification): Promise<void> {
+  const drafts = seoReviewDrafts(n)
+  if (Object.keys(drafts).length === 0) {
+    throw new Error(currentCopy().errors.seoApplyMissingDraft)
+  }
+  await apiService.post('/seo/apply-copy', drafts)
 }
 
 const PILL_BTN =
@@ -158,6 +185,7 @@ function NotificationPanelList({
   const [confirmClear, setConfirmClear] = useState(false)
   const [actionBusyId, setActionBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionErrorId, setActionErrorId] = useState<string | null>(null)
   const [notifPermission, setNotifPermission] = useState<string>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   )
@@ -239,7 +267,20 @@ function NotificationPanelList({
       if (actionBusyId) return
       setActionBusyId(`${n.id}:${actionId}`)
       setActionError(null)
+      setActionErrorId(n.id)
       try {
+        if (
+          n.metadata?.event_key === 'heartbeat.seo_review' &&
+          actionId === 'apply'
+        ) {
+          await runSeoReviewApply(n)
+          void removeItem(n)
+          showToast({
+            message: t.notificationCenter.seoApplied,
+            type: 'success',
+          })
+          return
+        }
         await runFederationInviteAction(n, actionId)
         void removeItem(n)
         if (actionId === 'accept') {
@@ -249,9 +290,11 @@ function NotificationPanelList({
           }
         }
       } catch (err) {
-        setActionError(
-          userFacingError(err, t.errors.inviteInvalid),
-        )
+        const fallback =
+          n.metadata?.event_key === 'heartbeat.seo_review'
+            ? t.errors.seoApplyFailed
+            : t.errors.inviteInvalid
+        setActionError(userFacingError(err, fallback))
       } finally {
         setActionBusyId(null)
       }
@@ -428,6 +471,7 @@ function NotificationPanelList({
                           actionBusyId === `${n.id}:${act.id}`
                         const isAccept = act.id === 'accept'
                         const isReject = act.id === 'reject'
+                        const isApply = act.id === 'apply'
                         return (
                           <button
                             key={act.id}
@@ -436,26 +480,30 @@ function NotificationPanelList({
                             onClick={() => void handleInviteAction(n, act.id)}
                             className={
                               `rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
-                              isAccept
-                                ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-300'
-                                : isReject
-                                  ? 'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-300'
-                                  : 'bg-black/5 text-gray-600 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300'}`
+                              isApply
+                                ? 'bg-gray-900 text-white hover:bg-black dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100'
+                                : isAccept
+                                  ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-300'
+                                  : isReject
+                                    ? 'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-300'
+                                    : 'bg-black/5 text-gray-600 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300'}`
                             }
                           >
                             {busy
                               ? '…'
-                              : isAccept
-                                ? t.common?.confirm || 'Accept'
-                                : isReject
-                                  ? t.common?.cancel || 'Decline'
-                                  : act.label || act.id}
+                              : isApply
+                                ? t.notificationCenter.applySeo
+                                : isAccept
+                                  ? t.common?.confirm || 'Accept'
+                                  : isReject
+                                    ? t.common?.cancel || 'Decline'
+                                    : act.label || act.id}
                           </button>
                         )
                       })}
                     </div>
                   )}
-                  {actionError && expandedId === n.id && (
+                  {actionError && actionErrorId === n.id && (
                     <p className="mt-1 text-[11px] text-red-500">{actionError}</p>
                   )}
                 </div>

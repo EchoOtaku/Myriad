@@ -24,6 +24,7 @@ export const NOTIFICATION_EVENT_KEYS = [
   'agent.merope.platform_activity',
   'heartbeat.succeeded',
   'heartbeat.failed',
+  'heartbeat.seo_review',
   'mcp.connected',
   'mcp.disconnected',
   'phantasi.new_items',

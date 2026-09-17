@@ -91,12 +91,12 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert!(normalize_backend_actions(Some(json!(actions))).is_err());
+        assert!(normalize_backend_actions_parsed(Some(json!(actions))).is_err());
     }
 
     #[test]
     fn scheduled_ai_requires_matching_manifest_declaration() {
-        let actions = normalize_backend_actions(Some(json!([{
+        let (_normalized, wrappers) = normalize_backend_actions_parsed(Some(json!([{
             "type": "ai.generate",
             "prompt": "Summarize {{input}}"
         }])))
@@ -104,7 +104,7 @@ mod tests {
         let without_ai = json!({
             "permissions": ["scheduler:register", "ai:generate"]
         });
-        assert!(validate_backend_action_declarations(&without_ai, &actions).is_err());
+        assert!(validate_backend_action_declarations_of(&without_ai, &wrappers).is_err());
 
         let declared = json!({
             "permissions": ["scheduler:register", "ai:generate"],
@@ -117,7 +117,7 @@ mod tests {
             }
         });
         assert_eq!(
-            validate_backend_action_declarations(&declared, &actions).unwrap(),
+            validate_backend_action_declarations_of(&declared, &wrappers).unwrap(),
             Some(ModelTier::Pro)
         );
     }

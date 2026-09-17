@@ -843,7 +843,7 @@
   "fieldSiteAiIntro": "AI 向けサイト紹介",
   "fieldSiteAiIntroHint": "AI 向けの 2〜4 文（誰のサイトか、何があるか）。/llms.txt に書かれます。空ならサイト説明を使用。",
   "fieldSiteSeoReviewCadence": "Agent の SEO 最適化",
-  "fieldSiteSeoReviewCadenceHint": "公開文面を自分の公開コンテンツと照合し、古ければ知らせます。文面も公開範囲も自動では変えません。",
+  "fieldSiteSeoReviewCadenceHint": "公開文面を自分の公開コンテンツと照合し、古ければ知らせます。通知の「適用」で保存。文面も公開範囲も勝手には変えません。",
   "seoReviewOff": "オフ",
   "seoReviewDaily": "毎日",
   "seoReviewWeekly": "毎週",

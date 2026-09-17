@@ -141,41 +141,21 @@ impl TappStorageAccess {
 }
 
 /// Authorize sandbox storage for a Runtime-Grant route.
-pub(super) async fn authorize_runtime_storage(
-    db: &DatabaseConnection,
+pub(super) fn authorize_runtime_storage(
     claims: &Claims,
     grant: &RuntimeGrantContext,
     tapp_id: &str,
-    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
 ) -> Result<TappStorageAccess, HttpError> {
     require_runtime_storage_grant(grant, tapp_id, TappPermission::StorageRead)?;
-    authorize_tapp_permission(
-        db,
-        claims,
-        tapp_id,
-        TappPermission::StorageRead,
-        dynamic_config,
-    )
-    .await?;
     storage_access_from_runtime_grant(grant, claims)
 }
 
-pub(crate) async fn authorize_runtime_storage_write(
-    db: &DatabaseConnection,
+pub(crate) fn authorize_runtime_storage_write(
     claims: &Claims,
     grant: &RuntimeGrantContext,
     tapp_id: &str,
-    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
 ) -> Result<TappStorageAccess, HttpError> {
     require_runtime_storage_grant(grant, tapp_id, TappPermission::StorageWrite)?;
-    authorize_tapp_permission(
-        db,
-        claims,
-        tapp_id,
-        TappPermission::StorageWrite,
-        dynamic_config,
-    )
-    .await?;
     storage_access_from_runtime_grant(grant, claims)
 }
 
@@ -231,14 +211,4 @@ pub(super) async fn filter_install_permissions(
     })?;
     drop(config);
     Ok(granted)
-}
-
-pub(super) async fn authorize_tapp_permission(
-    db: &DatabaseConnection,
-    claims: &Claims,
-    tapp_id: &str,
-    permission: TappPermission,
-    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
-) -> Result<i32, HttpError> {
-    tapp_common::authorize_tapp_permission(db, claims, tapp_id, permission, dynamic_config).await
 }

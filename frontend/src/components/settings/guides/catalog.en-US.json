@@ -74,7 +74,7 @@
     },
     "siteSeoReviewCadence": {
       "what": "How often Agent checks public SEO/GEO copy against your own public writing.",
-      "chain": "1) Off / daily / weekly → save configuration at the bottom.\n2) When due, Agent inspects public copy and notifies if it looks stale.\n3) It does not overwrite copy or change visibility.",
+      "chain": "1) Off / daily / weekly → save configuration at the bottom.\n2) When due, Agent inspects and notifies if copy looks stale.\n3) Tap Apply on the notice to save. Visibility is never changed.",
       "frontend": "Segmented control in Search & AI visibility.",
       "notes": "Does not appear in the generic scheduled-task list. Default is off."
     },

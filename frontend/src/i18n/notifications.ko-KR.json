@@ -42,6 +42,7 @@
     "agent.merope.platform_activity": "플랫폼 활동",
     "heartbeat.succeeded": "예약 작업 성공",
     "heartbeat.failed": "예약 작업 실패",
+    "heartbeat.seo_review": "Agent SEO",
     "mcp.connected": "MCP 연결됨",
     "mcp.disconnected": "MCP 끊김 또는 실패",
     "phantasi.new_items": "새 글 발견",

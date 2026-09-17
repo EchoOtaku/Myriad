@@ -74,7 +74,7 @@
     },
     "siteSeoReviewCadence": {
       "what": "À quelle fréquence l’Agent compare le texte public SEO/GEO à vos contenus publics.",
-      "chain": "1) Désactivé / tous les jours / chaque semaine → enregistrer la config en bas.\n2) À l’échéance, il inspecte et notifie. Il n’écrase pas le texte ni la visibilité.",
+      "chain": "1) Désactivé / tous les jours / chaque semaine → enregistrer la config en bas.\n2) S’il est périmé, une notification propose Appliquer. La visibilité ne change pas.",
       "frontend": "Contrôle segmenté dans Recherche et visibilité IA.",
       "notes": "N’apparaît pas dans la liste générique des tâches planifiées. Désactivé par défaut."
     },

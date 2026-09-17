@@ -843,7 +843,7 @@
   "fieldSiteAiIntro": "KI-Website-Intro",
   "fieldSiteAiIntroHint": "2–4 Sätze für KI-Engines (wer Sie sind, welche Inhalte). Wird nach /llms.txt geschrieben. Leer fällt auf die Seitenbeschreibung zurück.",
   "fieldSiteSeoReviewCadence": "SEO-Optimierung durch Agent",
-  "fieldSiteSeoReviewCadenceHint": "Vergleicht öffentliche Texte mit Ihren eigenen Inhalten und benachrichtigt bei Veraltung. Ändert weder Sichtbarkeit noch Texte.",
+  "fieldSiteSeoReviewCadenceHint": "Vergleicht öffentliche Texte mit Ihren Inhalten und benachrichtigt bei Veraltung. Übernehmen in der Mitteilung speichert. Sichtbarkeit ändert es nicht von selbst.",
   "seoReviewOff": "Aus",
   "seoReviewDaily": "Täglich",
   "seoReviewWeekly": "Wöchentlich",

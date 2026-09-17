@@ -880,7 +880,7 @@ export default function Home() {
                   />
                 ) : (
                   <div
-                    className="absolute left-1 whitespace-nowrap pointer-events-none z-0 transition-opacity duration-300"
+                    className="absolute left-1 whitespace-nowrap pointer-events-none z-0 transition-opacity duration-300 hidden md:block"
                     style={{
                       top: `calc(30px - ${7.5 * titleFontSize}rem)`,
                       fontSize: `${6 * titleFontSize}rem`,

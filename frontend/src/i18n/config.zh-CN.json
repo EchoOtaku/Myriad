@@ -843,7 +843,7 @@
   "fieldSiteAiIntro": "AI 站点简介",
   "fieldSiteAiIntroHint": "写给 AI 的 2～4 句说明（是谁、有什么内容），会写入 /llms.txt。可空则使用网站描述。",
   "fieldSiteSeoReviewCadence": "Agent 优化 SEO",
-  "fieldSiteSeoReviewCadenceHint": "对照自有公开内容，简介过时了再通知。不会自己改文案，也不会改可见性。",
+  "fieldSiteSeoReviewCadenceHint": "对照自有公开内容，简介过时了再通知。通知里可一键应用，不会自己改，也不会改可见性。",
   "seoReviewOff": "关闭",
   "seoReviewDaily": "每天",
   "seoReviewWeekly": "每周",

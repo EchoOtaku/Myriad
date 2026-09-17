@@ -17,7 +17,7 @@ use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_reports::{self, ReportCatalogError, TappReportCrudError};
 
-use super::common::{authorize_tapp_permission, parse_user_id};
+use super::common::parse_user_id;
 use super::runtime_grant::RuntimeGrantContext;
 
 fn catalog_http_error(err: ReportCatalogError) -> (StatusCode, Json<Value>) {
@@ -163,21 +163,13 @@ fn crud_http_error(err: TappReportCrudError) -> (StatusCode, Json<Value>) {
 /// POST /api/tapp/reports
 pub async fn create_report(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<CreateReportRequest>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::ReportWrite)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &req.tapp_id,
-        TappPermission::ReportWrite,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
 
     tracing::info!(
         "[TAPP] create_report - User: {}, Tapp: {}, Type: {}",
@@ -212,7 +204,6 @@ pub async fn create_report(
 /// GET /api/tapp/reports/tapp/{tapp_id}
 pub async fn list_tapp_reports(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
@@ -220,14 +211,7 @@ pub async fn list_tapp_reports(
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::ReportRead)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &tapp_id,
-        TappPermission::ReportRead,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     tracing::debug!(
         "[TAPP] list_tapp_reports - User: {}, Tapp: {}",
         claims.username,
@@ -249,21 +233,13 @@ pub async fn list_tapp_reports(
 /// GET /api/tapp/reports/{tapp_id}/{report_id}
 pub async fn get_tapp_report(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, report_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::ReportRead)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &tapp_id,
-        TappPermission::ReportRead,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     tracing::debug!(
         "[TAPP] get_tapp_report - User: {}, Report: {}",
         claims.username,
@@ -279,7 +255,6 @@ pub async fn get_tapp_report(
 /// PUT /api/tapp/reports/{tapp_id}/{report_id}
 pub async fn update_tapp_report(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, report_id)): Path<(String, String)>,
@@ -287,14 +262,7 @@ pub async fn update_tapp_report(
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::ReportWrite)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &tapp_id,
-        TappPermission::ReportWrite,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     tracing::info!(
         "[TAPP] update_tapp_report - User: {}, Report: {}",
         claims.username,
@@ -318,21 +286,13 @@ pub async fn update_tapp_report(
 /// DELETE /api/tapp/reports/{tapp_id}/{report_id}
 pub async fn delete_tapp_report(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, report_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::ReportWrite)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &tapp_id,
-        TappPermission::ReportWrite,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     tracing::info!(
         "[TAPP] delete_tapp_report - User: {}, Report: {}",
         claims.username,

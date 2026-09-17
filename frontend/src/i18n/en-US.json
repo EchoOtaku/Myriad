@@ -1859,6 +1859,8 @@
     "sourceMcp": "MCP Server",
     "sourceSystem": "System",
     "sourceAro": "Federation",
+    "applySeo": "Apply",
+    "seoApplied": "Site SEO copy saved",
     "settingsDesc": "Choose which sources and events notify you and how they are presented"
   }
 }

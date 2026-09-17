@@ -4,7 +4,7 @@ import { SiCloudflare } from '@lib/icons'
 
 import React, { memo, useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
-import { getBuildInfo } from '../utils/buildInfo'
+import { getBuildInfo, REPOSITORY_URL } from '../utils/buildInfo'
 import {
 
   isFooterCustomHref,
@@ -297,20 +297,22 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
       <footer className="site-footer">
         <div className="site-footer-content">
           <div className="footer-version">
-            <span className="version-label">Myriad</span>
-            {buildInfo.commitUrl ? (
+            <Tooltip
+              content={
+                buildInfo.commitSha
+                  ? `${buildInfo.version} · ${buildInfo.commitSha.slice(0, 7)}`
+                  : buildInfo.version
+              }
+            >
               <a
-                className="version-number version-link"
-                href={buildInfo.commitUrl}
+                className="version-label version-link"
+                href={REPOSITORY_URL}
                 target="_blank"
-                rel="noreferrer noopener"
-                title={buildInfo.commitSha ?? undefined}
+                rel="noopener noreferrer"
               >
-                {buildInfo.version} · {buildInfo.commitSha?.slice(0, 7)}
+                Myriad
               </a>
-            ) : (
-              <span className="version-number">{buildInfo.version}</span>
-            )}
+            </Tooltip>
           </div>
 
           {hasContent && <span className="footer-divider">·</span>}

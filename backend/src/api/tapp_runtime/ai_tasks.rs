@@ -46,8 +46,8 @@ use crate::{
 use super::{
     RuntimeGrantContext,
     common::{
-        authorize_tapp_permission, check_anonymous_rate_limit, check_rate_limit,
-        current_tapp_user_role, resolve_accessible_tapp, validate_prompt_security,
+        check_anonymous_rate_limit, check_rate_limit, current_tapp_user_role, parse_user_id,
+        resolve_accessible_tapp, validate_prompt_security,
     },
     shared_registry::{self, RegistryIdentity},
 };
@@ -127,7 +127,6 @@ fn authorize_persisted<'a>(
 /// POST /api/tapp/ai/v2/tasks
 pub async fn create_ai_task(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime: RuntimeGrantContext,
     headers: HeaderMap,
@@ -156,14 +155,7 @@ pub async fn create_ai_task(
 
     let operation_permission = permission_for_operation(request.operation);
     runtime.require(operation_permission)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        runtime.tapp_id(),
-        operation_permission,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     let tapp = resolve_accessible_tapp(&db, user_id, runtime.tapp_id()).await?;
     let declaration = parse_ai_manifest(&tapp.manifest).map_err(logic_api_error)?;
     if declaration.protocol_version != 2 || !declaration.operations.contains(&request.operation) {

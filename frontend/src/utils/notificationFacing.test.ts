@@ -165,6 +165,19 @@ describe('notificationFacing', () => {
     )
     assert.equal(heartbeat.includes('定时任务'), false)
     assert.match(heartbeat, /备份/)
+    const seo = notificationFacingTitle(
+      notice('Scheduled task: SEO review', 'rewrite', 'heartbeat.seo_review'),
+    )
+    assert.equal(seo, currentCopy().errors.noticeSeoReview)
+    const seoBody = notificationFacingBody(
+      notice(
+        'Agent SEO',
+        '站点描述空了。\n\nsite_description\n新的简介',
+        'heartbeat.seo_review',
+        { site_description: '新的简介' },
+      ),
+    )
+    assert.match(seoBody, /新的简介/)
   })
 
   it('maps leftover skill evolution Chinese bodies', () => {

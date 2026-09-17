@@ -61,30 +61,13 @@ pub(super) async fn execute_seo_apply(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let mut updates = HashMap::new();
-    let mut saved = Vec::new();
-    cap_field(params, "site_description", 200, &mut updates, &mut saved);
-    cap_field(params, "site_keywords", 300, &mut updates, &mut saved);
-    cap_field(params, "site_ai_intro", 500, &mut updates, &mut saved);
-    if updates.is_empty() {
-        return Err(
-            "Provide site_description, site_keywords, and/or site_ai_intro to save".to_string(),
-        );
-    }
-
-    let service = crate::services::config_service::ConfigService::new(ctx.db.clone());
-    if let Err(error) = service.update_configs(updates).await {
-        tracing::error!(%error, "seo.apply failed to write configurations");
-        return Err("Failed to save site SEO fields".to_string());
-    }
-    match service.load_config().await {
-        Ok(config) => {
-            *crate::GLOBAL_DYNAMIC_CONFIG.write().await = config;
-        }
-        Err(error) => {
-            tracing::warn!(%error, "seo.apply saved but could not reload dynamic config");
-        }
-    }
+    let saved = crate::api::seo_review::apply_site_seo_fields(
+        ctx.db,
+        params.get("site_description").and_then(Value::as_str),
+        params.get("site_keywords").and_then(Value::as_str),
+        params.get("site_ai_intro").and_then(Value::as_str),
+    )
+    .await?;
     Ok(json!({ "ok": true, "saved": saved }))
 }
 
@@ -96,17 +79,3 @@ fn string_param(params: &HashMap<String, Value>, key: &str) -> String {
         .to_string()
 }
 
-fn cap_field(
-    params: &HashMap<String, Value>,
-    key: &str,
-    max_chars: usize,
-    updates: &mut HashMap<String, Value>,
-    saved: &mut Vec<String>,
-) {
-    let Some(raw) = params.get(key).and_then(Value::as_str) else {
-        return;
-    };
-    let capped: String = raw.chars().take(max_chars).collect();
-    updates.insert(key.to_string(), json!(capped));
-    saved.push(key.to_string());
-}

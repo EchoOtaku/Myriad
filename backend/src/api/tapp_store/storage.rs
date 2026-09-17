@@ -625,13 +625,11 @@ pub(super) async fn clear_private(
 
 pub(super) async fn list_storage_keys(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<String>>>, HttpError> {
-    let access =
-        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let access = authorize_runtime_storage(&claims, &runtime_grant, &tapp_id)?;
     let keys =
         storage_svc::sandbox_storage_entries(&db, access.private_storage_namespace(), &tapp_id)
             .await
@@ -644,13 +642,11 @@ pub(super) async fn list_storage_keys(
 
 pub(super) async fn list_storage_entries(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<BTreeMap<String, serde_json::Value>>>, HttpError> {
-    let access =
-        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let access = authorize_runtime_storage(&claims, &runtime_grant, &tapp_id)?;
     let entries =
         storage_svc::sandbox_storage_entries(&db, access.private_storage_namespace(), &tapp_id)
             .await
@@ -669,13 +665,11 @@ pub(super) struct TappStorageUsage {
 
 pub(super) async fn get_storage_usage(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<TappStorageUsage>>, HttpError> {
-    let access =
-        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let access = authorize_runtime_storage(&claims, &runtime_grant, &tapp_id)?;
     let used = storage_bytes(&db, access.private_storage_namespace(), &tapp_id).await? as usize;
     Ok(Json(ApiResponse::success(TappStorageUsage {
         used,
@@ -685,22 +679,19 @@ pub(super) async fn get_storage_usage(
 
 pub(super) async fn get_storage(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, HttpError> {
     validate_sandbox_storage_key(&key)
         .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
-    let access =
-        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let access = authorize_runtime_storage(&claims, &runtime_grant, &tapp_id)?;
     let value = read_storage_value(&db, access.private_storage_namespace(), &tapp_id, &key).await?;
     Ok(Json(ApiResponse::success(value)))
 }
 
 pub(super) async fn set_storage(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
@@ -709,9 +700,7 @@ pub(super) async fn set_storage(
     validate_sandbox_storage_key(&key)
         .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     validate_storage_value_size(&value)?;
-    let access =
-        authorize_runtime_storage_write(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config)
-            .await?;
+    let access = authorize_runtime_storage_write(&claims, &runtime_grant, &tapp_id)?;
     write_storage_value(
         &db,
         access.private_storage_namespace(),
@@ -725,16 +714,13 @@ pub(super) async fn set_storage(
 
 pub(super) async fn delete_storage(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, HttpError> {
     validate_sandbox_storage_key(&key)
         .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
-    let access =
-        authorize_runtime_storage_write(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config)
-            .await?;
+    let access = authorize_runtime_storage_write(&claims, &runtime_grant, &tapp_id)?;
     tapp_storage_entity::Entity::delete_many()
         .filter(tapp_storage_entity::Column::UserId.eq(access.private_storage_namespace()))
         .filter(tapp_storage_entity::Column::TappId.eq(&tapp_id))
@@ -747,14 +733,11 @@ pub(super) async fn delete_storage(
 
 pub(super) async fn clear_storage(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, HttpError> {
-    let access =
-        authorize_runtime_storage_write(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config)
-            .await?;
+    let access = authorize_runtime_storage_write(&claims, &runtime_grant, &tapp_id)?;
     storage_svc::clear_sandbox_storage(&db, access.private_storage_namespace(), &tapp_id)
         .await
         .map_err(|error| HttpError::from(storage_status(error)))?;

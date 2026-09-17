@@ -42,6 +42,7 @@
     "agent.merope.platform_activity": "Plattformaktivität",
     "heartbeat.succeeded": "Geplante Aufgabe erfolgreich",
     "heartbeat.failed": "Geplante Aufgabe fehlgeschlagen",
+    "heartbeat.seo_review": "Agent-SEO",
     "mcp.connected": "MCP verbunden",
     "mcp.disconnected": "MCP getrennt oder fehlgeschlagen",
     "phantasi.new_items": "Neue Inhalte gefunden",

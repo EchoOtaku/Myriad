@@ -307,7 +307,7 @@ fn filter_response(
     }
 }
 
-fn resolve_language(explicit: &str, title: &str, hint: &str) -> &'static str {
+pub(crate) fn resolve_language(explicit: &str, title: &str, hint: &str) -> &'static str {
     match explicit.trim().to_ascii_lowercase().as_str() {
         "zh-tw" | "zh-hk" | "zh-mo" | "zh-hant" => "zh-TW",
         "zh" | "zh-cn" | "zh-hans" | "chinese" => "zh",

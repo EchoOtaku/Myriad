@@ -74,7 +74,7 @@
     },
     "siteSeoReviewCadence": {
       "what": "Wie oft Agent öffentliche SEO/GEO-Texte mit Ihren eigenen öffentlichen Inhalten vergleicht.",
-      "chain": "1) Aus / täglich / wöchentlich → Konfiguration unten speichern.\n2) Wenn fällig, prüft Agent und benachrichtigt. Texte und Sichtbarkeit werden nicht überschrieben.",
+      "chain": "1) Aus / täglich / wöchentlich → Konfiguration unten speichern.\n2) Bei Veraltung kommt eine Mitteilung. Übernehmen speichert. Sichtbarkeit bleibt unangetastet.",
       "frontend": "Segmentsteuerung unter Suche und KI-Sichtbarkeit.",
       "notes": "Erscheint nicht in der allgemeinen Aufgabenliste. Standard ist aus."
     },

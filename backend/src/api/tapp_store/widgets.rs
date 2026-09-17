@@ -2,9 +2,9 @@
 
 use super::{
     ApiResponse, MAX_WIDGETS_PER_TAPP, TappManifest, TappSettingDef, TappWidgetCategory,
-    TappWidgetRefreshPolicy, authorize_tapp_permission, current_is_admin, find_admin_user_id,
-    lock_tapp_lifecycle, optional_authenticated_user_id, require_current_admin,
-    validate_tapp_settings, validate_widget_refresh_policy,
+    TappWidgetRefreshPolicy, current_is_admin, find_admin_user_id, lock_tapp_lifecycle,
+    optional_authenticated_user_id, require_current_admin, validate_tapp_settings,
+    validate_widget_refresh_policy,
 };
 use axum::{
     Extension, Json,
@@ -19,6 +19,7 @@ use serde::Deserialize;
 use std::collections::HashSet;
 
 use crate::api::tapp_runtime::RuntimeGrantContext;
+use crate::api::tapp_runtime::common::parse_user_id;
 use crate::middleware::auth::{Claims, OptionalClaims};
 use crate::models::entities::{tapp_widgets, tapps};
 use crate::services::permission_service::TappPermission;
@@ -283,7 +284,6 @@ pub(super) async fn reconcile_manifest_widgets(
 
 pub(super) async fn register_widget(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
@@ -292,14 +292,7 @@ pub(super) async fn register_widget(
     require_current_admin(&claims, &db).await?;
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::WidgetRegister)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &tapp_id,
-        TappPermission::WidgetRegister,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     let installation_owner_id = runtime_grant.owner_id();
     if !runtime_widget_register_shape_ok(
         &request.id,
@@ -465,7 +458,6 @@ pub(super) async fn register_widget(
 
 pub(super) async fn unregister_widget(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, widget_id)): Path<(String, String)>,
@@ -473,14 +465,7 @@ pub(super) async fn unregister_widget(
     require_current_admin(&claims, &db).await?;
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::WidgetRegister)?;
-    let user_id = authorize_tapp_permission(
-        &db,
-        &claims,
-        &tapp_id,
-        TappPermission::WidgetRegister,
-        &dynamic_config,
-    )
-    .await?;
+    let user_id = parse_user_id(&claims)?;
     let installation_owner_id = runtime_grant.owner_id();
     let full_widget_id = resolve_full_widget_id(&tapp_id, &widget_id)
         .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;

@@ -17,7 +17,6 @@ use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_shortcuts::{self, ShortcutRegistryError};
 
-use super::common::authorize_tapp_permission;
 use super::runtime_grant::RuntimeGrantContext;
 use crate::api::tapp_store::{TappStorageAccess, installation_write_forbidden_error};
 use crate::error::HttpError;
@@ -70,21 +69,12 @@ fn installation_owner(
 /// POST /api/tapp/shortcuts/register
 pub async fn register_shortcut(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<RegisterShortcutRequest>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::ShortcutRegister)?;
-    authorize_tapp_permission(
-        &db,
-        &claims,
-        &req.tapp_id,
-        TappPermission::ShortcutRegister,
-        &dynamic_config,
-    )
-    .await?;
     let owner_id = installation_owner(&claims, &runtime_grant)?;
 
     tracing::info!(
@@ -113,21 +103,12 @@ pub async fn register_shortcut(
 /// DELETE /api/tapp/shortcuts/{tapp_id}/{shortcut_id}
 pub async fn unregister_shortcut(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, shortcut_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::ShortcutRegister)?;
-    authorize_tapp_permission(
-        &db,
-        &claims,
-        &tapp_id,
-        TappPermission::ShortcutRegister,
-        &dynamic_config,
-    )
-    .await?;
     let owner_id = installation_owner(&claims, &runtime_grant)?;
     tracing::info!(
         "[TAPP] unregister_shortcut - User: {}, Tapp: {}, ID: {}",

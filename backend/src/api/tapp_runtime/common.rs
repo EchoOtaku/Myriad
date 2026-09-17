@@ -264,20 +264,11 @@ pub fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
     })
 }
 
-/// 检查用户是否拥有特定 Tapp 权限。
+/// 检查用户是否拥有指定的 Tapp 权限。
 ///
 /// Role tables live on `AppState.dynamic_config` (same Arc as process global
 /// after `from_shared`). Callers must pass the State-extracted Arc — do not
 /// re-read process globals on request paths.
-pub async fn check_tapp_permission(
-    db: &DatabaseConnection,
-    claims: &Claims,
-    permission: TappPermission,
-    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
-) -> Result<(), HttpError> {
-    check_tapp_permissions(db, claims, &[permission], dynamic_config).await
-}
-
 pub async fn check_tapp_permissions(
     db: &DatabaseConnection,
     claims: &Claims,

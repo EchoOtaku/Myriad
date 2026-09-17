@@ -1859,6 +1859,8 @@
     "sourceMcp": "Serveur MCP",
     "sourceSystem": "Système",
     "sourceAro": "Fédération",
+    "applySeo": "Appliquer",
+    "seoApplied": "Texte SEO du site enregistré",
     "settingsDesc": "Choisissez quelles sources et quels événements vous préviennent, et comment"
   }
 }

@@ -29,7 +29,7 @@ pub struct NotificationEventDefinition {
     pub source: &'static str,
 }
 
-pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 34] = [
+pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 35] = [
     NotificationEventDefinition {
         key: "agent.task_progress",
         source: "agent",
@@ -60,6 +60,10 @@ pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 34] = [
     },
     NotificationEventDefinition {
         key: "heartbeat.failed",
+        source: "heartbeat",
+    },
+    NotificationEventDefinition {
+        key: "heartbeat.seo_review",
         source: "heartbeat",
     },
     NotificationEventDefinition {

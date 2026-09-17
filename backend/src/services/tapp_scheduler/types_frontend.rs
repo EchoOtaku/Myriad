@@ -59,12 +59,6 @@ pub fn scheduler_counters() -> SchedulerCounters {
 
 /// Normalize the public SDK action shape (`type`) to the persisted Rust enum
 /// tag (`action`) and validate every action before a task is stored.
-pub fn normalize_backend_actions(
-    actions: Option<serde_json::Value>,
-) -> Result<Option<serde_json::Value>, String> {
-    Ok(normalize_backend_actions_parsed(actions)?.0)
-}
-
 pub fn normalize_backend_actions_parsed(
     actions: Option<serde_json::Value>,
 ) -> Result<(Option<serde_json::Value>, Vec<BackendActionWrapper>), String> {
@@ -147,23 +141,8 @@ pub fn backend_action_permissions_of(wrappers: &[BackendActionWrapper]) -> Vec<T
     permissions
 }
 
-pub fn backend_action_permissions(
-    actions: &Option<serde_json::Value>,
-) -> Result<Vec<TappPermission>, String> {
-    Ok(backend_action_permissions_of(
-        &parse_backend_action_wrappers(actions)?,
-    ))
-}
-
 /// Validate delayed backend actions against the installed Manifest contract.
 /// Only `AiGenerate` also requires `manifest.ai` (generate + text, protocolVersion 2).
-pub fn validate_backend_action_declarations(
-    manifest: &serde_json::Value,
-    actions: &Option<serde_json::Value>,
-) -> Result<Option<ModelTier>, String> {
-    validate_backend_action_declarations_of(manifest, &parse_backend_action_wrappers(actions)?)
-}
-
 pub fn validate_backend_action_declarations_of(
     manifest: &serde_json::Value,
     wrappers: &[BackendActionWrapper],

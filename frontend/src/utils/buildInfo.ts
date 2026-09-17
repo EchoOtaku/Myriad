@@ -4,7 +4,7 @@ export interface BuildInfo {
   commitUrl: string | null
 }
 
-const REPOSITORY_URL = 'https://github.com/Myriad-You/Myriad'
+export const REPOSITORY_URL = 'https://github.com/Myriad-You/Myriad'
 
 function validCommit(value: string | null | undefined): string | null {
   const commit = value?.trim().toLowerCase() ?? ''

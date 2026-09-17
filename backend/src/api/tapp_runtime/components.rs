@@ -17,7 +17,6 @@ use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_components::{self, ComponentRegistryError, ComponentType};
 
-use super::common::authorize_tapp_permission;
 use super::runtime_grant::RuntimeGrantContext;
 use crate::api::tapp_store::{TappStorageAccess, installation_write_forbidden_error};
 use crate::error::HttpError;
@@ -55,7 +54,6 @@ fn installation_owner(
 /// POST /api/tapp/components/register
 pub async fn register_component(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<RegisterComponentRequest>,
@@ -66,7 +64,6 @@ pub async fn register_component(
     };
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(permission)?;
-    authorize_tapp_permission(&db, &claims, &req.tapp_id, permission, &dynamic_config).await?;
     let owner_id = installation_owner(&claims, &runtime_grant)?;
 
     tracing::info!(
@@ -100,7 +97,6 @@ pub async fn register_component(
 /// DELETE /api/tapp/components/{tapp_id}/{component_type}/{component_id}
 pub async fn unregister_component(
     State(db): State<DatabaseConnection>,
-    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, component_type, component_id)): Path<(String, String, String)>,
@@ -116,7 +112,6 @@ pub async fn unregister_component(
     };
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(permission)?;
-    authorize_tapp_permission(&db, &claims, &tapp_id, permission, &dynamic_config).await?;
     let owner_id = installation_owner(&claims, &runtime_grant)?;
     tracing::info!(
         "[TAPP] unregister_component - User: {}, Tapp: {}, Type: {}, ID: {}",

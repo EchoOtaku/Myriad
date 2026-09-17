@@ -843,7 +843,7 @@
   "fieldSiteAiIntro": "Intro IA du site",
   "fieldSiteAiIntroHint": "2–4 phrases pour les moteurs IA (qui vous êtes, quel contenu). Écrit dans /llms.txt. Si vide, retombe sur la description du site.",
   "fieldSiteSeoReviewCadence": "Optimisation SEO par l’Agent",
-  "fieldSiteSeoReviewCadenceHint": "Compare le texte public à vos contenus. Vous prévient s’il est périmé. Ne change ni la visibilité ni le texte.",
+  "fieldSiteSeoReviewCadenceHint": "Compare le texte public à vos contenus. Vous prévient s’il est périmé ; Appliquer sur la notification l’enregistre. Ne change pas la visibilité tout seul.",
   "seoReviewOff": "Désactivé",
   "seoReviewDaily": "Tous les jours",
   "seoReviewWeekly": "Chaque semaine",

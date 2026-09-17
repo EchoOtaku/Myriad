@@ -65,6 +65,15 @@ describe('notificationSourceFor', () => {
       ),
       'heartbeat',
     )
+    assert.equal(
+      notificationSourceFor(
+        note({
+          notification_type: 'heartbeat_result',
+          metadata: { event_key: 'heartbeat.seo_review' },
+        }),
+      ),
+      'heartbeat',
+    )
   })
 })
 

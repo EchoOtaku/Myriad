@@ -843,7 +843,7 @@
   "fieldSiteAiIntro": "AI 사이트 소개",
   "fieldSiteAiIntroHint": "AI용 2–4문장(누구인지, 어떤 내용인지). /llms.txt에 씁니다. 비우면 사이트 설명을 씁니다.",
   "fieldSiteSeoReviewCadence": "Agent SEO 최적화",
-  "fieldSiteSeoReviewCadenceHint": "공개 문구를 내 공개 글과 맞춰 보고, 오래됐으면 알려 줍니다. 문구와 공개 범위는 알아서 바꾸지 않습니다.",
+  "fieldSiteSeoReviewCadenceHint": "공개 문구를 내 공개 글과 맞춰 보고, 오래됐으면 알려 줍니다. 알림에서 적용하면 저장됩니다. 공개 범위는 알아서 바꾸지 않습니다.",
   "seoReviewOff": "끄기",
   "seoReviewDaily": "매일",
   "seoReviewWeekly": "매주",

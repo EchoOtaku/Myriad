@@ -54,6 +54,8 @@ export function notificationFacingTitle(notification: AppNotification): string {
             ? notification.metadata.new_count
             : 0,
       })
+    case 'heartbeat.seo_review':
+      return t.noticeSeoReview
     case 'heartbeat.succeeded':
     case 'heartbeat.failed':
       return fill(t.noticeHeartbeatTask, {
@@ -264,6 +266,9 @@ export function notificationFacingBody(notification: AppNotification): string {
     return fill(t.noticeDeliveryFailedBody, {
       name: metaString(notification, 'target_domain') || 'remote',
     })
+  }
+  if (eventKey === 'heartbeat.seo_review') {
+    return notification.body
   }
   if (eventKey === 'skill.improved') {
     return t.noticeSkillImprovedBody
