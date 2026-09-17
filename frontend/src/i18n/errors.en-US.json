@@ -344,6 +344,8 @@
   "lyricsFailed": "Could not load lyrics ({status}).",
   "weatherFailed": "Could not load weather ({status}).",
   "widgetsLoadFailed": "Could not load widgets.",
+  "widgetRenderFailed": "Widget {id} failed to render.",
+  "pageRenderFailed": "This page failed to render.",
   "taskSubmitFailed": "Could not submit the task.",
   "notificationActionFailed": "Could not complete that notification action.",
   "settingsBackupPreviewFailed": "Could not preview this settings backup.",

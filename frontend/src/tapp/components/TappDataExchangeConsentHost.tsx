@@ -49,12 +49,11 @@ export function TappDataExchangeConsentHost() {
     getDataExchangeConsentSnapshot,
     getDataExchangeConsentSnapshot,
   )
-  const prepared = current?.prepared
-  if (!prepared || typeof document === 'undefined') return null
+  if (!current || typeof document === 'undefined') return null
   return (
     <I18nNamespace names={['tapp']}>
       <TappDataExchangeConsentDialog
-        prepared={prepared}
+        prepared={current.prepared}
         queuedCount={current.queuedCount}
       />
     </I18nNamespace>

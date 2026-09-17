@@ -344,6 +344,8 @@
   "lyricsFailed": "歌詞載入失敗（{status}）",
   "weatherFailed": "天氣獲取失敗（{status}）",
   "widgetsLoadFailed": "小元件載入失敗",
+  "widgetRenderFailed": "小元件 {id} 渲染出錯",
+  "pageRenderFailed": "頁面渲染出錯",
   "taskSubmitFailed": "任務提交失敗",
   "notificationActionFailed": "通知操作失敗",
   "settingsBackupPreviewFailed": "無法預覽這份設定備份",

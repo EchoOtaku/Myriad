@@ -7,7 +7,7 @@ import type { PhantasiTopic, TopicItem } from '../logic/topics'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { I18nNamespace, useI18n } from '../../../contexts/I18nContext'
+import { useI18n, withI18nNamespace } from '../../../contexts/I18nContext'
 import { useWidgetSize } from '../../../hooks/useWidgetSize'
 import { DEFAULT_THEME_COLOR } from '../constants'
 import { downgradeForBand } from '../logic/layout'
@@ -316,9 +316,7 @@ const PhantasiTopicWidgetBody = memo(
 
 PhantasiTopicWidgetBody.displayName = 'PhantasiTopicWidgetBody'
 
-/** 内置组件不在 /journal 路由下渲染，必须自带 phantasi 语言包边界。 */
-export const PhantasiTopicWidget = memo((props: WidgetComponentProps) => (
-  <I18nNamespace names={['phantasi']}>
-    <PhantasiTopicWidgetBody {...props} />
-  </I18nNamespace>
-))
+export const PhantasiTopicWidget = withI18nNamespace(
+  ['phantasi'],
+  PhantasiTopicWidgetBody,
+)

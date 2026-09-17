@@ -1,13 +1,18 @@
 import type { WidgetConfig, WidgetType } from './widgetGridTypes'
 import React, { Suspense, useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useI18n } from '../contexts/I18nContext'
 import { useWidgetDragCursor } from '../utils/widgetDragCursor'
 import { GRID_WIDGET_PAD_PX } from '../utils/widgetSizeScale'
+import { RenderErrorBoundary } from './RenderErrorBoundary'
 import {
   dragGhostContentSize,
   widgetDragGhostBox,
 } from './widgetPlacementPreview'
-import { WidgetErrorBoundary } from './widgets/shared/WidgetErrorBoundary'
+import {
+  widgetCrashDetail,
+  WidgetCrashFallback,
+} from './widgets/shared/WidgetCrashFallback'
 
 export const WidgetDragGhost = React.memo(({
   active,
@@ -37,6 +42,7 @@ export const WidgetDragGhost = React.memo(({
   gridHeight: number
   gridRectRef: React.RefObject<DOMRect | null>
 }) => {
+  const { t, format } = useI18n()
   const pos = useWidgetDragCursor()
   const [settleLanded, setSettleLanded] = useState(false)
   useLayoutEffect(() => {
@@ -85,7 +91,8 @@ export const WidgetDragGhost = React.memo(({
   const top = settleBox?.y ?? pos.y
   const width = settleBox?.width ?? floating.width
   const height = settleBox?.height ?? floating.height
-  const WidgetComponent = dragPreview.widgetType.component
+  const widgetType = dragPreview.widgetType
+  const WidgetComponent = widgetType.component
   const tileState = dragPreview.hasCollision
     ? 'is-blocked'
     : exiting
@@ -105,13 +112,24 @@ export const WidgetDragGhost = React.memo(({
         style={{ width, height }}
       >
         <Suspense fallback={null}>
-          <WidgetErrorBoundary resetKey={dragPreview.widgetType.id}>
+          <RenderErrorBoundary
+            source="widget"
+            resetKey={widgetType.id}
+            fallback={({ error }) => (
+              <WidgetCrashFallback
+                message={format(t.errors.widgetRenderFailed, {
+                  id: widgetType.id,
+                })}
+                detail={widgetCrashDetail(error)}
+              />
+            )}
+          >
             <WidgetComponent
               config={dragPreview.widgetConfig}
               isEditMode={false}
               isPreview={true}
             />
-          </WidgetErrorBoundary>
+          </RenderErrorBoundary>
         </Suspense>
       </div>
     </div>,

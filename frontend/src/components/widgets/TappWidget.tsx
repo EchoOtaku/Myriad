@@ -18,7 +18,7 @@ import {
 } from 'react'
 
 import { useNavigate } from 'react-router-dom'
-import { I18nNamespace, useI18n } from '../../contexts/I18nContext'
+import { useI18n, withI18nNamespace } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { TappIconBadge } from '../../tapp/components/TappIconBadge'
@@ -1079,12 +1079,4 @@ export const TappWidgetComponent = memo(
 
 TappWidgetComponent.displayName = 'TappWidgetComponent'
 
-function TappWidget(props: TappWidgetProps) {
-  return (
-    <I18nNamespace names={['tapp']}>
-      <TappWidgetComponent {...props} />
-    </I18nNamespace>
-  )
-}
-
-export default TappWidget
+export default withI18nNamespace(['tapp'], TappWidgetComponent)

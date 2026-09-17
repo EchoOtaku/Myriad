@@ -14,8 +14,8 @@ import {
   useNavigate,
 } from 'react-router-dom'
 import CustomScrollbar from './components/CustomScrollbar'
+import { RenderErrorBoundary } from './components/RenderErrorBoundary'
 import RouteLoader from './components/RouteLoader'
-import { WidgetErrorBoundary } from './components/widgets/shared/WidgetErrorBoundary'
 import { AgentGlobalActions } from './contexts/AgentGlobalActions'
 import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -315,25 +315,34 @@ function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   const { t } = useI18n()
   const location = useLocation()
   return (
-    <WidgetErrorBoundary
+    <RenderErrorBoundary
+      source="route"
       resetKey={location.pathname}
-      fallback={
-        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+      fallback={({ error, reset }) => (
+        <div
+          role="alert"
+          className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center"
+        >
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {t.errors.unknown}
+            {t.errors.pageRenderFailed}
           </p>
+          {import.meta.env.DEV && error ? (
+            <p className="max-w-lg truncate font-mono text-xs text-gray-400">
+              {error.message}
+            </p>
+          ) : null}
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={reset}
             className="rounded-lg bg-black/5 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-black/10 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/15"
           >
             {t.common.retry}
           </button>
         </div>
-      }
+      )}
     >
       {children}
-    </WidgetErrorBoundary>
+    </RenderErrorBoundary>
   )
 }
 

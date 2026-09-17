@@ -344,6 +344,8 @@
   "lyricsFailed": "歌词加载失败（{status}）",
   "weatherFailed": "天气获取失败（{status}）",
   "widgetsLoadFailed": "小组件加载失败",
+  "widgetRenderFailed": "小组件 {id} 渲染出错",
+  "pageRenderFailed": "页面渲染出错",
   "taskSubmitFailed": "任务提交失败",
   "notificationActionFailed": "通知操作失败",
   "settingsBackupPreviewFailed": "无法预览这份设置备份",

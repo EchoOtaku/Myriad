@@ -344,6 +344,8 @@
   "lyricsFailed": "Impossible de charger les paroles ({status}).",
   "weatherFailed": "Impossible de charger la météo ({status}).",
   "widgetsLoadFailed": "Impossible de charger les widgets.",
+  "widgetRenderFailed": "Le widget {id} n'a pas pu s'afficher.",
+  "pageRenderFailed": "Cette page n'a pas pu s'afficher.",
   "taskSubmitFailed": "Impossible de soumettre la tâche.",
   "notificationActionFailed": "Impossible de terminer cette action de notification.",
   "settingsBackupPreviewFailed": "Impossible d’apercevoir cette sauvegarde de paramètres.",

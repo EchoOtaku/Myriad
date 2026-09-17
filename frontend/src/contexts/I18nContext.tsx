@@ -237,8 +237,10 @@ export function useI18n(): I18nContextType {
   return useContext(I18nContext) ?? fallbackI18n()
 }
 
-/** Load domain catalogs for a subtree. Chrome stays on the outer provider.
- *  fallback must stay null: Agent chrome mounts this at the document root. */
+/**
+ * Load domain catalogs for a subtree. Chrome stays on the outer provider.
+ *  fallback must stay null: Agent chrome mounts this at the document root.
+ */
 export function I18nNamespace({
   names,
   children,
@@ -246,7 +248,6 @@ export function I18nNamespace({
   names: readonly ShellNamespace[]
   children: React.ReactNode
 }) {
-  const context = useI18n()
   return (
     <Suspense fallback={null}>
       <I18nNamespaceReady names={names}>{children}</I18nNamespaceReady>
@@ -274,6 +275,24 @@ function I18nNamespaceReady({
     [context, extras.tapp, extras.phantasi, extras.merope, extras.agentCaps],
   )
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
+}
+
+/**
+ * Off-route surfaces (home grid, control panel) must carry their own catalog.
+ */
+export function withI18nNamespace<P extends object>(
+  names: readonly ShellNamespace[],
+  Component: React.ComponentType<P>,
+) {
+  function Namespaced(props: P) {
+    return (
+      <I18nNamespace names={names}>
+        <Component {...props} />
+      </I18nNamespace>
+    )
+  }
+  Namespaced.displayName = `I18nNamespace(${Component.displayName || Component.name || 'Component'})`
+  return Namespaced
 }
 
 /** Opt into the settings namespace before rendering settings UI or its callbacks. */

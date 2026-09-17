@@ -344,6 +344,8 @@
   "lyricsFailed": "가사를 불러오지 못했어요 ({status}).",
   "weatherFailed": "날씨를 불러오지 못했어요 ({status}).",
   "widgetsLoadFailed": "위젯을 불러오지 못했어요.",
+  "widgetRenderFailed": "위젯 {id}을(를) 그리지 못했어요.",
+  "pageRenderFailed": "페이지를 그리지 못했어요.",
   "taskSubmitFailed": "작업을 제출하지 못했어요.",
   "notificationActionFailed": "그 알림 동작을 끝내지 못했어요.",
   "settingsBackupPreviewFailed": "이 설정 백업을 미리보지 못했어요.",

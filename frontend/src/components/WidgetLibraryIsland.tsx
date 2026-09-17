@@ -38,6 +38,7 @@ import {
   STANDARD_CELL_SIZE,
   widgetSizeSpan,
 } from '../utils/widgetSizeScale'
+import { RenderErrorBoundary } from './RenderErrorBoundary'
 import {
   widgetDisplayLabel,
   widgetLibraryKindSource,
@@ -51,7 +52,10 @@ import {
   widgetTypeMatchesLibrarySearch,
 } from './widgetLibrarySearch'
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
-import { WidgetErrorBoundary } from './widgets/shared/WidgetErrorBoundary'
+import {
+  widgetCrashDetail,
+  WidgetCrashFallback,
+} from './widgets/shared/WidgetCrashFallback'
 import './WidgetLibraryIsland.css'
 
 function libraryFilterLabel(
@@ -140,7 +144,7 @@ const WidgetLibraryTile = React.memo(
     onDragStart: (event: WidgetLibraryDragStartEvent, id: string) => void
   }) => {
     const WidgetComponent = widgetType.component
-    const { t } = useI18n()
+    const { t, format } = useI18n()
     const tileRef = useRef<HTMLDivElement>(null)
     const span = widgetSizeSpan(widgetType.defaultSize)
     const standard = {
@@ -182,20 +186,26 @@ const WidgetLibraryTile = React.memo(
             renderHeight={renderHeight}
             displayScale={displayScale}
           >
-            <WidgetErrorBoundary
+            <RenderErrorBoundary
+              source="widget"
               resetKey={`${widgetType.id}:preview`}
-              fallback={
-                <div className="flex h-full w-full items-center justify-center rounded-xl bg-black/5 px-2 text-center text-[10px] leading-tight text-gray-500 dark:bg-white/10 dark:text-gray-400">
-                  {t.errors.widgetsLoadFailed}
-                </div>
-              }
+              fallback={({ error, reset }) => (
+                <WidgetCrashFallback
+                  message={format(t.errors.widgetRenderFailed, {
+                    id: widgetType.id,
+                  })}
+                  retryLabel={t.common.retry}
+                  onRetry={reset}
+                  detail={widgetCrashDetail(error)}
+                />
+              )}
             >
               <WidgetComponent
                 config={previewConfig}
                 isEditMode={false}
                 isPreview={true}
               />
-            </WidgetErrorBoundary>
+            </RenderErrorBoundary>
           </LibraryPreviewSlot>
           <div className="widget-library-tile-frame" />
         </div>

@@ -8,7 +8,7 @@ import ts from 'typescript'
 const source = ts.createSourceFile('widgets.tsx', readFileSync(new URL('./useTappWidgets.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const names = new Set(['createTappWidgetType', 'resolveTappAccent', 'mapTappSize', 'mapTappSizes'])
 const body = source.statements.filter(node => ts.isFunctionDeclaration(node) && names.has(node.name?.text || '')).map(node => node.getText(source)).join('\n')
-const deps = { createElement: React.createElement, Suspense: React.Suspense, TappDefaultSkeleton: () => null, TappWidgetComponent: () => null, TAPP_SIZE_MAP: { '2x2': '2x2' } }
+const deps = { createElement: React.createElement, Suspense: React.Suspense, TappDefaultSkeleton: () => null, TappWidget: () => null, TAPP_SIZE_MAP: { '2x2': '2x2' } }
 const factory = compileFunction(`${ts.transpile(body)}; return createTappWidgetType;`, Object.keys(deps))(...Object.values(deps))
 
 test('registry metadata refresh preserves React component identity and updates metadata', () => {
@@ -21,8 +21,6 @@ test('registry metadata refresh preserves React component identity and updates m
 
 test('lazy-loads the default TappWidget export so the tapp namespace boundary stays', () => {
   const raw = readFileSync(new URL('./useTappWidgets.ts', import.meta.url), 'utf8')
-  // The named TappWidgetComponent is the raw component; only the default export
-  // wraps it in I18nNamespace names={['tapp']}. Bypassing it makes t.tapp undefined.
-  assert.match(raw, /default:\s*m\.default/)
-  assert.doesNotMatch(raw, /default:\s*m\.TappWidgetComponent/)
+  assert.match(raw, /lazy\(\(\) => import\('\.\.\/components\/widgets\/TappWidget'\)\)/)
+  assert.doesNotMatch(raw, /m\.TappWidgetComponent/)
 })

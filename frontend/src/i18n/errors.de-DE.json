@@ -344,6 +344,8 @@
   "lyricsFailed": "Lyrics konnten nicht geladen werden ({status}).",
   "weatherFailed": "Wetter konnte nicht geladen werden ({status}).",
   "widgetsLoadFailed": "Widgets konnten nicht geladen werden.",
+  "widgetRenderFailed": "Widget {id} konnte nicht dargestellt werden.",
+  "pageRenderFailed": "Diese Seite konnte nicht dargestellt werden.",
   "taskSubmitFailed": "Die Aufgabe konnte nicht übermittelt werden.",
   "notificationActionFailed": "Diese Benachrichtigungsaktion konnte nicht abgeschlossen werden.",
   "settingsBackupPreviewFailed": "Diese Einstellungs-Sicherung konnte nicht in der Vorschau angezeigt werden.",

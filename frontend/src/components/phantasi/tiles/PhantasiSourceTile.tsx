@@ -11,7 +11,7 @@ import { memo, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../../contexts/AuthContext'
-import { I18nNamespace, useI18n } from '../../../contexts/I18nContext'
+import { useI18n, withI18nNamespace } from '../../../contexts/I18nContext'
 import { isExlight, useAnimationLevel } from '../../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../../hooks/useWidgetSize'
 import { formatMessage, localeOrFallback } from '../../../i18n'
@@ -1039,9 +1039,7 @@ const PhantasiSourceWidgetBody = memo(
 
 PhantasiSourceWidgetBody.displayName = 'PhantasiSourceWidgetBody'
 
-/** 内置组件不在 /journal 路由下渲染，必须自带 phantasi 语言包边界。 */
-export const PhantasiSourceWidget = memo((props: WidgetComponentProps) => (
-  <I18nNamespace names={['phantasi']}>
-    <PhantasiSourceWidgetBody {...props} />
-  </I18nNamespace>
-))
+export const PhantasiSourceWidget = withI18nNamespace(
+  ['phantasi'],
+  PhantasiSourceWidgetBody,
+)

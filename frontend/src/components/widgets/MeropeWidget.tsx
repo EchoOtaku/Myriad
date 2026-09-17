@@ -12,7 +12,7 @@ import {
   useState,
 } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { I18nNamespace, useI18n } from '../../contexts/I18nContext'
+import { useI18n, withI18nNamespace } from '../../contexts/I18nContext'
 import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace } from '../../features/merope/api'
@@ -458,8 +458,6 @@ const MeropeWidgetBody = memo(
   },
 )
 
-export const MeropeWidget = memo((props: WidgetComponentProps) => (
-  <I18nNamespace names={['merope']}>
-    <MeropeWidgetBody {...props} />
-  </I18nNamespace>
-))
+MeropeWidgetBody.displayName = 'MeropeWidgetBody'
+
+export const MeropeWidget = withI18nNamespace(['merope'], MeropeWidgetBody)

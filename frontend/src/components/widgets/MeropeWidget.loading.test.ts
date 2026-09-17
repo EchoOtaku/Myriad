@@ -30,7 +30,7 @@ test('persona skeleton covers slow portraits; timeout exposes a working retry', 
   const face = async () => { requests++; return { manifest: null, portraitUrl: '/portrait.png' } }
   // Keep widget, presence, skeleton, and static-image lifecycle real; isolate external stores and GPU.
   const boundaries: Record<string, string> = {
-    I18nContext: `export const useI18n = () => ({t: {common: {loading: 'Loading', retry: 'Retry'}, widgets: {agentPersona: 'Persona'}, merope: {title: 'Persona', loadFailed: 'Load failed', assetEmpty: 'Empty'}}})`,
+    I18nContext: `export const useI18n = () => ({t: {common: {loading: 'Loading', retry: 'Retry'}, widgets: {agentPersona: 'Persona'}, merope: {title: 'Persona', loadFailed: 'Load failed', assetEmpty: 'Empty'}}}); export function withI18nNamespace(_names, Component) { return Component }`,
     AuthContext: 'export const useAuth = () => ({hasChecked: false})',
     api: 'export const getSiteFace = TestFace',
     agent: 'export const agentService = {}',

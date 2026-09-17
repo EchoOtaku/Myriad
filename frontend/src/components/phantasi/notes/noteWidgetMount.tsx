@@ -4,12 +4,13 @@
  * 换 innerHTML 必须走 replaceNoteHtml，写完再补挂，避免 portal 还指着旧节点。
  */
 
-import type { ErrorInfo, ReactNode, RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { WidgetConfig, WidgetSize, WidgetType } from '../../widgetGridTypes'
 import type { NoteWidgetConfig } from './noteLayout'
-import { Component, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
+import { RenderErrorBoundary } from '../../RenderErrorBoundary'
 import { widgetHostConfig } from '../../widgetLibraryModel'
 import {
   decodeWidgetConfigAttr,
@@ -46,28 +47,6 @@ export interface NoteWidgetHydrateOptions {
 export interface NoteWidgetHydration {
   portals: ReactNode
   refresh: () => void
-}
-
-class NoteWidgetGuard extends Component<
-  { missingLabel: string; children: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false }
-
-  static getDerivedStateFromError(): { failed: boolean } {
-    return { failed: true }
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[note-widget]', error, info.componentStack)
-  }
-
-  render() {
-    if (this.state.failed) {
-      return <div className="note-widget__missing">{this.props.missingLabel}</div>
-    }
-    return this.props.children
-  }
 }
 
 function noteWidgetConfig(
@@ -118,7 +97,10 @@ function NoteWidgetSlot({
   }
   const WidgetComponent = widgetType.component
   return (
-    <NoteWidgetGuard missingLabel={missingLabel}>
+    <RenderErrorBoundary
+      source="note-widget"
+      fallback={<div className="note-widget__missing">{missingLabel}</div>}
+    >
       <Suspense fallback={null}>
         <WidgetComponent
           config={config}
@@ -127,7 +109,7 @@ function NoteWidgetSlot({
           onConfigChange={onConfigChange}
         />
       </Suspense>
-    </NoteWidgetGuard>
+    </RenderErrorBoundary>
   )
 }
 

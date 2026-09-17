@@ -344,6 +344,8 @@
   "lyricsFailed": "歌詞を読み込めませんでした（{status}）。",
   "weatherFailed": "天気を取得できませんでした（{status}）。",
   "widgetsLoadFailed": "ウィジェットを読み込めませんでした。",
+  "widgetRenderFailed": "ウィジェット {id} の描画に失敗しました。",
+  "pageRenderFailed": "ページの描画に失敗しました。",
   "taskSubmitFailed": "タスクを送信できませんでした。",
   "notificationActionFailed": "通知の操作に失敗しました。",
   "settingsBackupPreviewFailed": "この設定バックアップをプレビューできません。",
