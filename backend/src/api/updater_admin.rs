@@ -645,24 +645,31 @@ pub async fn diagnostics() -> Response {
 }
 
 pub async fn process_logs() -> Response {
-    let c = match require_mutate() {
-        Ok(c) => c,
-        Err(r) => return *r,
-    };
-    match c.get_json("/process-logs").await {
-        Ok(value) => {
-            let mut response = Json(value).into_response();
-            response.headers_mut().insert(
-                header::CACHE_CONTROL,
-                HeaderValue::from_static("no-store, private"),
-            );
-            response
-                .headers_mut()
-                .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
-            response
+    let Some(c) = client() else {
+        if crate::api::process_logs::available() {
+            return no_store_json(crate::api::process_logs::export().await);
         }
+        return *require_mutate().expect_err("missing updater client must fail");
+    };
+    if !c.can_mutate() {
+        return auth_missing();
+    }
+    match c.get_json("/process-logs").await {
+        Ok(value) => no_store_json(value),
         Err(e) => err_to_response(e),
     }
+}
+
+fn no_store_json(value: impl serde::Serialize) -> Response {
+    let mut response = Json(value).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, private"),
+    );
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    response
 }
 
 pub async fn exit_maintenance(headers: HeaderMap) -> Response {

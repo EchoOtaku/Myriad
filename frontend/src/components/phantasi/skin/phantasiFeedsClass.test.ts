@@ -49,8 +49,27 @@ describe('phantasi feeds 入场 class 链', () => {
   it('AI 主题卡按需加载自己的文章组', () => {
     const page = read('../useBoardPage.ts')
     assert.match(page, /if \(isTopicFeedId\(sourceId\)\)/)
-    assert.match(page, /loadTopicStories\(topic\)/)
+    assert.match(page, /loadTopicStories\(topic, signal\)/)
     assert.match(page, /topicStoriesRef\.current\.get\(name\)/)
+  })
+
+  it('错开的重叠窗口会把旧空壳补成实卡', () => {
+    const stories = read('PhantasiFeedsStories.tsx')
+    assert.match(stories, /const hydrate = !reset && storyRangeNeedsHydration/)
+    assert.match(stories, /key=\{`\$\{grid\.from\}:\$\{paintTo\}:live:\$\{paintLive\}`\}/)
+  })
+
+  it('预热缓存不保留会隐藏整张卡的 hold 节点', () => {
+    const stories = read('PhantasiFeedsStories.tsx')
+    assert.match(stories, /if \(col <= holdAt\) \{\s+prebuilt\.set/)
+    assert.doesNotMatch(stories, /prebuilt\.set\([\s\S]{0,400}holdCover=\{col > holdAt\}/)
+    assert.doesNotMatch(stories, /col > eagerBand\.to \|\|/)
+  })
+
+  it('复用 DOM 空壳时清掉上一张卡的预热与主题状态', () => {
+    const rail = read('railPan.ts')
+    assert.match(rail, /else el\.style\.removeProperty\?\.\('--story-topic'\)/)
+    assert.match(rail, /function recycleStoryShell[\s\S]{0,160}eagerStories\.delete\(el\)/)
   })
 
   it('文章轨虚拟化样式不依赖展开宫格', () => {

@@ -23,6 +23,7 @@ import {
   useState,
 } from 'react'
 import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
+import { ApiError } from '../../services/api'
 import { fetchJson } from '../../utils/apiHelper'
 import { getBuildInfo } from '../../utils/buildInfo'
 import { userFacingError } from '../../utils/userFacingError'
@@ -124,7 +125,7 @@ interface ProcessLogExport {
   format: 'myriad-process-log-export'
   schema_version: number
   generated_at: string
-  sources: unknown[]
+  sources: Array<{ entries?: unknown[] }>
   collection_errors: unknown[]
   omitted_sources: unknown[]
 }
@@ -512,12 +513,19 @@ export default function RuntimeDiagnostics({
       onMessage?.(
         report.collection_errors.length > 0
           ? t.config.processLogsExportPartial
-          : t.config.processLogsExportSuccess,
+          : report.sources.some(
+                (source) =>
+                  Array.isArray(source.entries) && source.entries.length > 0,
+              )
+            ? t.config.processLogsExportSuccess
+            : t.config.processLogsExportEmpty,
         report.collection_errors.length > 0 ? 'warning' : 'success',
       )
     } catch (exportError) {
       onMessage?.(
-        userFacingError(exportError, t.config.processLogsExportFailed),
+        exportError instanceof ApiError && exportError.status === 404
+          ? t.config.processLogsExportUnavailable
+          : userFacingError(exportError, t.config.processLogsExportFailed),
         'error',
       )
     } finally {

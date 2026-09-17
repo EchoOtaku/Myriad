@@ -146,7 +146,7 @@ export const PhantasiFeaturedWidget = memo(
           now={now}
           emptyHint={t.phantasi.emptyNoSources}
           onOpenSource={
-            locked ? undefined : (s) => navigate(`/journal/feeds/${s.id}`)
+            locked ? undefined : (s) => navigate('/journal', { state: { journalSourceId: s.id } })
           }
           onOpenTopic={
             locked

@@ -451,6 +451,21 @@ export function extendPaintedRange<T>(
   return next
 }
 
+export function storyRangeNeedsHydration(
+  prev: { from: number; to: number },
+  next: { from: number; to: number },
+  prevLive: number,
+  nextLive: number,
+): boolean {
+  return (
+    nextLive > prevLive
+    && prev.from <= prev.to
+    && next.from <= next.to
+    && next.from <= prev.to
+    && next.to >= prev.from
+  )
+}
+
 /** 整批还在窗里就原样留下；只切到边上的那批。 */
 export function clipPaintedBatches<
   T,

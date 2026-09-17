@@ -14,7 +14,7 @@ import { decideNavWrite, decidePathSync } from './logic/boardRouteSync'
 import {
   JOURNAL_ROOT,
   journalListPath,
-  journalSourcePath,
+  journalSourceFocus,
   journalTopicPath,
   parseJournalPath,
   WORKBENCH_PANE_PATHS,
@@ -53,12 +53,6 @@ function applyLocationState(
     setRailFocusId(null)
     return
   }
-  if (loc.kind === 'source') {
-    applyBoardEntry({ view: 'sources', board: 'feeds' })
-    setSelectedTopic(null)
-    setRailFocusId(loc.sourceId)
-    return
-  }
   if (loc.kind === 'notes') {
     applyBoardEntry({ view: 'sources', board: 'notes' })
     setSelectedTopic(null)
@@ -73,7 +67,6 @@ function applyLocationState(
   }
   applyBoardEntry({ view: 'sources', board: 'feeds' })
   setSelectedTopic(null)
-  setRailFocusId(null)
 }
 
 export function usePhantasiBoardRoute(
@@ -84,6 +77,7 @@ export function usePhantasiBoardRoute(
   setActiveId: (id: string) => void,
   pathname: string,
   navigate: (to: string, opts?: { replace?: boolean }) => void,
+  locationState?: unknown,
 ) {
   const [viewMode, setViewMode] = useState<PhantasiViewMode>('sources')
   const [board, setBoard] = useState<PhantasiBoard>('feeds')
@@ -98,6 +92,8 @@ export function usePhantasiBoardRoute(
   const pendingPathSyncRef = useRef<PendingPathSync | null>(null)
   const pathnameRef = useRef(pathname)
   pathnameRef.current = pathname
+  const entrySourceId = journalSourceFocus(locationState)
+  const appliedEntryRef = useRef<unknown>(undefined)
 
   const applyBoardEntry = useCallback(
     (entry: PhantasiBoardEntry) => {
@@ -143,6 +139,10 @@ export function usePhantasiBoardRoute(
         setWorkbenchPaneState,
         setViewMode,
       )
+      if (loc.kind === 'feeds' && entrySourceId != null && appliedEntryRef.current !== locationState) {
+        appliedEntryRef.current = locationState
+        setRailFocusId(entrySourceId)
+      }
     }
 
     prevActiveIdRef.current = sync.navId
@@ -155,7 +155,7 @@ export function usePhantasiBoardRoute(
     } else {
       pendingPathSyncRef.current = null
     }
-  }, [pathname, isAuthenticated, isAdmin, visibleNavIds, setActiveId, navigate])
+  }, [pathname, entrySourceId, locationState, isAuthenticated, isAdmin, visibleNavIds, setActiveId, navigate])
 
   useEffect(() => {
     const decision = decideNavWrite({
@@ -194,15 +194,9 @@ export function usePhantasiBoardRoute(
 
   const focusSource = useCallback(
     (source: PhantasiSource | null) => {
-      if (!source) {
-        setRailFocusId(null)
-        navigate(JOURNAL_ROOT)
-        return
-      }
-      setRailFocusId(source.id)
-      navigate(journalSourcePath(source.id))
+      setRailFocusId(source?.id ?? null)
     },
-    [navigate],
+    [],
   )
 
   const backFromTopic = useCallback(() => {
@@ -225,7 +219,6 @@ export function usePhantasiBoardRoute(
     viewMode,
     board,
     topic: selectedTopic?.key,
-    sourceId: viewMode === 'sources' ? railFocusId : null,
     workbenchPane,
   })
 

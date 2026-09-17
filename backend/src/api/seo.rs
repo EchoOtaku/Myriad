@@ -6,7 +6,7 @@
 //! - Tapp: site-owner public install with `visibility = all`
 //! - Phantasi: only sources categorized as site-owner original content (`我`);
 //! never index friend-links or third-party RSS items
-//! - Syndicated journal URLs (`/journal/feeds/{id}`, `/journal/topics/{topic}`)
+//! - Syndicated journal topic URLs (`/journal/topics/{topic}`)
 //! are linkable crawler shells: `noindex, follow`, no sitemap, no reprinted bodies
 //!
 //! Ordinary browsers get the SPA via the proxy. The frontend process stamps site
@@ -350,7 +350,6 @@ pub(crate) fn is_seo_document_shell_path(path: &str) -> bool {
             | "/reports"
     ) || path.starts_with("/tapp/run/")
         || path.starts_with("/journal/articles/")
-        || path.starts_with("/journal/feeds/")
         || path.starts_with("/journal/topics/")
 }
 
@@ -594,22 +593,6 @@ fn absolute_share_image(base: &str, raw: &str) -> Option<String> {
         return Some(format!("{base}{t}"));
     }
     None
-}
-
-fn public_http_href(raw: Option<&str>) -> Option<&str> {
-    let t = raw?.trim();
-    if t.len() > 2048 {
-        return None;
-    }
-    if !(t.starts_with("https://") || t.starts_with("http://")) {
-        return None;
-    }
-    if t.bytes()
-        .any(|b| b < 0x20 || matches!(b, b'<' | b'>' | b'"' | b'\''))
-    {
-        return None;
-    }
-    Some(t)
 }
 
 fn syndication_robots(site_noindex: bool) -> Option<&'static str> {
@@ -1688,7 +1671,6 @@ fn render_journal_syndication_seo_html(
     heading: &str,
     intro: &str,
     path: &str,
-    original_href: Option<&str>,
     branding: &SiteBranding,
     chrome: &SeoChrome,
 ) -> String {
@@ -1701,18 +1683,10 @@ fn render_journal_syndication_seo_html(
     } else {
         intro
     };
-    let original = match original_href {
-        Some(href) => format!(
-            "    <p><a href=\"{href}\" rel=\"noopener noreferrer\">Original site</a></p>\n",
-            href = html_escape(href),
-        ),
-        None => String::new(),
-    };
     let body_inner = format!(
-        "    <h1>{heading}</h1>\n    <p>{intro}</p>\n{original}    <p><a href=\"/journal\">Journal</a></p>\n",
+        "    <h1>{heading}</h1>\n    <p>{intro}</p>\n    <p><a href=\"/journal\">Journal</a></p>\n",
         heading = html_escape(heading),
         intro = html_escape(desc),
-        original = original,
     );
     render_seo_html(SeoDocument {
         title: &title,
@@ -1727,67 +1701,6 @@ fn render_journal_syndication_seo_html(
         extra_head: "",
         chrome,
     })
-}
-
-/// GET /journal/feeds/{source_id} — linkable, not indexed. No reprinted entries.
-pub async fn journal_source_seo_html(
-    State(db): State<DatabaseConnection>,
-    headers: HeaderMap,
-    Path(source_id): Path<i32>,
-) -> Response {
-    if source_id <= 0 {
-        return html_response(
-            StatusCode::BAD_REQUEST,
-            simple_error_html("Bad request", "Invalid feed id."),
-        );
-    }
-    if !phantasi_module_open_to_guests(&db).await {
-        return module_not_found();
-    }
-    let source = match phantasi_sources::Entity::find_by_id(source_id)
-        .one(&db)
-        .await
-    {
-        Ok(row) => row,
-        Err(_) => {
-            return html_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                simple_error_html("Error", "Unable to load feed metadata."),
-            );
-        }
-    };
-    let Some(source) = source else {
-        return html_response(
-            StatusCode::NOT_FOUND,
-            simple_error_html("Not found", "This feed is not available."),
-        );
-    };
-    if source.admin_only || !source.enabled {
-        return html_response(
-            StatusCode::NOT_FOUND,
-            simple_error_html("Not found", "This feed is not available."),
-        );
-    }
-    let branding = load_site_branding(&db).await;
-    let chrome = seo_chrome(&branding, &headers);
-    let heading = if source.name.trim().is_empty() {
-        "Feed"
-    } else {
-        source.name.trim()
-    };
-    let intro = source
-        .description
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| strip_html_snippet(s, 160))
-        .unwrap_or_else(|| "A subscribed feed. Entries come from another site.".to_string());
-    let original = public_http_href(source.site_url.as_deref());
-    let path = format!("/journal/feeds/{source_id}");
-    html_response(
-        StatusCode::OK,
-        render_journal_syndication_seo_html(heading, &intro, &path, original, &branding, &chrome),
-    )
 }
 
 const TOPIC_KEY_MAX: usize = 80;
@@ -1817,7 +1730,6 @@ pub async fn journal_topic_seo_html(
             key,
             "A subscribed topic. Entries come from other sites.",
             &path,
-            None,
             &branding,
             &chrome,
         ),
@@ -2032,7 +1944,7 @@ pub async fn sitemap_xml(State(db): State<DatabaseConnection>, _headers: HeaderM
                 lastmod: None,
                 changefreq: Some(freq),
             });
-            // Own writing indexes only. `/journal/feeds/{id}` and `/journal/topics/*`
+            // Own writing indexes only. `/journal/topics/*`
             // are linkable but stay out of the sitemap.
             if key == "phantasi" {
                 for extra in ["/journal/notes", "/journal/friends"] {
@@ -2430,7 +2342,7 @@ mod tests {
         assert!(is_seo_document_shell_path("/tapp/run/com.example"));
         assert!(is_seo_document_shell_path("/journal/articles/1"));
         assert!(is_seo_document_shell_path("/journal/notes"));
-        assert!(is_seo_document_shell_path("/journal/feeds/9"));
+        assert!(!is_seo_document_shell_path("/journal/feeds/9"));
         assert!(is_seo_document_shell_path("/journal/topics/ai"));
         assert!(!is_seo_document_shell_path("/phantasi"));
         assert!(!is_seo_document_shell_path("/phantasi/item/1"));
@@ -2454,10 +2366,9 @@ mod tests {
             google_site_verification: String::new(),
         };
         let html = render_journal_syndication_seo_html(
-            "Example Feed",
-            "A subscribed feed. Entries come from another site.",
-            "/journal/feeds/9",
-            Some("https://example.test/"),
+            "Example Topic",
+            "A subscribed topic. Entries come from other sites.",
+            "/journal/topics/example",
             &branding,
             &SeoChrome::default(),
         );
@@ -2465,19 +2376,7 @@ mod tests {
         assert!(html.contains("noindex, follow"));
         assert!(!html.contains("noindex, nofollow"));
         assert!(!html.contains("<article>"));
-        assert!(html.contains("Original site"));
-        assert!(html.contains("https://example.test/"));
+        assert!(html.contains("Example Topic"));
         assert!(!html.contains("javascript:"));
-    }
-
-    #[test]
-    fn public_http_href_rejects_non_http() {
-        assert_eq!(
-            public_http_href(Some("https://ok.test/x")),
-            Some("https://ok.test/x")
-        );
-        assert_eq!(public_http_href(Some("javascript:alert(1)")), None);
-        assert_eq!(public_http_href(Some("/relative")), None);
-        assert_eq!(public_http_href(Some("https://x.test/\"q")), None);
     }
 }

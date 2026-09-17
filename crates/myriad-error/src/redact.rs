@@ -66,13 +66,28 @@ pub fn redact_secrets(input: &str) -> String {
             }
         }
     }
-    // Bearer before Authorization so "Authorization: Bearer <token>" loses the token first.
+    for prefix in [
+        "Authorization:",
+        "authorization:",
+        "AUTHORIZATION:",
+        "\"Authorization\":",
+        "\"authorization\":",
+        "\"AUTHORIZATION\":",
+        "'Authorization':",
+        "'authorization':",
+        "'AUTHORIZATION':",
+        "Proxy-Authorization:",
+        "proxy-authorization:",
+        "PROXY-AUTHORIZATION:",
+    ] {
+        out = redact_line_remainder(&out, prefix);
+    }
+    // Also catch standalone bearer values and internal capability headers.
     out = redact_pattern(&out, "Bearer ");
     out = redact_pattern(&out, "X-Update-Token:");
     out = redact_pattern(&out, "X-Updater-Gateway-Secret:");
     out = redact_pattern(&out, "X-Setup-Secret:");
     out = redact_pattern(&out, "X-Bootstrap-Token:");
-    out = redact_pattern(&out, "Authorization:");
     for key in SECRET_ASSIGNMENT_KEYS {
         out = redact_kv_assignment(&out, key);
     }
@@ -90,13 +105,12 @@ fn redact_pattern(input: &str, prefix: &str) -> String {
         out.push_str(prefix);
         let after = &rest[idx + prefix.len()..];
         let after_l = &rest_lower[idx + pref_lower.len()..];
-        let trim_start = after.chars().take_while(|c| c.is_whitespace()).count();
+        let trim_start = prefix_len_while(after, char::is_whitespace);
         out.push_str(&after[..trim_start]);
         let token_part = &after[trim_start..];
-        let token_len = token_part
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != '"' && *c != '\'' && *c != ',' && *c != '}')
-            .count();
+        let token_len = prefix_len_while(token_part, |c| {
+            !c.is_whitespace() && c != '"' && c != '\'' && c != ',' && c != '}'
+        });
         if token_len > 0 {
             out.push_str("[REDACTED]");
         }
@@ -117,10 +131,9 @@ fn redact_kv_assignment(input: &str, key: &str) -> String {
         out.push_str(&rest[..idx + needle.len()]);
         let after = &rest[idx + needle.len()..];
         let after_l = &rest_lower[idx + needle.len()..];
-        let val_len = after
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != '&' && *c != '"' && *c != '\'' && *c != ',')
-            .count();
+        let val_len = prefix_len_while(after, |c| {
+            !c.is_whitespace() && c != '&' && c != '"' && c != '\'' && c != ','
+        });
         if val_len > 0 {
             out.push_str("[REDACTED]");
         }
@@ -129,6 +142,28 @@ fn redact_kv_assignment(input: &str, key: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+fn redact_line_remainder(input: &str, prefix: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(index) = rest.find(prefix) {
+        let value_start = index + prefix.len();
+        out.push_str(&rest[..value_start]);
+        out.push_str("[REDACTED]");
+        let after = &rest[value_start..];
+        let line_end = after.find('\n').unwrap_or(after.len());
+        rest = &after[line_end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn prefix_len_while(input: &str, predicate: impl Fn(char) -> bool) -> usize {
+    input
+        .char_indices()
+        .find_map(|(index, character)| (!predicate(character)).then_some(index))
+        .unwrap_or(input.len())
 }
 
 #[cfg(test)]
@@ -147,6 +182,23 @@ mod tests {
         let r = redact_secrets("header X-Setup-Secret: abcdefghijklmnop");
         assert!(!r.contains("abcdefghijklmnop"));
         assert!(r.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redacts_complete_authorization_values_and_non_ascii_assignments() {
+        for value in [
+            "Authorization: Basic dXNlcjpwYXNz",
+            r#"{"Authorization":"Digest username=\"u\", response=\"secret\""}"#,
+            "Authorization: AWS4-HMAC Credential=x, Signature=secret",
+            "token=秘密",
+        ] {
+            let redacted = redact_secrets(value);
+            assert!(!redacted.contains("dXNlcjpwYXNz"), "{redacted}");
+            assert!(!redacted.contains("response="), "{redacted}");
+            assert!(!redacted.contains("Signature="), "{redacted}");
+            assert!(!redacted.contains("秘密"), "{redacted}");
+            assert!(redacted.contains("[REDACTED]"), "{redacted}");
+        }
     }
 
     #[test]

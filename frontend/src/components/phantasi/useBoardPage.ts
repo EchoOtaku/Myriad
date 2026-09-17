@@ -4,7 +4,7 @@ import type { PhantasiBoard, SourceSortMode } from './logic/board'
 import type { FeedStory, FeedStorySlot } from './logic/feedStories'
 import type { HomeBoardNote } from './logic/homeBoard'
 import type { PhantasiViewerRole } from './logic/score'
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
 
@@ -180,6 +180,7 @@ export function useFeedStories(
   sourcesRef.current = sources
   const inflightRef = useRef(new Set<string>())
   const fetchLiveRef = useRef(true)
+  const readControllerRef = useRef(new AbortController())
   const quietRef = useRef(false)
   const pendingBumpRef = useRef(false)
   const queuedRef = useRef(false)
@@ -237,11 +238,13 @@ export function useFeedStories(
           && !topicInflightRef.current.has(topic)
         ) {
           const generation = topicGenerationRef.current
+          const signal = readControllerRef.current.signal
           topicInflightRef.current.add(topic)
-          void loadTopicStories(topic)
+          void loadTopicStories(topic, signal)
             .then((items) => {
               if (
                 fetchLiveRef.current
+                && !signal.aborted
                 && generation === topicGenerationRef.current
               ) {
                 topicStoriesRef.current.set(topic, items)
@@ -265,16 +268,17 @@ export function useFeedStories(
     )
   }, [bump])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     topicGenerationRef.current += 1
     topicStoriesRef.current.clear()
     topicInflightRef.current.clear()
-  }, [board, stampKey])
-
-  useEffect(() => {
+    const controller = new AbortController()
+    readControllerRef.current = controller
     fetchLiveRef.current = true
     return () => {
       fetchLiveRef.current = false
+      controller.abort()
+      inflightRef.current.clear()
     }
   }, [board, stampKey])
 
@@ -294,8 +298,10 @@ export function useFeedStories(
       if (exact || slot?.stamp === stamp) continue
       if (inflightRef.current.has(key)) continue
       inflightRef.current.add(key)
-      void loadFeedStories(source.id, stamp)
+      const signal = readControllerRef.current.signal
+      void loadFeedStories(source.id, stamp, signal)
         .then((items) => {
+          if (signal.aborted) return
           inflightRef.current.delete(key)
           const current = sourcesRef.current.find((entry) => entry.id === source.id)
           if (!fetchLiveRef.current) return
@@ -304,7 +310,7 @@ export function useFeedStories(
           bump()
         })
         .catch(() => {
-          inflightRef.current.delete(key)
+          if (!signal.aborted) inflightRef.current.delete(key)
         })
     }
   }, [board, stampKey, cover, bump])

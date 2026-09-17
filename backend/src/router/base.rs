@@ -445,10 +445,6 @@ pub(super) fn build_base_api_router(
                 .route("/journal", get(api::seo::phantasi_list_seo_html))
                 .route("/journal/feeds", get(api::seo::journal_feeds_list_seo_html))
                 .route(
-                    "/journal/feeds/{source_id}",
-                    get(api::seo::journal_source_seo_html),
-                )
-                .route(
                     "/journal/topics/{topic}",
                     get(api::seo::journal_topic_seo_html),
                 )

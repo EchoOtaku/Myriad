@@ -25,8 +25,8 @@ describe('decidePathSync', () => {
       navId: 'sites',
     })
     assert.deepEqual(decideVisitorPath('/journal/feeds/48'), {
-      action: 'apply',
-      navId: 'feeds',
+      action: 'bounce',
+      to: '/journal',
     })
     assert.deepEqual(decideVisitorPath('/journal/topics/ai'), {
       action: 'apply',
@@ -127,9 +127,8 @@ describe('decideNavWrite', () => {
     assert.equal(landed.applyBoard, false)
   })
 
-  it('刷新源/主题/文章：高亮已是 feeds，不改地址', () => {
+  it('刷新主题/文章：高亮已是 feeds，不改地址', () => {
     for (const pathname of [
-      '/journal/feeds/48',
       '/journal/topics/ai',
       '/journal/articles/946',
     ]) {
@@ -199,7 +198,7 @@ describe('pathShowsNavId after article overlay', () => {
   it('文章不算已经停在任何板块首页', () => {
     assert.equal(pathShowsNavId('/journal/articles/1', 'feeds'), false)
     assert.equal(pathShowsNavId('/journal/articles/1', 'notes'), false)
-    assert.equal(pathShowsNavId('/journal/feeds/9', 'feeds'), true)
+    assert.equal(pathShowsNavId('/journal/feeds/9', 'feeds'), false)
     assert.equal(
       pathForActiveIdChange('/journal/articles/1', 'feeds', false),
       '/journal',

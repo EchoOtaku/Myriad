@@ -744,7 +744,6 @@ fn is_seo_document_shell_path(path: &str) -> bool {
             | "/reports"
     ) || path.starts_with("/tapp/run/")
         || path.starts_with("/journal/articles/")
-        || path.starts_with("/journal/feeds/")
         || path.starts_with("/journal/topics/")
 }
 
@@ -1679,7 +1678,7 @@ mod tests {
         ));
         assert!(!is_backend_path("/tapp/run/com.example.app", browser));
         assert!(is_backend_path("/journal/articles/42", googlebot));
-        assert!(is_backend_path("/journal/feeds/9", googlebot));
+        assert!(!is_backend_path("/journal/feeds/9", googlebot));
         assert!(is_backend_path("/journal/topics/ai", googlebot));
         assert!(!is_backend_path("/journal/feeds/9", browser));
         assert!(!is_backend_path("/journal/workbench/feeds", googlebot));

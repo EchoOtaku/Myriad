@@ -31,6 +31,7 @@ import {
   storyColumnShift,
   storyRailGroup,
   storyRailSlots,
+  storyRangeNeedsHydration,
   storySlotAtColumn,
   storySlotsByColumn,
   toFeedStory,
@@ -562,6 +563,27 @@ describe('feed span / stitch', () => {
     ]
     assert.equal(storyColumnShift(prev, next, 3), 1)
     assert.equal(storyColumnShift(prev, next, 5), 2)
+  })
+
+  it('虚拟窗口错开但重叠时补绘旧空壳列', () => {
+    assert.equal(
+      storyRangeNeedsHydration(
+        { from: 1, to: 16 },
+        { from: 9, to: 25 },
+        11,
+        20,
+      ),
+      true,
+    )
+    assert.equal(
+      storyRangeNeedsHydration(
+        { from: 1, to: 8 },
+        { from: 31, to: 36 },
+        8,
+        36,
+      ),
+      false,
+    )
   })
 })
 

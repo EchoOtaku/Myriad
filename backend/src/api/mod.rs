@@ -29,6 +29,7 @@ pub mod oauth; // generic OAuth via /api/auth/oauth/:slug/*
 pub mod phantasi;
 pub mod phantasiai;
 pub mod platforms;
+pub mod process_logs;
 pub mod profile;
 pub mod profile_text_source; // 名称/简介文案来源（与画像源独立）
 pub mod prompt;

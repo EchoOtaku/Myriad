@@ -397,7 +397,7 @@ padding = 4px
 | 主题磁贴 | 新 `viewMode: 'topic-feed'`，跨源列表 |
 | 节律单根竖线 | 第一版整卡可点即可。若要点线，`pulses` 需改成 `{ days, itemId }[]` |
 
-首页磁贴点击：`navigate('/journal/feeds/' + id)` 或 `/journal/topics/…`。不要在首页打开阅读器。不要写 `/phantasi?source=` query。
+首页磁贴点击：进入 `/journal`，通过导航 state 定位网站卡片；主题进入 `/journal/topics/…`。不要在首页打开阅读器。网站卡片选择是页内状态，不生成独立地址。
 
 `ViewMode` 现行是 `'sources' | 'starred' | 'topic-feed' | 'workbench'`。收藏和主题流不是板块；工作台也不是板块。
 
@@ -434,7 +434,7 @@ padding = 4px
 | 数量 | 用户放 1–3 张 | 全部源，装箱分页 |
 | 尺寸 | 编辑模式手摆 | `tileSize()` |
 | 轮播 | 默认关，只第一页 | 开 |
-| 点击 | 跳 `/journal/feeds/…` 或 `/journal/topics/…` | 就地切 `viewMode` |
+| 点击 | 进入 `/journal` 定位网站卡片或 `/journal/topics/…` | 页内选择网站卡片 |
 | 刷新 | `useHomeVisibilityInterval` 60s | 进入拉取；登录走现有 WS |
 | 数据 | `getSources()` + `find(sourceId)` | 已有全量列表 |
 | 位置动画 | `WidgetGrid` 自带 | Phantasi FLIP；不要混用 |
@@ -609,7 +609,7 @@ export function inferTopicByKeywords(item: PhantasiItem): string | null
 - 首页库出现三个 Phantasi 磁贴
 - resize snap 到声明档位
 - 可放多个 `phantasi-source`，各绑不同 `sourceId`
-- 点击跳到 `/journal/feeds/…` 或 `/journal/topics/…`
+- 点击进入 `/journal` 定位网站卡片或 `/journal/topics/…`
 
 ### PR 6 验收
 

@@ -279,7 +279,7 @@ pub(super) async fn execute_phantasi_page_content(
                         json!(["all", "unread"])
                     },
                     "canGoBack": true,
-                    "parentPath": format!("/journal/feeds/{}", source.id)
+                    "parentPath": "/journal"
                 }
             }))
         }
@@ -370,7 +370,7 @@ pub(super) async fn execute_phantasi_page_content(
                 },
                 "navigation": {
                     "canGoBack": true,
-                    "parentPath": format!("/journal/feeds/{}", item.source_id)
+                    "parentPath": "/journal"
                 },
                 "actions": {
                     "available": [

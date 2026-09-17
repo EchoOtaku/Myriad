@@ -184,6 +184,7 @@ function PhantasiSubjectPage() {
     setActiveId,
     location.pathname,
     navigate,
+    location.state,
   )
 
   const list = usePhantasiItems(

@@ -394,6 +394,7 @@ function paintStoryShell(
   el.removeAttribute('aria-hidden')
   el.removeAttribute('tabindex')
   if (face.hue) el.style.setProperty('--story-topic', face.hue)
+  else el.style.removeProperty?.('--story-topic')
   const node = cloneStoryCardInner(face, (deferCover ? 1 : 0) | (showStar ? 2 : 0))
   if (node && typeof el.replaceChildren === 'function') {
     el.replaceChildren(node)
@@ -416,6 +417,7 @@ const grabShellsByTrack = new WeakMap<ParentNode, HTMLElement[]>()
 
 function recycleStoryShell(el: HTMLElement): void {
   if (shellPool.length >= SHELL_POOL_CAP) return
+  eagerStories.delete(el)
   el.innerHTML = ''
   delete el.dataset.railId
   shellPool.push(el)

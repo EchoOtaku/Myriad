@@ -11,7 +11,6 @@ export type JournalLocation =
   | { kind: 'friends' }
   | { kind: 'starred' }
   | { kind: 'topic'; topic: string }
-  | { kind: 'source'; sourceId: number }
   | { kind: 'article'; itemId: string }
   | { kind: 'workbench'; pane: WorkbenchPane }
 
@@ -56,8 +55,11 @@ export function journalTopicPath(topic: string): string {
   return `${JOURNAL_ROOT}/topics/${encodeURIComponent(topic)}`
 }
 
-export function journalSourcePath(sourceId: number): string {
-  return `${JOURNAL_ROOT}/feeds/${sourceId}`
+/** Cross-page entry may focus a card without giving the card its own URL. */
+export function journalSourceFocus(state: unknown): number | null {
+  if (!state || typeof state !== 'object' || !('journalSourceId' in state)) return null
+  const id = state.journalSourceId
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
 export function journalBoardPath(board: PhantasiBoard): string {
@@ -78,7 +80,6 @@ export function journalListPath(opts: {
   viewMode: PhantasiViewMode
   board: PhantasiBoard
   topic?: string | null
-  sourceId?: number | null
   workbenchPane?: WorkbenchPane
 }): string {
   if (opts.viewMode === 'workbench') {
@@ -88,7 +89,6 @@ export function journalListPath(opts: {
   if (opts.viewMode === 'topic-feed' && opts.topic) {
     return journalTopicPath(opts.topic)
   }
-  if (opts.sourceId != null) return journalSourcePath(opts.sourceId)
   return journalBoardPath(opts.board)
 }
 
@@ -129,11 +129,6 @@ export function parseJournalPath(pathname: string): JournalLocation | null {
     } catch {
       return { kind: 'topic', topic: topicSeg }
     }
-  }
-
-  const sourceSeg = oneSegment(path, `${JOURNAL_ROOT}/feeds/`)
-  if (sourceSeg && /^\d+$/.test(sourceSeg)) {
-    return { kind: 'source', sourceId: Number(sourceSeg) }
   }
 
   if (path === `${JOURNAL_ROOT}/workbench` || path.startsWith(`${JOURNAL_ROOT}/workbench/`)) {
@@ -189,10 +184,10 @@ export function seoListNoindex(viewMode: PhantasiViewMode): boolean {
   )
 }
 
-/** 订阅源/主题流：可以有链接，但不按自有写作收录。 */
+/** 主题流可以有链接，但不按自有写作收录。 */
 export function isJournalSyndicationPath(pathname: string): boolean {
   const loc = parseJournalPath(pathname)
-  return loc?.kind === 'source' || loc?.kind === 'topic'
+  return loc?.kind === 'topic'
 }
 
 /** 转载页用 noindex,follow；工作台/收藏用 noindex,nofollow。 */

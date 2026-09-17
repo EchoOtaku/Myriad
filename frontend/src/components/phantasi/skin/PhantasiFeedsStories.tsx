@@ -8,6 +8,7 @@ import {
   clipPaintedBatches,
   extendPaintedRange,
   storyColumnCount,
+  storyRangeNeedsHydration,
   storySlotsByColumn,
 } from '../logic/feedStories'
 import { peekStoryNode } from '../ui/peekLane'
@@ -200,19 +201,21 @@ export const PhantasiFeedsStories = memo(({
         if (!covers) return
         for (let col = colFrom; col <= colTo; col++) {
           if (prebuilt.has(col)) continue
-          prebuilt.set(
-            col,
-            <PhantasiStoryColumn
-              key={col}
-              col={col}
-              slots={byCol.get(col)}
-              times={times}
-              locale={locale}
-              labels={labels}
-              holdCover={col > holdAt}
-              canStar={canStar}
-            />,
-          )
+          if (col <= holdAt) {
+            prebuilt.set(
+              col,
+              <PhantasiStoryColumn
+                key={col}
+                col={col}
+                slots={byCol.get(col)}
+                times={times}
+                locale={locale}
+                labels={labels}
+                holdCover={false}
+                canStar={canStar}
+              />,
+            )
+          }
         }
         warmStoryCovers(pack)
       }
@@ -323,9 +326,8 @@ export const PhantasiFeedsStories = memo(({
     const prev = paintedCacheRef.current
     const prebuilt = prebuiltColsRef.current
     const paintLive = Math.min(liveTo, paintTo)
-    const eagerTo = paintedEagerRef.current?.to ?? eagerBand.to
     const makeFull = (col: number) => {
-      const holdCover = col > eagerBand.to || col > eagerTo
+      const holdCover = col > eagerBand.to
       if (!holdCover) {
         const hit = prebuilt.get(col)
         if (hit) return hit
@@ -356,7 +358,7 @@ export const PhantasiFeedsStories = memo(({
               times={times}
               locale={locale}
               labels={labels}
-              holdCover={col > eagerBand.to || col > eagerTo}
+              holdCover={col > eagerBand.to}
               canStar={canStar}
             />
           )
@@ -371,24 +373,19 @@ export const PhantasiFeedsStories = memo(({
       make,
       reset || jumped,
     )
-    const hydrate =
-      !reset
-      && paintLive > prevLive
-      && prevRange.from === grid.from
-      && prevRange.to === paintTo
-      && prevRange.to >= prevRange.from
+    const hydrate = !reset && storyRangeNeedsHydration(
+      prevRange,
+      { from: grid.from, to: paintTo },
+      prevLive,
+      paintLive,
+    )
     const leftoverShells = paintedBatchesRef.current.some(
       (batch) => batch.from > prevLive || batch.to > prevLive,
     )
-    if (
-      !reset
-      && paintLive > prevLive
-      && prevRange.from === grid.from
-      && prevRange.to >= prevRange.from
-    ) {
+    if (hydrate) {
       const copy = next.slice()
       for (
-        let col = prevLive + 1;
+        let col = Math.max(prevLive + 1, grid.from);
         col <= paintLive && col <= paintTo;
         col++
       ) {
@@ -512,106 +509,21 @@ export const PhantasiFeedsStories = memo(({
       (hydrate || (grew && leftoverShells))
       && paintedBatchesRef.current.length > 0
     ) {
-      const tailAt = paintedBatchesRef.current.findIndex(
-        (batch) => batch.to > prevLive,
+      const head = (
+        <PaintedRailHead
+          key={`${grid.from}:${paintTo}:live:${paintLive}`}
+          nodes={next}
+        />
       )
-      if (tailAt >= 0) {
-        const batches = paintedBatchesRef.current.slice()
-        const heads = batches.map((batch) => batch.head)
-        const batch = batches[tailAt]
-        if (!batch) {
-          paintedHeadRef.current = heads[0] ?? null
-          paintedOutRef.current = heads
-          paintedBatchesRef.current = batches
-          return heads
-        }
-        const nodes = batch.nodes.slice()
-        const hydFrom = Math.max(prevLive + 1, batch.from, grid.from)
-        let tailTo = batch.to
-        for (let col = hydFrom; col <= paintLive; col++) {
-          const at = col - batch.from
-          const node = next[col - grid.from]
-          if (node == null) continue
-          if (at >= 0 && at < nodes.length) {
-            nodes[at] = node
-          }
-          else {
-            nodes.push(node)
-            if (col > tailTo) tailTo = col
-          }
-        }
-        if (paintTo > tailTo) {
-          for (let col = tailTo + 1; col <= paintTo; col++) {
-            const node = next[col - grid.from]
-            if (node != null) nodes.push(node)
-          }
-          tailTo = paintTo
-        }
-        const head = (
-          <PaintedRailHead
-            key={
-              isValidElement(batch.head) && batch.head.key != null
-                ? batch.head.key
-                : `shell:${paintTo}`
-            }
-            nodes={nodes}
-          />
-        )
-        batches[tailAt] = {
-          from: batch.from,
-          to: tailTo,
-          nodes,
-          head,
-        }
-        heads[tailAt] = head
-        paintedHeadRef.current = heads[0] ?? null
-        paintedOutRef.current = heads
-        paintedBatchesRef.current = batches
-        return heads
-      }
-      const kept = paintedBatchesRef.current.filter((batch) => batch.to <= prevLive)
-      const heads: ReactNode[] = kept.map((batch) => batch.head)
-      const batches = kept.slice()
-      const hydFrom = Math.max(prevLive + 1, grid.from)
-      if (hydFrom <= paintLive) {
-        const nodes = next.slice(
-          hydFrom - grid.from,
-          paintLive - grid.from + 1,
-        )
-        const head = (
-          <PaintedRailHead
-            key={`${prevLive}:${paintLive}`}
-            nodes={nodes}
-          />
-        )
-        heads.push(head)
-        batches.push({
-          from: hydFrom,
-          to: paintLive,
-          nodes,
-          head,
-        })
-      }
-      if (paintLive < paintTo) {
-        const nodes = next.slice(paintLive - grid.from + 1)
-        const head = (
-          <PaintedRailHead
-            key={`shell:${paintTo}`}
-            nodes={nodes}
-          />
-        )
-        heads.push(head)
-        batches.push({
-          from: paintLive + 1,
-          to: paintTo,
-          nodes,
-          head,
-        })
-      }
-      paintedHeadRef.current = heads[0] ?? null
-      paintedOutRef.current = heads
-      paintedBatchesRef.current = batches
-      return heads
+      paintedHeadRef.current = head
+      paintedOutRef.current = [head]
+      paintedBatchesRef.current = [{
+        from: grid.from,
+        to: paintTo,
+        nodes: next,
+        head,
+      }]
+      return paintedOutRef.current
     }
     if (reset || !paintedHeadRef.current || paintedBatchesRef.current.length === 0) {
       const head = <PaintedRailHead key={`${grid.from}:${paintTo}`} nodes={next} />

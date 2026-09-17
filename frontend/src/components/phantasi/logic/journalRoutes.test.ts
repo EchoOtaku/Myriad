@@ -7,6 +7,7 @@ import {
   journalItemPath,
   journalListPath,
   journalPathForNavId,
+  journalSourceFocus,
   navIdForJournalLocation,
   parseJournalPath,
   pathForActiveIdChange,
@@ -32,10 +33,7 @@ describe('parseJournalPath', () => {
       kind: 'topic',
       topic: 'AI news',
     })
-    assert.deepEqual(parseJournalPath('/journal/feeds/9'), {
-      kind: 'source',
-      sourceId: 9,
-    })
+    assert.equal(parseJournalPath('/journal/feeds/9'), null)
     assert.equal(parseJournalPath('/journal/feeds/not-a-number'), null)
     assert.equal(parseJournalPath('/phantasi'), null)
   })
@@ -112,9 +110,8 @@ describe('journalListPath', () => {
       journalListPath({
         viewMode: 'sources',
         board: 'feeds',
-        sourceId: 3,
       }),
-      '/journal/feeds/3',
+      '/journal',
     )
     assert.equal(
       journalListPath({ viewMode: 'starred', board: 'feeds' }),
@@ -142,12 +139,12 @@ describe('journalListPath', () => {
 })
 
 describe('nav helpers', () => {
-  it('主题/源算停在订阅下；文章是叠层，刷新靠路径同步而不是把它算作板块首页', () => {
+  it('主题算停在订阅下；网站卡片没有独立地址；文章是叠层', () => {
     assert.equal(pathShowsNavId('/journal', 'feeds'), true)
     assert.equal(pathShowsNavId('/journal/feeds', 'feeds'), true)
     assert.equal(pathShowsNavId('/journal/notes', 'notes'), true)
     assert.equal(pathShowsNavId('/journal/topics/x', 'feeds'), true)
-    assert.equal(pathShowsNavId('/journal/feeds/1', 'feeds'), true)
+    assert.equal(pathShowsNavId('/journal/feeds/1', 'feeds'), false)
     assert.equal(pathShowsNavId('/journal/articles/1', 'feeds'), false)
     assert.equal(pathShowsNavId('/journal/articles/1', 'notes'), false)
     assert.equal(pathShowsNavId('/journal/notes', 'feeds'), false)
@@ -171,18 +168,18 @@ describe('nav helpers', () => {
     assert.equal(seoListNoindex('starred'), true)
     assert.equal(seoListNoindex('topic-feed'), true)
     assert.equal(seoListNoindex('sources'), false)
-    assert.equal(isJournalSyndicationPath('/journal/feeds/4'), true)
+    assert.equal(isJournalSyndicationPath('/journal/feeds/4'), false)
     assert.equal(isJournalSyndicationPath('/journal/topics/ai'), true)
     assert.equal(isJournalSyndicationPath('/journal'), false)
     assert.equal(isJournalSyndicationPath('/journal/notes'), false)
-    assert.equal(seoJournalFollow('/journal/feeds/4', 'sources'), true)
+    assert.equal(seoJournalFollow('/journal/feeds/4', 'sources'), false)
     assert.equal(seoJournalFollow('/journal', 'workbench'), false)
   })
 
   it('路径同步过来的 activeId 不得回写；点导航才改地址', () => {
     assert.equal(pathForActiveIdChange('/journal/notes', 'feeds', true), null)
     assert.equal(pathForActiveIdChange('/journal/friends', 'feeds', true), null)
-    assert.equal(pathForActiveIdChange('/journal/feeds/9', 'feeds', false), null)
+    assert.equal(pathForActiveIdChange('/journal/feeds/9', 'feeds', false), '/journal')
     assert.equal(pathForActiveIdChange('/journal/topics/ai', 'feeds', false), null)
     assert.equal(
       pathForActiveIdChange('/journal/articles/1', 'feeds', false),
@@ -197,4 +194,11 @@ describe('nav helpers', () => {
       '/journal/notes',
     )
   })
+})
+
+it('cross-page source focus is validated navigation state, not a route', () => {
+  assert.equal(journalSourceFocus({ journalSourceId: 9 }), 9)
+  for (const state of [null, {}, { journalSourceId: '9' }, { journalSourceId: -1 }, { journalSourceId: 1.5 }]) {
+    assert.equal(journalSourceFocus(state), null)
+  }
 })
