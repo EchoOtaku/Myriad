@@ -47,7 +47,7 @@ STEPS:
    - welcome-to-this-site / marketing fluff → bad
    - accurate and current → good
 3. If all three are good: stop. No notification. No extra tools.
-4. If any is bad: seo.generate for the bad fields only (omit title so branding is used). Then notify once with an Apply action. Never seo.apply yourself."#;
+4. If any is bad: seo.generate for the bad fields only (omit title so branding is used). Then notify once with an Apply action. Never seo.apply yourself.";
 
 pub fn is_reserved_heartbeat_task(id: &str) -> bool {
     id == SEO_REVIEW_TASK_ID

@@ -867,14 +867,14 @@ pub async fn drain_stream(
 }
 
 pub async fn clear_presence(runtime_id: &str) {
-    if let Ok(db) = shared_registry::database().await {
+    if let Ok(db) = shared_registry::database() {
         let _ = shared_registry::delete(&db, INTERACTION_PRESENCE_NAMESPACE, runtime_id).await;
     }
 }
 
 /// Disconnect runtime presence and cancel accepted interactions owned by it.
 pub async fn disconnect_runtime_interactions(runtime_id: &str) -> bool {
-    let Ok(db) = shared_registry::database().await else {
+    let Ok(db) = shared_registry::database() else {
         return false;
     };
     let disconnected = shared_registry::delete(&db, INTERACTION_PRESENCE_NAMESPACE, runtime_id)

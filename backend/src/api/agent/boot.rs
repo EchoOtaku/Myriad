@@ -39,7 +39,7 @@ pub async fn restore_waiting_runs_after_boot() {
         count = waiting.len(),
         "[Agent API] Boot restore: re-creating run hubs for waiting tasks"
     );
-    let ledger_db = crate::services::tapp_registry::database().await.ok();
+    let ledger_db = crate::services::tapp_registry::database().ok();
 
     for (user_id, mut task) in waiting {
         let is_work = task

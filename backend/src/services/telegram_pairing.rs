@@ -40,7 +40,7 @@ pub async fn consume_code(
 
 /// Worker entry: classify private text, pair, or start Work.
 pub async fn handle_inbound(event: TelegramPrivateText, token: &str) {
-    let Ok(db) = crate::services::tapp_registry::database().await else {
+    let Ok(db) = crate::services::tapp_registry::database() else {
         warn!("Telegram pairing skipped: database is not connected");
         return;
     };
@@ -103,7 +103,7 @@ pub async fn handle_callback(event: TelegramPrivateCallback, token: &str) {
     {
         warn!(?error, "Telegram callback ack failed");
     }
-    let Ok(db) = crate::services::tapp_registry::database().await else {
+    let Ok(db) = crate::services::tapp_registry::database() else {
         warn!("Telegram callback skipped: database is not connected");
         return;
     };

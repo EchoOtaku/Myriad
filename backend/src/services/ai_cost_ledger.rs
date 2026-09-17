@@ -145,7 +145,7 @@ where
 
 /// Durable site owner, or `1` when the database is unreachable or `get_admin_user_id` fails.
 pub async fn resolve_site_owner_id() -> i32 {
-    match crate::services::tapp_registry::database().await {
+    match crate::services::tapp_registry::database() {
         Ok(db) => crate::services::tapp_ownership::get_admin_user_id(&db)
             .await
             .unwrap_or(1),
@@ -268,7 +268,7 @@ pub async fn record_ai_tokens_from_attribution(
         return;
     }
     let attr = current_attribution().unwrap_or_else(fallback_attribution);
-    let Ok(db) = crate::services::tapp_registry::database().await else {
+    let Ok(db) = crate::services::tapp_registry::database() else {
         return;
     };
     record_ai_cost(

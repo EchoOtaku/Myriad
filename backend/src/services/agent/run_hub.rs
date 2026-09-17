@@ -263,7 +263,7 @@ ORDER BY record_id ASC
     }
 
     async fn persist(envelope: &AgentRunEnvelope, snapshot: &PersistedAgentRun) {
-        let Ok(db) = shared_registry::database().await else {
+        let Ok(db) = shared_registry::database() else {
             tracing::warn!(run_id = %snapshot.run_id, "[Agent Run] Database unavailable; run snapshot remains local");
             return;
         };
@@ -376,7 +376,7 @@ WHERE namespace = $1 AND runtime_id = $2
 
     /// Merge a newer shared snapshot and return events not present locally.
     pub async fn refresh_from_registry(&self) -> Vec<AgentRunEnvelope> {
-        let Ok(db) = shared_registry::database().await else {
+        let Ok(db) = shared_registry::database() else {
             return Vec::new();
         };
         let persisted = match shared_registry::get::<PersistedAgentRun>(
@@ -702,7 +702,7 @@ pub async fn get_run_for_user(run_id: &str, user_id: i32) -> Option<Arc<AgentRun
         return Some(run);
     }
 
-    let db = shared_registry::database().await.ok()?;
+    let db = shared_registry::database().ok()?;
     let persisted = shared_registry::get::<PersistedAgentRun>(&db, RUN_REGISTRY_NAMESPACE, run_id)
         .await
         .ok()??;

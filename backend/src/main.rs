@@ -539,7 +539,7 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 }
 
                 tracing::info!("🌐 Starting in FULL MODE - all features available");
-                services::tapp_registry::set_process_database(db).await;
+                services::tapp_registry::set_process_database(db);
                 CONFIG_MODE.store(false, Ordering::Relaxed);
             }
             Err(e) => {

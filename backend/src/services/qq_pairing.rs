@@ -50,7 +50,7 @@ pub async fn consume_code(
 
 /// Gateway worker entry: classify the C2C text, bind pairing codes, or start Work.
 pub async fn handle_inbound_c2c(event: InboundC2cText, auth_header: &str) {
-    let Ok(db) = crate::services::tapp_registry::database().await else {
+    let Ok(db) = crate::services::tapp_registry::database() else {
         warn!("QQ pairing skipped: database is not connected");
         return;
     };

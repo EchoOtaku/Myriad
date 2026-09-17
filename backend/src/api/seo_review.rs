@@ -162,7 +162,6 @@ pub async fn run_scheduled_seo_review(db: &DatabaseConnection) -> Result<SeoRevi
 
     let mut flags = heuristic_flags(&description, &keywords, &ai_intro, has_content);
     if let Some(judged) = judge_with_ai(
-        db,
         &title,
         &description,
         &keywords,
@@ -330,7 +329,6 @@ fn take_if_changed(generated: Option<String>, current: &str) -> Option<String> {
 }
 
 async fn judge_with_ai(
-    db: &DatabaseConnection,
     title: &str,
     description: &str,
     keywords: &str,

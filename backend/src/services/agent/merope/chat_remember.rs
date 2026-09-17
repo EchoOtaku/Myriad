@@ -183,7 +183,7 @@ async fn extract_and_store(
     if !is_logged_in_addressee(user_id) || !super::is_enabled().await {
         return;
     }
-    let Ok(db) = crate::services::tapp_registry::database().await else {
+    let Ok(db) = crate::services::tapp_registry::database() else {
         tracing::warn!(
             user_id,
             outcome = "database_unavailable",

@@ -40,7 +40,7 @@ pub async fn consume_code_keys(
 
 /// Worker entry: classify p2p text, pair, or start Work.
 pub async fn handle_inbound(event: InboundFeishuText) {
-    let Ok(db) = crate::services::tapp_registry::database().await else {
+    let Ok(db) = crate::services::tapp_registry::database() else {
         warn!("Feishu pairing skipped: database is not connected");
         return;
     };
@@ -100,7 +100,7 @@ pub async fn handle_inbound(event: InboundFeishuText) {
 
 /// Worker entry: interactive-card button. Always start Work after pairing.
 pub async fn handle_callback(event: FeishuCardCallback) {
-    let Ok(db) = crate::services::tapp_registry::database().await else {
+    let Ok(db) = crate::services::tapp_registry::database() else {
         warn!("Feishu callback skipped: database is not connected");
         return;
     };

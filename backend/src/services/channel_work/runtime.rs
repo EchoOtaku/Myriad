@@ -296,7 +296,7 @@ pub(crate) async fn run_recovery_worker() {
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tick.tick().await;
-        let Ok(db) = shared_registry::database().await else {
+        let Ok(db) = shared_registry::database() else {
             continue;
         };
         for platform in ["qq", "telegram", "discord", "feishu"] {

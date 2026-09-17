@@ -192,7 +192,7 @@ async fn cancel_shared(
     tapp_id: Option<&str>,
     predicate: impl Fn(&PersistedAiTask) -> bool,
 ) -> usize {
-    let Ok(db) = shared_registry::database().await else {
+    let Ok(db) = shared_registry::database() else {
         return 0;
     };
     let tasks = shared_registry::list(&db, AI_TASK_NAMESPACE, subject_id, tapp_id)
@@ -279,7 +279,7 @@ pub async fn update_task_state(task_id: &str, status: AiTaskStatus) {
         None
     };
     drop(tasks);
-    if let (Some(task), Ok(db)) = (persisted, shared_registry::database().await) {
+    if let (Some(task), Ok(db)) = (persisted, shared_registry::database()) {
         if let Err(error) = persist_ai_task(&db, &task).await {
             tracing::error!(%error, task_id = %task.snapshot.task_id, "[TAPP] Failed to persist AI task state");
         }
@@ -320,7 +320,7 @@ pub async fn finish_task(
         None
     };
     drop(tasks);
-    if let (Some(task), Ok(db)) = (persisted, shared_registry::database().await) {
+    if let (Some(task), Ok(db)) = (persisted, shared_registry::database()) {
         if let Err(error) = persist_ai_task(&db, &task).await {
             tracing::error!(%error, task_id = %task.snapshot.task_id, "[TAPP] Failed to persist terminal AI task state");
         }

@@ -610,7 +610,7 @@ async fn delete_exchange_scope(
     tapp_id: Option<&str>,
     runtime_id: Option<&str>,
 ) {
-    match shared_registry::database().await {
+    match shared_registry::database() {
         Ok(db) => {
             if let Err(error) =
                 shared_registry::delete_matching(&db, namespace, subject_id, tapp_id, runtime_id)
@@ -626,7 +626,7 @@ async fn delete_exchange_scope(
 }
 
 async fn delete_provider_exchange_scope(subject_id: Option<i32>, provider_tapp_id: &str) {
-    let db = match shared_registry::database().await {
+    let db = match shared_registry::database() {
         Ok(db) => db,
         Err(error) => {
             tracing::error!(%error, "[TAPP] Data Exchange registry is unavailable during provider revocation");

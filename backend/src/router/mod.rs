@@ -97,7 +97,7 @@ pub(crate) async fn start_unified_server(
 
     // A FULL_MODE process losing its registered DB handle must not silently
     // degrade into an unauthenticated setup router.
-    let db_opt = match services::tapp_registry::database().await {
+    let db_opt = match services::tapp_registry::database() {
         Ok(db) => Some(db),
         Err(_) if CONFIG_MODE.load(Ordering::Relaxed) => None,
         Err(error) => {
@@ -297,7 +297,7 @@ pub(crate) async fn start_unified_server(
                                     }
 
                                     // Update process DB for health checks + background services
-                                    services::tapp_registry::set_process_database(db.clone()).await;
+                                    services::tapp_registry::set_process_database(db.clone());
 
                                     // Reload dynamic configuration from database
                                     let config_service = ConfigService::new(db);
@@ -360,7 +360,7 @@ pub(crate) async fn start_unified_server(
         loop {
             health_check_interval.tick().await;
 
-            match services::tapp_registry::database().await {
+            match services::tapp_registry::database() {
                 Ok(db) => {
                     if crate::db::health::probe_database(&db).await {
                         tracing::debug!("💚 Database health check passed");
@@ -374,8 +374,7 @@ pub(crate) async fn start_unified_server(
                                 .await
                             {
                                 Ok(new_db) => {
-                                    services::tapp_registry::set_process_database(new_db.clone())
-                                        .await;
+                                    services::tapp_registry::set_process_database(new_db.clone());
                                     if crate::db::health::probe_database(&new_db).await {
                                         tracing::info!("✅ Database reconnected successfully");
                                     } else {

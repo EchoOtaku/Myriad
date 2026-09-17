@@ -25,8 +25,7 @@ pub fn shared_database_slot() -> Arc<RwLock<Option<DatabaseConnection>>> {
 }
 
 /// Wire (or re-wire) the process + AppState DB after connect / reload / health reconnect.
-pub async fn set_process_database(db: DatabaseConnection) {
-    // Signature stays async for existing call sites; the slot is std::sync for FromRef.
+pub fn set_process_database(db: DatabaseConnection) {
     let slot = shared_database_slot();
     *slot
         .write()
@@ -38,7 +37,7 @@ pub async fn set_process_database(db: DatabaseConnection) {
 /// HTTP handlers must use `State` / `extract::Db` (same underlying slot after
 /// `AppState::from_shared`). Prefer passing an explicit `DatabaseConnection` on
 /// request paths (grant / rate limit / ws ticket).
-pub async fn database() -> Result<DatabaseConnection, DbErr> {
+pub fn database() -> Result<DatabaseConnection, DbErr> {
     shared_database_slot()
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
