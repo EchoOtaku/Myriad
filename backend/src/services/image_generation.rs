@@ -170,10 +170,10 @@ pub fn config_from_dynamic(
         ));
     }
     let (api_key, base_url) = if let Some(source) = source.as_ref() {
+        let api_key = dynamic.resolve_source_credential(source).api_key;
         match source.kind.trim().to_ascii_lowercase().as_str() {
             "openai" | "openai_compatible" => (
-                DynamicConfig::nonempty_opt(source.api_key.as_ref())
-                    .or_else(|| dynamic.shared_openai_api_key()),
+                api_key,
                 if source.base_url.trim().is_empty() {
                     dynamic.shared_openai_base_url()
                 } else {
@@ -181,8 +181,7 @@ pub fn config_from_dynamic(
                 },
             ),
             "openrouter" => (
-                DynamicConfig::nonempty_opt(source.api_key.as_ref())
-                    .or_else(|| dynamic.shared_openrouter_api_key()),
+                api_key,
                 if source.base_url.trim().is_empty() {
                     "https://openrouter.ai/api/v1".to_string()
                 } else {
@@ -190,19 +189,14 @@ pub fn config_from_dynamic(
                 },
             ),
             "volcengine" | "ark" | "seedream" => (
-                DynamicConfig::nonempty_opt(source.api_key.as_ref())
-                    .or_else(|| dynamic.shared_volcengine_api_key()),
+                api_key,
                 if source.base_url.trim().is_empty() {
                     dynamic.shared_volcengine_base_url()
                 } else {
                     source.base_url.trim().to_string()
                 },
             ),
-            "gemini" => (
-                DynamicConfig::nonempty_opt(source.api_key.as_ref())
-                    .or_else(|| dynamic.shared_gemini_api_key()),
-                gemini_image_base_url(dynamic, Some(source)),
-            ),
+            "gemini" => (api_key, gemini_image_base_url(dynamic, Some(source))),
             other => return Err(ImageGenerationError::UnsupportedProvider(other.to_string())),
         }
     } else {
@@ -1655,11 +1649,41 @@ mod tests {
             display_name: "Gemini Work".to_string(),
             enabled: true,
             preset: "gemini".to_string(),
+            api_format: "gemini".to_string(),
             api_key: Some("AIza-source".to_string()),
             ..crate::config::AiVendorSource::default()
         }];
         let from_source = config_from_dynamic(&config).unwrap();
         assert_eq!(from_source.provider, "gemini");
         assert_eq!(from_source.api_key, "AIza-source");
+    }
+
+    #[test]
+    fn selected_image_source_uses_its_declared_credential_mode() {
+        let mut config = DynamicConfig {
+            ai_image_source: "openai-work".to_string(),
+            ai_image_model: "gpt-image-2".to_string(),
+            provider_openai_api_key: Some("shared-openai-key".to_string()),
+            ai_vendor_sources: vec![crate::config::AiVendorSource {
+                slug: "openai-work".to_string(),
+                kind: "openai".to_string(),
+                display_name: "OpenAI Work".to_string(),
+                enabled: true,
+                credential_mode: "shared".to_string(),
+                shared_key_ref: Some("openai".to_string()),
+                base_url: "https://api.openai.com/v1".to_string(),
+                ..crate::config::AiVendorSource::default()
+            }],
+            ..DynamicConfig::default()
+        };
+
+        let shared = config_from_dynamic(&config).expect("shared image key");
+        assert_eq!(shared.api_key, "shared-openai-key");
+
+        config.ai_vendor_sources[0].credential_mode = "none".to_string();
+        assert!(matches!(
+            config_from_dynamic(&config),
+            Err(ImageGenerationError::NotConfigured(_))
+        ));
     }
 }

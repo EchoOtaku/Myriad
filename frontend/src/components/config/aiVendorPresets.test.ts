@@ -2,10 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   AI_VENDOR_PRESETS,
+  apiFormatForSource,
+  credentialModeForSource,
   findVendorPreset,
   isAgoraSource,
   isMiniMaxSpeechSource,
   resolveUsedVendorSlug,
+  sharedKeyRefForSource,
+  sourceFromCustom,
   sourceFromPreset,
   speechProviderKindFromSource,
   vendorSupports,
@@ -200,4 +204,39 @@ describe('AI vendor presets', () => {
       true,
     )
   })
+})
+
+// Protocol selection must survive creating and serializing a vendor source.
+it('creates native Anthropic and Gemini sources with their wire protocols', () => {
+  for (const [id, protocol] of [
+    ['anthropic', 'anthropic'],
+    ['gemini', 'gemini'],
+  ]) {
+    const preset = AI_VENDOR_PRESETS.find((item) => item.id === id)!
+    const serialized = JSON.stringify(sourceFromPreset(preset, []))
+    const source = JSON.parse(serialized)
+    assert.equal(source.api_format, protocol)
+  }
+})
+
+it('keeps legacy Gemini native and custom endpoints off shared credentials', () => {
+  assert.equal(apiFormatForSource({ kind: 'gemini' }), 'gemini')
+  assert.equal(apiFormatForSource({ kind: 'openai' }), 'openai')
+  assert.equal(apiFormatForSource({ kind: 'gemini', api_format: 'openai' }), 'openai')
+  const custom = { kind: 'openai', base_url: 'https://proxy.example/v1' }
+  assert.equal(credentialModeForSource(custom), 'none')
+  assert.equal(sharedKeyRefForSource(custom), null)
+  assert.equal(credentialModeForSource({ ...custom, api_key: 'key' }), 'own')
+  assert.equal(sharedKeyRefForSource({ ...custom, credential_mode: 'shared', shared_key_ref: 'openai' }), 'openai')
+  assert.equal(sharedKeyRefForSource({ kind: 'gemini' }), 'gemini')
+})
+
+it('creates independent custom sources with explicit unauthenticated mode', () => {
+  const first = sourceFromCustom([], 'Local')
+  const second = sourceFromCustom([first], 'Other')
+  assert.notEqual(first.slug, second.slug)
+  assert.equal(first.credential_mode, 'none')
+  assert.equal(first.shared_key_ref, null)
+  assert.equal(vendorSupports(first, 'text'), true)
+  assert.equal(vendorSupports(first, 'image'), false)
 })

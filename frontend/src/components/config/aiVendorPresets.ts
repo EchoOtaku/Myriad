@@ -6,6 +6,23 @@ export type AiVendorKind =
   | 'volcengine'
   | 'tencent'
   | 'agora'
+  | 'anthropic'
+  | 'custom'
+
+export type AiApiFormat = 'openai' | 'openai_responses' | 'anthropic' | 'gemini'
+export type AiCredentialMode = 'own' | 'shared' | 'none'
+export type SharedAiKeyRef = 'openai' | 'openrouter' | 'gemini' | 'volcengine'
+
+export const AI_API_FORMATS: readonly AiApiFormat[] = [
+  'openai',
+  'openai_responses',
+  'anthropic',
+  'gemini',
+]
+
+export function isSupportedAiApiFormat(value: string): value is AiApiFormat {
+  return AI_API_FORMATS.includes(value as AiApiFormat)
+}
 
 export type AiVendorCapability = 'text' | 'image' | 'speech' | 'realtime'
 
@@ -15,6 +32,9 @@ export interface AiVendorSource {
   display_name: string
   enabled: boolean
   preset?: string
+  api_format?: AiApiFormat | string
+  credential_mode?: AiCredentialMode | string
+  shared_key_ref?: SharedAiKeyRef | string | null
   api_key?: string | null
   base_url?: string
   secret_id?: string | null
@@ -27,6 +47,7 @@ export interface AiVendorPreset {
   id: string
   defaultSlug: string
   kind: AiVendorKind
+  api_format?: AiApiFormat
   display_name: string
   base_url: string
   docs_url?: string
@@ -44,6 +65,7 @@ export const AI_VENDOR_PRESETS: AiVendorPreset[] = [
     id: 'openrouter',
     defaultSlug: 'openrouter',
     kind: 'openrouter',
+    api_format: 'openai',
     display_name: 'OpenRouter',
     base_url: 'https://openrouter.ai/api/v1',
     docs_url: 'https://openrouter.ai/docs',
@@ -59,6 +81,7 @@ export const AI_VENDOR_PRESETS: AiVendorPreset[] = [
     id: 'openai',
     defaultSlug: 'openai',
     kind: 'openai',
+    api_format: 'openai_responses',
     display_name: 'OpenAI',
     base_url: 'https://api.openai.com/v1',
     docs_url: 'https://platform.openai.com/docs',
@@ -74,6 +97,7 @@ export const AI_VENDOR_PRESETS: AiVendorPreset[] = [
     id: 'azureOpenAI',
     defaultSlug: 'azure-openai',
     kind: 'openai_compatible',
+    api_format: 'openai',
     display_name: 'Azure OpenAI',
     base_url: '',
     docs_url: 'https://learn.microsoft.com/azure/ai-services/openai/',
@@ -88,6 +112,7 @@ export const AI_VENDOR_PRESETS: AiVendorPreset[] = [
     id: 'gemini',
     defaultSlug: 'gemini',
     kind: 'gemini',
+    api_format: 'gemini',
     display_name: 'Gemini',
     base_url: '',
     docs_url: 'https://ai.google.dev/gemini-api/docs',
@@ -102,9 +127,10 @@ export const AI_VENDOR_PRESETS: AiVendorPreset[] = [
   {
     id: 'anthropic',
     defaultSlug: 'anthropic',
-    kind: 'openai_compatible',
+    kind: 'anthropic',
+    api_format: 'anthropic',
     display_name: 'Anthropic',
-    base_url: '',
+    base_url: 'https://api.anthropic.com/v1',
     docs_url: 'https://docs.anthropic.com/',
     capabilities: ['text'],
     keyPlaceholder: 'sk-ant-...',
@@ -414,13 +440,19 @@ export function speechProviderKindFromSource(
 export function vendorSupports(
   kindOrSource:
     | string
-    | { kind: string; slug?: string; preset?: string | null },
+    | {
+        kind: string
+        slug?: string
+        preset?: string | null
+        api_format?: string
+      },
   capability: AiVendorCapability,
 ): boolean {
   const source =
     typeof kindOrSource === 'string' ? { kind: kindOrSource } : kindOrSource
   const preset = findVendorPreset(source)
   if (preset) return preset.capabilities.includes(capability)
+  if (source.api_format && capability === 'text') return true
   switch (source.kind) {
     case 'openrouter':
     case 'openai':
@@ -458,9 +490,10 @@ export function parseVendorSources(raw: string): AiVendorSource[] {
   try {
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (item): item is AiVendorSource =>
-        Boolean(item && typeof item === 'object' && typeof item.slug === 'string'),
+    return parsed.filter((item): item is AiVendorSource =>
+      Boolean(
+        item && typeof item === 'object' && typeof item.slug === 'string',
+      ),
     )
   } catch {
     return []
@@ -479,11 +512,12 @@ export function sourceFromPreset(
   return {
     slug,
     kind: preset.kind,
-    display_name: copy
-      ? `${preset.display_name} ${copy}`
-      : preset.display_name,
+    display_name: copy ? `${preset.display_name} ${copy}` : preset.display_name,
     enabled: true,
     preset: preset.id,
+    api_format: preset.api_format ?? defaultApiFormat(preset),
+    credential_mode: sharedKeyRefForPreset(preset) ? 'shared' : 'own',
+    shared_key_ref: sharedKeyRefForPreset(preset),
     api_key: '',
     base_url: preset.base_url,
     secret_id: '',
@@ -493,10 +527,116 @@ export function sourceFromPreset(
   }
 }
 
-function uniqueVendorSlug(
-  base: string,
+export function sourceFromCustom(
   existing: AiVendorSource[],
+  displayName: string,
+): AiVendorSource {
+  return {
+    slug: uniqueVendorSlug('custom', existing),
+    kind: 'custom',
+    display_name: displayName,
+    enabled: true,
+    preset: '',
+    api_format: 'openai',
+    credential_mode: 'none',
+    shared_key_ref: null,
+    api_key: '',
+    base_url: '',
+    secret_id: '',
+    secret_key: '',
+    region: '',
+    app_id: '',
+  }
+}
+
+function sharedKeyRefForPreset(
+  preset: Pick<AiVendorPreset, 'id'>,
+): SharedAiKeyRef | null {
+  switch (preset.id) {
+    case 'openai':
+    case 'openrouter':
+    case 'gemini':
+    case 'volcengine':
+      return preset.id
+    default:
+      return null
+  }
+}
+
+function canonicalLegacySharedKeyRef(
+  source: Pick<AiVendorSource, 'kind' | 'base_url'>,
+): SharedAiKeyRef | null {
+  const baseUrl = (source.base_url || '').trim().replace(/\/+$/, '')
+  switch (source.kind.trim().toLowerCase()) {
+    case 'openai':
+      return !baseUrl || baseUrl === 'https://api.openai.com/v1'
+        ? 'openai'
+        : null
+    case 'openai_compatible':
+      return baseUrl === 'https://api.openai.com/v1' ? 'openai' : null
+    case 'openrouter':
+      return !baseUrl || baseUrl === 'https://openrouter.ai/api/v1'
+        ? 'openrouter'
+        : null
+    case 'gemini':
+      return !baseUrl || baseUrl === 'https://generativelanguage.googleapis.com'
+        ? 'gemini'
+        : null
+    case 'volcengine':
+      return !baseUrl || baseUrl === 'https://ark.cn-beijing.volces.com/api/v3'
+        ? 'volcengine'
+        : null
+    default:
+      return null
+  }
+}
+
+export function credentialModeForSource(
+  source: Pick<
+    AiVendorSource,
+    'kind' | 'base_url' | 'api_key' | 'credential_mode'
+  >,
 ): string {
+  const explicit = source.credential_mode?.trim()
+  if (explicit) return explicit
+  if (source.api_key?.trim()) return 'own'
+  return canonicalLegacySharedKeyRef(source) ? 'shared' : 'none'
+}
+
+export function sharedKeyRefForSource(
+  source: Pick<
+    AiVendorSource,
+    'kind' | 'base_url' | 'shared_key_ref' | 'credential_mode'
+  >,
+): SharedAiKeyRef | null {
+  if (
+    source.credential_mode === 'shared' &&
+    (source.shared_key_ref === 'openai' ||
+      source.shared_key_ref === 'openrouter' ||
+      source.shared_key_ref === 'gemini' ||
+      source.shared_key_ref === 'volcengine')
+  ) {
+    return source.shared_key_ref
+  }
+  if (source.credential_mode) return null
+  return canonicalLegacySharedKeyRef(source)
+}
+
+export function apiFormatForSource(
+  source: Pick<AiVendorSource, 'kind' | 'preset' | 'api_format'>,
+): string {
+  const explicit = source.api_format?.trim()
+  if (explicit) return explicit
+  return source.kind.trim().toLowerCase() === 'gemini' ? 'gemini' : 'openai'
+}
+
+function defaultApiFormat(preset: AiVendorPreset): AiApiFormat {
+  if (preset.kind === 'gemini') return 'gemini'
+  if (preset.id === 'anthropic') return 'anthropic'
+  return 'openai'
+}
+
+function uniqueVendorSlug(base: string, existing: AiVendorSource[]): string {
   const seed = base.trim() || 'source'
   if (!existing.some((item) => item.slug === seed)) return seed
   let index = 2

@@ -1563,15 +1563,37 @@ mod tests {
                 "kind": "openai",
                 "display_name": "Work OpenAI",
                 "enabled": true,
+                "api_format": "openai_responses",
+                "credential_mode": "shared",
+                "shared_key_ref": "openai",
                 "api_key": "sk-work",
                 "base_url": "https://api.openai.com/v1"
+            }, {
+                "slug": "legacy-openai",
+                "kind": "openai_compatible",
+                "display_name": "Legacy OpenAI",
+                "enabled": true,
+                "base_url": "https://legacy.example/v1"
             }]),
         )]));
-        assert_eq!(vendors.ai_vendor_sources.len(), 1);
+        assert_eq!(vendors.ai_vendor_sources.len(), 2);
         assert_eq!(vendors.ai_vendor_sources[0].slug, "openai-work");
+        assert_eq!(
+            vendors.ai_vendor_sources[0].effective_api_format(),
+            "openai_responses"
+        );
         assert_eq!(
             vendors.ai_vendor_sources[0].api_key.as_deref(),
             Some("sk-work")
+        );
+        assert_eq!(vendors.ai_vendor_sources[0].credential_mode, "shared");
+        assert_eq!(
+            vendors.ai_vendor_sources[0].shared_key_ref.as_deref(),
+            Some("openai")
+        );
+        assert_eq!(
+            vendors.ai_vendor_sources[1].effective_api_format(),
+            "openai"
         );
 
         let config = ConfigService::parse_config(HashMap::from([

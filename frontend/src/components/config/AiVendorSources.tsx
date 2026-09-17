@@ -1,4 +1,8 @@
-import type { AiVendorCapability, AiVendorSource } from './aiVendorPresets'
+import type {
+  AiVendorCapability,
+  AiVendorSource,
+  SharedAiKeyRef,
+} from './aiVendorPresets'
 import {
   FaPlus,
   FaTrash,
@@ -27,9 +31,15 @@ import {
 } from '../settings'
 import {
   AI_VENDOR_PRESETS,
+  apiFormatForSource,
+  credentialModeForSource,
   findVendorPreset,
   isAgoraSource,
+  isSupportedAiApiFormat,
+  sharedKeyRefForSource,
+  sourceFromCustom,
   sourceFromPreset,
+  vendorSupports,
 } from './aiVendorPresets'
 import { useAddedCardOpen, useAddedSlug } from './useAddedCard'
 import {
@@ -126,7 +136,8 @@ export function VendorKindIcon({
   if (kind === 'volcengine') return <VolcengineMark />
   if (kind === 'tencent') return <TencentCloudMark />
   if (kind === 'agora') return <ShengwangMark />
-  const letter = (resolved?.display_name || slug || kind).trim().charAt(0) || '?'
+  const letter =
+    (resolved?.display_name || slug || kind).trim().charAt(0) || '?'
   return (
     <span className="oidc-preset-icon-placeholder" aria-hidden>
       {letter.toUpperCase()}
@@ -134,7 +145,8 @@ export function VendorKindIcon({
   )
 }
 
-export type VendorUsageId = 'standard' | 'lite' | 'pro' | 'image' | 'speech' | 'realtime'
+export type VendorUsageId =
+  'standard' | 'lite' | 'pro' | 'image' | 'speech' | 'realtime'
 
 export type VendorUsageMap = Partial<Record<string, VendorUsageId[]>>
 
@@ -142,9 +154,14 @@ interface AiVendorSourcesProps {
   sources: AiVendorSource[]
   onChange: (sources: AiVendorSource[]) => void
   usages?: VendorUsageMap
+  sharedKeyValues?: Partial<Record<SharedAiKeyRef, string>>
+  onSharedKeyChange?: (keyRef: SharedAiKeyRef, value: string) => void
 }
 
-function usageLabel(id: VendorUsageId, t: ReturnType<typeof useI18n>['t']): string {
+function usageLabel(
+  id: VendorUsageId,
+  t: ReturnType<typeof useI18n>['t'],
+): string {
   switch (id) {
     case 'lite':
       return t.config.aiVendorUsedLite
@@ -172,7 +189,12 @@ function usedByText(
   })
 }
 
-const CAPABILITY_ORDER: AiVendorCapability[] = ['text', 'image', 'speech', 'realtime']
+const CAPABILITY_ORDER: AiVendorCapability[] = [
+  'text',
+  'image',
+  'speech',
+  'realtime',
+]
 
 function capabilityLabel(
   id: AiVendorCapability,
@@ -262,6 +284,25 @@ export function AiVendorAddTrigger({
             </button>
           )
         })}
+        <button
+          type="button"
+          className="oidc-preset-card"
+          onClick={() =>
+            onChange([
+              ...sources,
+              sourceFromCustom(sources, t.config.aiVendorCustom),
+            ])
+          }
+          title={t.config.aiVendorCustomDesc}
+        >
+          <span className="oidc-preset-icon">
+            <VendorKindIcon kind="custom" />
+          </span>
+          <span className="oidc-preset-name">{t.config.aiVendorCustom}</span>
+          <span className="ai-vendor-preset-caps">
+            {t.config.aiVendorCapText}
+          </span>
+        </button>
       </div>
     ),
     [addFromPreset, format, sources, t, usages],
@@ -297,12 +338,16 @@ export const AiVendorSources: React.FC<AiVendorSourcesProps> = ({
   sources,
   onChange,
   usages = {},
+  sharedKeyValues = {},
+  onSharedKeyChange,
 }) => {
   const { t } = useI18n()
   const addedSlug = useAddedSlug(sources.map((source) => source.slug))
 
   const updateSource = (index: number, patch: Partial<AiVendorSource>) => {
-    onChange(sources.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+    onChange(
+      sources.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    )
   }
 
   return (
@@ -319,6 +364,8 @@ export const AiVendorSources: React.FC<AiVendorSourcesProps> = ({
           source={source}
           usedBy={usages[source.slug]}
           justAdded={source.slug === addedSlug}
+          sharedKeyValues={sharedKeyValues}
+          onSharedKeyChange={onSharedKeyChange}
           onChange={(patch) => updateSource(index, patch)}
           onRemove={() => onChange(sources.filter((_, i) => i !== index))}
         />
@@ -340,38 +387,80 @@ function VendorSetupSteps({ source }: { source: AiVendorSource }) {
   )
 }
 
-function hasVendorCredential(source: AiVendorSource): boolean {
+function hasVendorConfiguration(
+  source: AiVendorSource,
+  sharedKeyValues: Partial<Record<SharedAiKeyRef, string>>,
+): boolean {
+  const apiFormat = apiFormatForSource(source)
+  if (!isSupportedAiApiFormat(apiFormat)) return false
   if (isAgoraSource(source)) {
     return Boolean(
-      source.app_id?.trim()
-      && source.api_key?.trim()
-      && source.secret_id?.trim()
-      && source.secret_key?.trim(),
+      source.app_id?.trim() &&
+      source.api_key?.trim() &&
+      source.secret_id?.trim() &&
+      source.secret_key?.trim(),
     )
   }
   if (source.kind === 'tencent') {
     return Boolean(source.secret_id?.trim() || source.secret_key?.trim())
   }
-  return Boolean(source.api_key?.trim())
+  const credentialMode = credentialModeForSource(source)
+  const sharedKeyRef = sharedKeyRefForSource(source)
+  const credentialReady =
+    credentialMode === 'none' ||
+    (credentialMode === 'own' && Boolean(source.api_key?.trim())) ||
+    (credentialMode === 'shared' &&
+      Boolean(sharedKeyRef && sharedKeyValues[sharedKeyRef]?.trim()))
+  if (vendorSupports(source, 'text')) {
+    const hasDefaultEndpoint = ['gemini', 'openrouter', 'openai'].includes(source.kind.trim().toLowerCase())
+    return credentialReady && (hasDefaultEndpoint || Boolean(source.base_url?.trim()))
+  }
+  return credentialReady
 }
 
 function VendorCard({
   source,
   usedBy,
   justAdded = false,
+  sharedKeyValues,
+  onSharedKeyChange,
   onChange,
   onRemove,
 }: {
   source: AiVendorSource
   usedBy?: VendorUsageId[]
   justAdded?: boolean
+  sharedKeyValues: Partial<Record<SharedAiKeyRef, string>>
+  onSharedKeyChange?: (keyRef: SharedAiKeyRef, value: string) => void
   onChange: (patch: Partial<AiVendorSource>) => void
   onRemove: () => void
 }) {
   const { t, format } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
   const preset = findVendorPreset(source)
-  const configured = hasVendorCredential(source)
+  const apiFormat = apiFormatForSource(source)
+  const apiFormatError = isSupportedAiApiFormat(apiFormat)
+    ? undefined
+    : format(t.config.aiVendorApiFormatInvalid, { value: apiFormat })
+  const supportsText = vendorSupports(source, 'text')
+  const credentialMode = credentialModeForSource(source)
+  const sharedKeyRef = sharedKeyRefForSource(source)
+  const credentialError =
+    credentialMode === 'own' ||
+    credentialMode === 'none' ||
+    (credentialMode === 'shared' && sharedKeyRef)
+      ? undefined
+      : format(t.config.aiVendorCredentialInvalid, {
+          value:
+            credentialMode === 'shared'
+              ? source.shared_key_ref || 'missing'
+              : credentialMode,
+        })
+  const credentialValue =
+    credentialMode === 'shared' && sharedKeyRef
+      ? `shared:${sharedKeyRef}`
+      : credentialMode
+  const configured = hasVendorConfiguration(source, sharedKeyValues)
   const title = source.display_name || source.slug
   const usedHint = usedByText(usedBy, t, format)
   const [open, setOpen] = useAddedCardOpen(justAdded, !configured)
@@ -418,11 +507,13 @@ function VendorCard({
           <span className="ai-vendor-card-tags">
             <SettingTitleTag
               variant="muted"
-              className={configured ? undefined : 'ai-vendor-card-status-missing'}
+              className={
+                configured ? undefined : 'ai-vendor-card-status-missing'
+              }
             >
               {configured
                 ? t.config.aiVendorConfigured
-                : t.config.aiVendorKeyMissing}
+                : t.config.aiVendorSetupMissing}
             </SettingTitleTag>
             {usedHint ? (
               <SettingTitleTag variant="muted">{usedHint}</SettingTitleTag>
@@ -477,9 +568,7 @@ function VendorCard({
 
       <CollapseRegion open={open}>
         <div className="ai-vendor-card-body">
-          {!configured ? (
-            <VendorSetupSteps source={source} />
-          ) : null}
+          {!configured ? <VendorSetupSteps source={source} /> : null}
           <InputItem
             itemKey={`${source.slug}-name`}
             label={t.config.aiVendorDisplayName}
@@ -579,35 +668,151 @@ function VendorCard({
             </>
           ) : (
             <>
-              <InputItem
-                itemKey={`${source.slug}-key`}
-                label={t.config.aiVendorApiKey}
-                {...bindGuide('ai.apiKey', g.ai.apiKey)}
-                value={source.api_key || ''}
-                onChange={(value) => onChange({ api_key: value })}
-                placeholder={
-                  preset?.keyPlaceholder ||
-                  (source.kind === 'openrouter'
-                    ? 'sk-or-v1-...'
-                    : source.kind === 'gemini'
-                      ? 'AIza...'
-                      : 'sk-...')
-                }
-                inputType="password"
-                autoSelectOnMask
+              {supportsText || apiFormatError ? (
+                <SelectItem
+                  itemKey={`${source.slug}-api-format`}
+                  label={t.config.aiVendorApiFormat}
+                  value={apiFormat}
+                  onChange={(value) => onChange({ api_format: value })}
+                  options={[
+                    ...(apiFormatError
+                      ? [
+                          {
+                            value: apiFormat,
+                            label: apiFormatError,
+                            disabled: true,
+                          },
+                        ]
+                      : []),
+                    {
+                      value: 'openai_responses',
+                      label: t.config.aiApiFormatResponses,
+                    },
+                    {
+                      value: 'openai',
+                      label: t.config.aiApiFormatChatCompletions,
+                    },
+                    {
+                      value: 'anthropic',
+                      label: t.config.aiApiFormatAnthropic,
+                    },
+                    {
+                      value: 'gemini',
+                      label: t.config.aiApiFormatGemini,
+                    },
+                  ]}
+                  error={apiFormatError}
+                  layout="vertical"
+                />
+              ) : null}
+              <SelectItem
+                itemKey={`${source.slug}-credential`}
+                label={t.config.aiVendorCredentialMode}
+                value={credentialValue}
+                onChange={(value) => {
+                  if (value.startsWith('shared:')) {
+                    onChange({
+                      credential_mode: 'shared',
+                      shared_key_ref: value.slice('shared:'.length),
+                    })
+                  } else {
+                    onChange({
+                      credential_mode: value,
+                      shared_key_ref: null,
+                    })
+                  }
+                }}
+                options={[
+                  ...(credentialError
+                    ? [
+                        {
+                          value: credentialValue,
+                          label: credentialError,
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  { value: 'own', label: t.config.aiVendorCredentialOwn },
+                  { value: 'none', label: t.config.aiVendorCredentialNone },
+                  {
+                    value: 'shared:openai',
+                    label: t.config.aiVendorCredentialSharedOpenAI,
+                  },
+                  {
+                    value: 'shared:openrouter',
+                    label: t.config.aiVendorCredentialSharedOpenRouter,
+                  },
+                  {
+                    value: 'shared:gemini',
+                    label: t.config.aiVendorCredentialSharedGemini,
+                  },
+                  {
+                    value: 'shared:volcengine',
+                    label: t.config.aiVendorCredentialSharedVolcengine,
+                  },
+                ]}
+                error={credentialError}
                 layout="vertical"
               />
-              {source.kind !== 'gemini' && !(preset?.base_url || '').trim() && (
+              {credentialMode === 'own' ? (
+                <InputItem
+                  itemKey={`${source.slug}-key`}
+                  label={t.config.aiVendorApiKey}
+                  {...bindGuide('ai.apiKey', g.ai.apiKey)}
+                  value={source.api_key || ''}
+                  onChange={(value) => onChange({ api_key: value })}
+                  placeholder={
+                    preset?.keyPlaceholder ||
+                    (source.kind === 'openrouter'
+                      ? 'sk-or-v1-...'
+                      : source.kind === 'gemini'
+                        ? 'AIza...'
+                        : 'sk-...')
+                  }
+                  inputType="password"
+                  hint={t.config.aiVendorApiKeyOptional}
+                  autoSelectOnMask
+                  layout="vertical"
+                />
+              ) : credentialMode === 'shared' && sharedKeyRef ? (
+                <InputItem
+                  itemKey={`${source.slug}-shared-key`}
+                  label={t.config.aiVendorApiKey}
+                  {...bindGuide('ai.apiKey', g.ai.apiKey)}
+                  value={sharedKeyValues[sharedKeyRef] || ''}
+                  onChange={(value) => onSharedKeyChange?.(sharedKeyRef, value)}
+                  placeholder={
+                    sharedKeyRef === 'openrouter'
+                      ? 'sk-or-v1-...'
+                      : sharedKeyRef === 'gemini'
+                        ? 'AIza...'
+                        : 'sk-...'
+                  }
+                  inputType="password"
+                  hint={
+                    sharedKeyValues[sharedKeyRef]?.trim()
+                      ? t.config.aiVendorSharedKeyConfigured
+                      : t.config.aiVendorSharedKeyMissing
+                  }
+                  autoSelectOnMask
+                  layout="vertical"
+                />
+              ) : null}
+              {supportsText && (
                 <InputItem
                   itemKey={`${source.slug}-base`}
-                  label={t.config.openaiBaseUrlLabel}
+                  label={t.config.baseUrlLabel}
                   {...bindGuide('ai.baseUrl', g.ai.baseUrl)}
                   value={source.base_url || ''}
                   onChange={(value) => onChange({ base_url: value })}
                   placeholder={
-                    preset?.id === 'openaiCompatible'
-                      ? 'https://api.example.com/v1'
-                      : t.config.openaiBaseUrlLabel
+                    apiFormat === 'anthropic'
+                      ? 'https://api.anthropic.com/v1'
+                      : apiFormat === 'gemini'
+                        ? 'https://generativelanguage.googleapis.com'
+                        : preset?.id === 'openaiCompatible'
+                          ? 'https://api.example.com/v1'
+                          : t.config.baseUrlLabel
                   }
                   layout="vertical"
                 />

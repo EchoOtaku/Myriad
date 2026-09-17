@@ -33,12 +33,14 @@ pub struct AiImageConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AiConfigError {
     NotConfigured,
+    InvalidProvider(String),
 }
 
 impl AiConfigError {
-    pub fn message(&self) -> &'static str {
+    pub fn message(&self) -> &str {
         match self {
             Self::NotConfigured => "No AI provider configured",
+            Self::InvalidProvider(message) => message,
         }
     }
 }
@@ -79,6 +81,11 @@ impl<V: Clone> SingleCache<V> {
         self.value = Some(value);
         self.cached_at = Some(Instant::now());
     }
+
+    fn clear(&mut self) {
+        self.value = None;
+        self.cached_at = None;
+    }
 }
 
 static AI_CONFIG_CACHE: Lazy<RwLock<SingleCache<AiConfig>>> =
@@ -98,6 +105,13 @@ fn cache_for_tier(tier: ModelTier) -> &'static RwLock<SingleCache<AiConfig>> {
     }
 }
 
+pub async fn invalidate_ai_config_cache() {
+    AI_CONFIG_CACHE.write().await.clear();
+    AI_PRO_CONFIG_CACHE.write().await.clear();
+    AI_LITE_CONFIG_CACHE.write().await.clear();
+    AI_IMAGE_CONFIG_CACHE.write().await.clear();
+}
+
 /// Resolve text AI config for a model tier (5-minute process cache).
 pub async fn get_ai_config_for_tier(tier: ModelTier) -> Result<AiConfig, AiConfigError> {
     let cache_ref = cache_for_tier(tier);
@@ -110,21 +124,27 @@ pub async fn get_ai_config_for_tier(tier: ModelTier) -> Result<AiConfig, AiConfi
 
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let resolved = config.resolve_ai_config(tier);
-    let api_key = resolved.api_key.filter(|k| !k.is_empty());
-    let ai_config = api_key.map(|key| {
-        let provider = AiProvider::from_str(&resolved.provider);
-        let base_url = if resolved.base_url.is_empty() {
-            None
-        } else {
-            Some(resolved.base_url.clone())
-        };
-        AiConfig {
-            provider,
-            api_key: key,
-            model: resolved.model.clone(),
-            base_url,
-        }
-    });
+    let ai_config = resolved
+        .text_ready()
+        .then(|| {
+            let provider = AiProvider::from_str(&resolved.api_format)
+                .map_err(|error| AiConfigError::InvalidProvider(error.to_string()))?;
+            let base_url = if resolved.base_url.is_empty() {
+                None
+            } else {
+                Some(resolved.base_url.clone())
+            };
+            Ok(AiConfig {
+                provider,
+                api_key: resolved
+                    .api_key
+                    .filter(|key| !key.trim().is_empty())
+                    .unwrap_or_default(),
+                model: resolved.model.clone(),
+                base_url,
+            })
+        })
+        .transpose()?;
 
     match ai_config {
         Some(cfg) => {
@@ -163,6 +183,16 @@ pub async fn get_ai_image_config() -> Result<AiImageConfig, AiConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalidation_discards_cached_configuration_before_ttl() {
+        let mut cache = SingleCache::new(Duration::from_secs(300));
+        cache.set("old source");
+        cache.clear();
+        assert_eq!(cache.get(), None);
+        cache.set("new source");
+        assert_eq!(cache.get(), Some("new source"));
+    }
 
     #[test]
     fn not_configured_message_is_stable() {

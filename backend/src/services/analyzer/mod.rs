@@ -5,6 +5,8 @@ mod gemini;
 mod openai;
 mod schema;
 mod sse;
+pub(crate) mod text_protocol;
+mod tool_protocol;
 mod types;
 
 pub(crate) mod tool_calling;

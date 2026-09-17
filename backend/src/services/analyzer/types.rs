@@ -173,19 +173,26 @@ pub(super) fn json_token(value: &serde_json::Value) -> Option<&str> {
 pub enum AiProvider {
     Gemini,
     OpenAI,
+    OpenAIResponses,
+    Anthropic,
 }
 
 impl AiProvider {
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_str(s: &str) -> anyhow::Result<Self> {
         match s.to_lowercase().as_str() {
-            "openai" | "openrouter" => Self::OpenAI,
-            _ => Self::Gemini,
+            "gemini" => Ok(Self::Gemini),
+            "openai" | "openrouter" => Ok(Self::OpenAI),
+            "openai_responses" => Ok(Self::OpenAIResponses),
+            "anthropic" | "anthropic_messages" => Ok(Self::Anthropic),
+            _ => Err(anyhow::anyhow!("unsupported AI provider: {s}")),
         }
     }
 
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::OpenAI => "openai",
+            Self::OpenAIResponses => "openai_responses",
+            Self::Anthropic => "anthropic",
             Self::Gemini => "gemini",
         }
     }
@@ -233,6 +240,9 @@ pub(super) fn gateway_of(provider: AiProvider, base_url: Option<&str>) -> Gatewa
     if provider == AiProvider::Gemini {
         return Gateway::Gemini;
     }
+    if provider == AiProvider::Anthropic {
+        return Gateway::OpenAiCompatible;
+    }
     let host = base_url
         .map(str::trim)
         .map(|url| {
@@ -256,6 +266,15 @@ mod tests {
         OpenAIRequest, gateway_of,
     };
     use serde_json::json;
+
+    #[test]
+    fn ai_provider_rejects_unknown_values() {
+        let error = AiProvider::from_str("unknown-provider").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "unsupported AI provider: unknown-provider"
+        );
+    }
 
     #[test]
     fn the_gateway_is_recovered_from_the_base_url() {
