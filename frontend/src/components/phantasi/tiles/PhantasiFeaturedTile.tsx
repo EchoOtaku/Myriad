@@ -9,7 +9,7 @@ import { memo, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../../contexts/AuthContext'
-import { useI18n } from '../../../contexts/I18nContext'
+import { I18nNamespace, useI18n } from '../../../contexts/I18nContext'
 import { useWidgetSize } from '../../../hooks/useWidgetSize'
 import { DEFAULT_THEME_COLOR } from '../constants'
 import { downgradeForBand } from '../logic/layout'
@@ -110,7 +110,7 @@ export const PhantasiFeaturedTile = memo(
 PhantasiFeaturedTile.displayName = 'PhantasiFeaturedTile'
 
 /** 首页不在原地打开阅读器。 */
-export const PhantasiFeaturedWidget = memo(
+const PhantasiFeaturedWidgetBody = memo(
   ({ config, isEditMode, isPreview }: WidgetComponentProps) => {
     const { t } = useI18n()
     const navigate = useNavigate()
@@ -159,4 +159,11 @@ export const PhantasiFeaturedWidget = memo(
   },
 )
 
-PhantasiFeaturedWidget.displayName = 'PhantasiFeaturedWidget'
+PhantasiFeaturedWidgetBody.displayName = 'PhantasiFeaturedWidgetBody'
+
+/** 内置组件不在 /journal 路由下渲染，必须自带 phantasi 语言包边界。 */
+export const PhantasiFeaturedWidget = memo((props: WidgetComponentProps) => (
+  <I18nNamespace names={['phantasi']}>
+    <PhantasiFeaturedWidgetBody {...props} />
+  </I18nNamespace>
+))

@@ -11,7 +11,7 @@ import { memo, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../../contexts/AuthContext'
-import { useI18n } from '../../../contexts/I18nContext'
+import { I18nNamespace, useI18n } from '../../../contexts/I18nContext'
 import { isExlight, useAnimationLevel } from '../../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../../hooks/useWidgetSize'
 import { formatMessage, localeOrFallback } from '../../../i18n'
@@ -925,7 +925,7 @@ PhantasiSourceTile.displayName = 'PhantasiSourceTile'
 export { CADENCE_WINDOW_DAYS }
 
 /** 不新开 GET /source/:id，走 getSources() + find。 */
-export const PhantasiSourceWidget = memo(
+const PhantasiSourceWidgetBody = memo(
   ({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
     const { t } = useI18n()
     const navigate = useNavigate()
@@ -1037,4 +1037,11 @@ export const PhantasiSourceWidget = memo(
   },
 )
 
-PhantasiSourceWidget.displayName = 'PhantasiSourceWidget'
+PhantasiSourceWidgetBody.displayName = 'PhantasiSourceWidgetBody'
+
+/** 内置组件不在 /journal 路由下渲染，必须自带 phantasi 语言包边界。 */
+export const PhantasiSourceWidget = memo((props: WidgetComponentProps) => (
+  <I18nNamespace names={['phantasi']}>
+    <PhantasiSourceWidgetBody {...props} />
+  </I18nNamespace>
+))
