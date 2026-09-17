@@ -357,6 +357,8 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale, t } = useI18n()
+  // 后台 headless 挂在 App 根，不经过 I18nNamespace；chrome 没有 tapp 文案。
+  const cannotLoadApp = headless ? undefined : t.tapp.cannotLoadApp
   const animationConfig = useAnimationLevel()
 
   // 对象引用放 ref，避免 deps 重建 iframe
@@ -776,7 +778,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
             runtimeScripts
               ? escapeSandboxScriptSource(runtimeScripts)
               : undefined,
-            t.tapp.cannotLoadApp,
+            cannotLoadApp ?? 'Error',
           )
       if (cancelled) return
 
@@ -819,7 +821,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     previewMode,
     previewStores,
     subjectEpoch,
-    t.tapp.cannotLoadApp,
+    cannotLoadApp,
   ])
 
   // When already open (Aro etc.), React Router query changes must refresh
