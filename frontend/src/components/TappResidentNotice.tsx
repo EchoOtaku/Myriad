@@ -1,6 +1,6 @@
 import type { BackgroundRequirement } from '../tapp/types'
 import { useState } from 'react'
-import { useI18n } from '../contexts/I18nContext'
+import { I18nNamespace, useI18n } from '../contexts/I18nContext'
 import {
   stopBackgroundResident,
   useBackgroundResidents,
@@ -8,11 +8,22 @@ import {
 import { NotificationSourceIcon } from './notifications/NotificationIcons'
 
 export function TappResidentNotice() {
-  const { t, format } = useI18n()
   const residents = useBackgroundResidents()
-  const [expanded, setExpanded] = useState(false)
-
   if (residents.length === 0) return null
+  return (
+    <I18nNamespace names={['tapp']}>
+      <TappResidentNoticeBody residents={residents} />
+    </I18nNamespace>
+  )
+}
+
+function TappResidentNoticeBody({
+  residents,
+}: {
+  residents: ReturnType<typeof useBackgroundResidents>
+}) {
+  const { t, format } = useI18n()
+  const [expanded, setExpanded] = useState(false)
 
   const reasonLabels: Record<BackgroundRequirement, string> = {
     media: t.tapp.backgroundReasonMedia,

@@ -1,3 +1,4 @@
+import type { PreparedDataExchange } from '../services/TappApiService'
 import { ArrowRight, Clock3, Database, ShieldCheck, X } from 'lucide-react'
 import {
   useEffect,
@@ -7,7 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { useI18n } from '../../contexts/I18nContext'
+import { I18nNamespace, useI18n } from '../../contexts/I18nContext'
 import {
   decideDataExchangeConsent,
   getDataExchangeConsentSnapshot,
@@ -43,20 +44,32 @@ function formatLimit(maxBytes: number, maxRecords?: number): string {
 }
 
 export function TappDataExchangeConsentHost() {
-  const { t, format } = useI18n()
   const { current } = useSyncExternalStore(
     subscribeDataExchangeConsent,
     getDataExchangeConsentSnapshot,
     getDataExchangeConsentSnapshot,
   )
+  const prepared = current?.prepared
+  if (!prepared || typeof document === 'undefined') return null
+  return (
+    <I18nNamespace names={['tapp']}>
+      <TappDataExchangeConsentDialog prepared={prepared} />
+    </I18nNamespace>
+  )
+}
+
+function TappDataExchangeConsentDialog({
+  prepared,
+}: {
+  prepared: PreparedDataExchange
+}) {
+  const { t, format } = useI18n()
   const denyButtonRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState(Date.now)
 
-  const prepared = current?.prepared
   const scope = useMemo(
-    () =>
-      prepared ? formatScope(prepared.params, t.tapp.dataExchangeNoScope) : '',
+    () => formatScope(prepared.params, t.tapp.dataExchangeNoScope),
     [prepared, t.tapp.dataExchangeNoScope],
   )
   const remainingSeconds = prepared
@@ -108,8 +121,6 @@ export function TappDataExchangeConsentHost() {
       previouslyFocused?.focus()
     }
   }, [prepared])
-
-  if (!prepared || typeof document === 'undefined') return null
 
   const deny = () => decideDataExchangeConsent(prepared.requestId, false)
   const allow = () => decideDataExchangeConsent(prepared.requestId, true)

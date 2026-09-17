@@ -16,7 +16,7 @@ import React, {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { useI18n } from '../contexts/I18nContext'
+import { I18nNamespace, useI18n } from '../contexts/I18nContext'
 import { isExlight, useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useLibraryDockStage } from '../hooks/useLibraryDockStage'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
@@ -246,7 +246,18 @@ export interface WidgetLibraryIslandProps {
   tourDockPose?: HomeEditTourDockPose
 }
 
-export default function WidgetLibraryIsland({
+export default function WidgetLibraryIsland(props: WidgetLibraryIslandProps) {
+  if (!props.visible) {
+    return <WidgetLibraryIslandStage {...props} />
+  }
+  return (
+    <I18nNamespace names={['tapp']}>
+      <WidgetLibraryIslandStage {...props} />
+    </I18nNamespace>
+  )
+}
+
+function WidgetLibraryIslandStage({
   visible,
   availableWidgets,
   onNewWidgetDragStart,

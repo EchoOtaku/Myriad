@@ -1552,7 +1552,7 @@ const GlobalControlPanel: React.FC = () => {
         />
       </svg>
     )
-  const residentLabel = format(t.tapp.residentRunning, {
+  const residentLabel = format(t.controlPanel.residentRunning, {
     count: backgroundResidents.length,
   })
   const collapsedIndicator = (

@@ -22,6 +22,18 @@ describe('home first-paint budget', () => {
     assert.match(routes, /config:\s*lazyWithPreload\(\(\) => import\('\.\.\/views\/Config'\)\)/)
     assert.match(agora, /import\('agora-rtc-sdk-ng'\)/)
     assert.match(agora, /import\('agora-rtm'\)/)
+    const loadLocale = readFileSync(
+      new URL('../i18n/loadLocale.ts', import.meta.url),
+      'utf8',
+    )
+    const shellFn = loadLocale.slice(
+      loadLocale.indexOf('async function loadShellPack'),
+      loadLocale.indexOf('const shellLoader'),
+    )
+    assert.equal(/import\('\.\/tapp\./.test(shellFn), false)
+    assert.equal(/import\('\.\/phantasi\./.test(shellFn), false)
+    assert.equal(/import\('\.\/merope\./.test(shellFn), false)
+    assert.equal(/import\('\.\/config\./.test(shellFn), false)
   })
 
   it('keeps widget settings and custom fonts off the first paint path', () => {

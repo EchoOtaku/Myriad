@@ -26,6 +26,29 @@ it('loads translated shell service copy without loading the settings catalog', a
   assert.equal(full.config.loadConfigFailed, shell.config.loadConfigFailed)
 })
 
+it('loads chrome without tapp, phantasi, merope, or settings catalogs', async () => {
+  const blocked = registerHooks({
+    load(url, context, next) {
+      if (
+        url.endsWith('/tapp.fr-FR.json') ||
+        url.endsWith('/phantasi.fr-FR.json') ||
+        url.endsWith('/merope.fr-FR.json') ||
+        url.endsWith('/agentCaps.fr-FR.json') ||
+        url.endsWith('/config.fr-FR.json')
+      ) {
+        throw new Error(`shell loaded ${url}`)
+      }
+      return next(url, context)
+    },
+  })
+  const shell = await localeLoader
+    .loadShellLocale('fr-FR')
+    .finally(() => blocked.deregister())
+  assert.equal(Object.hasOwn(shell, 'tapp'), false)
+  assert.equal(Object.hasOwn(shell, 'phantasi'), false)
+  assert.equal(typeof shell.errors.networkError, 'string')
+})
+
 it('suspends once, surfaces failed imports, and allows an explicit retry', async () => {
   let fail = true
   const failure = new Error('offline')

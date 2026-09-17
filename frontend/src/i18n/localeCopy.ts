@@ -86,4 +86,3 @@ export function formatCurrent(
 ): string {
   return formatMessage(resolveServiceCopy().locale, template, params)
 }
-

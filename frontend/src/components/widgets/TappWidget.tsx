@@ -7,7 +7,7 @@ import type { WidgetComponentProps } from '../widgetGridTypes'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
-import { useI18n } from '../../contexts/I18nContext'
+import { I18nNamespace, useI18n } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { TappIconBadge } from '../../tapp/components/TappIconBadge'
@@ -1044,4 +1044,12 @@ export const TappWidgetComponent = memo(
 
 TappWidgetComponent.displayName = 'TappWidgetComponent'
 
-export default TappWidgetComponent
+function TappWidget(props: TappWidgetProps) {
+  return (
+    <I18nNamespace names={['tapp']}>
+      <TappWidgetComponent {...props} />
+    </I18nNamespace>
+  )
+}
+
+export default TappWidget

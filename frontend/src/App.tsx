@@ -1,3 +1,4 @@
+import type { ShellNamespace } from './i18n'
 import type { ModuleVisibilityKey } from './utils/moduleVisibility'
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -17,7 +18,7 @@ import RouteLoader from './components/RouteLoader'
 import { AgentGlobalActions } from './contexts/AgentGlobalActions'
 import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { I18nProvider } from './contexts/I18nContext'
+import { I18nNamespace, I18nProvider } from './contexts/I18nContext'
 
 import { LocaleAccountSync } from './contexts/LocaleAccountSync'
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
@@ -294,6 +295,20 @@ function SuspensePage({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={null}>{children}</Suspense>
 }
 
+function NamespacedPage({
+  names,
+  children,
+}: {
+  names: readonly ShellNamespace[]
+  children: React.ReactNode
+}) {
+  return (
+    <I18nNamespace names={names}>
+      <SuspensePage>{children}</SuspensePage>
+    </I18nNamespace>
+  )
+}
+
 /** 策略来自 resolvePageRouteAnimation。 */
 function AnimatedPage({
   children,
@@ -466,9 +481,9 @@ function AppRoutes() {
           path="/journal/*"
           element={
             <ModuleVisibilityGuard moduleKey="phantasi">
-              <SuspensePage>
+              <NamespacedPage names={['phantasi']}>
                 <Phantasi />
-              </SuspensePage>
+              </NamespacedPage>
             </ModuleVisibilityGuard>
           }
         />
@@ -477,11 +492,11 @@ function AppRoutes() {
           <Route
             path="/dev/phantasi-tiles"
             element={
-              <SuspensePage>
+              <NamespacedPage names={['phantasi']}>
                 {React.createElement(
                   lazy(() => import('./views/PhantasiTilePreview.tsx')),
                 )}
-              </SuspensePage>
+              </NamespacedPage>
             }
           />
         )}
@@ -499,9 +514,9 @@ function AppRoutes() {
           path="/config"
           element={
             <RequireAuth requiresAdmin>
-              <SuspensePage>
+              <NamespacedPage names={['tapp', 'phantasi', 'merope', 'agentCaps']}>
                 <Config />
-              </SuspensePage>
+              </NamespacedPage>
             </RequireAuth>
           }
         />
@@ -509,9 +524,9 @@ function AppRoutes() {
           path="/agent/settings"
           element={
             <RequireAuth requiresAdmin>
-              <SuspensePage>
+              <NamespacedPage names={['merope', 'agentCaps']}>
                 <AgentSettings />
-              </SuspensePage>
+              </NamespacedPage>
             </RequireAuth>
           }
         />
@@ -548,9 +563,9 @@ function AppRoutes() {
           path="/tapp"
           element={
             <ModuleVisibilityGuard moduleKey="tapp">
-              <SuspensePage>
+              <NamespacedPage names={['tapp']}>
                 <TappList />
-              </SuspensePage>
+              </NamespacedPage>
             </ModuleVisibilityGuard>
           }
         />
@@ -558,9 +573,9 @@ function AppRoutes() {
           path="/tapp/run"
           element={
             <ModuleVisibilityGuard moduleKey="tapp">
-              <SuspensePage>
+              <NamespacedPage names={['tapp']}>
                 <TappRun />
-              </SuspensePage>
+              </NamespacedPage>
             </ModuleVisibilityGuard>
           }
         />
@@ -568,9 +583,9 @@ function AppRoutes() {
           path="/tapp/run/:id"
           element={
             <ModuleVisibilityGuard moduleKey="tapp">
-              <SuspensePage>
+              <NamespacedPage names={['tapp']}>
                 <TappRun />
-              </SuspensePage>
+              </NamespacedPage>
             </ModuleVisibilityGuard>
           }
         />
@@ -578,9 +593,9 @@ function AppRoutes() {
           path="/tapp/detail/:id"
           element={
             <ModuleVisibilityGuard moduleKey="tapp">
-              <SuspensePage>
+              <NamespacedPage names={['tapp']}>
                 <TappDetail />
-              </SuspensePage>
+              </NamespacedPage>
             </ModuleVisibilityGuard>
           }
         />
@@ -588,9 +603,9 @@ function AppRoutes() {
           path="/tapp/store"
           element={
             <ModuleVisibilityGuard moduleKey="tapp">
-              <SuspensePage>
+              <NamespacedPage names={['tapp']}>
                 <TappStore />
-              </SuspensePage>
+              </NamespacedPage>
             </ModuleVisibilityGuard>
           }
         />
@@ -598,9 +613,9 @@ function AppRoutes() {
           path="/tapp/playground"
           element={
             <RequireAuth requiresAdmin>
-              <SuspensePage>
+              <NamespacedPage names={['tapp']}>
                 <TappPlayground />
-              </SuspensePage>
+              </NamespacedPage>
             </RequireAuth>
           }
         />
@@ -675,10 +690,12 @@ export function App() {
                     {/* open_window 全局回退；多窗挂载时 typed handler 覆盖 */}
                     <GlobalAgentWindowHandler />
                     <AgentAccessGate>
-                      <Suspense fallback={null}>
-                        <AgentEngine />
-                        <AgentPanel />
-                      </Suspense>
+                      <I18nNamespace names={['merope', 'agentCaps']}>
+                        <Suspense fallback={null}>
+                          <AgentEngine />
+                          <AgentPanel />
+                        </Suspense>
+                      </I18nNamespace>
                     </AgentAccessGate>
                     <RouteLoader />
                     <CustomScrollbar />

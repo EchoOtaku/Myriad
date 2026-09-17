@@ -439,7 +439,7 @@ export const FriendLinksWidget = memo(
                       />
                       <span className="relative z-10 min-w-0 flex-1">
                         <span className="mb-0.5 block text-[8px] font-medium tracking-wide text-gray-400 dark:text-gray-500">
-                          {t.phantasi.friendLinks}
+                          {t.widgets.friendLinks}
                         </span>
                         <span
                           className="block truncate font-semibold leading-tight text-gray-800 dark:text-gray-100"
@@ -600,7 +600,7 @@ export const FriendLinksWidget = memo(
             className="min-w-0 flex-1 truncate font-semibold text-gray-800 dark:text-gray-100"
             style={{ fontSize: `${14 * fontScale}px` }}
           >
-            {t.phantasi.friendLinks}
+            {t.widgets.friendLinks}
           </span>
           {isWide && !loading && !failed && (
             <span

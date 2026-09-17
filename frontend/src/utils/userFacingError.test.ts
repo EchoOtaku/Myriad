@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { before, describe, it } from 'node:test'
 import { currentCopy, formatCurrent } from '../i18n/localeCopy.ts'
+import { loadShellNamespace } from '../i18n/loadLocale.ts'
 import { ApiError } from '../services/api.ts'
 import {
   httpStatusMessage,
@@ -16,6 +17,14 @@ function fill(
 }
 
 describe('userFacingError', () => {
+  before(async () => {
+    await Promise.all([
+      loadShellNamespace('tapp', 'en-US'),
+      loadShellNamespace('phantasi', 'en-US'),
+      loadShellNamespace('merope', 'en-US'),
+    ])
+  })
+
   it('guides missing AI configuration without misclassifying an upstream failure', () => {
     for (const code of ['ai_not_configured', 'AI_NOT_CONFIGURED']) {
       assert.equal(userFacingError(new ApiError('No AI provider configured', 409, code)), currentCopy().errors.aiNotConfigured)

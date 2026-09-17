@@ -12,7 +12,7 @@ import {
   useState,
 } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { useI18n } from '../../contexts/I18nContext'
+import { I18nNamespace, useI18n } from '../../contexts/I18nContext'
 import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace } from '../../features/merope/api'
@@ -442,7 +442,7 @@ function MeropeWidgetDuplicate({ compact }: { compact: boolean }) {
   )
 }
 
-export const MeropeWidget = memo(
+const MeropeWidgetBody = memo(
   ({ isPreview = false, config, isEditMode }: WidgetComponentProps) => {
     const compact = config.size === '2x2'
     const holdsFace = useMeropeWidgetFaceSlot(config.id, !isPreview)
@@ -457,3 +457,9 @@ export const MeropeWidget = memo(
     )
   },
 )
+
+export const MeropeWidget = memo((props: WidgetComponentProps) => (
+  <I18nNamespace names={['merope']}>
+    <MeropeWidgetBody {...props} />
+  </I18nNamespace>
+))
