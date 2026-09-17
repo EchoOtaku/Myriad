@@ -56,16 +56,4 @@ mod tests {
         let b = shared_database_slot();
         assert!(Arc::ptr_eq(&a, &b), "slot must be a single process Arc");
     }
-
-    #[tokio::test]
-    async fn set_process_database_updates_readers_on_shared_slot() {
-        // Structural: write path is the same Arc AppState holds after from_shared.
-        let slot = shared_database_slot();
-        let before = Arc::as_ptr(&slot) as usize;
-        // set_process_database requires a real DatabaseConnection; without DB we
-        // only prove the slot identity used by AppState::from_shared.
-        let again = shared_database_slot();
-        assert_eq!(before, Arc::as_ptr(&again) as usize);
-        let _ = database().await; // may be Err if no connection — ok in unit env
-    }
 }

@@ -332,18 +332,18 @@ pub async fn ensure_single_owner(db: &DatabaseConnection) -> Result<(), DbErr> {
         ));
     }
 
-    // Partial unique index: at most one owner.
-    db.execute_unprepared(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner \
-         ON users ((true)) WHERE is_owner = true",
-    )
-    .await?;
-
-    // Collapse multiples → keep lowest id.
+    // Collapse multiples before the unique index; otherwise CREATE UNIQUE fails
+    // on existing duplicates and the UPDATE never runs.
     db.execute_unprepared(
         "UPDATE users SET is_owner = false \
          WHERE is_owner = true \
            AND id <> (SELECT MIN(id) FROM users WHERE is_owner = true)",
+    )
+    .await?;
+
+    db.execute_unprepared(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner \
+         ON users ((true)) WHERE is_owner = true",
     )
     .await?;
 

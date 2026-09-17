@@ -59,6 +59,25 @@ const UpyunIcon: React.FC = () => (
   </svg>
 )
 
+function seoCopyLanguage(locale: string): string {
+  switch (locale) {
+    case 'zh-CN':
+      return 'zh'
+    case 'zh-TW':
+      return 'zh-TW'
+    case 'ja-JP':
+      return 'ja'
+    case 'ko-KR':
+      return 'ko'
+    case 'fr-FR':
+      return 'fr'
+    case 'de-DE':
+      return 'de'
+    default:
+      return 'en'
+  }
+}
+
 interface ConfigField {
   key: string
   label: string
@@ -90,7 +109,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
   description,
   sectionId,
 }) => {
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
   type SeoAiField = 'site_description' | 'site_keywords' | 'site_ai_intro'
 
@@ -206,28 +225,17 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
     }
   }, [t.config, visibilityPolicy])
 
-  const tryOpenAiGenTip = useCallback(
-    (field: SeoAiField) => {
-      const title = getFieldValue('site_title').trim()
-      if (!title) {
-        setAiGenFeedback({
-          field,
-          message: t.config.siteAiGenerateNeedTitle,
-        })
-        setAiGenTipField(null)
-        return
-      }
-      setAiGenHint('')
-      setAiGenTipField(field)
-    },
-    [getFieldValue, t.config.siteAiGenerateNeedTitle],
-  )
+  const tryOpenAiGenTip = useCallback((field: SeoAiField) => {
+    setAiGenFeedback(null)
+    setAiGenHint('')
+    setAiGenTipField(field)
+  }, [])
 
   const handleAiGenerateField = useCallback(
     async (field: SeoAiField, hint: string) => {
       const title = getFieldValue('site_title').trim()
       const description = getFieldValue('site_description').trim()
-      if (!title) {
+      if (!title && !hint.trim()) {
         setAiGenFeedback({
           field,
           message: t.config.siteAiGenerateNeedTitle,
@@ -254,6 +262,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
             site_title: title,
             site_description: description,
             hint: hint.trim(),
+            language: seoCopyLanguage(locale),
             fields: [field],
           }),
         })
@@ -307,7 +316,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         setAiGenField(null)
       }
     },
-    [getFieldValue, t.config, updateValue],
+    [getFieldValue, t.config, updateValue, locale],
   )
 
   const renderSeoAiPanel = useCallback(

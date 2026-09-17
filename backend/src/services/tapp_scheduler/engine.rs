@@ -10,8 +10,8 @@ use sea_orm::{
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
 
 use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
@@ -987,26 +987,12 @@ SELECT EXISTS (
         actions_json: &serde_json::Value,
         authority: &ScheduledExecutionAuthority,
     ) -> Result<serde_json::Value, String> {
-        // 先解析 `BackendActionWrapper`（含 resultAs）；失败则解析 `BackendAction` 再包成 wrapper
         let action_wrappers: Vec<BackendActionWrapper> =
-            match serde_json::from_value(actions_json.clone()) {
-                Ok(wrappers) => wrappers,
-                Err(_) => {
-                    let actions: Vec<BackendAction> = serde_json::from_value(actions_json.clone())
-                        .map_err(|error| {
-                            tracing::error!(%error, "Invalid backend actions");
-                            "Invalid backend actions".to_string()
-                        })?;
-                    actions
-                        .into_iter()
-                        .map(|action| BackendActionWrapper {
-                            action,
-                            result_as: None,
-                            condition: None,
-                        })
-                        .collect()
-                }
-            };
+            serde_json::from_value(actions_json.clone()).map_err(|error| {
+                tracing::error!(%error, "Invalid backend actions");
+                "Invalid backend actions".to_string()
+            })?;
+
         if action_wrappers.len() > MAX_SCHEDULER_BACKEND_ACTIONS {
             return Err(format!(
                 "Backend action pipeline exceeds the maximum of {MAX_SCHEDULER_BACKEND_ACTIONS}"
@@ -1122,18 +1108,26 @@ SELECT EXISTS (
                 input,
                 extract,
                 template,
-            } => Self::action_transform(context, input, extract.as_deref(), template.as_deref()),
+            } => Ok(Self::action_transform(
+                context,
+                input,
+                extract.as_deref(),
+                template.as_deref(),
+            )),
         }
     }
 
     /// 解析字符串中的模板变量 {{varName}} 或 {{varName.field}}
     fn resolve_template(template: &str, context: &HashMap<String, serde_json::Value>) -> String {
-        let re = regex::Regex::new(r"\{\{([^}]+)\}\}").unwrap();
-        re.replace_all(template, |caps: &regex::Captures| {
-            let path = caps.get(1).map_or("", |m| m.as_str()).trim();
-            Self::get_value_by_path(context, path)
-        })
-        .to_string()
+        static TEMPLATE_VAR: LazyLock<regex::Regex> = LazyLock::new(|| {
+            regex::Regex::new(r"\{\{([^}]+)\}\}").expect("scheduler template pattern")
+        });
+        TEMPLATE_VAR
+            .replace_all(template, |caps: &regex::Captures| {
+                let path = caps.get(1).map_or("", |m| m.as_str()).trim();
+                Self::get_value_by_path(context, path)
+            })
+            .to_string()
     }
 
     /// 根据路径获取值，支持 varName.field.subfield
@@ -1233,7 +1227,7 @@ SELECT EXISTS (
         input: &str,
         extract: Option<&str>,
         template: Option<&str>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> serde_json::Value {
         // 获取输入值
         let input_value = context
             .get(input)
@@ -1268,12 +1262,9 @@ SELECT EXISTS (
         if let Some(tpl) = template {
             let mut temp_context = context.clone();
             temp_context.insert("_input".to_string(), extracted);
-            Ok(serde_json::Value::String(Self::resolve_template(
-                tpl,
-                &temp_context,
-            )))
+            serde_json::Value::String(Self::resolve_template(tpl, &temp_context))
         } else {
-            Ok(extracted)
+            extracted
         }
     }
 
@@ -1356,8 +1347,9 @@ SELECT EXISTS (
             return Err(format!("Prompt contains disallowed content: {reason}"));
         }
         tracing::info!(
-            "[TappScheduler] AI generate: {}...",
-            &prompt[..prompt.len().min(50)]
+            task_id = %task.task_id,
+            prompt_chars = prompt.chars().count(),
+            "[TappScheduler] AI generate"
         );
         let tier = authority
             .ai_model_tier
@@ -1951,20 +1943,22 @@ impl TappSchedulerEngine {
         task_id: &str,
         enabled: bool,
     ) -> Result<(), String> {
-        let task = self
-            .get_task(user_id, tapp_id, task_id)
-            .await?
-            .ok_or_else(|| format!("Task {} not found", task_id))?;
-
-        let mut active: tapp_scheduled_tasks::ActiveModel = task.into();
-        active.enabled = Set(enabled);
-        active.updated_at = Set(Utc::now().into());
-
-        active
-            .update(&self.db)
+        let result = tapp_scheduled_tasks::Entity::update_many()
+            .col_expr(tapp_scheduled_tasks::Column::Enabled, Expr::value(enabled))
+            .col_expr(
+                tapp_scheduled_tasks::Column::UpdatedAt,
+                Expr::value(Utc::now().fixed_offset()),
+            )
+            .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
+            .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id))
+            .filter(tapp_scheduled_tasks::Column::TappId.ne(CORE_PLATFORM_SYNC_TAPP_ID))
+            .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id))
+            .exec(&self.db)
             .await
             .map_err(|error| scheduler_store_failed("update scheduled task", error))?;
-
+        if result.rows_affected == 0 {
+            return Err(format!("Task {} not found", task_id));
+        }
         Ok(())
     }
 

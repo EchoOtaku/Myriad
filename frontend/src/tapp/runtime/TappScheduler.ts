@@ -3,6 +3,7 @@ import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
 import { currentCopy } from '../../i18n/localeCopy'
 import { getCSRFToken } from '../../utils/csrf'
 import { httpStatusMessage, userFacingError } from '../../utils/userFacingError'
+import { TappHttpError } from '../services/TappHttpClient'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
 
 export type ScheduleType = 'cron' | 'interval' | 'once' | 'daily'
@@ -476,8 +477,9 @@ export class TappScheduler {
         task: RegisteredTask
       }>('GET', `/${tappId}/tasks/${taskId}`, undefined, runtimeGrant)
       return response.task || null
-    } catch {
-      return null
+    } catch (error) {
+      if (error instanceof TappHttpError && error.status === 404) return null
+      throw error
     }
   }
 
@@ -585,8 +587,7 @@ export class TappScheduler {
         response.status === 401 &&
         retryOnRuntimeGrant &&
         runtimeGrant &&
-        (error.code === 'INVALID_RUNTIME_GRANT' ||
-          error.code === 'RUNTIME_GRANT_SUBJECT_MISMATCH')
+        error.code === 'INVALID_RUNTIME_GRANT'
       ) {
         const replacement =
           await TappRuntimeGrant.recoverRejectedToken(runtimeGrant)
@@ -594,11 +595,13 @@ export class TappScheduler {
           return this.apiRequest(method, endpoint, body, replacement, false)
         }
       }
-      throw new Error(
+      throw new TappHttpError(
         userFacingError(
           error.error || httpStatusMessage(response.status),
           currentCopy().errors.noticeScheduleFailed,
         ),
+        response.status,
+        { body: error, code: error.code },
       )
     }
 

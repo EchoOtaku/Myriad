@@ -16,7 +16,9 @@ use crate::config::DynamicConfig;
 use crate::error::HttpError;
 use crate::{
     middleware::auth::Claims,
-    services::permission_service::{TappPermission, TappPermissionService, UnknownTappPermission},
+    services::permission_service::{
+        TappPermission, TappPermissionService, UnknownTappPermission, UserRole,
+    },
     services::tapp_runtime_grant::{
         self, IssuedRuntimeGrant, RuntimeGrant, RuntimeGrantError, RuntimeKind,
     },
@@ -133,11 +135,25 @@ pub(crate) async fn validate_runtime_grant(
     claims: &Claims,
 ) -> Result<RuntimeGrantContext, HttpError> {
     let subject_id = parse_user_id(claims)?;
-    let admin_role_revoked = claims.is_admin
-        && crate::middleware::auth::ensure_current_admin_on(claims, db)
-            .await
-            .is_err();
-    let role = current_tapp_user_role(db, claims).await;
+    let admin_live = if claims.is_admin {
+        match crate::middleware::auth::ensure_current_admin_on(claims, db).await {
+            Ok(()) => true,
+            Err((status, _)) if status.is_server_error() => {
+                return Err(grant_http_error(RuntimeGrantError::Unavailable));
+            }
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+    let admin_role_revoked = claims.is_admin && !admin_live;
+    let role = if admin_live {
+        UserRole::Admin
+    } else if subject_id < 0 {
+        UserRole::Guest
+    } else {
+        UserRole::User
+    };
     tapp_runtime_grant::validate_runtime_grant(db, token, subject_id, admin_role_revoked, role)
         .await
         .map(RuntimeGrantContext)

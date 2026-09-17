@@ -68,7 +68,7 @@
     },
     "siteAiGenerate": {
       "what": "Feldweise „KI erzeugen“-Titelmarken für Beschreibung / Stichwörter / KI-Intro.",
-      "chain": "1) Site-Titel setzen → Marke neben einem Feld anklicken → prüfen → Konfiguration speichern.",
+      "chain": "1) Marke neben einem Feld anklicken → Titel oder Hinweis nötig → prüfen → Konfiguration speichern.",
       "frontend": "SettingTitleTag neben dem Titel; POST /api/seo/generate-copy mit einem einzelnen Feld.",
       "notes": "KI erzeugen öffnet einen optionalen Hinweisdialog und sendet dann ein einzelnes Feld per POST."
     },

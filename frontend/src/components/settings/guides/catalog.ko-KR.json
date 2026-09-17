@@ -68,7 +68,7 @@
     },
     "siteAiGenerate": {
       "what": "소개 / 키워드 / AI 소개 칸마다 있는 「AI로 만들기」 제목 태그예요.",
-      "chain": "1) 사이트 제목을 넣은 뒤 칸 옆 태그를 누르고, 확인하고, 설정을 저장해요.",
+      "chain": "1) 칸 옆 태그를 누르고, 제목이나 힌트를 넣은 뒤 확인하고 설정을 저장해요.",
       "frontend": "제목 옆 SettingTitleTag. POST /api/seo/generate-copy로 칸 하나만 보내요.",
       "notes": "AI로 만들기는 선택 힌트 창을 연 다음 칸 하나만 POST해요."
     },

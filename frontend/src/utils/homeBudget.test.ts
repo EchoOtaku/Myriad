@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url'
 
 describe('home first-paint budget', () => {
   it('keeps Agora and Config off the home module graph', () => {
+    const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8')
     const home = readFileSync(new URL('../views/Home.tsx', import.meta.url), 'utf8')
+    assert.match(app, /preloadCriticalRoutes\(\)/)
+    assert.match(app, /8000/)
+    assert.equal(app.includes(', 6000)'), false)
     const routes = readFileSync(
       new URL('./codeSplitting.ts', import.meta.url),
       'utf8',
@@ -54,6 +58,12 @@ describe('home first-paint budget', () => {
     assert.match(gamePresence, /requestIdleCallback/)
     assert.match(gamePresence, /document\.fonts\.delete/)
     assert.match(gamePresence, /isPreview/)
+    const tappWidget = readFileSync(
+      new URL('../components/widgets/TappWidget.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.equal(/import \{ TappWidgetSandbox \}/.test(tappWidget), false)
+    assert.match(tappWidget, /lazy\(\(\) =>/)
   })
 
   it('counts Astro hydration entries and skips dynamic speech', async () => {

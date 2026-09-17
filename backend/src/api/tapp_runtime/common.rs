@@ -248,9 +248,7 @@ pub async fn authorize_tapp_permissions(
     permissions: &[TappPermission],
     dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
 ) -> Result<i32, HttpError> {
-    for permission in permissions {
-        check_tapp_permission(db, claims, *permission, dynamic_config).await?;
-    }
+    check_tapp_permissions(db, claims, permissions, dynamic_config).await?;
     let user_id = parse_user_id(claims)?;
     verify_tapp_approved_permissions(db, user_id, tapp_id, permissions).await?;
     Ok(user_id)
@@ -277,13 +275,24 @@ pub async fn check_tapp_permission(
     permission: TappPermission,
     dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
 ) -> Result<(), HttpError> {
+    check_tapp_permissions(db, claims, &[permission], dynamic_config).await
+}
+
+pub async fn check_tapp_permissions(
+    db: &DatabaseConnection,
+    claims: &Claims,
+    permissions: &[TappPermission],
+    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+) -> Result<(), HttpError> {
+    if permissions.is_empty() {
+        return Ok(());
+    }
     let role = current_tapp_user_role(db, claims).await;
-
     let config = dynamic_config.read().await;
-    let has_permission = TappPermissionService::check(&config, role, permission);
-    drop(config);
-
-    if !has_permission {
+    for permission in permissions {
+        if TappPermissionService::check(&config, role, *permission) {
+            continue;
+        }
         let perm_name = permission.as_str();
         tracing::warn!(
             user_id = %claims.sub,
@@ -300,7 +309,6 @@ pub async fn check_tapp_permission(
             })),
         )));
     }
-
     Ok(())
 }
 

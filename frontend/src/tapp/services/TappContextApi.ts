@@ -247,8 +247,7 @@ export async function executeTappApi(
       response.status === 401 &&
       retryOnRuntimeGrant &&
       grant &&
-      (result.code === 'INVALID_RUNTIME_GRANT' ||
-        result.code === 'RUNTIME_GRANT_SUBJECT_MISMATCH')
+      result.code === 'INVALID_RUNTIME_GRANT'
     ) {
       const { TappRuntimeGrant } = await import('../runtime/TappRuntimeGrant')
       const replacement = await TappRuntimeGrant.recoverRejectedToken(grant)

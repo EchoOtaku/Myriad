@@ -1,31 +1,20 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  sharedWidgetInstanceId,
+  newSharedWidgetInstanceId,
   TappRuntimeGrant,
 } from './TappRuntimeGrant.ts'
 
-describe('sharedWidgetInstanceId', () => {
-  it('stays within backend MAX_INSTANCE_ID_LENGTH (100) for long tapp ids', () => {
-    const longId = `com.${'a'.repeat(120)}.app`
-    const instanceId = sharedWidgetInstanceId(longId)
+describe('newSharedWidgetInstanceId', () => {
+  it('stays within backend MAX_INSTANCE_ID_LENGTH (100)', () => {
+    const instanceId = newSharedWidgetInstanceId()
     assert.ok(instanceId.length <= 100, instanceId)
     assert.match(instanceId, /^[\w.-]+$/)
+    assert.match(instanceId, /^ws\./)
   })
 
-  it('is longer than a short 8-hex hash while remaining BE-safe', () => {
-    const id = sharedWidgetInstanceId('com.example.app')
-    assert.ok(id.length > 12, `expected longer id, got ${id}`)
-    assert.match(id, /^ws\./)
-    assert.match(id, /^[\w.-]+$/)
-    assert.ok(id.length <= 100)
-  })
-
-  it('is stable for the same tapp id', () => {
-    assert.equal(
-      sharedWidgetInstanceId('com.example.app'),
-      sharedWidgetInstanceId('com.example.app'),
-    )
+  it('is unique per call so tabs do not share an instance identity', () => {
+    assert.notEqual(newSharedWidgetInstanceId(), newSharedWidgetInstanceId())
   })
 })
 
@@ -34,6 +23,7 @@ describe('TappRuntimeGrant.acquireSharedWidget', () => {
     const a = TappRuntimeGrant.acquireSharedWidget('com.example.multi')
     const b = TappRuntimeGrant.acquireSharedWidget('com.example.multi')
     assert.equal(a.grant, b.grant)
+    assert.equal(a.grant.getInstanceId(), b.grant.getInstanceId())
     assert.equal(TappRuntimeGrant.sharedWidgetRefCount('com.example.multi'), 2)
     assert.equal(a.grant.isDestroyed(), false)
 

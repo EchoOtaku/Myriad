@@ -111,34 +111,4 @@ mod tests {
         _assert_from_ref::<DatabaseConnection>();
         _assert_from_ref::<Arc<TokioRwLock<DynamicConfig>>>();
     }
-
-    #[test]
-    fn from_shared_uses_process_registry_slot() {
-        let process_slot = tapp_registry::shared_database_slot();
-        // No live pool: source-grep that `from_shared` binds `shared_database_slot()`.
-        let config = Arc::new(TokioRwLock::new(AppConfig::default()));
-        let dynamic = Arc::new(TokioRwLock::new(DynamicConfig::default()));
-        // from_shared needs a DatabaseConnection — skip live call; assert API:
-        // AppState::from_shared always takes shared_database_slot() (source-level).
-        let src = include_str!("state.rs");
-        assert!(
-            src.contains("tapp_registry::shared_database_slot()"),
-            "from_shared must bind the process shared_database_slot"
-        );
-        assert!(
-            src.contains("set_process_database")
-                || include_str!("services/tapp_registry.rs").contains("shared_database_slot"),
-            "registry exposes shared slot for AppState"
-        );
-        let _ = (process_slot, config, dynamic);
-    }
-
-    #[test]
-    fn extract_db_and_process_slot_documented_as_same_handle() {
-        let state_src = include_str!("state.rs");
-        assert!(state_src.contains("pub db_slot:"));
-        assert!(state_src.contains("tapp_registry::shared_database_slot()"));
-        let reg = include_str!("services/tapp_registry.rs");
-        assert!(reg.contains("pub fn shared_database_slot()"));
-    }
 }

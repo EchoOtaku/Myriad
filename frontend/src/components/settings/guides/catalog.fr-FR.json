@@ -68,7 +68,7 @@
     },
     "siteAiGenerate": {
       "what": "Tags « Générer par IA » par champ pour description / mots-clés / intro IA.",
-      "chain": "1) Définissez le titre du site → cliquez le tag à côté d’un champ → relisez → enregistrez la config.",
+      "chain": "1) Cliquez le tag à côté d’un champ → titre ou indice requis → relisez → enregistrez la config.",
       "frontend": "SettingTitleTag à côté du titre ; POST /api/seo/generate-copy avec un seul champ.",
       "notes": "Générer par IA ouvre une boîte d’indice facultative, puis envoie un seul champ."
     },

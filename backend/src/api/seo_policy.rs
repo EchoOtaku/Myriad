@@ -27,6 +27,7 @@ pub fn policy_serves_llms_txt(policy: &str) -> bool {
 }
 
 /// AI training-oriented user-agents blocked under `ai_citation`.
+/// Best-effort public UA names; crawlers not in this list are outside our control.
 const AI_TRAINING_BOTS: &[&str] = &[
     "GPTBot",
     "Google-Extended",
@@ -35,6 +36,9 @@ const AI_TRAINING_BOTS: &[&str] = &[
     "Bytespider",
     "anthropic-ai",
     "Claude-Web",
+    "Meta-ExternalAgent",
+    "cohere-ai",
+    "AI2Bot",
 ];
 
 /// AI search / answer bots blocked under `search_only` (in addition to training).
@@ -45,6 +49,8 @@ const AI_SEARCH_BOTS: &[&str] = &[
     "PerplexityBot",
     "Perplexity-User",
     "Google-CloudVertexBot",
+    "Meta-ExternalFetcher",
+    "DuckAssistBot",
 ];
 
 fn robots_disallow_block(user_agents: &[&str]) -> String {
@@ -63,7 +69,10 @@ Disallow: /register\n\
 Disallow: /setup\n\
 Disallow: /config\n\
 Disallow: /tapp/playground\n\
-Disallow: /tapp/detail/\n";
+Disallow: /tapp/detail/\n\
+Disallow: /journal/starred\n\
+Disallow: /journal/workbench\n\
+Disallow: /agent/settings\n";
 
 /// Optional absolute Sitemap line when a durable public origin is known.
 ///
@@ -195,8 +204,11 @@ mod tests {
     fn robots_ai_citation_blocks_training_not_search() {
         let body = build_robots_txt(Some("https://ex.com"), VISIBILITY_AI_CITATION);
         assert!(body.contains("User-agent: GPTBot"));
+        assert!(body.contains("User-agent: Meta-ExternalAgent"));
+        assert!(body.contains("User-agent: cohere-ai"));
         assert!(body.contains("Sitemap: https://ex.com/sitemap.xml"));
         assert!(!body.contains("User-agent: ChatGPT-User"));
+        assert!(!body.contains("User-agent: Meta-ExternalFetcher"));
     }
 
     #[test]
@@ -204,6 +216,8 @@ mod tests {
         let body = build_robots_txt(Some("https://ex.com"), VISIBILITY_SEARCH_ONLY);
         assert!(body.contains("User-agent: ChatGPT-User"));
         assert!(body.contains("User-agent: PerplexityBot"));
+        assert!(body.contains("User-agent: Meta-ExternalFetcher"));
+        assert!(body.contains("User-agent: DuckAssistBot"));
     }
 
     #[test]
@@ -211,6 +225,24 @@ mod tests {
         let body = build_robots_txt(None, VISIBILITY_AI_FULL);
         assert!(!body.contains("Sitemap:"));
         assert!(body.contains("Allow: /"));
+    }
+
+    #[test]
+    fn robots_non_private_disallows_admin_spa() {
+        let body = build_robots_txt(Some("https://ex.com"), VISIBILITY_AI_FULL);
+        for path in [
+            "/login",
+            "/config",
+            "/journal/starred",
+            "/journal/workbench",
+            "/agent/settings",
+        ] {
+            assert!(
+                body.contains(&format!("Disallow: {path}")),
+                "missing Disallow for {path}"
+            );
+        }
+        assert!(!body.contains("Disallow: /journal/friends"));
     }
 
     #[test]

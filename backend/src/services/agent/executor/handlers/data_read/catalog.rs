@@ -458,7 +458,6 @@ pub(super) async fn execute_scheduler_list(
     let tapp_id = params.get("tappId").and_then(Value::as_str);
     let enabled_filter = params.get("enabled").and_then(Value::as_bool);
     let scheduler = crate::services::tapp_scheduler::scheduler_engine()?;
-    let scheduler = scheduler.read().await;
     let tasks = scheduler.list_tasks(ctx.user_id, tapp_id).await?;
     let tasks: Vec<Value> = tasks
         .into_iter()

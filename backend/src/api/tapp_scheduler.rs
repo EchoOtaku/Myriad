@@ -16,12 +16,11 @@ use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use crate::api::tapp_runtime::RuntimeGrantContext;
 use crate::api::tapp_runtime::common::{
-    check_tapp_permission, resolve_accessible_tapp, verify_tapp_approved_permissions,
-    verify_tapp_ownership,
+    check_tapp_permission, check_tapp_permissions, resolve_accessible_tapp,
+    verify_tapp_approved_permissions, verify_tapp_ownership,
 };
 use crate::error::HttpError;
 use crate::middleware::auth::{Claims, ensure_current_admin_on};
@@ -33,8 +32,8 @@ use crate::services::tapp_scheduler::{
     MAX_SCHEDULER_RETRIES, MAX_SCHEDULER_RETRY_DELAY_MS, SCHEDULER_MAILBOX_POLL_MILLIS,
     SCHEDULER_PRESENCE_REFRESH_SECONDS, TappSchedulerEngine, backend_action_permissions,
     drain_frontend_messages, normalize_backend_actions, register_frontend_connection,
-    requeue_frontend_message, scheduler_engine as service_scheduler, try_scheduler_engine,
-    unregister_frontend_connection, validate_backend_action_declarations,
+    scheduler_engine as service_scheduler, try_scheduler_engine, unregister_frontend_connection,
+    validate_backend_action_declarations,
 };
 use uuid::Uuid;
 
@@ -49,7 +48,7 @@ pub async fn shutdown_scheduler() {
 }
 
 /// HTTP-facing handle: 503 when the engine has not been started.
-fn get_scheduler() -> Result<Arc<RwLock<TappSchedulerEngine>>, HttpError> {
+fn get_scheduler() -> Result<Arc<TappSchedulerEngine>, HttpError> {
     service_scheduler().map_err(|_| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -216,10 +215,8 @@ async fn check_backend_action_permissions(
     actions: &Option<Value>,
     dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
 ) -> Result<(), HttpError> {
-    for permission in backend_action_permissions(actions).map_err(bad_request)? {
-        check_tapp_permission(db, claims, permission, dynamic_config).await?;
-    }
-    Ok(())
+    let permissions = backend_action_permissions(actions).map_err(bad_request)?;
+    check_tapp_permissions(db, claims, &permissions, dynamic_config).await
 }
 
 fn schedule_type_name(value: &ScheduleType) -> &'static str {
@@ -376,7 +373,6 @@ pub async fn register_task(
     let retry_config = normalize_retry_config(req.retry)?;
 
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     let task = scheduler
         .register_task(
@@ -419,7 +415,6 @@ pub async fn unregister_task(
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     scheduler
         .unregister_task(user_id, &tapp_id, &task_id)
@@ -446,7 +441,6 @@ pub async fn list_tasks(
 ) -> Result<Json<Value>, HttpError> {
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     let tasks = scheduler
         .list_tasks(user_id, query.tapp_id.as_deref())
@@ -479,7 +473,6 @@ pub async fn list_tapp_tasks(
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     let tasks = scheduler
         .list_tasks(user_id, Some(&tapp_id))
@@ -513,7 +506,6 @@ pub async fn get_task(
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     let task = scheduler
         .get_task(user_id, &tapp_id, &task_id)
@@ -549,7 +541,6 @@ pub async fn enable_task(
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     scheduler
         .set_task_enabled(user_id, &tapp_id, &task_id, true)
@@ -579,7 +570,6 @@ pub async fn disable_task(
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     scheduler
         .set_task_enabled(user_id, &tapp_id, &task_id, false)
@@ -609,7 +599,6 @@ pub async fn trigger_task(
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
 
     scheduler
         .trigger_task(user_id, &tapp_id, &task_id)
@@ -709,14 +698,6 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32, db: DatabaseCo
                                 }
                             };
                             if sender.send(Message::Text(msg.into())).await.is_err() {
-                                if let Err(error) = requeue_frontend_message(&db, &connection_id, &task_msg).await {
-                                    tracing::error!(%error, "[TappScheduler] Failed to restore undelivered task");
-                                }
-                                for remaining in pending {
-                                    if let Err(error) = requeue_frontend_message(&db, &connection_id, &remaining).await {
-                                        tracing::error!(%error, "[TappScheduler] Failed to restore pending task");
-                                    }
-                                }
                                 disconnected = true;
                                 break;
                             }
@@ -755,8 +736,7 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32, db: DatabaseCo
                                     .map(str::to_string);
 
                                 if let (Some(execution_id), Some(success)) = (execution_id, success) {
-                                    let engine = scheduler.read().await;
-                                    if let Err(error) = engine
+                                    if let Err(error) = scheduler
                                         .complete_frontend_execution(
                                             user_id,
                                             execution_id,

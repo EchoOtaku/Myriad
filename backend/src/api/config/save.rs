@@ -736,9 +736,21 @@ pub(crate) fn collect_database_updates(
                 updates.insert("site_ai_intro".to_string(), JsonValue::String(capped));
                 continue;
             }
-            "site_title" | "site_description" | "site_keywords" | "ga_measurement_id"
-            | "umami_website_id" | "music_source" | "site_icp" | "site_gongan"
-            | "cloud_sponsors" | "site_footer_custom" | "proxy_bypass" => {
+            "site_description" => {
+                // SERP / OG snippets; generate-copy truncates to 160, save allows a
+                // little more so owner-written copy is not chopped at the SERP budget.
+                let capped: String = field.value.chars().take(200).collect();
+                updates.insert("site_description".to_string(), JsonValue::String(capped));
+                continue;
+            }
+            "site_keywords" => {
+                let capped: String = field.value.chars().take(300).collect();
+                updates.insert("site_keywords".to_string(), JsonValue::String(capped));
+                continue;
+            }
+            "site_title" | "ga_measurement_id" | "umami_website_id" | "music_source"
+            | "site_icp" | "site_gongan" | "cloud_sponsors" | "site_footer_custom"
+            | "proxy_bypass" => {
                 updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
                 continue;
             }

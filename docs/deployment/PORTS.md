@@ -77,10 +77,10 @@ Tapps, updater admin proxy, SEO JSON, …).
 | `/journal/notes.xml` | Public RSS of published notes (also `/api/phantasi/notes.xml`). Off by default. 404 when the owner switch is off or Phantasi is not guest-visible. Item links are absolute only when `FRONTEND_URL`/`BASE_URL` is set |
 | `/robots.txt` | Dynamic robots; absolute `Sitemap:` line only when `FRONTEND_URL` or `BASE_URL` is set (omitted when unset) |
 | `/llms.txt` | AI-facing site index (when GEO policy allows) |
-| `/` `/tapp` `/journal` `/journal/feeds` `/journal/notes` `/journal/friends` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |
+| `/` `/tapp` `/journal` `/journal/feeds` `/journal/notes` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |
 | `/tapp/run/*` | **Crawler UA only** → backend SEO HTML shell; browsers → SPA |
 | `/journal/articles/*` | **Crawler UA only** → own Journal articles SEO shell (`我` category, article body); browsers → SPA |
-| `/journal/topics/*` | **Crawler / in-app share UA** → thin `noindex, follow` shell (topic name; no reprinted entries). Not in sitemap. Browsers → SPA |
+| `/journal/friends` `/journal/topics/*` | **Crawler / in-app share UA** → thin `noindex, follow` shell (no reprinted friend-link or topic bodies). Not in sitemap. Browsers → SPA |
 | `/api/seo/tapp/{id}` | Public Tapp share summary JSON |
 
 WebSocket: `proxy` detects `Upgrade: websocket` and bridges upgrades for

@@ -71,7 +71,7 @@ pub fn normalize_library_item_for_client(mut item: LibraryItem) -> LibraryItem {
     item
 }
 
-/// Prefer Bangumi `/c/` and Netease `param=300y300`; skip Bangumi `/r/{width}/` resize paths.
+/// Prefer Bangumi `/c/` and Netease `param=240y240`; skip Bangumi `/r/{width}/` resize paths.
 pub fn prefer_card_cover_url(url: &str) -> String {
     let trimmed = url.trim();
     if trimmed.is_empty() {
@@ -103,14 +103,75 @@ fn prefer_raw_card_cover_url(trimmed: &str) -> String {
     }
 
     // Netease CDN accepts ?param=WxH; cap decode size without another hop.
-    if (trimmed.contains("music.126.net") || trimmed.contains("music.163.com"))
-        && !trimmed.contains("param=")
-    {
-        let sep = if trimmed.contains('?') { '&' } else { '?' };
-        return format!("{trimmed}{sep}param=300y300");
+    if trimmed.contains("music.126.net") || trimmed.contains("music.163.com") {
+        return with_netease_card_size(trimmed);
+    }
+
+    if let Some(hdslb) = with_bilibili_card_size(trimmed) {
+        return hdslb;
     }
 
     trimmed.to_string()
+}
+
+/// Card paint is ~220px. 240 is just above 1×; 300 was ~36% more pixels.
+const NETEASE_CARD_PARAM: &str = "240y240";
+const NETEASE_CARD_EDGE: u32 = 240;
+
+fn with_netease_card_size(url: &str) -> String {
+    if let Some(after) = url.split_once("param=").map(|(_, rest)| rest) {
+        let spec = after.split('&').next().unwrap_or(after);
+        let mut parts = spec.split('y');
+        let width = parts.next().and_then(|v| v.parse::<u32>().ok());
+        let height = parts.next().and_then(|v| v.parse::<u32>().ok());
+        if let (Some(width), Some(height)) = (width, height) {
+            if width <= NETEASE_CARD_EDGE && height <= NETEASE_CARD_EDGE {
+                return url.to_string();
+            }
+            return url.replacen(spec, NETEASE_CARD_PARAM, 1);
+        }
+    }
+    let sep = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{sep}param={NETEASE_CARD_PARAM}")
+}
+
+/// Card paint is ~220px; 2× retina. Width-only so CSS object-fit keeps aspect.
+const BILIBILI_CARD_WIDTH_SUFFIX: &str = "@440w.webp";
+
+fn host_is_hdslb(url: &str) -> bool {
+    let trimmed = url.trim();
+    let rest = trimmed
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or_else(|| trimmed.strip_prefix("//").unwrap_or(trimmed));
+    let host = rest
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    host == "hdslb.com" || host.ends_with(".hdslb.com")
+}
+
+fn with_bilibili_card_size(url: &str) -> Option<String> {
+    if !host_is_hdslb(url) {
+        return None;
+    }
+    let (path, query) = url
+        .split_once('?')
+        .map(|(path, query)| (path, format!("?{query}")))
+        .unwrap_or((url, String::new()));
+    if path.contains('@') {
+        return None;
+    }
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(".gif") || lower.ends_with(".svg") {
+        return None;
+    }
+    Some(format!("{path}{BILIBILI_CARD_WIDTH_SUFFIX}{query}"))
 }
 
 /// True for Bangumi resize paths `/r/{width}/pic/cover/…` (width is ASCII digits).
@@ -1001,8 +1062,12 @@ mod tests {
         let proxied_resize = proxy_image_url("https://lain.bgm.tv/r/400/pic/cover/l/ab.jpg");
         assert_eq!(prefer_card_cover_url(&proxied_resize), proxied_resize);
         let netease = prefer_card_cover_url("https://p2.music.126.net/xx.jpg");
-        assert!(netease.contains("param=300y300"), "{netease}");
-        // Already sized: leave alone.
+        assert!(netease.contains("param=240y240"), "{netease}");
+        assert_eq!(
+            prefer_card_cover_url("https://p2.music.126.net/xx.jpg?param=300y300"),
+            "https://p2.music.126.net/xx.jpg?param=240y240"
+        );
+        // Already at or below the card edge: leave alone.
         assert_eq!(
             prefer_card_cover_url("https://p2.music.126.net/xx.jpg?param=200y200"),
             "https://p2.music.126.net/xx.jpg?param=200y200"
@@ -1020,8 +1085,34 @@ mod tests {
         let proxied_ne = proxy_image_url("https://p2.music.126.net/xx.jpg");
         let rewritten_ne = prefer_card_cover_url(&proxied_ne);
         assert!(
-            rewritten_ne.contains("param%3D300y300") || rewritten_ne.contains("param=300y300"),
+            rewritten_ne.contains("param%3D240y240") || rewritten_ne.contains("param=240y240"),
             "proxied netease: {rewritten_ne}"
+        );
+
+        assert_eq!(
+            prefer_card_cover_url("https://i0.hdslb.com/bfs/bangumi/image/x.jpg"),
+            "https://i0.hdslb.com/bfs/bangumi/image/x.jpg@440w.webp"
+        );
+        assert_eq!(
+            prefer_card_cover_url("https://i2.hdslb.com/bfs/archive/c.jpg?spm=1"),
+            "https://i2.hdslb.com/bfs/archive/c.jpg@440w.webp?spm=1"
+        );
+        let already = "https://i0.hdslb.com/bfs/archive/c.jpg@672w_378h_1c.webp";
+        assert_eq!(prefer_card_cover_url(already), already);
+        assert_eq!(
+            prefer_card_cover_url("https://i0.hdslb.com/bfs/face/a.gif"),
+            "https://i0.hdslb.com/bfs/face/a.gif"
+        );
+        assert_eq!(
+            prefer_card_cover_url("https://hdslb.com.evil.com/bfs/archive/c.jpg"),
+            "https://hdslb.com.evil.com/bfs/archive/c.jpg"
+        );
+        let proxied_bili = proxy_image_url("https://i0.hdslb.com/bfs/bangumi/image/x.jpg");
+        let rewritten_bili = prefer_card_cover_url(&proxied_bili);
+        assert!(
+            rewritten_bili.contains("x.jpg%40440w.webp")
+                || rewritten_bili.contains("x.jpg@440w.webp"),
+            "proxied bilibili: {rewritten_bili}"
         );
     }
 
@@ -1049,7 +1140,7 @@ mod tests {
             slim.pointer("/al/picUrl")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
-                .contains("param=300y300")
+                .contains("param=240y240")
         );
     }
 

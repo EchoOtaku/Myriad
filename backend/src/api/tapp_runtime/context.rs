@@ -158,15 +158,14 @@ pub async fn get_context_system(
         .map(|platform| {
             let file = cache_dir.join(format!("{}_filtered.json", platform));
             async move {
-                if file.exists() {
-                    if let Ok(metadata) = tokio::fs::metadata(&file).await {
-                        if let Ok(modified) = metadata.modified() {
-                            let datetime: chrono::DateTime<chrono::Utc> = modified.into();
-                            return Some(datetime.to_rfc3339());
-                        }
-                    }
-                }
-                None
+                let Ok(metadata) = tokio::fs::metadata(&file).await else {
+                    return None;
+                };
+                let Ok(modified) = metadata.modified() else {
+                    return None;
+                };
+                let datetime: chrono::DateTime<chrono::Utc> = modified.into();
+                Some(datetime.to_rfc3339())
             }
         })
         .collect();

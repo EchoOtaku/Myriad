@@ -411,11 +411,9 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                     }
                 }
 
-                // 日志 `base_url` 与已启用 oauth_providers 数量；始终 Ok（不拦启动）
+                // 日志 base_url 与已启用 oauth_providers 数量；不拦启动
                 use oauth_url_builder::OAuthUrlBuilder;
-                if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config().await {
-                    tracing::debug!("ℹ️  GitHub OAuth status: {}", e);
-                }
+                OAuthUrlBuilder::validate_github_oauth_config().await;
 
                 // Load OAuth provider registry（GitHub + OIDC）
                 services::oauth::registry::init().await;
@@ -582,18 +580,13 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
     // Whitelist of paths that are allowed in configuration mode
     let allowed_paths = [
         "/health",
-        "/api/setup/config",
-        "/api/setup/status",
-        "/api/setup/database-config", // ✅ 允许配置数据库（有内部认证检查）
-        "/api/setup/init-database",
-        "/api/setup/create-admin",
+        "/ready",
+        "/api/setup/",
         "/api/system/status",
-        "/api/auth/login",           // Allow login endpoint
-        "/api/auth/me",              // Allow user info endpoint (for login state check)
-        "/api/auth/logout",          // Allow logout endpoint
-        "/api/auth/change-password", // Allow change password endpoint
-        "/api/auth/register",        // 公开注册（自身有 allow_local_registration 检查）
-        "/api/auth/oauth/providers", // 公开列出 OAuth providers
+        "/api/auth/login",
+        "/api/auth/me",
+        "/api/auth/logout",
+        "/api/auth/oauth/",
     ];
 
     // If in config mode and path is not whitelisted, return 503

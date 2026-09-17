@@ -1,6 +1,7 @@
 //! AI-assisted SEO / GEO copy generation for site settings.
 
-use axum::Json;
+use axum::{Json, extract::State};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -20,7 +21,7 @@ pub struct GenerateSiteSeoRequest {
     /// Free-form hint from the owner (who they are, topics, tone).
     #[serde(default)]
     pub hint: String,
-    /// Preferred output language: `zh` | `en` | `ja` | auto from title/hint.
+    /// Preferred output language: `zh` | `zh-TW` | `en` | `ja` | `ko` | `fr` | `de` | auto from title/hint.
     #[serde(default)]
     pub language: String,
     /// Which fields to generate: `site_description` | `site_keywords` | `site_ai_intro`.
@@ -102,6 +103,7 @@ impl FieldSet {
             parts.push(match language {
                 "zh" | "zh-TW" => "site_description：给搜索结果与社交分享卡片的 meta description。1～2 句自然中文，约 70～150 字（优先 ≤160 字符）。开头可含站点名或核心主题；说明「是谁的站 / 有什么」；避免「欢迎访问」「本站提供」等空话与关键词堆砌。",
                 "ja" => "site_description：検索・SNS 向け meta description。自然な日本語 1～2 文、おおよそ 70～150 文字（目安 ≤160）。サイト名や主題から入り、誰のサイトで何があるかを述べる。定型挨拶やキーワード羅列は禁止。",
+                "ko" => "site_description: 검색·SNS용 meta description. 자연스러운 한국어 1–2문장, 대략 70–150자(목적 ≤160). 사이트명이나 주제로 시작해 누구의 사이트인지, 무엇을 담았는지 말한다. 정형 인사나 키워드 나열 금지.",
                 _ => "site_description: meta description for SERP + social cards. 1–2 natural sentences, prefer 80–155 characters (hard cap ~160). Lead with who/what; include a concrete topic from the title or owner hint; no “Welcome to…”, no keyword stuffing, no call-to-action spam.",
             });
         }
@@ -109,6 +111,7 @@ impl FieldSet {
             parts.push(match language {
                 "zh" | "zh-TW" => "site_keywords：5～10 个短语，英文逗号分隔、无 #、无句号。含站点名（若有）、身份/领域、内容类型。短语优先于单字堆砌；勿重复同一词；勿编造未提及的品牌或平台。",
                 "ja" => "site_keywords：5～10 語、カンマ区切り、# と句点なし。サイト名・分野・コンテンツ種別を含める。重複や未言及のブランドを入れない。",
+                "ko" => "site_keywords: 5–10개 구, 쉼표 구분, #와 마침표 없음. 사이트명·분야·콘텐츠 종류 포함. 중복이나 언급되지 않은 브랜드를 넣지 말 것.",
                 _ => "site_keywords: 5–10 comma-separated phrases (no hashtags, no trailing period). Include site name if known, identity/domain, and content types. Prefer multi-word phrases; no duplicates; do not invent brands or platforms not implied by title/hint.",
             });
         }
@@ -116,6 +119,7 @@ impl FieldSet {
             parts.push(match language {
                 "zh" | "zh-TW" => "site_ai_intro：写入 /llms.txt 的「引用友好」简介，供生成式搜索与 AI 助手理解站点。2～4 句、约 120～350 字（上限 ~400 字符）。结构：① 一句话实体定义（谁的站、基于何种用途）；② 公开内容类型（文库/Phantasi/报告/Tapp 等仅在合理时提及）；③ 引用时请以公开页面为准。事实优先、可被引用；禁止广告腔、禁止承诺未给出的功能。owner hint 是身份与主题的权威来源。",
                 "ja" => "site_ai_intro：/llms.txt 用の引用しやすい紹介。生成 AI がサイトを理解するための 2～4 文（目安 120～350 文字、上限 ~400）。① 誰のサイトか・何のためか；② 公開コンテンツの種類；③ 公開ページを優先して引用する旨。事実ベースで宣伝調を避ける。owner hint を最優先の根拠にする。",
+                "ko" => "site_ai_intro: /llms.txt용 인용하기 쉬운 소개. 생성 AI가 사이트를 이해하기 위한 2–4문장(대략 120–350자, 상한 ~400). ① 누구의 사이트인지·무엇을 위한지 ② 공개 콘텐츠 종류 ③ 공개 페이지를 우선 인용할 것. 사실 위주, 홍보 문체 금지. owner hint를 최우선 근거로 한다.",
                 _ => "site_ai_intro: citation-friendly blurb for /llms.txt so generative search and AI assistants can ground answers. 2–4 plain sentences, prefer 150–380 characters (cap ~400). Structure: (1) one-sentence entity definition—whose site and purpose; (2) what public content types exist (Library/Phantasi/Reports/Tapp only when plausible); (3) prefer citing public routes, not inventing admin areas. Answer-first, factual, quotable; no marketing hype. Treat owner hint as ground truth for identity and topics.",
             });
         }
@@ -131,7 +135,7 @@ Context: Myriad is a self-hosted personal digital-life platform. The site aggreg
 Output contract:
 - Return ONLY one JSON object (no markdown fences, no commentary before/after).
 - Include ONLY the keys listed in the user message.
-- Every string value must be fully in the requested language (zh / en / ja).
+- Every string value must be fully in the requested language (zh / zh-TW / en / ja / ko / fr / de).
 - Values are plain text: no HTML, no markdown links, no bullet lists, no emoji spam.
 
 Quality bar:
@@ -152,8 +156,13 @@ const MAX_SITE_TITLE_BYTES: usize = 200;
 const MAX_SITE_DESCRIPTION_BYTES: usize = 2_000;
 const MAX_HINT_BYTES: usize = 2_000;
 
+const DESC_OUT_CHARS: usize = 160;
+const KEYWORDS_OUT_CHARS: usize = 300;
+const INTRO_OUT_CHARS: usize = 400;
+
 /// POST /api/seo/generate-copy — admin/authenticated; uses site AI config.
 pub async fn generate_site_seo_copy(
+    State(db): State<DatabaseConnection>,
     Json(payload): Json<GenerateSiteSeoRequest>,
 ) -> Result<Json<GenerateSiteSeoResponse>, HttpError> {
     let title = payload.site_title.trim();
@@ -205,7 +214,17 @@ pub async fn generate_site_seo_copy(
         "zh" => "Chinese (Simplified), natural mainland phrasing",
         "zh-TW" => "Chinese (Traditional), natural Taiwan phrasing",
         "ja" => "Japanese, natural phrasing",
+        "ko" => "Korean, natural phrasing",
+        "fr" => "French, natural phrasing",
+        "de" => "German, natural phrasing",
         _ => "English, natural phrasing",
+    };
+
+    let inventory = crate::api::seo::public_geo_prompt_facts(&db).await;
+    let inventory_block = if inventory.trim().is_empty() {
+        "Guest-visible modules unknown; stay generic about a personal digital-life site and do not invent sections.".to_string()
+    } else {
+        inventory
     };
 
     let user_prompt = format!(
@@ -218,12 +237,15 @@ pub async fn generate_site_seo_copy(
 - Site title: {title}\n\
 - Existing site description: {desc}\n\
 - Owner hint (optional, authoritative when present): {hint}\n\n\
+## Public surface (authoritative; do not invent other sections)\n\
+{inventory}\n\n\
 ## Field briefs\n\
 {briefs}\n\n\
 ## Final check before answering\n\
 - Only requested keys present.\n\
 - No markdown fences.\n\
 - No invented personal facts.\n\
+- Mention Library / Journal / Reports / Tapp only when they appear as guest-visible above.\n\
 - Length within each field brief.",
         lang_label = lang_label,
         language = language,
@@ -231,6 +253,7 @@ pub async fn generate_site_seo_copy(
         title = title_display,
         desc = desc_line,
         hint = hint_line,
+        inventory = inventory_block,
         briefs = briefs,
     );
 
@@ -267,9 +290,9 @@ fn filter_response(
     source: &str,
 ) -> GenerateSiteSeoResponse {
     GenerateSiteSeoResponse {
-        site_description: want.description.then(|| truncate(&d, 200)),
-        site_keywords: want.keywords.then(|| truncate(&k, 300)),
-        site_ai_intro: want.ai_intro.then(|| truncate(&a, 500)),
+        site_description: want.description.then(|| truncate(&d, DESC_OUT_CHARS)),
+        site_keywords: want.keywords.then(|| truncate(&k, KEYWORDS_OUT_CHARS)),
+        site_ai_intro: want.ai_intro.then(|| truncate(&a, INTRO_OUT_CHARS)),
         source: source.to_string(),
     }
 }
@@ -280,6 +303,9 @@ fn resolve_language(explicit: &str, title: &str, hint: &str) -> &'static str {
         "zh" | "zh-cn" | "zh-hans" | "chinese" => "zh",
         "en" | "english" | "en-us" | "en-gb" => "en",
         "ja" | "jp" | "japanese" | "ja-jp" => "ja",
+        "ko" | "ko-kr" | "korean" => "ko",
+        "fr" | "fr-fr" | "french" => "fr",
+        "de" | "de-de" | "german" => "de",
         _ => {
             let sample = format!("{title}{hint}");
             if sample
@@ -287,6 +313,11 @@ fn resolve_language(explicit: &str, title: &str, hint: &str) -> &'static str {
                 .any(|c| ('\u{3040}'..='\u{30ff}').contains(&c))
             {
                 "ja"
+            } else if sample
+                .chars()
+                .any(|c| ('\u{ac00}'..='\u{d7a3}').contains(&c))
+            {
+                "ko"
             } else if sample
                 .chars()
                 .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
@@ -303,10 +334,21 @@ fn parse_seo_json(raw: &str) -> Option<(String, String, String)> {
     let cleaned = raw
         .trim()
         .trim_start_matches("```json")
+        .trim_start_matches("```JSON")
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
-    let v: Value = serde_json::from_str(cleaned).ok()?;
+    let v: Value = match serde_json::from_str(cleaned) {
+        Ok(v) => v,
+        Err(_) => {
+            let start = cleaned.find('{')?;
+            let end = cleaned.rfind('}')?;
+            if end <= start {
+                return None;
+            }
+            serde_json::from_str(cleaned.get(start..=end)?).ok()?
+        }
+    };
     let d = v
         .get("site_description")
         .and_then(|x| x.as_str())
@@ -354,6 +396,9 @@ fn fallback_copy(
         "zh-TW" => "zh-TW",
         "zh" => "zh-CN",
         "ja" => "ja-JP",
+        "ko" => "ko-KR",
+        "fr" => "fr-FR",
+        "de" => "de-DE",
         _ => "en-US",
     };
     let params = [("title", title), ("hint", hint)];
@@ -394,6 +439,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_json_wrapped_in_prose() {
+        let raw = "Sure.\n{\"site_description\":\"Hello\",\"site_keywords\":\"a\",\"site_ai_intro\":\"Intro\"}\nThanks";
+        let p = parse_seo_json(raw).unwrap();
+        assert_eq!(p.0, "Hello");
+        assert_eq!(p.2, "Intro");
+    }
+
+    #[test]
     fn field_set_single() {
         let s = FieldSet::from_request(&["site_keywords".into()]);
         assert!(!s.description && s.keywords && !s.ai_intro);
@@ -418,11 +471,36 @@ mod tests {
     }
 
     #[test]
+    fn language_detect_ko_and_explicit() {
+        assert_eq!(resolve_language("", "나의 홈", ""), "ko");
+        assert_eq!(resolve_language("ko-KR", "Myriad", ""), "ko");
+        assert_eq!(resolve_language("fr-FR", "Myriad", ""), "fr");
+    }
+
+    #[test]
+    fn field_briefs_ko() {
+        let s = FieldSet::from_request(&["site_description".into()]);
+        let brief = s.field_briefs("ko");
+        assert!(brief.contains("meta description"));
+        assert!(brief.contains("한국어"));
+    }
+
+    #[test]
+    fn truncate_matches_serp_budget() {
+        let long = "a".repeat(200);
+        let out = truncate(&long, DESC_OUT_CHARS);
+        assert!(out.ends_with('…'));
+        assert_eq!(out.chars().count(), DESC_OUT_CHARS);
+    }
+
+    #[test]
     fn fallback_uses_hint_in_intro() {
         let (_, _, intro) = fallback_copy("Myriad", "", "独立开发者，写 Rust", "zh");
         assert!(intro.contains("独立开发者"));
         assert!(intro.contains("Myriad"));
         let (_, keywords, _) = fallback_copy("Myriad", "", "", "zh-TW");
         assert!(keywords.contains("數位生活"));
+        let (_, ko_keywords, _) = fallback_copy("Myriad", "", "", "ko");
+        assert!(ko_keywords.contains("디지털"));
     }
 }

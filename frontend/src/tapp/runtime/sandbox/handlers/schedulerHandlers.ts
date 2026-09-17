@@ -95,21 +95,11 @@ export function registerSchedulerHandlers(
     try {
       const scheduler = takeScheduler()
       let task
-      try {
-        task = await scheduler.registerTask(
-          tappInstance.id,
-          opts,
-          await bridge.getRuntimeGrant(),
-        )
-      } catch (error) {
-        // core 会在各生命周期重复启动。注册保持幂等。
-        task = await scheduler.getTask(
-          tappInstance.id,
-          opts.taskId,
-          await bridge.getRuntimeGrant(),
-        )
-        if (!task) throw error
-      }
+      task = await scheduler.registerTask(
+        tappInstance.id,
+        opts,
+        await bridge.getRuntimeGrant(),
+      )
       bindTask(opts.taskId)
       return { success: true, data: task }
     } catch (error) {

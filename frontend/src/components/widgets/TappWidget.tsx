@@ -1,10 +1,21 @@
+import type { ReactNode } from 'react'
+import type { TappWidgetSandboxProps } from '../../tapp/runtime/TappWidgetSandbox'
 import type {
   RegisteredWidget,
   TappCodeStructure,
   TappInstance,
 } from '../../tapp/types'
 import type { WidgetComponentProps } from '../widgetGridTypes'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useNavigate } from 'react-router-dom'
 import { I18nNamespace, useI18n } from '../../contexts/I18nContext'
@@ -14,7 +25,6 @@ import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import { hiddenWidgetPool } from '../../tapp/runtime/resourceBounds'
 import { loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
-import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { widgetPerfMark } from '../../tapp/runtime/WidgetLoadPerf'
 import { onTappWidgetInvalidate } from '../../tapp/runtime/WidgetRuntimeSignals'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
@@ -33,6 +43,23 @@ import {
   TAPP_WIDGET_VIEWPORT_OFFSCREEN_RECHECKS,
   TAPP_WIDGET_VIEWPORT_RECHECK_MS,
 } from './tappWidgetViewport'
+
+const TappWidgetSandbox = lazy(() =>
+  import('../../tapp/runtime/TappWidgetSandbox').then((module) => ({
+    default: module.TappWidgetSandbox,
+  })),
+)
+
+function LazyTappWidgetSandbox({
+  fallback,
+  ...props
+}: TappWidgetSandboxProps & { fallback: ReactNode }) {
+  return (
+    <Suspense fallback={fallback}>
+      <TappWidgetSandbox {...props} />
+    </Suspense>
+  )
+}
 
 export interface TappWidgetProps extends WidgetComponentProps {
   tappWidgetId: string
@@ -225,7 +252,7 @@ const TappWidgetPreview = memo(
           className="relative w-full h-full rounded-xl overflow-hidden"
           style={{ pointerEvents: 'none' }}
         >
-          <TappWidgetSandbox
+          <LazyTappWidgetSandbox
             tappInstance={previewData.tappInstance}
             code={previewData.code}
             widgetId={
@@ -235,6 +262,7 @@ const TappWidgetPreview = memo(
             }
             widgetProps={widgetProps}
             className="w-full h-full"
+            fallback={null}
           />
           <div className="absolute inset-0 z-50" />
         </div>
@@ -975,7 +1003,7 @@ function TappWidgetRuntime({
       {/* 隐藏时 iframe 原地保留，只有暂存池淘汰才销毁。 */}
       <div ref={sandboxHostRef} className="w-full h-full">
         {((inViewport && pageVisible) || retained) ? (
-          <TappWidgetSandbox
+          <LazyTappWidgetSandbox
             key={refreshGeneration}
             paused={!inViewport}
             style={{ visibility: inViewport ? undefined : 'hidden' }}
@@ -989,6 +1017,13 @@ function TappWidgetRuntime({
             onInstanceSettingsChange={handleInstanceSettingsChange}
             onInvalidate={requestRefresh}
             className="w-full h-full"
+            fallback={
+              <WidgetSkeleton
+                hold
+                accent={runningThemeColor}
+                label={t.common.loading}
+              />
+            }
           />
         ) : (
           // 屏外 hold：无 bone DOM、无动画、content-visibility。

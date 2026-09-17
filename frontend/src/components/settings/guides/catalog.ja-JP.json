@@ -68,7 +68,7 @@
     },
     "siteAiGenerate": {
       "what": "各フィールド横の「AI 生成」タグで説明・キーワード・AI 紹介を個別生成。",
-      "chain": "① サイトタイトルを入れてから各タグを押す → 確認 → 設定保存。",
+      "chain": "① 各タグを押す → タイトルか補足を入れる → 確認 → 設定保存。",
       "frontend": "タイトル横の SettingTitleTag。/api/seo/generate-copy に単一 field を送る。",
       "notes": "「AI 生成」で任意の補足ダイアログの後、単一 field を POST。"
     },

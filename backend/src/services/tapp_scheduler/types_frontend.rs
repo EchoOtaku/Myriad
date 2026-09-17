@@ -288,27 +288,6 @@ pub async fn drain_frontend_messages(
     })
 }
 
-pub async fn requeue_frontend_message(
-    db: &DatabaseConnection,
-    connection_id: &str,
-    message: &FrontendTaskMessage,
-) -> Result<(), String> {
-    shared_registry::enqueue(
-        db,
-        SCHEDULER_MAILBOX_CHANNEL,
-        &scheduler_mailbox_recipient(connection_id),
-        message,
-        Utc::now().timestamp() + SCHEDULER_MESSAGE_TTL_SECONDS,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "failed to requeue scheduler message");
-        "Failed to requeue scheduler message".to_string()
-    })?;
-    SCHEDULER_REQUEUED.fetch_add(1, Ordering::Relaxed);
-    Ok(())
-}
-
 pub async fn active_frontend_subject_count(db: &DatabaseConnection) -> Result<usize, String> {
     shared_registry::list_subject_ids(db, SCHEDULER_PRESENCE_NAMESPACE)
         .await

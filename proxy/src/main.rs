@@ -1192,9 +1192,13 @@ async fn read_maintenance_cached(state: &AppState) -> MaintenanceFile {
         }
     }
 
-    let value = read_maintenance_from_disk(&state.state_path).await;
     let mut cache = state.maint_cache.write().await;
-    // Another task may have refreshed while we waited for the write lock; still fine to overwrite.
+    if let Some(loaded_at) = cache.loaded_at
+        && loaded_at.elapsed() < MAINT_CACHE_TTL
+    {
+        return cache.value.clone();
+    }
+    let value = read_maintenance_from_disk(&state.state_path).await;
     cache.loaded_at = Some(Instant::now());
     cache.value = value.clone();
     value

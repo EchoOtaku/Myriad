@@ -294,7 +294,14 @@ pub async fn validate_runtime_grant(
     // permissions with the current role/config/installation on every request.
     let tapp = match tapp_ownership::resolve_accessible_tapp(db, subject_id, &grant.tapp_id).await {
         Ok(tapp) if tapp.user_id == grant.owner_id => tapp,
-        Ok(_) | Err(_) => {
+        Ok(_) => {
+            let _ = shared_registry::delete(db, RUNTIME_GRANT_NAMESPACE, &hash).await;
+            return Err(RuntimeGrantError::ScopeChanged);
+        }
+        Err(crate::services::tapp_ownership::TappAccessError::Database) => {
+            return Err(RuntimeGrantError::Unavailable);
+        }
+        Err(_) => {
             let _ = shared_registry::delete(db, RUNTIME_GRANT_NAMESPACE, &hash).await;
             return Err(RuntimeGrantError::ScopeChanged);
         }

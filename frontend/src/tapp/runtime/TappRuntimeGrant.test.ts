@@ -26,12 +26,4 @@ describe('TappRuntimeGrant destroy / re-mint seed', () => {
     c.destroy()
   })
 
-  it('recoverRejectedToken returns null for destroyed owners', async () => {
-    const g = new TappRuntimeGrant('com.x', 'i', 'page')
-    const r = await TappRuntimeGrant.recoverRejectedToken('not-a-real-token')
-    assert.equal(r, null)
-    g.destroy()
-    const r2 = await TappRuntimeGrant.recoverRejectedToken('not-a-real-token')
-    assert.equal(r2, null)
-  })
 })

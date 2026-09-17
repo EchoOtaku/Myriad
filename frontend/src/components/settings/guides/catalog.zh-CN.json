@@ -68,7 +68,7 @@
     },
     "siteAiGenerate": {
       "what": "各字段标题旁的「AI 生成」标签，单独生成描述 / 关键词 / AI 简介。",
-      "chain": "① 先填网站标题 → 点对应字段旁「AI 生成」→ 检查 → 保存配置。",
+      "chain": "① 点对应字段旁「AI 生成」→ 标题或补充说明至少填一项 → 检查 → 保存配置。",
       "frontend": "字段标题旁 SettingTitleTag；调用 /api/seo/generate-copy，fields 仅含当前字段。",
       "notes": "点「AI 生成」先弹补充说明（可选）再请求；fields 仅含当前字段。"
     },

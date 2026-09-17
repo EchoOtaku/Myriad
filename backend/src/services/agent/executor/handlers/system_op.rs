@@ -209,7 +209,6 @@ async fn execute_scheduler_create(
     let payload = params.get("payload").cloned();
 
     let scheduler = scheduler_engine()?;
-    let scheduler = scheduler.read().await;
     let task = scheduler
         .register_task(
             ctx.user_id,
@@ -270,7 +269,6 @@ async fn execute_scheduler_trigger(
         .and_then(Value::as_str);
 
     let scheduler = scheduler_engine()?;
-    let scheduler = scheduler.read().await;
     let tapp_id = if let Some(tapp_id) = requested_tapp_id {
         tapp_id.to_string()
     } else {

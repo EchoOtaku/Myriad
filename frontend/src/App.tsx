@@ -667,11 +667,11 @@ export function App() {
     }
   }, [])
 
-  // 只预取资料库 / Tapp，不预取 Config。6s：过早会与首屏抢主线程。
+  // 只预取资料库 / Tapp，不预取 Config。8s：过早会与首屏抢主线程。
   useEffect(() => {
     const timer = setTimeout(() => {
       preloadCriticalRoutes()
-    }, 6000)
+    }, 8000)
 
     return () => clearTimeout(timer)
   }, [])

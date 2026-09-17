@@ -15,26 +15,13 @@ interface SharedWidgetEntry {
   refs: number
 }
 
-/** instance_id 最长 100；tappId 可达 128，不得嵌入全文。字符集 [A-Za-z0-9_.-]。 */
-export function sharedWidgetInstanceId(tappId: string): string {
-  let h1 = 0x811C9DC5
-  let h2 = 0x811C9DC5 ^ 0x9E3779B9
-  for (let i = 0; i < tappId.length; i++) {
-    const c = tappId.charCodeAt(i)
-    h1 ^= c
-    h1 = Math.imul(h1, 0x01000193)
-    h2 ^= c + i
-    h2 = Math.imul(h2, 0x01000193)
-  }
-  const hex =
-    (h1 >>> 0).toString(16).padStart(8, '0') +
-    (h2 >>> 0).toString(16).padStart(8, '0')
-  const slug = tappId
-    .replaceAll(/[^\w.-]/g, '_')
-    .replaceAll(/_+/g, '_')
-    .slice(0, 48)
-  const id = `ws.${slug}.${hex}`
-  return id.length <= 100 ? id : id.slice(0, 100)
+/** 页面内共享 widget grant 的不透明 instanceId。不从 tappId 派生，避免跨标签页互相撤销。 */
+export function newSharedWidgetInstanceId(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  let hex = ''
+  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0')
+  return `ws.${hex}`
 }
 
 /**
@@ -66,7 +53,7 @@ export class TappRuntimeGrant {
     if (!entry || entry.grant.isDestroyed()) {
       const grant = new TappRuntimeGrant(
         tappId,
-        sharedWidgetInstanceId(tappId),
+        newSharedWidgetInstanceId(),
         'widget',
       )
       entry = { grant, refs: 0 }
@@ -140,9 +127,6 @@ export class TappRuntimeGrant {
     TappRuntimeGrant.tokenOwners.set(grant.token, this)
     if (previous && previous.token !== grant.token) {
       TappRuntimeGrant.tokenOwners.delete(previous.token)
-      if (previous.runtimeId !== grant.runtimeId) {
-        void revokeTappRuntimeGrant(this.tappId, previous.runtimeId)
-      }
     }
     return grant.token
   }

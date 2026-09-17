@@ -68,7 +68,7 @@
     },
     "siteAiGenerate": {
       "what": "Per-field “AI generate” title tags for description / keywords / AI intro.",
-      "chain": "1) Set site title → click the tag next to a field → review → save config.",
+      "chain": "1) Click the tag next to a field → title or hint required → review → save config.",
       "frontend": "Title-adjacent SettingTitleTag; POST /api/seo/generate-copy with a single field.",
       "notes": "AI generate opens an optional hint dialog, then POSTs a single field."
     },

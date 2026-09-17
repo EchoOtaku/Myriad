@@ -68,7 +68,7 @@
     },
     "siteAiGenerate": {
       "what": "各欄位標題旁的「AI 生成」標籤，單獨生成描述 / 關鍵詞 / AI 簡介。",
-      "chain": "① 先填網站標題 → 點對應欄位旁「AI 生成」→ 檢查 → 儲存配置。",
+      "chain": "① 點對應欄位旁「AI 生成」→ 標題或補充說明至少填一項 → 檢查 → 儲存配置。",
       "frontend": "欄位標題旁 SettingTitleTag；呼叫 /api/seo/generate-copy，fields 僅含當前欄位。",
       "notes": "點「AI 生成」先彈補充說明（可選）再請求；fields 僅含當前欄位。"
     },

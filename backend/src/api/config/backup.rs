@@ -1345,6 +1345,30 @@ mod settings_backup_tests {
     }
 
     #[test]
+    fn site_description_and_keywords_are_capped() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![
+            ui_field("site_description", &"a".repeat(250)),
+            ui_field("site_keywords", &"b".repeat(400)),
+        ];
+        let updates = collect_database_updates(&config);
+        assert_eq!(
+            updates
+                .get("site_description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count()),
+            Some(200)
+        );
+        assert_eq!(
+            updates
+                .get("site_keywords")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count()),
+            Some(300)
+        );
+    }
+
+    #[test]
     fn sanitize_wallpaper_url_allows_http_https_and_paths() {
         assert_eq!(sanitize_wallpaper_url(""), Some(String::new()));
         assert_eq!(

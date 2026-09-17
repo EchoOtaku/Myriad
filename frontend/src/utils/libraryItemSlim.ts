@@ -36,15 +36,57 @@ export function preferCardCoverUrl(url: string | null | undefined): string | nul
       .replaceAll(BANGUMI_COVER_GRID, '/pic/cover/c/')
   }
 
-  if (
-    (trimmed.includes('music.126.net') || trimmed.includes('music.163.com')) &&
-    !trimmed.includes('param=')
-  ) {
-    const sep = trimmed.includes('?') ? '&' : '?'
-    return `${trimmed}${sep}param=300y300`
+  if (trimmed.includes('music.126.net') || trimmed.includes('music.163.com')) {
+    return withNeteaseCardSize(trimmed)
   }
 
+  const hdslb = withBilibiliCardSize(trimmed)
+  if (hdslb) return hdslb
+
   return trimmed
+}
+
+/** Card paint is ~220px. 240 is just above 1×; 300 was ~36% more pixels. */
+const NETEASE_CARD_PARAM = '240y240'
+const NETEASE_CARD_EDGE = 240
+
+function withNeteaseCardSize(url: string): string {
+  const match = url.match(/[?&]param=(\d+)y(\d+)/)
+  if (match) {
+    const width = Number(match[1])
+    const height = Number(match[2])
+    if (width <= NETEASE_CARD_EDGE && height <= NETEASE_CARD_EDGE) return url
+    return url.replace(/param=\d+y\d+/, `param=${NETEASE_CARD_PARAM}`)
+  }
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}param=${NETEASE_CARD_PARAM}`
+}
+
+/** Card paint is ~220px; 2× retina. Width-only so CSS object-fit keeps aspect. */
+const BILIBILI_CARD_WIDTH_SUFFIX = '@440w.webp'
+
+function hostOf(url: string): string | null {
+  try {
+    const absolute = url.startsWith('//') ? `https:${url}` : url
+    return new URL(absolute).hostname.replace(/\.$/, '').toLowerCase()
+  } catch {
+    return null
+  }
+}
+
+function isHdslbHost(host: string): boolean {
+  return host === 'hdslb.com' || host.endsWith('.hdslb.com')
+}
+
+function withBilibiliCardSize(url: string): string | null {
+  const host = hostOf(url)
+  if (!host || !isHdslbHost(host)) return null
+  const queryAt = url.indexOf('?')
+  const path = queryAt === -1 ? url : url.slice(0, queryAt)
+  const query = queryAt === -1 ? '' : url.slice(queryAt)
+  if (path.includes('@')) return null
+  if (/\.(gif|svg)$/i.test(path)) return null
+  return `${path}${BILIBILI_CARD_WIDTH_SUFFIX}${query}`
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -73,7 +73,7 @@ pub struct OAuthUrlBuilder;
 
 impl OAuthUrlBuilder {
     /// 启动时检查 base_url 与已启用 OAuth provider 条数，仅日志，不阻塞启动。
-    pub async fn validate_github_oauth_config() -> Result<(), String> {
+    pub async fn validate_github_oauth_config() {
         let base_url = SiteConfig::get_base_url().await;
         if base_url.contains("localhost") {
             tracing::debug!(
@@ -93,7 +93,5 @@ impl OAuthUrlBuilder {
         } else {
             tracing::debug!("ℹ️  No OAuth providers configured (can be set in Settings > OAuth)");
         }
-
-        Ok(())
     }
 }

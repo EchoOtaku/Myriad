@@ -27,7 +27,46 @@ describe('preferCardCoverUrl', () => {
 
   it('adds netease param when missing', () => {
     const out = preferCardCoverUrl('https://p2.music.126.net/xx.jpg')
-    assert.ok(out?.includes('param=300y300'))
+    assert.ok(out?.includes('param=240y240'))
+  })
+
+  it('downsizes oversized netease params and keeps smaller ones', () => {
+    assert.equal(
+      preferCardCoverUrl('https://p2.music.126.net/xx.jpg?param=300y300'),
+      'https://p2.music.126.net/xx.jpg?param=240y240',
+    )
+    assert.equal(
+      preferCardCoverUrl('https://p2.music.126.net/xx.jpg?param=200y200'),
+      'https://p2.music.126.net/xx.jpg?param=200y200',
+    )
+  })
+
+  it('adds bilibili card width without cropping', () => {
+    assert.equal(
+      preferCardCoverUrl('https://i0.hdslb.com/bfs/bangumi/image/x.jpg'),
+      'https://i0.hdslb.com/bfs/bangumi/image/x.jpg@440w.webp',
+    )
+    assert.equal(
+      preferCardCoverUrl('https://i2.hdslb.com/bfs/archive/c.jpg?spm=1'),
+      'https://i2.hdslb.com/bfs/archive/c.jpg@440w.webp?spm=1',
+    )
+    const already = 'https://i0.hdslb.com/bfs/archive/c.jpg@672w_378h_1c.webp'
+    assert.equal(preferCardCoverUrl(already), already)
+    assert.equal(
+      preferCardCoverUrl('https://i0.hdslb.com/bfs/face/a.gif'),
+      'https://i0.hdslb.com/bfs/face/a.gif',
+    )
+    assert.equal(
+      preferCardCoverUrl('https://hdslb.com.evil.com/bfs/archive/c.jpg'),
+      'https://hdslb.com.evil.com/bfs/archive/c.jpg',
+    )
+    const proxied = `/api/proxy/image?url=${encodeURIComponent(
+      'https://i0.hdslb.com/bfs/bangumi/image/x.jpg',
+    )}`
+    const out = preferCardCoverUrl(proxied)
+    assert.ok(out?.includes(encodeURIComponent(
+      'https://i0.hdslb.com/bfs/bangumi/image/x.jpg@440w.webp',
+    )))
   })
 
   it('rewrites proxied bangumi large paths', () => {
@@ -55,7 +94,7 @@ describe('slimLibraryMetadata', () => {
     assert.equal(slim.alias, undefined)
     assert.equal(slim.comment, undefined)
     assert.deepEqual(slim.privilege, { fee: 1 })
-    assert.ok(String((slim.al as { picUrl?: string }).picUrl).includes('param=300y300'))
+    assert.ok(String((slim.al as { picUrl?: string }).picUrl).includes('param=240y240'))
   })
 
   it('keeps bangumi progress subject totals', () => {
