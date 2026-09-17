@@ -179,7 +179,10 @@ pub async fn run_scheduled_seo_review(db: &DatabaseConnection) -> Result<SeoRevi
         }
     }
     if flags.why.trim().is_empty() {
-        flags.why = heuristic_why(&flags, crate::api::seo_geo::resolve_language("", &title, &description));
+        flags.why = heuristic_why(
+            &flags,
+            crate::api::seo_geo::resolve_language("", &title, &description),
+        );
     }
     if !flags.any() {
         return Ok(SeoReviewOutcome::Unchanged);
@@ -416,7 +419,10 @@ mod tests {
         assert!(looks_like_fluff("欢迎访问我的主页"));
         assert!(field_heuristic_bad("", true));
         assert!(!field_heuristic_bad("", false));
-        assert!(!field_heuristic_bad("独立开发者，写 Rust 与个人手帐。", true));
+        assert!(!field_heuristic_bad(
+            "独立开发者，写 Rust 与个人手帐。",
+            true
+        ));
     }
 
     #[test]

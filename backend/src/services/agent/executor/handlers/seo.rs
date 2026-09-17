@@ -78,4 +78,3 @@ fn string_param(params: &HashMap<String, Value>, key: &str) -> String {
         .unwrap_or("")
         .to_string()
 }
-
