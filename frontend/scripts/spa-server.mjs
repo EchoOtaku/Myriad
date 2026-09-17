@@ -126,7 +126,10 @@ function lookup(urlPath) {
 }
 
 function cacheControl(urlPath) {
-  if (urlPath.startsWith('/assets/')) {
+  if (
+    urlPath.startsWith('/assets/') ||
+    (urlPath.startsWith('/_astro/') && ASSET_EXT.test(urlPath))
+  ) {
     return 'public, max-age=31536000, immutable'
   }
   if (

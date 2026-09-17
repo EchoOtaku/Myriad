@@ -55,15 +55,23 @@ describe('phantasi feeds 入场 class 链', () => {
 
   it('错开的重叠窗口会把旧空壳补成实卡', () => {
     const stories = read('PhantasiFeedsStories.tsx')
-    assert.match(stories, /const hydrate = !reset && storyRangeNeedsHydration/)
-    assert.match(stories, /key=\{`\$\{grid\.from\}:\$\{paintTo\}:live:\$\{paintLive\}`\}/)
+    assert.match(stories, /syncPaintedRange/)
+    assert.match(stories, /storyPaintShouldRebuildBatch/)
+    assert.match(stories, /remadeOverlap/)
+    assert.match(stories, /from: grid\.from,\s+to: paintTo/)
   })
 
   it('预热缓存不保留会隐藏整张卡的 hold 节点', () => {
     const stories = read('PhantasiFeedsStories.tsx')
-    assert.match(stories, /if \(col <= holdAt\) \{\s+prebuilt\.set/)
+    assert.match(stories, /if \(col <= holdAt\) \{\s+const slots = byCol\.get\(col\)\s+prebuilt\.set/)
+    assert.match(stories, /hit && hit\.slots === slots/)
     assert.doesNotMatch(stories, /prebuilt\.set\([\s\S]{0,400}holdCover=\{col > holdAt\}/)
     assert.doesNotMatch(stories, /col > eagerBand\.to \|\|/)
+  })
+
+  it('列组件 hold 变了必须重绘', () => {
+    const story = read('PhantasiStory.tsx')
+    assert.match(story, /prev\.holdCover === next\.holdCover/)
   })
 
   it('复用 DOM 空壳时清掉上一张卡的预热与主题状态', () => {

@@ -477,27 +477,43 @@ const GamePresenceWidget = memo(
     }, [config.config?.accountId, config.config?.fontUrl, config.config?.game])
 
     useEffect(() => {
-      if (!fontUrl) {
+      if (!fontUrl || isPreview) {
         setCustomFamily(null)
         return
       }
-      const family = widgetFontFamilyName(fontUrl)
-      const face = new FontFace(family, `url(${widgetFontFaceUrl(fontUrl)})`)
       let cancelled = false
-      void face
-        .load()
-        .then((loaded) => {
-          if (cancelled) return
-          document.fonts.add(loaded)
-          setCustomFamily(family)
+      let face: FontFace | null = null
+      const start = () => {
+        if (cancelled) return
+        const family = widgetFontFamilyName(fontUrl)
+        face = new FontFace(family, `url(${widgetFontFaceUrl(fontUrl)})`, {
+          display: 'swap',
         })
-        .catch(() => {
-          if (!cancelled) setCustomFamily(null)
-        })
+        void face
+          .load()
+          .then((loaded) => {
+            if (cancelled) return
+            document.fonts.add(loaded)
+            setCustomFamily(family)
+          })
+          .catch(() => {
+            if (!cancelled) setCustomFamily(null)
+          })
+      }
+      const idle =
+        'requestIdleCallback' in window
+          ? window.requestIdleCallback(start, { timeout: 4000 })
+          : window.setTimeout(start, 1)
       return () => {
         cancelled = true
+        if ('requestIdleCallback' in window) {
+          window.cancelIdleCallback(idle)
+        } else {
+          window.clearTimeout(idle)
+        }
+        if (face) document.fonts.delete(face)
       }
-    }, [fontUrl])
+    }, [fontUrl, isPreview])
 
     useEffect(() => {
       if (isPreview) return

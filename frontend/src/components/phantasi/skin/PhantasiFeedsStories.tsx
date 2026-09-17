@@ -6,10 +6,10 @@ import type { PhantasiRailApi } from './usePhantasiRailPan'
 import { isValidElement, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   clipPaintedBatches,
-  extendPaintedRange,
   storyColumnCount,
-  storyRangeNeedsHydration,
+  storyPaintShouldRebuildBatch,
   storySlotsByColumn,
+  syncPaintedRange,
 } from '../logic/feedStories'
 import { peekStoryNode } from '../ui/peekLane'
 import { usePhantasiPeekLane } from '../ui/StoryCard'
@@ -154,7 +154,9 @@ export const PhantasiFeedsStories = memo(({
   const paintedEagerRef = useRef<{ from: number; to: number } | undefined>(
     undefined,
   )
-  const prebuiltColsRef = useRef<Map<number, ReactNode>>(new Map())
+  const prebuiltColsRef = useRef<
+    Map<number, { node: ReactNode; slots: readonly StorySlot[] | undefined }>
+  >(new Map())
   const canStar = onToggleStar != null
   useEffect(() => {
     const band = eagerBandRef.current
@@ -202,19 +204,22 @@ export const PhantasiFeedsStories = memo(({
         for (let col = colFrom; col <= colTo; col++) {
           if (prebuilt.has(col)) continue
           if (col <= holdAt) {
-            prebuilt.set(
-              col,
-              <PhantasiStoryColumn
-                key={col}
-                col={col}
-                slots={byCol.get(col)}
-                times={times}
-                locale={locale}
-                labels={labels}
-                holdCover={false}
-                canStar={canStar}
-              />,
-            )
+            const slots = byCol.get(col)
+            prebuilt.set(col, {
+              node: (
+                <PhantasiStoryColumn
+                  key={col}
+                  col={col}
+                  slots={slots}
+                  times={times}
+                  locale={locale}
+                  labels={labels}
+                  holdCover={false}
+                  canStar={canStar}
+                />
+              ),
+              slots,
+            })
           }
         }
         warmStoryCovers(pack)
@@ -286,6 +291,7 @@ export const PhantasiFeedsStories = memo(({
   }[]>([])
   const paintedRangeRef = useRef({ from: 0, to: 0 })
   const paintedLiveToRef = useRef(0)
+  const paintedEagerToRef = useRef(0)
   const paintedByColRef = useRef(byCol)
   const paintedFaceRef = useRef({
     times,
@@ -311,6 +317,7 @@ export const PhantasiFeedsStories = memo(({
     if (reset) prebuiltColsRef.current.clear()
     const prevRange = paintedRangeRef.current
     const prevLive = paintedLiveToRef.current
+    const prevEagerTo = paintedEagerToRef.current
     const jumped =
       prevRange.from > 0
       && prevRange.to >= prevRange.from
@@ -321,16 +328,31 @@ export const PhantasiFeedsStories = memo(({
       paintedHeadRef.current = null
       paintedOutRef.current = []
       paintedLiveToRef.current = 0
+      paintedEagerToRef.current = 0
       paintedRangeRef.current = { from: 0, to: 0 }
     }
     const prev = paintedCacheRef.current
     const prebuilt = prebuiltColsRef.current
     const paintLive = Math.min(liveTo, paintTo)
+    const eagerTo = eagerBand.to
+    const prevPaint = {
+      from: prevRange.from,
+      to: prevRange.to,
+      liveTo: prevLive,
+      eagerTo: prevEagerTo,
+    }
+    const nextPaint = {
+      from: grid.from,
+      to: paintTo,
+      liveTo: paintLive,
+      eagerTo,
+    }
     const makeFull = (col: number) => {
-      const holdCover = col > eagerBand.to
+      const holdCover = col > eagerTo
+      const slots = byCol.get(col)
       if (!holdCover) {
         const hit = prebuilt.get(col)
-        if (hit) return hit
+        if (hit && hit.slots === slots) return hit.node
       } else {
         prebuilt.delete(col)
       }
@@ -338,7 +360,7 @@ export const PhantasiFeedsStories = memo(({
         <PhantasiStoryColumn
           key={col}
           col={col}
-          slots={byCol.get(col)}
+          slots={slots}
           times={times}
           locale={locale}
           labels={labels}
@@ -346,7 +368,7 @@ export const PhantasiFeedsStories = memo(({
           canStar={canStar}
         />
       )
-      if (!holdCover) prebuilt.set(col, node)
+      if (!holdCover) prebuilt.set(col, { node, slots })
       return node
     }
     const make = (col: number) => (
@@ -358,99 +380,28 @@ export const PhantasiFeedsStories = memo(({
               times={times}
               locale={locale}
               labels={labels}
-              holdCover={col > eagerBand.to}
+              holdCover={col > eagerTo}
               canStar={canStar}
             />
           )
         : makeFull(col)
     )
-    let next = extendPaintedRange(
+    const { nodes: next, remadeOverlap } = syncPaintedRange(
       prev,
-      jumped ? 0 : prevRange.from,
-      jumped ? 0 : prevRange.to,
-      grid.from,
-      paintTo,
+      prevPaint,
+      nextPaint,
       make,
+      reset || jumped || prevByCol === byCol
+        ? undefined
+        : (col) => prevByCol.get(col) !== byCol.get(col),
       reset || jumped,
-    )
-    const hydrate = !reset && storyRangeNeedsHydration(
-      prevRange,
-      { from: grid.from, to: paintTo },
-      prevLive,
-      paintLive,
     )
     const leftoverShells = paintedBatchesRef.current.some(
       (batch) => batch.from > prevLive || batch.to > prevLive,
     )
-    if (hydrate) {
-      const copy = next.slice()
-      for (
-        let col = Math.max(prevLive + 1, grid.from);
-        col <= paintLive && col <= paintTo;
-        col++
-      ) {
-        copy[col - grid.from] = makeFull(col)
-      }
-      next = copy
-    }
-    if (!reset && prevByCol !== byCol) {
-      const copy = next.slice()
-      let patched = false
-      const overlapFrom = Math.max(grid.from, prevRange.from)
-      const overlapTo = Math.min(paintTo, prevRange.to)
-      for (let col = overlapFrom; col <= overlapTo; col++) {
-        if (prevByCol.get(col) !== byCol.get(col)) {
-          prebuilt.delete(col)
-          copy[col - grid.from] = make(col)
-          patched = true
-        }
-      }
-      if (patched) next = copy
-      if (patched && paintedBatchesRef.current.length > 0) {
-        const batches: {
-          from: number
-          to: number
-          nodes: readonly ReactNode[]
-          head: ReactNode
-        }[] = []
-        const heads: ReactNode[] = []
-        for (const batch of paintedBatchesRef.current) {
-          let hit = false
-          for (let col = batch.from; col <= batch.to; col++) {
-            if (prevByCol.get(col) !== byCol.get(col)) {
-              hit = true
-              break
-            }
-          }
-          if (!hit) {
-            batches.push(batch)
-            heads.push(batch.head)
-            continue
-          }
-          const from = Math.max(batch.from, grid.from)
-          const to = Math.min(batch.to, paintTo)
-          if (from > to) continue
-          const nodes = next.slice(from - grid.from, to - grid.from + 1)
-          const head = (
-            <PaintedRailHead
-              key={
-                isValidElement(batch.head) && batch.head.key != null
-                  ? batch.head.key
-                  : `${from}:${to}`
-              }
-              nodes={nodes}
-            />
-          )
-          batches.push({ from, to, nodes, head })
-          heads.push(head)
-        }
-        paintedBatchesRef.current = batches
-        paintedOutRef.current = heads
-        paintedHeadRef.current = heads[0] ?? null
-      }
-    }
     paintedRangeRef.current = { from: grid.from, to: paintTo }
     paintedLiveToRef.current = paintLive
+    paintedEagerToRef.current = eagerTo
     paintedCacheRef.current = next
     if (next === prev && paintedOutRef.current.length > 0) {
       return paintedOutRef.current
@@ -462,7 +413,7 @@ export const PhantasiFeedsStories = memo(({
       && paintTo > prevRange.to
       && next.length > prev.length
       && next[0] === prev[0]
-    if (grew && !leftoverShells) {
+    if (grew && !leftoverShells && !remadeOverlap) {
       const addFrom = prevRange.to + 1
       let out = paintedOutRef.current
       if (addFrom <= paintLive) {
@@ -506,14 +457,23 @@ export const PhantasiFeedsStories = memo(({
       return out
     }
     if (
-      (hydrate || (grew && leftoverShells))
+      storyPaintShouldRebuildBatch(
+        prevPaint,
+        nextPaint,
+        remadeOverlap,
+        leftoverShells,
+      )
       && paintedBatchesRef.current.length > 0
     ) {
+      const firstHead = paintedBatchesRef.current[0]?.head
+      const headKey =
+        grid.from === prevRange.from
+        && isValidElement(firstHead)
+        && firstHead.key != null
+          ? firstHead.key
+          : `${grid.from}:${paintTo}`
       const head = (
-        <PaintedRailHead
-          key={`${grid.from}:${paintTo}:live:${paintLive}`}
-          nodes={next}
-        />
+        <PaintedRailHead key={headKey} nodes={next} />
       )
       paintedHeadRef.current = head
       paintedOutRef.current = [head]
@@ -572,6 +532,7 @@ export const PhantasiFeedsStories = memo(({
   }, [
     byCol,
     canStar,
+    eagerBand.to,
     grid.from,
     labels,
     liveTo,

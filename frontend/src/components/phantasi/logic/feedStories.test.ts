@@ -29,11 +29,17 @@ import {
   storyColumnCount,
   storyColumnLeads,
   storyColumnShift,
+  storyPaintColCanReuse,
+  storyPaintHold,
+  storyPaintLive,
+  storyPaintShouldRebuildBatch,
   storyRailGroup,
   storyRailSlots,
+  storyRangeNeedsHoldSync,
   storyRangeNeedsHydration,
   storySlotAtColumn,
   storySlotsByColumn,
+  syncPaintedRange,
   toFeedStory,
   topicFeedId,
   topicFeedStories,
@@ -586,6 +592,259 @@ describe('feed span / stitch', () => {
     )
   })
 })
+
+describe('story paint window sync', () => {
+  const win = (
+    from: number,
+    to: number,
+    liveTo: number,
+    eagerTo: number,
+  ) => ({ from, to, liveTo, eagerTo })
+
+  it('可见列不 hold，预热带外的实卡才 hold', () => {
+    assert.equal(storyPaintHold(8, 8), false)
+    assert.equal(storyPaintHold(9, 8), true)
+    assert.equal(storyPaintLive(11, 11), true)
+    assert.equal(storyPaintLive(12, 11), false)
+  })
+
+  it('重叠列在 hold 或空壳转实卡时不能沿用', () => {
+    const prev = win(1, 16, 11, 8)
+    const hydrated = win(9, 25, 20, 18)
+    assert.equal(storyPaintColCanReuse(5, prev, hydrated), false)
+    assert.equal(storyPaintColCanReuse(9, prev, hydrated), false)
+    assert.equal(storyPaintColCanReuse(1, prev, hydrated), false)
+    assert.equal(storyPaintColCanReuse(8, prev, win(1, 16, 11, 8)), true)
+    assert.equal(storyPaintColCanReuse(9, prev, win(1, 16, 11, 8)), true)
+    assert.equal(storyPaintColCanReuse(9, prev, win(1, 16, 11, 12)), false)
+    assert.equal(storyPaintColCanReuse(12, prev, win(1, 16, 15, 8)), false)
+    assert.equal(storyPaintColCanReuse(8, prev, hydrated, true), false)
+    assert.equal(storyRangeNeedsHoldSync(prev, win(1, 16, 11, 12)), true)
+    assert.equal(storyRangeNeedsHoldSync(prev, prev), false)
+  })
+
+  it('空壳升级或重叠重造时丢掉旧批次边界', () => {
+    const prev = win(1, 16, 11, 8)
+    assert.equal(
+      storyPaintShouldRebuildBatch(prev, win(9, 25, 20, 18), true, false),
+      true,
+    )
+    assert.equal(
+      storyPaintShouldRebuildBatch(prev, win(1, 24, 11, 8), false, true),
+      true,
+    )
+    assert.equal(
+      storyPaintShouldRebuildBatch(prev, win(1, 24, 11, 8), false, false),
+      false,
+    )
+  })
+
+  it('双向切换后每个节点的 hold/实空与当前窗口一致', () => {
+    const seq = [
+      win(1, 16, 11, 8),
+      win(9, 25, 20, 18),
+      win(1, 16, 20, 8),
+      win(9, 25, 20, 18),
+      win(20, 36, 28, 26),
+      win(9, 25, 28, 18),
+      win(1, 16, 28, 8),
+      win(31, 46, 40, 38),
+      win(1, 16, 40, 8),
+    ]
+    let prev: Array<{ col: number; hold: boolean; live: boolean }> = []
+    let prevWin = win(0, -1, 0, 0)
+    let seqId = 0
+    for (const nextWin of seq) {
+      const { nodes, remadeOverlap } = syncPaintedRange(
+        prev,
+        prevWin,
+        nextWin,
+        (col) => ({
+          col,
+          hold: storyPaintHold(col, nextWin.eagerTo),
+          live: storyPaintLive(col, nextWin.liveTo),
+          id: ++seqId,
+        }),
+      )
+      assert.equal(nodes.length, nextWin.to - nextWin.from + 1)
+      for (const node of nodes) {
+        assert.equal(node.hold, node.col > nextWin.eagerTo)
+        assert.equal(node.live, node.col <= nextWin.liveTo)
+        if (
+          node.col >= nextWin.from
+          && node.col <= Math.min(nextWin.eagerTo, nextWin.liveTo, nextWin.to)
+        ) {
+          assert.equal(node.hold, false)
+        }
+      }
+      const overlapFrom = Math.max(nextWin.from, prevWin.from)
+      const overlapTo = Math.min(nextWin.to, prevWin.to)
+      if (storyPaintWindowOverlaps(prevWin, nextWin) && overlapFrom <= overlapTo) {
+        let sawRemake = false
+        for (let col = overlapFrom; col <= overlapTo; col++) {
+          const can = storyPaintColCanReuse(col, prevWin, nextWin)
+          const node = nodes[col - nextWin.from]
+          const old = prev[col - prevWin.from]
+          if (can) assert.equal(node, old)
+          else if (old) {
+            assert.notEqual(node, old)
+            sawRemake = true
+          }
+        }
+        assert.equal(remadeOverlap, sawRemake)
+      }
+      prev = nodes
+      prevWin = nextWin
+    }
+  })
+
+  it('预热带前移只重造 hold 翻转的列，左边可见列沿用', () => {
+    const prevWin = win(1, 16, 11, 8)
+    const first = syncPaintedRange(
+      [],
+      win(0, -1, 0, 0),
+      prevWin,
+      (col) => ({ col, hold: col > 8 }),
+    ).nodes
+    const nextWin = win(1, 16, 11, 12)
+    const { nodes, remadeOverlap } = syncPaintedRange(
+      first,
+      prevWin,
+      nextWin,
+      (col) => ({ col, hold: col > 12 }),
+    )
+    assert.equal(nodes[0], first[0])
+    assert.equal(nodes[7], first[7])
+    assert.notEqual(nodes[8], first[8])
+    assert.notEqual(nodes[10], first[10])
+    assert.equal(nodes[8]?.hold, false)
+    assert.equal(remadeOverlap, true)
+  })
+
+  it('数据插入导致列位移时重叠列全部重造', () => {
+    const prevWin = win(9, 16, 16, 14)
+    const first = syncPaintedRange(
+      [],
+      win(0, -1, 0, 0),
+      prevWin,
+      (col) => ({ col, slot: col }),
+    ).nodes
+    const shifted = syncPaintedRange(
+      first,
+      prevWin,
+      prevWin,
+      (col) => ({ col, slot: col + 2 }),
+      () => true,
+    )
+    assert.equal(shifted.remadeOverlap, true)
+    for (let i = 0; i < shifted.nodes.length; i++) {
+      assert.notEqual(shifted.nodes[i], first[i])
+      assert.equal(shifted.nodes[i]?.slot, (first[i]?.col ?? 0) + 2)
+    }
+  })
+
+  it('窗口跳跃不沿用任何旧节点', () => {
+    const prevWin = win(1, 8, 8, 8)
+    const first = syncPaintedRange(
+      [],
+      win(0, -1, 0, 0),
+      prevWin,
+      (col) => ({ col }),
+    ).nodes
+    const { nodes, remadeOverlap } = syncPaintedRange(
+      first,
+      prevWin,
+      win(31, 36, 36, 34),
+      (col) => ({ col }),
+    )
+    assert.equal(remadeOverlap, false)
+    assert.deepEqual(nodes.map((node) => node.col), [31, 32, 33, 34, 35, 36])
+    for (const node of nodes) assert.equal(first.includes(node), false)
+  })
+
+  it('随机双向窗口序列保持可见列无 hold、可复用列同引用', () => {
+    let seed = 20260917
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0
+      return seed / 0x100000000
+    }
+    const total = 48
+    const span = () => 8 + Math.floor(rnd() * 12)
+    let from = 1
+    let liveTo = 11
+    let eagerTo = 8
+    let slotGen = 0
+    const slotVer = new Map<number, number>()
+    const version = (col: number) => slotVer.get(col) ?? 0
+    let prev: Array<{ col: number; hold: boolean; live: boolean; ver: number }> = []
+    let prevWin = win(0, -1, 0, 0)
+    for (let step = 0; step < 40; step++) {
+      const width = span()
+      if (rnd() < 0.2) from = 1
+      else if (rnd() < 0.5) from = Math.min(total - width + 1, from + Math.floor(rnd() * 10))
+      else from = Math.max(1, from - Math.floor(rnd() * 10))
+      const to = Math.min(total, from + width - 1)
+      eagerTo = Math.min(to, from + Math.floor(width * 0.5) + Math.floor(rnd() * 4))
+      liveTo = Math.max(liveTo, Math.min(to, eagerTo + 3))
+      if (rnd() < 0.15) {
+        slotGen += 1
+        for (let col = 1; col <= total; col++) {
+          if (col >= from) slotVer.set(col, slotGen)
+        }
+      }
+      const nextWin = win(from, to, Math.min(liveTo, to), eagerTo)
+      const { nodes } = syncPaintedRange(
+        prev,
+        prevWin,
+        nextWin,
+        (col) => ({
+          col,
+          hold: storyPaintHold(col, nextWin.eagerTo),
+          live: storyPaintLive(col, nextWin.liveTo),
+          ver: version(col),
+        }),
+        prevWin.from > 0
+          ? (col) => {
+              const old = prev[col - prevWin.from]
+              return old != null && old.ver !== version(col)
+            }
+          : undefined,
+      )
+      for (const node of nodes) {
+        assert.equal(node.hold, node.col > nextWin.eagerTo)
+        assert.equal(node.live, node.col <= nextWin.liveTo)
+        assert.equal(node.ver, version(node.col))
+        if (node.col <= nextWin.eagerTo) assert.equal(node.hold, false)
+      }
+      const overlapFrom = Math.max(nextWin.from, prevWin.from)
+      const overlapTo = Math.min(nextWin.to, prevWin.to)
+      if (prevWin.from > 0 && overlapFrom <= overlapTo) {
+        for (let col = overlapFrom; col <= overlapTo; col++) {
+          const old = prev[col - prevWin.from]
+          const node = nodes[col - nextWin.from]
+          const can = storyPaintColCanReuse(
+            col,
+            prevWin,
+            nextWin,
+            old.ver !== version(col),
+          )
+          if (can) assert.equal(node, old)
+          else assert.notEqual(node, old)
+        }
+      }
+      prev = nodes
+      prevWin = nextWin
+    }
+  })
+})
+
+function storyPaintWindowOverlaps(
+  prev: { from: number; to: number },
+  next: { from: number; to: number },
+): boolean {
+  return prev.from <= prev.to && next.from <= next.to
+    && next.from <= prev.to && next.to >= prev.from
+}
 
 describe('sameFeedStory / reuseFeedStories', () => {
   it('字段都一样才算同一张，拼轨时沿用旧对象', () => {

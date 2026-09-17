@@ -7,6 +7,7 @@ import type {
 import { LuSparkles, LuX } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import React, {
+  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -38,12 +39,17 @@ import { HomeStickerCrop } from './home/HomeStickerCrop'
 import { HomeStickerCropTip } from './home/HomeStickerCropTip'
 import { widgetDisplayLabel } from './widgetLibraryModel'
 import { shouldSkipWidgetEntrance } from './widgetPlacementPreview'
-import { WidgetInstanceSettings } from './widgets/shared/WidgetInstanceSettings'
 import { WidgetLongPressHint } from './widgets/shared/WidgetLongPressHint'
 import StickerWidget, {
   stickerFloatMode,
   stickerFloatPatch,
 } from './widgets/StickerWidget'
+
+const WidgetInstanceSettings = lazy(() =>
+  import('./widgets/shared/WidgetInstanceSettings').then((module) => ({
+    default: module.WidgetInstanceSettings,
+  })),
+)
 
 export const STICKER_WIDGET_TYPE: WidgetType = {
   id: 'sticker',
@@ -137,6 +143,7 @@ export const WidgetGridItem = React.memo(
     const anim = useAnimationLevel()
     const { t } = useI18n()
     const [showSettings, setShowSettings] = useState(false)
+    const [settingsLoaded, setSettingsLoaded] = useState(false)
     const [settingsAnchor, setSettingsAnchor] = useState<DOMRect | null>(null)
     const [stickerCropOpen, setStickerCropOpen] = useState(false)
     const [stickerCropDraft, setStickerCropDraft] =
@@ -152,6 +159,9 @@ export const WidgetGridItem = React.memo(
       null,
     )
     const instanceSettings = widgetType.settings ?? []
+    useEffect(() => {
+      if (showSettings) setSettingsLoaded(true)
+    }, [showSettings])
     const stickerSrc =
       typeof widget.config?.imageUrl === 'string'
         ? widget.config.imageUrl.trim()
@@ -562,23 +572,25 @@ export const WidgetGridItem = React.memo(
             </div>
           ) : null}
         </div>
-        {instanceSettings.length > 0 && onConfigChange ? (
-          <WidgetInstanceSettings
-            open={showSettings}
-            title={widgetDisplayLabel(
-              widgetType,
-              t.widgets as unknown as Record<string, unknown>,
-            )}
-            settings={instanceSettings}
-            value={(widget.config || {}) as Record<string, unknown>}
-            anchor={settingsAnchor}
-            ignoreRef={stickerItemRef}
-            onClose={() => setShowSettings(false)}
-            onSave={(next) => {
-              onConfigChange(next)
-              setShowSettings(false)
-            }}
-          />
+        {settingsLoaded && instanceSettings.length > 0 && onConfigChange ? (
+          <Suspense fallback={null}>
+            <WidgetInstanceSettings
+              open={showSettings}
+              title={widgetDisplayLabel(
+                widgetType,
+                t.widgets as unknown as Record<string, unknown>,
+              )}
+              settings={instanceSettings}
+              value={(widget.config || {}) as Record<string, unknown>}
+              anchor={settingsAnchor}
+              ignoreRef={stickerItemRef}
+              onClose={() => setShowSettings(false)}
+              onSave={(next) => {
+                onConfigChange(next)
+                setShowSettings(false)
+              }}
+            />
+          </Suspense>
         ) : null}
       </motion.div>
     )

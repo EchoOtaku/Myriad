@@ -24,6 +24,26 @@ describe('home first-paint budget', () => {
     assert.match(agora, /import\('agora-rtm'\)/)
   })
 
+  it('keeps widget settings and custom fonts off the first paint path', () => {
+    const gridItem = readFileSync(
+      new URL('../components/WidgetGridItem.tsx', import.meta.url),
+      'utf8',
+    )
+    const gamePresence = readFileSync(
+      new URL('../components/widgets/GamePresenceWidget.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.equal(
+      gridItem.includes("from './widgets/shared/WidgetInstanceSettings'"),
+      false,
+    )
+    assert.match(gridItem, /lazy\(\(\) =>/)
+    assert.match(gridItem, /settingsLoaded/)
+    assert.match(gamePresence, /requestIdleCallback/)
+    assert.match(gamePresence, /document\.fonts\.delete/)
+    assert.match(gamePresence, /isPreview/)
+  })
+
   it('counts Astro hydration entries and skips dynamic speech', async () => {
     const { measureHomeBudget } = await import('../../scripts/home-budget.mjs')
     const root = mkdtempSync(join(tmpdir(), 'home-budget-'))

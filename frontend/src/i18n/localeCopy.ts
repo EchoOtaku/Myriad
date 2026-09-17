@@ -1,50 +1,77 @@
 import type { ShellTranslationKeys } from './assembleLocale'
 import type { Locale } from './locales'
-import agentCaps from './agentCaps.en-US.json' with { type: 'json' }
 import config from './configService.en-US.json' with { type: 'json' }
 import core from './en-US.json' with { type: 'json' }
 import errors from './errors.en-US.json' with { type: 'json' }
 import { formatMessage } from './formatMessage'
-import { getCachedShellLocale, loadShellLocale } from './loadLocale'
+import {
+  getCachedShellLocale,
+  getCachedShellNamespace,
+  loadShellLocale,
+} from './loadLocale'
 import { getDefaultLocale, localeOrFallback } from './locales'
-import merope from './merope.en-US.json' with { type: 'json' }
-import phantasi from './phantasi.en-US.json' with { type: 'json' }
-import tapp from './tapp.en-US.json' with { type: 'json' }
+import service from './service.en-US.json' with { type: 'json' }
 
 /** Service callers only need settings errors, not the settings editor catalog. */
 export type ServiceCopy = ShellTranslationKeys
 
-const enUS: ServiceCopy = {
+const enChrome = {
   ...core,
   config,
-  tapp,
-  phantasi,
-  merope,
   errors,
-  agentCaps,
 }
 
 function asLocale(value: string) {
   return localeOrFallback(value)
 }
 
+function assembleServiceCopy(locale: Locale, chrome: typeof enChrome): ServiceCopy {
+  const tapp =
+    getCachedShellNamespace('tapp', locale) ??
+    getCachedShellNamespace('tapp', 'en-US') ??
+    service.tapp
+  const phantasi =
+    getCachedShellNamespace('phantasi', locale) ??
+    getCachedShellNamespace('phantasi', 'en-US') ??
+    service.phantasi
+  const merope =
+    getCachedShellNamespace('merope', locale) ??
+    getCachedShellNamespace('merope', 'en-US') ??
+    service.merope
+  const agentCaps =
+    getCachedShellNamespace('agentCaps', locale) ??
+    getCachedShellNamespace('agentCaps', 'en-US') ??
+    {}
+  return {
+    ...chrome,
+    tapp,
+    phantasi,
+    merope,
+    agentCaps,
+  } as ShellTranslationKeys
+}
+
 function resolveServiceCopy(): { locale: Locale; t: ServiceCopy } {
   const target = getDefaultLocale()
   const cached = getCachedShellLocale(target)
-  if (cached) return { locale: target, t: cached }
+  if (cached) return { locale: target, t: assembleServiceCopy(target, cached) }
   void loadShellLocale(target).catch(() => {})
   const loaded = getCachedShellLocale(target)
-  if (loaded) return { locale: target, t: loaded }
-  return { locale: 'en-US', t: getCachedShellLocale('en-US') ?? enUS }
+  if (loaded) return { locale: target, t: assembleServiceCopy(target, loaded) }
+  const en = getCachedShellLocale('en-US')
+  return { locale: 'en-US', t: assembleServiceCopy('en-US', en ?? enChrome) }
 }
 
 /** ja/zh stay out of the static graph; English is the sync fallback until loadLocale resolves. */
 export function copyForLocale(locale: string): ServiceCopy {
   const key = asLocale(locale)
   const cached = getCachedShellLocale(key)
-  if (cached) return cached
+  if (cached) return assembleServiceCopy(key, cached)
   void loadShellLocale(key).catch(() => {})
-  return getCachedShellLocale(key) ?? getCachedShellLocale('en-US') ?? enUS
+  const loaded = getCachedShellLocale(key)
+  if (loaded) return assembleServiceCopy(key, loaded)
+  const en = getCachedShellLocale('en-US')
+  return assembleServiceCopy('en-US', en ?? enChrome)
 }
 
 /** Non-React service-layer copy. Same pack `formatCurrent` formats against. */
@@ -59,3 +86,4 @@ export function formatCurrent(
 ): string {
   return formatMessage(resolveServiceCopy().locale, template, params)
 }
+

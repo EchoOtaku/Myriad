@@ -24,8 +24,8 @@ use crate::services::phantasi_scheduler::get_phantasi_scheduler;
 
 use super::helpers::{
     build_feed_discovery_candidates, get_admin_user_id_from_headers, get_phantasi_viewer,
-    normalize_http_url, overlay_requested_feed_type, parse_feed_type_label, phantasi_http_err,
-    phantasi_store_http,
+    materialize_source_icon, normalize_http_url, overlay_requested_feed_type,
+    parse_feed_type_label, persist_source_icon, phantasi_http_err, phantasi_store_http,
 };
 
 // 订阅源管理
@@ -102,12 +102,16 @@ pub(crate) async fn list_sources(
         source_query = source_query.filter(phantasi_sources::Column::AdminOnly.eq(false));
     }
 
-    let sources = match source_query.all(&db).await {
+    let mut sources = match source_query.all(&db).await {
         Ok(s) => s,
         Err(e) => {
             return Err(phantasi_store_http("list sources", e));
         }
     };
+    for source in &mut sources {
+        let raw = source.icon.take();
+        source.icon = materialize_source_icon(&db, source.id, raw).await;
+    }
 
     if is_catalog_view(query.view.as_deref()) {
         let responses: Vec<SourceWithRecentItems> = sources
@@ -575,17 +579,6 @@ pub(crate) async fn add_source(
     }
 }
 
-async fn persist_source_icon(source_id: i32, icon: &str) -> Option<String> {
-    match IconService::new().download_icon(source_id, icon).await {
-        Ok(Some(info)) => Some(info.local_path),
-        Ok(None) => None,
-        Err(error) => {
-            tracing::warn!(%error, source_id, "Failed to persist source icon");
-            None
-        }
-    }
-}
-
 /// 更新订阅源（需要管理员权限）
 pub(crate) async fn update_source(
     State(db): State<DatabaseConnection>,
@@ -1039,5 +1032,23 @@ pub(crate) async fn delete_category(
             Json(AppError::fail_json("Category not found")),
         ))),
         Err(e) => Err(phantasi_store_http("find category", e)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn list_sources_rewrites_inline_icons_before_serialize() {
+        let src = include_str!("feeds_sources.rs");
+        let start = src
+            .find("pub(crate) async fn list_sources")
+            .expect("list_sources");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\n/// 添加订阅源")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let list = &body[..end];
+        assert!(list.contains("materialize_source_icon"));
     }
 }

@@ -55,7 +55,7 @@ export function journalTopicPath(topic: string): string {
   return `${JOURNAL_ROOT}/topics/${encodeURIComponent(topic)}`
 }
 
-/** Cross-page entry may focus a card without giving the card its own URL. */
+/** 跨页进入可以定位网站卡片，但不给卡片独立地址。 */
 export function journalSourceFocus(state: unknown): number | null {
   if (!state || typeof state !== 'object' || !('journalSourceId' in state)) return null
   const id = state.journalSourceId

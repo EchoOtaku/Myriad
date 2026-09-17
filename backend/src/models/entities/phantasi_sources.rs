@@ -182,6 +182,19 @@ pub struct UpdateSourceRequest {
     pub admin_only: Option<bool>,
 }
 
+/// Icons that can be used as `src` without inflating JSON.
+/// Drops empty values and `data:` URIs; those belong on disk, not in list payloads.
+pub fn public_icon(icon: Option<&str>) -> Option<String> {
+    let icon = icon.map(str::trim).filter(|value| !value.is_empty())?;
+    if icon
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
+    {
+        return None;
+    }
+    Some(icon.to_string())
+}
+
 /// 订阅源响应（包含额外信息）
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SourceResponse {
@@ -232,7 +245,7 @@ impl From<Model> for SourceResponse {
             },
             source_type: m.source_type.as_str().to_string(),
             category: m.category,
-            icon: m.icon,
+            icon: public_icon(m.icon.as_deref()),
             description: m.description,
             site_url: m.site_url,
             update_interval: m.update_interval,
@@ -258,5 +271,27 @@ impl From<Model> for SourceResponse {
             admin_only: m.admin_only,
             created_at: m.created_at.timestamp_millis(),
         }
+    }
+}
+
+#[cfg(test)]
+mod public_icon_tests {
+    use super::public_icon;
+
+    #[test]
+    fn public_icon_keeps_paths_and_http_and_drops_data_uris() {
+        assert_eq!(public_icon(None), None);
+        assert_eq!(public_icon(Some("")), None);
+        assert_eq!(public_icon(Some("   ")), None);
+        assert_eq!(public_icon(Some("data:image/jpeg;base64,/9j/4AAQ")), None);
+        assert_eq!(public_icon(Some("DATA:image/png;base64,AAAA")), None);
+        assert_eq!(
+            public_icon(Some("/api/phantasi/icons/source_31.jpg")),
+            Some("/api/phantasi/icons/source_31.jpg".into())
+        );
+        assert_eq!(
+            public_icon(Some(" https://example.com/favicon.ico ")),
+            Some("https://example.com/favicon.ico".into())
+        );
     }
 }

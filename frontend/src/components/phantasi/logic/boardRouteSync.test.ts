@@ -24,6 +24,10 @@ describe('decidePathSync', () => {
       action: 'apply',
       navId: 'sites',
     })
+    assert.deepEqual(decideVisitorPath('/journal/feeds'), {
+      action: 'apply',
+      navId: 'feeds',
+    })
     assert.deepEqual(decideVisitorPath('/journal/feeds/48'), {
       action: 'bounce',
       to: '/journal',
@@ -77,7 +81,7 @@ describe('decidePathSync', () => {
   it('已关闭板块及其子页面回退到第一个可见板块', () => {
     for (const pathname of [
       '/journal',
-      '/journal/feeds/48',
+      '/journal/feeds',
       '/journal/topics/ai',
     ]) {
       assert.deepEqual(

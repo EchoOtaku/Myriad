@@ -1,4 +1,9 @@
-import type { Locale, ShellTranslationKeys, TranslationKeys } from '../i18n'
+import type {
+  Locale,
+  ShellNamespace,
+  ShellTranslationKeys,
+  TranslationKeys,
+} from '../i18n'
 import React, {
   createContext,
   Suspense,
@@ -16,6 +21,7 @@ import {
   LocaleNamespaceError,
   readConfigLocale,
   readShellLocale,
+  readShellNamespace,
 } from '../i18n/loadLocale'
 import { persistLocaleToAccount } from '../i18n/localeAccount'
 import { currentCopy } from '../i18n/localeCopy'
@@ -51,6 +57,12 @@ if (import.meta.hot) {
 interface LocaleBundle {
   locale: Locale
   t: ShellTranslationKeys
+}
+
+function asShellCopy(
+  chrome: ReturnType<typeof readShellLocale>,
+): ShellTranslationKeys {
+  return chrome as ShellTranslationKeys
 }
 
 interface NamespaceBoundaryProps {
@@ -111,7 +123,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   const [bundle, setBundle] = useState<LocaleBundle | null>(() => {
     const initial = getDefaultLocale()
     const cached = getCachedShellLocale(initial)
-    return cached ? { locale: initial, t: cached } : null
+    return cached ? { locale: initial, t: asShellCopy(cached) } : null
   })
 
   useEffect(() => {
@@ -122,7 +134,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
     loadShellLocale(locale)
       .then((t) => {
         if (cancelled) return
-        setBundle({ locale, t })
+        setBundle({ locale, t: asShellCopy(t) })
       })
       .catch((err) => {
         console.error('[I18n] Failed to load locale:', locale, err)
@@ -133,7 +145,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
           loadShellLocale('en-US').then((t) => {
             if (cancelled) return
             setLocaleState('en-US')
-            setBundle({ locale: 'en-US', t })
+            setBundle({ locale: 'en-US', t: asShellCopy(t) })
           })
         }
       })
@@ -207,7 +219,7 @@ function fallbackI18n(): I18nContextType {
   const locale = getDefaultLocale()
   // Detached React trees suspend until their actual locale is ready too.
   // Settings consumers opt into their additional namespace with useConfigI18n.
-  const t = readShellLocale(locale)
+  const t = asShellCopy(readShellLocale(locale))
   return {
     locale,
     setLocale: (newLocale, options) => {
@@ -223,6 +235,44 @@ function fallbackI18n(): I18nContextType {
 
 export function useI18n(): I18nContextType {
   return useContext(I18nContext) ?? fallbackI18n()
+}
+
+/** Load domain catalogs for a subtree. Chrome stays on the outer provider. */
+export function I18nNamespace({
+  names,
+  children,
+}: {
+  names: readonly ShellNamespace[]
+  children: React.ReactNode
+}) {
+  const context = useI18n()
+  return (
+    <Suspense fallback={<div role="status">{context.t.common.loading}</div>}>
+      <I18nNamespaceReady names={names}>{children}</I18nNamespaceReady>
+    </Suspense>
+  )
+}
+
+function I18nNamespaceReady({
+  names,
+  children,
+}: {
+  names: readonly ShellNamespace[]
+  children: React.ReactNode
+}) {
+  const context = useI18n()
+  const extras = {} as Pick<ShellTranslationKeys, ShellNamespace>
+  for (const name of names) {
+    extras[name] = readShellNamespace(name, context.locale) as never
+  }
+  const value = useMemo(
+    () => ({
+      ...context,
+      t: { ...context.t, ...extras },
+    }),
+    [context, extras.tapp, extras.phantasi, extras.merope, extras.agentCaps],
+  )
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 }
 
 /** Opt into the settings namespace before rendering settings UI or its callbacks. */

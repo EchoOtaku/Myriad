@@ -15,6 +15,7 @@ import {
 } from './agentPanelEvents'
 import { AgentPanelManage } from './AgentPanelManage'
 import { AgentPanelMessage } from './AgentPanelMessage'
+import { useAgentPanelMode } from './agentPanelMode'
 import { AgentPanelSessions, useAgentSessionList } from './AgentPanelSessions'
 import { agentPanelRowWaveMs } from './agentPanelStage'
 import { useConversationHistory } from './conversationHistory'
@@ -176,18 +177,33 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   const { visibleIds, onNearStart, onNewer, hasNewer } =
     useConversationHistory(messageIds)
   const sessionId = useAgentSessionId()
-  const history = usePersistedHistory(sessionId)
+  const mode = useAgentPanelMode()
+  const history = usePersistedHistory(mode === 'work' ? sessionId : null)
   const [historyAnswerError, setHistoryAnswerError] = useState(false)
   useEffect(() => setHistoryAnswerError(false), [sessionId, history.page])
   useEffect(() => {
     const receive = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId: string; messageId: string; success: boolean }>).detail
-      if (detail?.sessionId !== sessionId || !history.rows.some(row => row.id === detail.messageId)) return
+      const detail = (
+        event as CustomEvent<{
+          sessionId: string
+          messageId: string
+          success: boolean
+        }>
+      ).detail
+      if (
+        detail?.sessionId !== sessionId ||
+        !history.rows.some((row) => row.id === detail.messageId)
+      )
+        return
       if (detail.success) history.select(null)
       else setHistoryAnswerError(true)
     }
     window.addEventListener(AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT, receive)
-    return () => window.removeEventListener(AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT, receive)
+    return () =>
+      window.removeEventListener(
+        AGENT_PANEL_HISTORY_ANSWER_RESULT_EVENT,
+        receive,
+      )
   }, [history, sessionId])
   const sessionCountRef = useRef(0)
   const { held, exiting } = useHeldView(
@@ -221,7 +237,11 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
         onNearStart={sessionList.onNearStart}
         removeSession={sessionList.removeSession}
         onSelect={(id) => {
-          dispatchAgentPanelOpenSession(id, sessionList.sessions?.find(session => session.id === id)?.messageCount)
+          dispatchAgentPanelOpenSession(
+            id,
+            sessionList.sessions?.find((session) => session.id === id)
+              ?.messageCount,
+          )
           onView('messages')
         }}
       />
@@ -248,7 +268,11 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
                     message={message}
                     onAnswer={(messageId, answer) => {
                       if (sessionId && history.page && message.question)
-                        dispatchAgentPanelAnswer(messageId, answer, { sessionId, page: history.page, questionId: message.question.id })
+                        dispatchAgentPanelAnswer(messageId, answer, {
+                          sessionId,
+                          page: history.page,
+                          questionId: message.question.id,
+                        })
                     }}
                     onSuggest={onSubmit}
                     onWorkOffer={onWorkOffer}
@@ -296,69 +320,72 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   return (
     <>
       {conversation}
-      {held === 'messages' && (sessionId || hasNewer) && (
-        <div className="agent-panel-tag-actions">
-          {history.page ? (
-            <>
-              <button
-                type="button"
-                className="agent-panel-tag"
-                disabled={history.page <= 1 || history.loading}
-                onClick={() => history.select(history.page! - 1)}
-                aria-label={t.common.back}
-              >
-                ←
-              </button>
-              <span>{history.page}</span>
-              <button
-                type="button"
-                className="agent-panel-tag"
-                disabled={!history.hasNext || history.loading}
-                onClick={() => history.select(history.page! + 1)}
-                aria-label={t.common.go}
-              >
-                →
-              </button>
-              {history.error && (
+      {held === 'messages' &&
+        (history.page || hasNewer || (mode === 'work' && sessionId)) && (
+          <div className="agent-panel-tag-actions">
+            {history.page ? (
+              <>
                 <button
                   type="button"
                   className="agent-panel-tag"
-                  onClick={() => history.select(history.page)}
+                  disabled={history.page <= 1 || history.loading}
+                  onClick={() => history.select(history.page! - 1)}
+                  aria-label={t.common.back}
                 >
-                  {t.common.retry}
+                  ←
                 </button>
-              )}
-              <button
-                type="button"
-                className="agent-panel-tag"
-                onClick={() => history.select(null)}
-              >
-                {t.common.close}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="agent-panel-tag"
-                onClick={() => history.select(1)}
-              >
-                {t.agentPanel.sessions.title}
-              </button>
-              {hasNewer && (
+                <span>{history.page}</span>
                 <button
                   type="button"
                   className="agent-panel-tag"
-                  onClick={onNewer}
+                  disabled={!history.hasNext || history.loading}
+                  onClick={() => history.select(history.page! + 1)}
                   aria-label={t.common.go}
                 >
-                  ↓
+                  →
                 </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                {history.error && (
+                  <button
+                    type="button"
+                    className="agent-panel-tag"
+                    onClick={() => history.select(history.page)}
+                  >
+                    {t.common.retry}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="agent-panel-tag"
+                  onClick={() => history.select(null)}
+                >
+                  {t.common.close}
+                </button>
+              </>
+            ) : (
+              <>
+                {mode === 'work' && sessionId ? (
+                  <button
+                    type="button"
+                    className="agent-panel-tag"
+                    onClick={() => history.select(1)}
+                  >
+                    {t.agentPanel.sessions.title}
+                  </button>
+                ) : null}
+                {hasNewer && (
+                  <button
+                    type="button"
+                    className="agent-panel-tag"
+                    onClick={onNewer}
+                    aria-label={t.common.go}
+                  >
+                    ↓
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       {showChrome ? (
         <div className="agent-panel-tag-rail">
           <div className="agent-panel-tag-actions">

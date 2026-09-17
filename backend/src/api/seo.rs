@@ -2342,6 +2342,7 @@ mod tests {
         assert!(is_seo_document_shell_path("/tapp/run/com.example"));
         assert!(is_seo_document_shell_path("/journal/articles/1"));
         assert!(is_seo_document_shell_path("/journal/notes"));
+        assert!(is_seo_document_shell_path("/journal/feeds"));
         assert!(!is_seo_document_shell_path("/journal/feeds/9"));
         assert!(is_seo_document_shell_path("/journal/topics/ai"));
         assert!(!is_seo_document_shell_path("/phantasi"));

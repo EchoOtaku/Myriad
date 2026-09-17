@@ -18,7 +18,6 @@ export const SEO_SHELL_EXACT = [
 export const SEO_SHELL_PREFIXES = [
   '/tapp/run/',
   '/journal/articles/',
-  '/journal/feeds/',
   '/journal/topics/',
 ]
 

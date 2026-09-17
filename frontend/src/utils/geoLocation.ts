@@ -227,31 +227,6 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
   }
 
   try {
-    const response = await fetch(
-      'http://ip-api.com/json/?fields=status,lat,lon,city,regionName,country,countryCode',
-      {
-        signal: AbortSignal.timeout(10000),
-      },
-    )
-
-    if (response.ok) {
-      const data: GeoApiResponse = await response.json()
-
-      if (data.status === 'success' && data.lat && data.lon) {
-        return {
-          latitude: data.lat,
-          longitude: data.lon,
-          city: data.city || data.regionName || data.country || currentCopy().common.unknown,
-          country: data.country,
-          countryCode: data.countryCode,
-          region: data.regionName,
-        }
-      }
-    }
-  } catch {
-  }
-
-  try {
     const response = await fetch('https://get.geojs.io/v1/ip/geo.json', {
       signal: AbortSignal.timeout(10000),
     })

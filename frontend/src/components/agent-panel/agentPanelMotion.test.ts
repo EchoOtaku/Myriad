@@ -205,6 +205,19 @@ describe('agent panel motion contract', () => {
     )
   })
 
+  it('keeps persisted history paging on the work lane', () => {
+    assert.match(full, /useAgentPanelMode/)
+    assert.match(
+      full,
+      /usePersistedHistory\(mode === 'work' \? sessionId : null\)/,
+    )
+    assert.doesNotMatch(
+      full,
+      /held === 'messages' && \(sessionId \|\| hasNewer\)/,
+    )
+    assert.match(full, /mode === 'work' && sessionId \? \(/)
+  })
+
   it('switches work/chat on a fixed stage: ends stay, middle and face only fade', () => {
     const composer = readFileSync(
       new URL('./AgentPanelComposer.tsx', import.meta.url),
@@ -382,10 +395,7 @@ describe('agent panel motion contract', () => {
       css,
       /\[data-phase='opening'\][\s\S]*?\.agent-panel-composer-row[\s\S]*?width:\s*96px/,
     )
-    assert.doesNotMatch(
-      sendSlot,
-      /grid-template-columns:\s*0fr/,
-    )
+    assert.doesNotMatch(sendSlot, /grid-template-columns:\s*0fr/)
   })
 
   it('lights the bottom of the screen while the panel is open', () => {

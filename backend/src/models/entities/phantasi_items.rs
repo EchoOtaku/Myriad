@@ -153,7 +153,7 @@ impl ItemResponse {
             id: m.id,
             source_id: m.source_id,
             source_name,
-            source_icon,
+            source_icon: super::phantasi_sources::public_icon(source_icon.as_deref()),
             guid: m.guid,
             title: m.title,
             link: m.link,
@@ -379,6 +379,12 @@ mod preview_tests {
         assert!(sql.contains("\"phantasi_items\".\"summary\""));
         assert!(sql.contains("LEFT(\"phantasi_items\".\"summary\", 2048) AS \"summary\""));
         assert!(sql.contains("\"phantasi_items\".\"content_revision\""));
+    }
+
+    #[test]
+    fn item_response_strips_inline_source_icons() {
+        let src = include_str!("phantasi_items.rs");
+        assert!(src.contains("public_icon(source_icon.as_deref())"));
     }
 
     #[test]

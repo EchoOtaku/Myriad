@@ -6,17 +6,25 @@ export type LocaleMerope = typeof import('./merope.en-US.json')
 export type LocaleErrors = typeof import('./errors.en-US.json')
 export type LocaleAgentCaps = typeof import('./agentCaps.en-US.json')
 
-export type TranslationKeys = LocaleCore & {
-  config: LocaleConfig
+export type LocaleConfigService = typeof import('./configService.en-US.json')
+
+/** Always-on chrome: core UI, errors, and settings-service strings. */
+export type ShellChromeKeys = LocaleCore & {
+  config: LocaleConfigService
+  errors: LocaleErrors
+}
+
+export type ShellNamespace = 'tapp' | 'phantasi' | 'merope' | 'agentCaps'
+
+export type ShellTranslationKeys = ShellChromeKeys & {
   tapp: LocaleTapp
   phantasi: LocalePhantasi
   merope: LocaleMerope
-  errors: LocaleErrors
   agentCaps: LocaleAgentCaps
 }
 
-export type ShellTranslationKeys = Omit<TranslationKeys, 'config'> & {
-  config: typeof import('./configService.en-US.json')
+export type TranslationKeys = Omit<ShellTranslationKeys, 'config'> & {
+  config: LocaleConfig
 }
 
 export function assembleLocale(

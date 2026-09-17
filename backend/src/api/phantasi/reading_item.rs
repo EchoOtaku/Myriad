@@ -12,7 +12,7 @@ use crate::models::entities::{
     phantasi_annotations, phantasi_items, phantasi_podcasts, phantasi_sources, phantasi_user_states,
 };
 
-use super::helpers::{get_phantasi_viewer, phantasi_store_http};
+use super::helpers::{get_phantasi_viewer, materialize_source_icon, phantasi_store_http};
 use myriad_error::AppError;
 
 /// 获取单篇文章详情（游客可访问）
@@ -90,10 +90,12 @@ pub(crate) async fn get_item(
                 let has_ai_annotations = annotations_count > 0;
                 let has_ai_podcast = podcast_count > 0;
 
+                let source_icon =
+                    materialize_source_icon(&db, source.id, source.icon.clone()).await;
                 let mut response = phantasi_items::ItemResponse::from_model_with_ai(
                     item,
                     Some(source.name),
-                    source.icon,
+                    source_icon,
                     is_read,
                     is_starred,
                     read_progress,

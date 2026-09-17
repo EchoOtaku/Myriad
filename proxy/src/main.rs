@@ -1678,6 +1678,7 @@ mod tests {
         ));
         assert!(!is_backend_path("/tapp/run/com.example.app", browser));
         assert!(is_backend_path("/journal/articles/42", googlebot));
+        assert!(is_backend_path("/journal/feeds", googlebot));
         assert!(!is_backend_path("/journal/feeds/9", googlebot));
         assert!(is_backend_path("/journal/topics/ai", googlebot));
         assert!(!is_backend_path("/journal/feeds/9", browser));

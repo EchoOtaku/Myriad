@@ -5,7 +5,7 @@
 use axum::{Json, http::StatusCode};
 use myriad_error::AppError;
 use reqwest::Url;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use serde_json::json;
 
 use crate::error::HttpError;
@@ -14,6 +14,7 @@ use crate::middleware::auth::{
     verify_current_admin_from_headers,
 };
 use crate::models::entities::phantasi_sources;
+use crate::services::icon_service::IconService;
 
 pub(crate) fn phantasi_http_err(status: StatusCode, error: impl Into<String>) -> HttpError {
     HttpError::from((status, Json(AppError::fail_json(error))))
@@ -451,6 +452,39 @@ pub(crate) fn build_feed_discovery_candidates(raw_url: &str) -> Result<Vec<Strin
     }
 
     Ok(candidates)
+}
+
+pub(crate) async fn persist_source_icon(source_id: i32, icon: &str) -> Option<String> {
+    match IconService::new().download_icon(source_id, icon).await {
+        Ok(Some(info)) => Some(info.local_path),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%error, source_id, "Failed to persist source icon");
+            None
+        }
+    }
+}
+
+/// Rewrite leftover `data:` icons onto disk so list/detail JSON stays path-sized.
+pub(crate) async fn materialize_source_icon(
+    db: &DatabaseConnection,
+    source_id: i32,
+    icon: Option<String>,
+) -> Option<String> {
+    let icon = icon.filter(|value| !value.trim().is_empty())?;
+    if let Some(public) = phantasi_sources::public_icon(Some(&icon)) {
+        return Some(public);
+    }
+    let path = persist_source_icon(source_id, &icon).await?;
+    let active = phantasi_sources::ActiveModel {
+        id: Set(source_id),
+        icon: Set(Some(path.clone())),
+        ..Default::default()
+    };
+    if let Err(error) = active.update(db).await {
+        tracing::warn!(%error, source_id, "Failed to rewrite persisted source icon");
+    }
+    Some(path)
 }
 
 #[cfg(test)]

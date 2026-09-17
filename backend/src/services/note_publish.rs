@@ -10,7 +10,8 @@ use myriad_phantasi_notes::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait, Value as SeaValue,
+    EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait,
+    Value as SeaValue,
 };
 use serde::Serialize;
 

@@ -109,7 +109,8 @@
     "languageJaShort": "日",
     "languageKoShort": "한",
     "languageFrShort": "Fr",
-    "languageDeShort": "De"
+    "languageDeShort": "De",
+    "residentRunning": "常驻运行 · {count}"
   },
   "tour": {
     "start": "导览",

@@ -24,7 +24,8 @@ use crate::services::phantasi_topics::{
 };
 
 use super::helpers::{
-    get_admin_user_id_from_headers, get_phantasi_viewer, phantasi_http_err, phantasi_store_http,
+    get_admin_user_id_from_headers, get_phantasi_viewer, materialize_source_icon,
+    phantasi_http_err, phantasi_store_http,
 };
 
 // 订阅主题
@@ -357,11 +358,15 @@ pub(crate) async fn list_items(
             let states_map: std::collections::HashMap<i32, phantasi_user_states::Model> =
                 states_result.into_iter().map(|s| (s.item_id, s)).collect();
 
-            let sources_map: std::collections::HashMap<i32, (String, Option<String>)> =
+            let mut sources_map: std::collections::HashMap<i32, (String, Option<String>)> =
                 sources_result
                     .into_iter()
                     .map(|(id, name, icon)| (id, (name, icon)))
                     .collect();
+            for (id, (_name, icon)) in sources_map.iter_mut() {
+                let raw = icon.take();
+                *icon = materialize_source_icon(&db, *id, raw).await;
+            }
 
             // 构建响应
             let response_items: Vec<phantasi_items::ItemResponse> = items
@@ -438,5 +443,6 @@ mod tests {
         let list = &body[..end];
         assert!(list.contains("filter_type == \"starred\""));
         assert!(list.contains("get_admin_user_id_from_headers"));
+        assert!(list.contains("materialize_source_icon"));
     }
 }

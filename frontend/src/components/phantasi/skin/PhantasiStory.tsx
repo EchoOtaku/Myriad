@@ -187,5 +187,6 @@ export const PhantasiStoryColumn = memo(({
   && prev.onPeekEnd === next.onPeekEnd
   && prev.onToggleStar === next.onToggleStar
   && prev.canStar === next.canStar
+  && prev.holdCover === next.holdCover
 ))
 PhantasiStoryColumn.displayName = 'PhantasiStoryColumn'

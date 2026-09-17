@@ -70,13 +70,19 @@ pub(super) fn build_authenticated_router(
             "/api/media/{id}/edit-preview",
             post(api::media_edit::preview_edit)
                 .layer(axum::extract::DefaultBodyLimit::max(16 * 1024))
-                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
         )
         .route(
             "/api/media/{id}/edits",
             post(api::media_edit::save_edit)
                 .layer(axum::extract::DefaultBodyLimit::max(14 * 1024 * 1024))
-                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
         )
         .route(
             "/api/media/{id}",

@@ -466,6 +466,147 @@ export function storyRangeNeedsHydration(
   )
 }
 
+export interface StoryPaintWindow {
+  from: number
+  to: number
+  liveTo: number
+  eagerTo: number
+}
+
+export function storyPaintHold(col: number, eagerTo: number): boolean {
+  return col > eagerTo
+}
+
+export function storyPaintLive(col: number, liveTo: number): boolean {
+  return col <= liveTo
+}
+
+function storyPaintWindowReady(win: StoryPaintWindow): boolean {
+  return win.from > 0 && win.from <= win.to
+}
+
+/** 重叠列只有实/空、hold、槽位都没变才能沿用上一份节点。 */
+export function storyPaintColCanReuse(
+  col: number,
+  prev: StoryPaintWindow,
+  next: StoryPaintWindow,
+  slotsChanged = false,
+): boolean {
+  if (slotsChanged) return false
+  if (!storyPaintWindowReady(prev) || !storyPaintWindowReady(next)) return false
+  if (col < prev.from || col > prev.to || col < next.from || col > next.to) {
+    return false
+  }
+  if (storyPaintLive(col, prev.liveTo) !== storyPaintLive(col, next.liveTo)) {
+    return false
+  }
+  if (storyPaintHold(col, prev.eagerTo) !== storyPaintHold(col, next.eagerTo)) {
+    return false
+  }
+  return true
+}
+
+/** 预热带扫过已实装列时，hold 变了也不能沿用上一份节点。 */
+export function storyRangeNeedsHoldSync(
+  prev: StoryPaintWindow,
+  next: StoryPaintWindow,
+): boolean {
+  if (prev.eagerTo === next.eagerTo) return false
+  if (!storyPaintWindowReady(prev) || !storyPaintWindowReady(next)) return false
+  if (next.from > prev.to || next.to < prev.from) return false
+  const lo = Math.min(prev.eagerTo, next.eagerTo) + 1
+  const hi = Math.max(prev.eagerTo, next.eagerTo)
+  const from = Math.max(next.from, prev.from, lo)
+  const to = Math.min(next.to, prev.to, next.liveTo, hi)
+  return from <= to
+}
+
+/**
+ * 按当前窗口重造不能沿用的列。窗口前移/后移、空壳转实卡、
+ * hold 切换、槽位变化都走同一条规则，不把旧 hold 节点留下。
+ */
+export function syncPaintedRange<T>(
+  prev: readonly T[],
+  prevWin: StoryPaintWindow,
+  nextWin: StoryPaintWindow,
+  make: (col: number) => T,
+  slotsChanged?: (col: number) => boolean,
+  reset = false,
+): { nodes: T[]; remadeOverlap: boolean } {
+  const { from, to } = nextWin
+  if (reset || prev.length === 0 || from > to || !storyPaintWindowReady(prevWin)) {
+    const nodes: T[] = []
+    for (let col = from; col <= to; col++) nodes.push(make(col))
+    return { nodes, remadeOverlap: false }
+  }
+  if (nextWin.from > prevWin.to || nextWin.to < prevWin.from) {
+    const nodes: T[] = []
+    for (let col = from; col <= to; col++) nodes.push(make(col))
+    return { nodes, remadeOverlap: false }
+  }
+  if (
+    from === prevWin.from
+    && to === prevWin.to
+    && nextWin.liveTo === prevWin.liveTo
+    && nextWin.eagerTo === prevWin.eagerTo
+    && !slotsChanged
+  ) {
+    return { nodes: prev as T[], remadeOverlap: false }
+  }
+  const nodes: T[] = []
+  let remadeOverlap = false
+  let reusedAllOverlap = true
+  for (let col = from; col <= to; col++) {
+    const inPrev = col >= prevWin.from && col <= prevWin.to
+    const can = storyPaintColCanReuse(
+      col,
+      prevWin,
+      nextWin,
+      slotsChanged?.(col) ?? false,
+    )
+    if (can) {
+      nodes.push(prev[col - prevWin.from] as T)
+      continue
+    }
+    nodes.push(make(col))
+    if (inPrev) {
+      remadeOverlap = true
+      reusedAllOverlap = false
+    }
+  }
+  if (
+    from === prevWin.from
+    && to === prevWin.to
+    && reusedAllOverlap
+    && nodes.length === prev.length
+    && nodes.every((node, i) => node === prev[i])
+  ) {
+    return { nodes: prev as T[], remadeOverlap: false }
+  }
+  return { nodes, remadeOverlap }
+}
+
+/** 空壳升级或重叠列重造时，丢掉旧批次边界，当前有界窗口合成一批。 */
+export function storyPaintShouldRebuildBatch(
+  prev: StoryPaintWindow,
+  next: StoryPaintWindow,
+  remadeOverlap: boolean,
+  leftoverShells: boolean,
+): boolean {
+  if (remadeOverlap) return true
+  if (
+    storyRangeNeedsHydration(
+      { from: prev.from, to: prev.to },
+      { from: next.from, to: next.to },
+      prev.liveTo,
+      next.liveTo,
+    )
+  ) {
+    return true
+  }
+  return leftoverShells && next.from === prev.from && next.to > prev.to
+}
+
 /** 整批还在窗里就原样留下；只切到边上的那批。 */
 export function clipPaintedBatches<
   T,
