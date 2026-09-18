@@ -71,6 +71,7 @@ import {
 } from './agent-panel/agentPanelVisible'
 import { ADDRESSEE_UPDATED_EVENT } from './agent/meropeVitals'
 import { ControlQuickActions } from './ControlPanel/ControlQuickActions'
+import { islandPanelTabForClick } from './ControlPanel/islandClick'
 import {
   initialPanelState,
   isPanelMorphing,
@@ -1565,13 +1566,27 @@ const GlobalControlPanel: React.FC = () => {
           title={residentLabel}
           onClick={(event) => {
             event.stopPropagation()
-            handleTogglePanel('notifications')
+            handleTogglePanel(
+              islandPanelTabForClick({ affordance: 'notification' }),
+            )
           }}
         >
           {backgroundResidents.length}
         </button>
       )}
-      {notificationIndicator}
+      <button
+        type="button"
+        className="dynamic-notification-affordance"
+        aria-label={t.notificationCenter.title}
+        onClick={(event) => {
+          event.stopPropagation()
+          handleTogglePanel(
+            islandPanelTabForClick({ affordance: 'notification' }),
+          )
+        }}
+      >
+        {notificationIndicator}
+      </button>
     </span>
   )
 
@@ -1603,9 +1618,11 @@ const GlobalControlPanel: React.FC = () => {
                 className={`dynamic-content-wrapper ${!showDynamicContent || isTransitioning ? 'hidden' : ''}`}
                 onClick={() => {
                   handleTogglePanel(
-                    currentContent.type === 'notification'
-                      ? 'notifications'
-                      : undefined,
+                    islandPanelTabForClick({
+                      affordance: 'control',
+                      carouselType: currentContent.type,
+                      viewport: navLayout,
+                    }),
                   )
                 }}
               >
@@ -1632,7 +1649,14 @@ const GlobalControlPanel: React.FC = () => {
             {!hasValidContent && (
               <div
                 className={`dynamic-content-wrapper empty-state ${!showDynamicContent ? 'hidden' : ''}`}
-                onClick={() => handleTogglePanel()}
+                onClick={() =>
+                  handleTogglePanel(
+                    islandPanelTabForClick({
+                      affordance: 'control',
+                      viewport: navLayout,
+                    }),
+                  )
+                }
               >
                 {collapsedIndicator}
               </div>

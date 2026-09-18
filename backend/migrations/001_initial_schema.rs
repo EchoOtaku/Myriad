@@ -473,6 +473,18 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_platform_metadata_user_platform")
+                    .table(PlatformMetadata::Table)
+                    .col(PlatformMetadata::UserId)
+                    .col(PlatformMetadata::PlatformName)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
 
         // ==================== 5. METADATA_HISTORY 表 ====================
         // metadata_history
