@@ -87,7 +87,7 @@ export function decorateNoteReadSurface(
     .then(async ({ hydrateMath }) => {
       await import('katex/dist/katex.min.css')
       await import('katex/contrib/copy-tex')
-      hydrateMath(root, copyTexLabel)
+      await hydrateMath(root, copyTexLabel)
     })
     .catch((err) => {
       console.error('[note-read] math failed', err)

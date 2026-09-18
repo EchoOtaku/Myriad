@@ -1121,6 +1121,9 @@
   "perfMonitor": {
     "label": "Perf",
     "lastLongTask": "Dernière tâche longue {ms} ms",
+    "maxLongTask": "Max {ms} ms",
+    "longTaskSource": "{source}",
+    "longTaskSourceLabel": "Source",
     "longTasks": "Tâches longues",
     "collapseTitle": "Replier (Ctrl+Shift+M)",
     "expandTitle": "Déplier (Ctrl+Shift+M)",

@@ -13,6 +13,7 @@ import {
   onVisibility,
   scheduleTask,
 } from './core'
+import { runIdleSlice } from './idleSlice'
 import { AnimationPriority, AnimationState, DEFAULT_CONFIG } from './types'
 
 interface IdleDeadline {
@@ -1260,20 +1261,19 @@ class AnimationCoordinator {
   }
 
   private processIdleTasks(deadline: IdleDeadline) {
-    while (
-      this.idleTaskQueue.length > 0 &&
-      (deadline.timeRemaining() > 5 || deadline.didTimeout)
-    ) {
-      const taskInfo = this.idleTaskQueue.shift()
-      if (taskInfo) {
+    runIdleSlice(
+      this.idleTaskQueue,
+      deadline,
+      (taskInfo) => {
         this.registeredIdleTasks.delete(taskInfo.id)
         try {
           taskInfo.task()
         } catch (e) {
           console.error(`[Coordinator] Idle task "${taskInfo.id}" error:`, e)
         }
-      }
-    }
+      },
+      5,
+    )
 
     if (this.idleTaskQueue.length > 0) {
       this.scheduleIdleCallback()

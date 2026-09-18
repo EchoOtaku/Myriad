@@ -1121,6 +1121,9 @@
   "perfMonitor": {
     "label": "Perf",
     "lastLongTask": "최근 Long Task {ms}ms",
+    "maxLongTask": "최대 {ms}ms",
+    "longTaskSource": "{source}",
+    "longTaskSourceLabel": "출처",
     "longTasks": "Long Tasks",
     "collapseTitle": "접기 (Ctrl+Shift+M)",
     "expandTitle": "펼치기 (Ctrl+Shift+M)",

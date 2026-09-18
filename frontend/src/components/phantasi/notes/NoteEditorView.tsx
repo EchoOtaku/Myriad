@@ -629,7 +629,7 @@ export function NoteEditorView({
                     if (visual) {
                       e.preventDefault()
                       commitVisualMd(pasteVisualHtml(e.currentTarget, visual))
-                      hydrateVisualMath(e.currentTarget)
+                      void hydrateVisualMath(e.currentTarget)
                       return
                     }
                     // 贴的是 Markdown（没带 HTML）：按 Markdown 解，图片就是图片。
@@ -677,7 +677,7 @@ export function NoteEditorView({
                           const last = [...root.querySelectorAll<HTMLElement>('.note-math-display')].at(-1)
                           if (last) beginVisualMathEdit(root, last, (md) => finishMath(root, md))
                         } else {
-                          hydrateVisualMath(root)
+                          void hydrateVisualMath(root)
                         }
                         return
                       }
@@ -722,7 +722,7 @@ export function NoteEditorView({
                       const converted = applyInlineMarkdownAtCaret(root)
                       if (converted != null) {
                         commitVisualMd(converted)
-                        hydrateVisualMath(root)
+                        void hydrateVisualMath(root)
                         return
                       }
                     }

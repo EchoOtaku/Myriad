@@ -21,12 +21,20 @@ test('production home downloads and retained resources stay bounded', async ({ p
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) })
   })
   await page.addInitScript(() => {
-    const metrics = { longTasks: [] as number[], lcp: 0, interaction: 0, sockets: 0 }
+    const metrics = {
+      longTasks: [] as Array<{ start: number; duration: number }>,
+      homeVisibleAt: 0,
+      navStartedAt: 0,
+      navEndedAt: 0,
+      lcp: 0,
+      interaction: 0,
+      sockets: 0,
+    }
     ;(window as any).__productionMetrics = metrics
     for (const type of ['longtask', 'largest-contentful-paint', 'event']) {
       new PerformanceObserver(list => {
         for (const entry of list.getEntries()) {
-          if (type === 'longtask') metrics.longTasks.push(entry.duration)
+          if (type === 'longtask') metrics.longTasks.push({ start: entry.startTime, duration: entry.duration })
           else if (type === 'event') metrics.interaction = Math.max(metrics.interaction, entry.duration)
           else metrics.lcp = entry.startTime
         }
@@ -43,12 +51,14 @@ test('production home downloads and retained resources stay bounded', async ({ p
   })
   await page.goto('/')
   await expect(page.locator('.home-shell__inner')).toBeVisible({ timeout: 20_000 })
+  await page.evaluate(() => { (window as any).__productionMetrics.homeVisibleAt = performance.now() })
   await page.waitForTimeout(1500)
   await Promise.all(reads)
   const homeGzipBytes = [...assets.values()].reduce((sum, value) => sum + value, 0)
   const session = await page.context().newCDPSession(page)
   await session.send('HeapProfiler.collectGarbage')
   const before = await session.send('Runtime.getHeapUsage')
+  await page.evaluate(() => { (window as any).__productionMetrics.navStartedAt = performance.now() })
   for (let index = 0; index < 5; index++) {
     await page.evaluate(() => { history.pushState(null, '', '/library'); window.dispatchEvent(new PopStateEvent('popstate')) })
     await page.waitForTimeout(150)
@@ -58,6 +68,7 @@ test('production home downloads and retained resources stay bounded', async ({ p
   await page.getByRole('link', { name: 'Back to Home', exact: true }).focus()
   await page.keyboard.press('Enter')
   await page.waitForTimeout(500)
+  await page.evaluate(() => { (window as any).__productionMetrics.navEndedAt = performance.now() })
   await session.send('HeapProfiler.collectGarbage')
   const after = await session.send('Runtime.getHeapUsage')
   await Promise.all(reads)
@@ -79,5 +90,11 @@ test('production home downloads and retained resources stay bounded', async ({ p
   // Local fixture budgets, not field Web Vitals guarantees.
   expect(metrics.lcp).toBeGreaterThan(0)
   expect(metrics.lcp).toBeLessThan(10_000)
-  expect(Math.max(0, ...metrics.longTasks)).toBeLessThan(2000)
+  const longTaskMs = metrics.longTasks.map((task: { duration: number }) => task.duration)
+  expect(Math.max(0, ...longTaskMs)).toBeLessThan(1500)
+  const duringNav = metrics.longTasks
+    .filter((task: { start: number }) =>
+      task.start >= metrics.navStartedAt && task.start < metrics.navEndedAt)
+    .map((task: { duration: number }) => task.duration)
+  expect(Math.max(0, ...duringNav)).toBeLessThan(400)
 })

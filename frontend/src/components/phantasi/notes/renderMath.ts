@@ -1,5 +1,6 @@
 import type { KatexOptions } from 'katex'
 import katex from 'katex'
+import { yieldIfSliceExceeded } from '../../../utils/yieldToMain'
 import {
   splitBareTex,
   unwrapMathDelimiters,
@@ -117,18 +118,21 @@ export function renderTexToHtml(tex: string, display: boolean): string {
 }
 
 /** 可视层：裸 `$` 也收成可点的岛，回写 Markdown 才认。 */
-export function hydrateVisualMath(root: HTMLElement): void {
-  hydrateMath(root, undefined, 'visual')
+export function hydrateVisualMath(root: HTMLElement): Promise<void> {
+  return hydrateMath(root, undefined, 'visual')
 }
 
 /** 预览、阅读器、可视层共用：把语义公式排成 KaTeX。 */
-export function hydrateMath(
+export async function hydrateMath(
   root: HTMLElement,
   copyLabel?: string,
   mode: 'read' | 'visual' = 'read',
-): void {
+): Promise<void> {
+  if (!root.isConnected) return
   if (root.textContent?.includes('$')) promoteBareTex(root, mode === 'visual')
+  const slice = { ms: performance.now() }
   for (const el of root.querySelectorAll<HTMLElement>(HOST_SELECTOR)) {
+    if (!root.isConnected) return
     if (el.closest('pre, code, .note-widget')) continue
     if (el.dataset.mathReady === '1') continue
     if (el.classList.contains('katex') || el.querySelector(':scope > .katex')) {
@@ -142,6 +146,7 @@ export function hydrateMath(
       displayMode: isDisplayHost(el),
     })
     el.dataset.mathReady = '1'
+    await yieldIfSliceExceeded(slice)
   }
-  if (copyLabel) decorateCopyTex(root, copyLabel)
+  if (copyLabel && root.isConnected) decorateCopyTex(root, copyLabel)
 }

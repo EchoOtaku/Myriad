@@ -1121,6 +1121,9 @@
   "perfMonitor": {
     "label": "Perf",
     "lastLongTask": "Last Long Task {ms}ms",
+    "maxLongTask": "Max {ms}ms",
+    "longTaskSource": "{source}",
+    "longTaskSourceLabel": "Source",
     "longTasks": "Long Tasks",
     "collapseTitle": "Collapse (Ctrl+Shift+M)",
     "expandTitle": "Expand (Ctrl+Shift+M)",

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import {
+  loafSourceOf,
+  longTaskSourceOf,
+} from '../utils/longTaskAttribution'
 import { globalResourceLoader } from '../utils/resourceLoader'
 
 import {
@@ -34,6 +38,8 @@ export interface StabilityMetrics {
   fcpMs: number | null
   longTaskCount: number
   lastLongTaskMs: number
+  maxLongTaskMs: number
+  lastLongTaskSource: string
 }
 
 export interface AnimationSnapshot {
@@ -220,6 +226,9 @@ function shallowEqualSnapshot(
   if (a.stability.fcpMs !== b.stability.fcpMs) return false
   if (a.stability.longTaskCount !== b.stability.longTaskCount) return false
   if (a.stability.lastLongTaskMs !== b.stability.lastLongTaskMs) return false
+  if (a.stability.maxLongTaskMs !== b.stability.maxLongTaskMs) return false
+  if (a.stability.lastLongTaskSource !== b.stability.lastLongTaskSource)
+    return false
 
   if (a.coordinator.activeSlots !== b.coordinator.activeSlots) return false
   if (a.coordinator.maxConcurrent !== b.coordinator.maxConcurrent) return false
@@ -262,6 +271,8 @@ function initialSnapshot(): PerfSnapshot {
       fcpMs: null,
       longTaskCount: 0,
       lastLongTaskMs: 0,
+      maxLongTaskMs: 0,
+      lastLongTaskSource: '',
     },
     animations: EMPTY_ANIMATIONS,
     coordinator: readCoordinator(),
@@ -273,8 +284,10 @@ export function usePerfMetrics(isExpanded: boolean) {
   const [snapshot, setSnapshot] = useState<PerfSnapshot>(initialSnapshot)
   const stabilityRef = useRef(snapshot.stability)
   const snapshotRef = useRef(snapshot)
+  const expandedRef = useRef(isExpanded)
   snapshotRef.current = snapshot
   stabilityRef.current = snapshot.stability
+  expandedRef.current = isExpanded
 
   const commit = useCallback(
     (next: PerfSnapshot, includeAnimations: boolean) => {
@@ -320,36 +333,89 @@ export function usePerfMetrics(isExpanded: boolean) {
   }, [isExpanded, commit])
 
   useEffect(() => {
-    // PerformanceObserver 仅展开时挂载。
-    if (!isExpanded || !('PerformanceObserver' in window)) return
+    if (!('PerformanceObserver' in window)) return
 
     const observers: PerformanceObserver[] = []
+    const supported = PerformanceObserver.supportedEntryTypes ?? []
+    const commitStability = () => {
+      commit(
+        { ...snapshotRef.current, stability: stabilityRef.current },
+        expandedRef.current,
+      )
+    }
+
+    const recordTask = (entry: PerformanceEntry, source: string) => {
+      const ms = Math.round(entry.duration)
+      if (ms <= 0) return
+      const prev = stabilityRef.current
+      const nextSource = source || prev.lastLongTaskSource
+      stabilityRef.current = {
+        ...prev,
+        longTaskCount: prev.longTaskCount + 1,
+        lastLongTaskMs: ms,
+        maxLongTaskMs: Math.max(prev.maxLongTaskMs, ms),
+        lastLongTaskSource: nextSource,
+      }
+    }
 
     try {
-      const lt = new PerformanceObserver((list) => {
-        let added = 0
-        let lastMs = stabilityRef.current.lastLongTaskMs
-        for (const entry of list.getEntries()) {
-          added++
-          lastMs = Math.round(entry.duration)
-        }
-        if (added === 0) return
-        const stability = {
-          ...stabilityRef.current,
-          longTaskCount: stabilityRef.current.longTaskCount + added,
-          lastLongTaskMs: lastMs,
-        }
-        stabilityRef.current = stability
-        commit(
-          { ...snapshotRef.current, stability },
-          true,
-        )
-      })
-      lt.observe({ entryTypes: ['longtask'] })
-      observers.push(lt)
+      if (supported.includes('longtask')) {
+        const lt = new PerformanceObserver((list) => {
+          let added = 0
+          for (const entry of list.getEntries()) {
+            added++
+            recordTask(entry, longTaskSourceOf(entry))
+          }
+          if (added === 0) return
+          commitStability()
+        })
+        lt.observe({ type: 'longtask', buffered: true })
+        observers.push(lt)
+      }
     } catch {
 
     }
+
+    try {
+      if (supported.includes('long-animation-frame')) {
+        const loaf = new PerformanceObserver((list) => {
+          let changed = false
+          for (const entry of list.getEntries()) {
+            const source = loafSourceOf(entry)
+            if (!source) continue
+            const prev = stabilityRef.current
+            if (prev.lastLongTaskSource) continue
+            stabilityRef.current = {
+              ...prev,
+              lastLongTaskSource: source,
+            }
+            changed = true
+          }
+          if (!supported.includes('longtask')) {
+            for (const entry of list.getEntries()) {
+              if (entry.duration < 50) continue
+              recordTask(entry, loafSourceOf(entry))
+              changed = true
+            }
+          }
+          if (changed) commitStability()
+        })
+        loaf.observe({ type: 'long-animation-frame', buffered: true })
+        observers.push(loaf)
+      }
+    } catch {
+
+    }
+
+    return () => {
+      for (const o of observers) o.disconnect()
+    }
+  }, [commit])
+
+  useEffect(() => {
+    if (!isExpanded || !('PerformanceObserver' in window)) return
+
+    const observers: PerformanceObserver[] = []
 
     try {
       const clsObs = new PerformanceObserver((list) => {
@@ -427,6 +493,8 @@ export function usePerfMetrics(isExpanded: boolean) {
       ...stabilityRef.current,
       longTaskCount: 0,
       lastLongTaskMs: 0,
+      maxLongTaskMs: 0,
+      lastLongTaskSource: '',
     }
     stabilityRef.current = stability
     commit({ ...snapshotRef.current, stability }, isExpanded)

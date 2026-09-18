@@ -146,13 +146,13 @@ export function useNoteEditorPreview(host: {
     if (visualMarkdownStamp.get(el) === contentMd) return
     const selection = captureNoteSelection(el)
     replaceNoteHtml(el, markdownToVisualHtml(contentMd))
-    hydrateVisualMath(el)
     el.querySelectorAll<HTMLElement>('pre[data-raw-markdown]').forEach((block) => {
       block.title = t.phantasi.noteEditInMarkdown
       block.setAttribute('aria-label', t.phantasi.noteEditInMarkdown)
     })
     restoreNoteSelection(el, selection)
     visualMarkdownStamp.set(el, contentMd)
+    void hydrateVisualMath(el)
   }, [contentMd, pane, visualEditing, visualRef, t.phantasi.noteEditInMarkdown])
 
   useLayoutEffect(() => {

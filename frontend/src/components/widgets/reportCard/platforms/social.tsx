@@ -6,6 +6,7 @@ import {
 import { memo, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { extractColorsFromLoadedImage } from '../../../../utils/colorExtractor'
+import { runWhenIdle } from '../../../../utils/yieldToMain'
 import {
   CONTENT_FADE_ANIMATE,
   CONTENT_FADE_EXIT,
@@ -435,18 +436,22 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
               loading="lazy"
               referrerPolicy="no-referrer"
               onLoad={(e) => {
+                const img = e.currentTarget
                 const username = String((item as any).username || '')
                 if (!username || tints[username]) return
-                try {
-                  const palette = extractColorsFromLoadedImage(e.currentTarget)
-                  if (palette?.primary) {
-                    setTints((prev) => ({
-                      ...prev,
-                      [username]: palette.primary,
-                    }))
+                runWhenIdle(() => {
+                  if (!img.isConnected) return
+                  try {
+                    const palette = extractColorsFromLoadedImage(img)
+                    if (palette?.primary) {
+                      setTints((prev) => ({
+                        ...prev,
+                        [username]: palette.primary,
+                      }))
+                    }
+                  } catch {
                   }
-                } catch {
-                }
+                })
               }}
             />
           </motion.div>

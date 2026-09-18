@@ -16,6 +16,7 @@ import { isExlight, useAnimationLevel } from '../../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../../hooks/useWidgetSize'
 import { formatMessage, localeOrFallback } from '../../../i18n'
 import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
+import { runWhenIdle } from '../../../utils/yieldToMain'
 import {
   DEFAULT_THEME_COLOR,
   getIconUrl,
@@ -169,17 +170,20 @@ export const PhantasiSourceTile = memo(
     const handleIconLoad = useCallback(
       (img: HTMLImageElement) => {
         if (source.theme_color || !source.icon || !onThemeColorExtracted) return
-        try {
-          const palette = extractColorsFromLoadedImage(img)
-          if (
-            palette.primary &&
-            palette.primary !== DEFAULT_THEME_COLOR &&
-            palette.primary !== '#6b7280'
-          ) {
-            onThemeColorExtracted(source.id, palette.primary)
+        runWhenIdle(() => {
+          if (!img.isConnected) return
+          try {
+            const palette = extractColorsFromLoadedImage(img)
+            if (
+              palette.primary &&
+              palette.primary !== DEFAULT_THEME_COLOR &&
+              palette.primary !== '#6b7280'
+            ) {
+              onThemeColorExtracted(source.id, palette.primary)
+            }
+          } catch {
           }
-        } catch {
-        }
+        })
       },
       [source.id, source.theme_color, source.icon, onThemeColorExtracted],
     )

@@ -1121,6 +1121,9 @@
   "perfMonitor": {
     "label": "Perf",
     "lastLongTask": "Letzte lange Aufgabe {ms}ms",
+    "maxLongTask": "Max. {ms}ms",
+    "longTaskSource": "{source}",
+    "longTaskSourceLabel": "Quelle",
     "longTasks": "Lange Aufgaben",
     "collapseTitle": "Einklappen (Strg+Umschalt+M)",
     "expandTitle": "Aufklappen (Strg+Umschalt+M)",

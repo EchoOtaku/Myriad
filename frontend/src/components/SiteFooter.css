@@ -180,24 +180,42 @@ html.dark .site-footer-content:hover {
   height: 0.7rem;
 }
 
+/*
+ * 底栏 fixed 右下。tooltip 不要：
+ *  1) 对着触发器居中（溢出右侧）
+ *  2) 以触发器为宽度基准 + overflow-wrap:anywhere（缩成竖排一字）
+ *  3) 对着中间图标 right 对齐却 max-width:100vw（窄屏溢出左侧）
+ * wrapper 用 static，气泡相对 .site-footer 定位。
+ */
 .tooltip-wrapper {
-  position: relative;
+  position: static;
   display: inline-flex;
 }
 
 .tooltip-content {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
+  left: auto;
+  right: 0.5rem;
+  bottom: calc(100% + 4px);
+  transform: translateY(4px);
   padding: 0.375rem 0.625rem;
   background: rgb(23 23 23 / 95%);
   color: #fafafa;
   font-size: 0.625rem;
   font-weight: 500;
-  white-space: nowrap;
+  white-space: normal;
   width: max-content;
-  max-width: min(20rem, calc(100vw - 1.5rem));
+  max-width: min(
+    16rem,
+    calc(
+      100vw - 1rem - env(safe-area-inset-left, 0px) -
+        env(safe-area-inset-right, 0px)
+    )
+  );
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-align: left;
+  line-height: 1.35;
   border-radius: 0.375rem;
   opacity: 0;
   visibility: hidden;
@@ -215,7 +233,7 @@ html.dark .site-footer-content:hover {
 .tooltip-wrapper:focus-within .tooltip-content {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
 }
 
 html.dark .tooltip-content {
@@ -266,32 +284,8 @@ html.dark .tooltip-content {
   gap: 0.3rem;
 }
 
-/* 底栏在右下：tooltip 不要居中图标，也不要对着图标 overflow-wrap。 */
-.site-footer-compact .tooltip-wrapper {
-  position: static;
-}
-
-.site-footer-compact .tooltip-content {
-  left: auto;
-  right: 0.5rem;
-  bottom: calc(100% + 4px);
-  transform: translateY(4px);
-  white-space: normal;
-  width: max-content;
-  max-width: min(16rem, calc(100vw - 1rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
-  overflow-wrap: break-word;
-  word-break: normal;
-  text-align: left;
-  line-height: 1.35;
-}
-
-.site-footer-compact .tooltip-wrapper:hover .tooltip-content,
-.site-footer-compact .tooltip-wrapper:focus-within .tooltip-content {
-  transform: translateY(0);
-}
-
 @media (width <= 768px) {
-  .site-footer-compact .tooltip-content {
+  .tooltip-content {
     right: 0.5rem;
     bottom: calc(100% + 6px);
   }

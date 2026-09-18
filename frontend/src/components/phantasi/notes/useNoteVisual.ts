@@ -68,7 +68,7 @@ export function useNoteVisual({
     const el = visualRef.current
     if (paneRef.current === 'visual' && el) {
       replaceNoteHtml(el, markdownToVisualHtml(next))
-      hydrateVisualMath(el)
+      void hydrateVisualMath(el)
       visualMarkdownStamp.set(el, next)
     }
   }, [paneRef, setContentMd, visualRef])

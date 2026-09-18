@@ -164,7 +164,7 @@ export function useNoteEditorFormat(host: {
   const finishMath = useCallback(
     (root: HTMLElement, md: string) => {
       commitVisualMd(md)
-      hydrateVisualMath(root)
+      void hydrateVisualMath(root)
     },
     [commitVisualMd],
   )
@@ -177,7 +177,7 @@ export function useNoteEditorFormat(host: {
       if (last && !last.dataset.tex) {
         beginVisualMathEdit(root, last, (md) => finishMath(root, md))
       } else {
-        hydrateVisualMath(root)
+        void hydrateVisualMath(root)
       }
       return
     }
@@ -192,7 +192,7 @@ export function useNoteEditorFormat(host: {
       if (last && !last.dataset.tex) {
         beginVisualMathEdit(root, last, (md) => finishMath(root, md))
       } else {
-        hydrateVisualMath(root)
+        void hydrateVisualMath(root)
       }
       return
     }

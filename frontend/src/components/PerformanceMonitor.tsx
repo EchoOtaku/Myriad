@@ -116,12 +116,28 @@ export default function PerformanceMonitor() {
           <span
             className={`pm-value ${stability.longTaskCount > 5 ? 'pm-bad' : 'pm-warn'}`}
             title={
-              stability.lastLongTaskMs
-                ? pm.lastLongTask.replace(
-                    '{ms}',
-                    String(stability.lastLongTaskMs),
-                  )
-                : pm.longTasks
+              [
+                stability.lastLongTaskMs
+                  ? pm.lastLongTask.replace(
+                      '{ms}',
+                      String(stability.lastLongTaskMs),
+                    )
+                  : '',
+                stability.maxLongTaskMs
+                  ? pm.maxLongTask.replace(
+                      '{ms}',
+                      String(stability.maxLongTaskMs),
+                    )
+                  : '',
+                stability.lastLongTaskSource
+                  ? pm.longTaskSource.replace(
+                      '{source}',
+                      stability.lastLongTaskSource,
+                    )
+                  : '',
+              ]
+                .filter(Boolean)
+                .join('\n') || pm.longTasks
             }
           >
             LT {stability.longTaskCount}
@@ -247,6 +263,13 @@ export default function PerformanceMonitor() {
                               String(stability.lastLongTaskMs),
                             )
                           : ''
+                      }${
+                        stability.maxLongTaskMs
+                          ? ` · ${pm.maxLongTask.replace(
+                              '{ms}',
+                              String(stability.maxLongTaskMs),
+                            )}`
+                          : ''
                       }`
                     : '0'
                 }
@@ -258,6 +281,12 @@ export default function PerformanceMonitor() {
                       : undefined
                 }
               />
+              {stability.lastLongTaskSource ? (
+                <Row
+                  label={pm.longTaskSourceLabel}
+                  value={stability.lastLongTaskSource}
+                />
+              ) : null}
             </div>
             {stability.longTaskCount > 0 && (
               <button

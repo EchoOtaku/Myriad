@@ -1,3 +1,4 @@
+import { runIdleSlice, TASK_FLUSH_BATCH } from './idleSlice'
 import { Feature, hasFeature } from './pageFeatures'
 
 export type Unsubscribe = () => void
@@ -53,7 +54,7 @@ export function isPageVisible(): boolean {
 }
 
 let _channel: MessageChannel | null = null
-let _pendingCallbacks: Array<() => void> = []
+const _pendingCallbacks: Array<() => void> = []
 
 function initMessageChannel() {
   if (messageChannelInitialized) return
@@ -62,9 +63,9 @@ function initMessageChannel() {
   if (typeof MessageChannel !== 'undefined') {
     _channel = new MessageChannel()
     _channel.port1.onmessage = () => {
-      const cbs = _pendingCallbacks
-      _pendingCallbacks = []
+      const cbs = _pendingCallbacks.splice(0, TASK_FLUSH_BATCH)
       for (let i = 0; i < cbs.length; i++) cbs[i]()
+      if (_pendingCallbacks.length > 0) _channel?.port2.postMessage(null)
     }
   }
 }
@@ -196,16 +197,12 @@ function scheduleIdleRun() {
     (deadline) => {
       _idleCallbackId = null
 
-      while (
-        _idleTasks.length > 0 &&
-        (deadline.timeRemaining() > 2 || deadline.didTimeout)
-      ) {
-        const task = _idleTasks.shift()!
+      runIdleSlice(_idleTasks, deadline, (task) => {
         _registeredTasks.delete(task.id)
         try {
           task.task()
         } catch {}
-      }
+      })
 
       if (_idleTasks.length > 0) scheduleIdleRun()
     },

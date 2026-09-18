@@ -3,6 +3,8 @@
  * 阅读器和笔记预览共用；主题在 codeHighlight.css，跟着 html.dark 走。
  */
 
+import { yieldIfSliceExceeded } from './yieldToMain'
+
 import './codeHighlight.css'
 
 type Loader = () => Promise<unknown>
@@ -130,13 +132,19 @@ export async function highlightCodeBlocks(root: ParentNode): Promise<void> {
     blocks.map(async (code) => {
       const lang = normalizeLanguage(LANG_CLASS.exec(code.className)?.[1] ?? '')
       if (!lang) return
-      const ok = await loadLanguage(lang)
-      if (!ok || !code.isConnected) return
-      const grammar = prism.languages[lang]
-      if (!grammar) return
-      code.innerHTML = prism.highlight(code.textContent ?? '', grammar, lang)
-      code.dataset.highlighted = lang
-      code.closest('pre')?.classList.add('phantasi-code-highlight')
+      await loadLanguage(lang)
     }),
   )
+  const slice = { ms: performance.now() }
+  for (const code of blocks) {
+    if (!code.isConnected) continue
+    const lang = normalizeLanguage(LANG_CLASS.exec(code.className)?.[1] ?? '')
+    if (!lang) continue
+    const grammar = prism.languages[lang]
+    if (!grammar) continue
+    code.innerHTML = prism.highlight(code.textContent ?? '', grammar, lang)
+    code.dataset.highlighted = lang
+    code.closest('pre')?.classList.add('phantasi-code-highlight')
+    await yieldIfSliceExceeded(slice)
+  }
 }

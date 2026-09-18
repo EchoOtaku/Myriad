@@ -38,7 +38,9 @@ test('real public data remains responsive across repeated page visits', async ({
       supported: PerformanceObserver.supportedEntryTypes,
       lcp: null as number | null,
       maxEventDuration: null as number | null,
-      longTasks: PerformanceObserver.supportedEntryTypes.includes('longtask') ? [] as Array<{ start: number; duration: number }> : null, sockets: 0,
+      longTasks: PerformanceObserver.supportedEntryTypes.includes('longtask') ? [] as Array<{ start: number; duration: number }> : null,
+      cyclesStarted: 0,
+      sockets: 0,
       events: [] as Array<{ name: string; duration: number; inputDelay: number; processing: number }>,
     }
     ;(window as any).__livePerformance = metrics
@@ -76,6 +78,7 @@ test('real public data remains responsive across repeated page visits', async ({
   }, apiOrigin)
   await page.goto('/')
   await expect(page.locator('.home-shell__inner')).toBeVisible({ timeout: 30_000 })
+  await page.evaluate(() => { (window as any).__livePerformance.cyclesStarted = performance.now() })
   const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
   const samples: Array<{ cycle: number; nodes: number; sockets: number; retainedHeap: number | null }> = []
   const inputLatency: number[] = []
@@ -122,4 +125,11 @@ test('real public data remains responsive across repeated page visits', async ({
   expect(Math.max(...inputLatency)).toBeLessThan(2000)
   if (metrics.lcp !== null) expect(metrics.lcp).toBeLessThan(10_000)
   if (metrics.maxEventDuration !== null) expect(metrics.maxEventDuration).toBeLessThan(1000)
+  if (metrics.longTasks) {
+    const interactive = metrics.longTasks
+      .filter((task: { start: number; duration: number; overlapsForcedGc?: boolean }) =>
+        !task.overlapsForcedGc && task.start >= metrics.cyclesStarted)
+      .map((task: { duration: number }) => task.duration)
+    expect(Math.max(0, ...interactive)).toBeLessThan(500)
+  }
 })
