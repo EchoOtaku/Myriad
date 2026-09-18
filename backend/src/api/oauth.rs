@@ -1448,7 +1448,7 @@ mod oauth_user_insert_conflict_tests {
         let insert = src
             .split("let mut new_id = None;")
             .nth(1)
-            .and_then(|rest| rest.split("let new_id = new_id.ok_or_else").next())
+            .and_then(|rest| rest.split("Failed to generate unique username after 100 tries").next())
             .expect("oauth insert retry loop");
         assert!(insert.contains("oauth_user_insert_conflict_kind"));
         assert!(insert.contains("OAuthUserInsertConflict::Username"));
