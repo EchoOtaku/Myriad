@@ -1125,6 +1125,8 @@ button.agent-panel-tag:disabled {
   flex: 0 1 auto;
   min-width: 0;
   width: max-content;
+  max-width: 100%;
+  overflow: hidden;
   justify-items: stretch;
 }
 
@@ -1132,6 +1134,7 @@ button.agent-panel-tag:disabled {
   width: max-content;
   min-width: 0;
   max-width: 100%;
+  overflow: hidden;
 }
 
 .agent-panel-work-chrome .agent-panel-swap .agent-panel-tag-text {
@@ -1201,21 +1204,32 @@ button.agent-panel-tag:disabled {
   overflow: hidden;
   mask-image: linear-gradient(
     to bottom,
+    transparent 0,
+    #000 var(--agent-face-fade),
     #000 calc(100% - var(--agent-face-fade)),
     transparent 100%
   );
 }
 
+.agent-panel-face:has(.agent-panel-face-rig)::before,
 .agent-panel-face:has(.agent-panel-face-rig)::after {
   content: '';
   position: absolute;
   z-index: 2;
   right: 0;
-  bottom: 0;
   left: 0;
   height: var(--agent-face-fade);
   pointer-events: none;
   backdrop-filter: blur(8.5px);
+}
+
+.agent-panel-face:has(.agent-panel-face-rig)::before {
+  top: 0;
+  mask-image: linear-gradient(to top, transparent, #000 75%);
+}
+
+.agent-panel-face:has(.agent-panel-face-rig)::after {
+  bottom: 0;
   mask-image: linear-gradient(to bottom, transparent, #000 75%);
 }
 

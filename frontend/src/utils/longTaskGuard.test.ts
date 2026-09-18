@@ -16,6 +16,13 @@ describe('long-task guards', () => {
     )
     assert.ok(longtaskAt >= 0)
     assert.ok(expandedGateAt > longtaskAt)
+    const observe = metrics.slice(
+      metrics.indexOf('recordTask'),
+      metrics.indexOf("if (!isExpanded || !('PerformanceObserver'"),
+    )
+    assert.match(observe, /stabilityRef\.current =/)
+    assert.equal(observe.includes('commit('), false)
+    assert.equal(observe.includes('setSnapshot'), false)
   })
 
   it('does not drain idle or MessageChannel work in one timeout', () => {
@@ -61,5 +68,34 @@ describe('long-task guards', () => {
     assert.match(math, /yieldIfSliceExceeded/)
     assert.match(tile, /runWhenIdle/)
     assert.match(social, /runWhenIdle/)
+  })
+
+  it('slices RSS sanitizing and whole-document visual HTML', () => {
+    const rss = readFileSync(
+      new URL('./rssContentProcessor.ts', import.meta.url),
+      'utf8',
+    )
+    const visual = readFileSync(
+      new URL('../components/phantasi/notes/noteVisual.ts', import.meta.url),
+      'utf8',
+    )
+    const render = readFileSync(
+      new URL('../components/phantasi/reader/contentRender.ts', import.meta.url),
+      'utf8',
+    )
+    const preview = readFileSync(
+      new URL(
+        '../components/phantasi/notes/useNoteEditorPreview.ts',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    assert.match(rss, /export async function processRssContentAsync/)
+    assert.match(rss, /yieldIfSliceExceeded/)
+    assert.match(visual, /export async function markdownToVisualHtmlAsync/)
+    assert.match(visual, /VISUAL_HTML_SYNC_CHARS/)
+    assert.match(render, /processRssContentAsync/)
+    assert.match(preview, /markdownToVisualHtmlAsync/)
+    assert.match(preview, /VISUAL_HTML_SYNC_CHARS/)
   })
 })

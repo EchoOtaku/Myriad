@@ -284,10 +284,8 @@ export function usePerfMetrics(isExpanded: boolean) {
   const [snapshot, setSnapshot] = useState<PerfSnapshot>(initialSnapshot)
   const stabilityRef = useRef(snapshot.stability)
   const snapshotRef = useRef(snapshot)
-  const expandedRef = useRef(isExpanded)
   snapshotRef.current = snapshot
   stabilityRef.current = snapshot.stability
-  expandedRef.current = isExpanded
 
   const commit = useCallback(
     (next: PerfSnapshot, includeAnimations: boolean) => {
@@ -337,13 +335,7 @@ export function usePerfMetrics(isExpanded: boolean) {
 
     const observers: PerformanceObserver[] = []
     const supported = PerformanceObserver.supportedEntryTypes ?? []
-    const commitStability = () => {
-      commit(
-        { ...snapshotRef.current, stability: stabilityRef.current },
-        expandedRef.current,
-      )
-    }
-
+    // 只写 ref。观察回调里 setState 会再造 Long Task，计数自己喂自己。
     const recordTask = (entry: PerformanceEntry, source: string) => {
       const ms = Math.round(entry.duration)
       if (ms <= 0) return
@@ -361,13 +353,9 @@ export function usePerfMetrics(isExpanded: boolean) {
     try {
       if (supported.includes('longtask')) {
         const lt = new PerformanceObserver((list) => {
-          let added = 0
           for (const entry of list.getEntries()) {
-            added++
             recordTask(entry, longTaskSourceOf(entry))
           }
-          if (added === 0) return
-          commitStability()
         })
         lt.observe({ type: 'longtask', buffered: true })
         observers.push(lt)
@@ -379,26 +367,18 @@ export function usePerfMetrics(isExpanded: boolean) {
     try {
       if (supported.includes('long-animation-frame')) {
         const loaf = new PerformanceObserver((list) => {
-          let changed = false
           for (const entry of list.getEntries()) {
             const source = loafSourceOf(entry)
-            if (!source) continue
-            const prev = stabilityRef.current
-            if (prev.lastLongTaskSource) continue
-            stabilityRef.current = {
-              ...prev,
-              lastLongTaskSource: source,
+            if (source && !stabilityRef.current.lastLongTaskSource) {
+              stabilityRef.current = {
+                ...stabilityRef.current,
+                lastLongTaskSource: source,
+              }
             }
-            changed = true
-          }
-          if (!supported.includes('longtask')) {
-            for (const entry of list.getEntries()) {
-              if (entry.duration < 50) continue
-              recordTask(entry, loafSourceOf(entry))
-              changed = true
+            if (!supported.includes('longtask') && entry.duration >= 50) {
+              recordTask(entry, source)
             }
           }
-          if (changed) commitStability()
         })
         loaf.observe({ type: 'long-animation-frame', buffered: true })
         observers.push(loaf)

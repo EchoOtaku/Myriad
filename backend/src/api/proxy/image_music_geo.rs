@@ -619,6 +619,16 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         return player_playlist_response(view);
     }
 
+    let _load =
+        music_player_view::lock_player_playlist_load(PlayerMusicSource::Netease, &playlist_id)
+            .await;
+    if let Some(view) =
+        music_player_view::get_cached_player_playlist(PlayerMusicSource::Netease, &playlist_id)
+            .await
+    {
+        return player_playlist_response(view);
+    }
+
     // Align with QQ playlist: surface 429 + Retry-After for FE toast
     let cache_key = format!("netease_playlist:{}", playlist_id);
     {
@@ -1303,6 +1313,14 @@ pub async fn proxy_qq_audio(Path(song_mid): Path<String>) -> Response {
 
 /// 代理 QQ 歌单。只缓存播放器瘦视图；不再写只写不读的胖 `qq_playlist:` JSON。
 pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
+    if let Some(view) =
+        music_player_view::get_cached_player_playlist(PlayerMusicSource::Qq, &playlist_id).await
+    {
+        return player_playlist_response(view);
+    }
+
+    let _load =
+        music_player_view::lock_player_playlist_load(PlayerMusicSource::Qq, &playlist_id).await;
     if let Some(view) =
         music_player_view::get_cached_player_playlist(PlayerMusicSource::Qq, &playlist_id).await
     {

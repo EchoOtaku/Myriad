@@ -13,6 +13,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom'
+import { AgentSessionHost } from './components/agent-panel/AgentSessionHost'
 import CustomScrollbar from './components/CustomScrollbar'
 import { RenderErrorBoundary } from './components/RenderErrorBoundary'
 import RouteLoader from './components/RouteLoader'
@@ -26,6 +27,7 @@ import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
 import { NavigationProvider } from './contexts/NavigationContext'
 import { PageContentProvider } from './contexts/PageContentContext'
 import { ReadingListProvider } from './contexts/ReadingListContext'
+import { AgentPresenceHost } from './features/merope/AgentPresenceHost'
 import { useRouteScheduler } from './hooks/animation/useRouteScheduler'
 import { isExlight, useAnimationLevel } from './hooks/useAnimationLevel'
 import { AppLayout } from './layouts/AppLayout'
@@ -727,11 +729,14 @@ export function App() {
                     {/* open_window 全局回退；多窗挂载时 typed handler 覆盖 */}
                     <GlobalAgentWindowHandler />
                     <AgentAccessGate>
+                      <AgentPresenceHost />
                       <I18nNamespace names={['merope', 'agentCaps']}>
-                        <Suspense fallback={null}>
-                          <AgentEngine />
-                          <AgentPanel />
-                        </Suspense>
+                        <AgentSessionHost>
+                          <Suspense fallback={null}>
+                            <AgentEngine />
+                            <AgentPanel />
+                          </Suspense>
+                        </AgentSessionHost>
                       </I18nNamespace>
                     </AgentAccessGate>
                     <RouteLoader />
