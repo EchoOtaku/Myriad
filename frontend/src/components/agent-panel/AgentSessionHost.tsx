@@ -7,9 +7,9 @@ import {
   queueAgentPanelOpen,
 } from './agentPanelEvents'
 import { LONG_PRESS_DURATION, useLongPress } from './useLongPress'
-import './agent-panel.css'
+import './agent-panel-longpress.css'
 
-export const AGENT_SESSION_DELAY_MS = 3000
+export const AGENT_SESSION_DELAY_MS = 5000
 export const AGENT_SESSION_IDLE_TIMEOUT_MS = 4000
 
 const WAKE_EVENTS = [
@@ -26,7 +26,7 @@ function preloadAgentSession(): void {
 
 /**
  * 推迟 AgentEngine / AgentPanel 的第一次 import。
- * 打开面板立刻挂；否则首屏后 3s + idle。挂上之后关面板不卸。
+ * 打开面板立刻挂；否则首屏后 5s + idle，避开 3s 后台 Tapp。挂上之后关面板不卸。
  */
 export function AgentSessionHost({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)

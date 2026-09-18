@@ -32,7 +32,7 @@ import { useRouteScheduler } from './hooks/animation/useRouteScheduler'
 import { isExlight, useAnimationLevel } from './hooks/useAnimationLevel'
 import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
-import { TappDataExchangeConsentHost } from './tapp/components/TappDataExchangeConsentHost'
+
 import { resolvePageRouteAnimation } from './tapp/routing/tappRouteMeta'
 import { TAPP_LIST_PATH, tappRunPath } from './tapp/utils/tappPaths'
 import { preloadCriticalRoutes } from './utils/codeSplitting'
@@ -44,13 +44,9 @@ import {
 import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
-/* 设置页动效系统：令牌需全局可见——设置原语（SettingItem / ManagedList 等）
-   在设置页之外也会被渲染，令牌缺席会让它们的过渡整条失效 */
-import './components/settings/settings-motion.css'
 import './styles/page-transitions.css'
 import './styles/navigation-island.css'
 import './styles/utility.css'
-import './styles/modals.css'
 import './styles/overrides.css'
 import './styles/performance.css'
 
@@ -79,6 +75,9 @@ const TappPlayground = lazy(
 
 const AgentPanel = lazy(() => import('./components/agent-panel/AgentPanel'))
 const AgentEngine = lazy(() => import('./components/agent-panel/AgentEngine'))
+const TappDataExchangeConsentHost = lazy(
+  () => import('./tapp/components/TappDataExchangeConsentHost'),
+)
 
 /** 复用 AuthContext，避免路由切换再打 /api/auth/me。 */
 function RequireAuth({
@@ -746,7 +745,9 @@ export function App() {
                         <TappBackgroundRunner />
                       </Suspense>
                     )}
-                    <TappDataExchangeConsentHost />
+                    <Suspense fallback={null}>
+                      <TappDataExchangeConsentHost />
+                    </Suspense>
                     <AppLayout>
                       <RouteErrorBoundary>
                         <AppRoutes />

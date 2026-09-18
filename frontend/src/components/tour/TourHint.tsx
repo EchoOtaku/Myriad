@@ -1,5 +1,5 @@
 import type { AnimationEvent } from 'react'
-import { LuArrowRight, LuX } from '@lib/icons'
+import { LuArrowRight, LuX } from '@lib/chromeStrokeIcons'
 import {
 
   useEffect,
@@ -51,6 +51,7 @@ import {
   waitForTourAnchor,
 } from './tourLogic'
 import { pickRegisteredTour } from './tourRegistry'
+import '../settings/settings-motion.css'
 import './TourHint.css'
 
 function skipTourHintMotion(): boolean {

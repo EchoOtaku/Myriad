@@ -4,8 +4,6 @@ import type { AppNotification } from '../services/notificationApi'
 import type { QuoteData, WeatherData } from '../utils/dynamicContent'
 import type { PanelTab } from './ControlPanel/panelTransition'
 import React, {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -20,14 +18,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import { agentFace } from '../features/merope/agentFaceChannel'
-import {
-  deliverProactiveFace,
-  faceSpeechGate,
-  refineProactiveFace,
-} from '../features/merope/faceSpeechArbitration'
+import { resetMeropeState } from '../features/merope/meropeAffectState'
 import { setForegroundSurface } from '../features/merope/perception/surface'
-import { resetMeropeState } from '../features/merope/performanceEvents'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import {
   isReducedAnimation,
@@ -92,18 +84,20 @@ import {
   showsPanelContent,
   showsProgressUi,
 } from './ControlPanel/panelTransition'
+import { ControlPanelWidgets } from './ControlPanel/ControlPanelWidgets'
+import { MusicPlayer } from './ControlPanel/MusicPlayer'
 import { UserSection } from './ControlPanel/UserSection'
 import { isHoverCapablePointer } from './ControlPanel/widgetCarousel'
-import NotificationPanelList from './NotificationPanelList'
 import {
   NotificationSourceIcon,
   notificationSourceIconAsset,
 } from './notifications/NotificationIcons'
+import { homeBrowseTourPanelPose } from './tour/tourHomePose'
 import {
   getTourSnapshot,
   subscribeTour,
-} from './tour/tourEngine'
-import { homeBrowseTourPanelPose } from './tour/tourLogic'
+} from './tour/tourStore'
+import NotificationPanelList from './NotificationPanelList'
 import { WeatherAssetIcon } from './weather/WeatherAssetIcon'
 import './GlobalControlPanel.css'
 
@@ -111,17 +105,6 @@ function readHomeBrowseTourPanelPose() {
   const snapshot = getTourSnapshot()
   return homeBrowseTourPanelPose(snapshot.tourId, snapshot.step?.id ?? null)
 }
-
-const ControlPanelWidgets = lazy(() =>
-  import('./ControlPanel/ControlPanelWidgets').then((m) => ({
-    default: m.ControlPanelWidgets,
-  })),
-)
-const MusicPlayer = lazy(() =>
-  import('./ControlPanel/MusicPlayer').then((m) => ({
-    default: m.MusicPlayer,
-  })),
-)
 
 const GREETING_ICON_ASSETS = {
   sunrise: '/icons/greeting/sunrise.webp',
@@ -180,7 +163,9 @@ interface DynamicContent {
 const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
-  useLayoutEffect(() => { resetMeropeState() }, [user?.id])
+  useLayoutEffect(() => {
+    resetMeropeState()
+  }, [user?.id])
   const { locale, setLocale, t, format } = useI18n()
   const backgroundResidents = useBackgroundResidents()
   const navLayout = useSyncExternalStore(
@@ -388,12 +373,17 @@ const GlobalControlPanel: React.FC = () => {
       performance?: unknown
       merope_state?: unknown
     }) => {
-      deliverProactiveFace(agentFace, faceSpeechGate, {
-        id: speech.id,
-        eventKey: speech.event_key,
-        body: speech.body,
-        performance: speech.performance,
-        meropeState: speech.merope_state,
+      void Promise.all([
+        import('../features/merope/faceSpeechArbitration'),
+        import('../features/merope/agentFaceChannel'),
+      ]).then(([{ deliverProactiveFace, faceSpeechGate }, { agentFace }]) => {
+        deliverProactiveFace(agentFace, faceSpeechGate, {
+          id: speech.id,
+          eventKey: speech.event_key,
+          body: speech.body,
+          performance: speech.performance,
+          meropeState: speech.merope_state,
+        })
       })
     },
     [],
@@ -404,8 +394,18 @@ const GlobalControlPanel: React.FC = () => {
     userId: user?.id,
     onNew: handleNewNotification,
     onLiveSpeech: handleLiveSpeech,
-    onLiveSpeechMotion: (id, performance) => refineProactiveFace(faceSpeechGate, id, performance),
-    onMeropeState: (state) => agentFace.updateState(state),
+    onLiveSpeechMotion: (id, performance) => {
+      void import('../features/merope/faceSpeechArbitration').then(
+        ({ refineProactiveFace, faceSpeechGate }) => {
+          refineProactiveFace(faceSpeechGate, id, performance)
+        },
+      )
+    },
+    onMeropeState: (state) => {
+      void import('../features/merope/agentFaceChannel').then(({ agentFace }) => {
+        agentFace.updateState(state)
+      })
+    },
     onMeropeResync: () => window.dispatchEvent(new Event(ADDRESSEE_UPDATED_EVENT)),
     includeInPanel: includeNotificationInPanel,
   })
@@ -1735,19 +1735,17 @@ const GlobalControlPanel: React.FC = () => {
                   }`}
                   inert={panelTab === 'notifications'}
                 >
-                  <Suspense fallback={null}>
-                    {showControlPanelWidgets && (
-                      <ControlPanelWidgets
-                        isAdmin={user?.is_admin}
-                        panelVisible={progressUiVisible}
-                      />
-                    )}
-
-                    <MusicPlayer
-                      player={musicPlayer}
+                  {showControlPanelWidgets && (
+                    <ControlPanelWidgets
+                      isAdmin={user?.is_admin}
                       panelVisible={progressUiVisible}
                     />
-                  </Suspense>
+                  )}
+
+                  <MusicPlayer
+                    player={musicPlayer}
+                    panelVisible={progressUiVisible}
+                  />
 
                   <ControlQuickActions
                     locale={locale}

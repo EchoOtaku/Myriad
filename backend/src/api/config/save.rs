@@ -890,6 +890,10 @@ pub(crate) fn collect_database_updates(
                 let enabled = field.value == "true";
                 ("memory_saver_enabled", JsonValue::Bool(enabled))
             }
+            "precise_location_enabled" => {
+                let enabled = field.value == "true";
+                ("precise_location_enabled", JsonValue::Bool(enabled))
+            }
             "merope_enabled" => {
                 let enabled = field.value == "true";
                 ("merope_enabled", JsonValue::Bool(enabled))

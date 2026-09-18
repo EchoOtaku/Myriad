@@ -5,7 +5,7 @@ import { describe, it } from 'node:test'
 describe('AgentSessionHost', () => {
   it('delays the engine until open or idle, and never unmounts after wake', () => {
     const host = readFileSync(new URL('./AgentSessionHost.tsx', import.meta.url), 'utf8')
-    assert.match(host, /AGENT_SESSION_DELAY_MS = 3000/)
+    assert.match(host, /AGENT_SESSION_DELAY_MS = 5000/)
     assert.match(host, /AGENT_SESSION_IDLE_TIMEOUT_MS = 4000/)
     assert.match(host, /requestIdleCallback/)
     assert.match(host, /queueAgentPanelOpen/)

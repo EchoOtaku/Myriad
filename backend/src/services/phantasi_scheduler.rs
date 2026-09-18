@@ -302,24 +302,44 @@ impl PhantasiSchedulerEngine {
         let notion_service = NotionService::new();
         let rsshub_service = RsshubService::new(db.clone());
 
-        let fetch_result: Result<ParsedFeed, String> = match source.feed_type {
+        let fetch_result: Result<(ParsedFeed, Option<String>), String> = match source.feed_type {
             phantasi_sources::FeedType::Notion => {
-                Self::fetch_notion_source(&notion_service, &source).await
+                Self::fetch_notion_source(&notion_service, &source)
+                    .await
+                    .map(|feed| (feed, None))
             }
             phantasi_sources::FeedType::RssHub => {
-                Self::fetch_rsshub_source(&rsshub_service, &source).await
+                Self::fetch_rsshub_source(&rsshub_service, &source)
+                    .await
+                    .map(|feed| (feed, None))
             }
-            _ => parser.fetch_and_parse(&source.url).await.map_err(|error| {
-                tracing::warn!(%error, "phantasi fetch failed");
-                error.user_message()
-            }),
+            _ => parser
+                .fetch_feed(&source.url)
+                .await
+                .map(|fetched| (fetched.feed, fetched.permanent_url))
+                .map_err(|error| {
+                    tracing::warn!(%error, "phantasi fetch failed");
+                    error.user_message()
+                }),
         };
 
         match fetch_result {
-            Ok(feed) => {
+            Ok((feed, permanent_url)) => {
                 active.last_success_at = Set(Some(now.into()));
                 active.last_error = Set(None);
                 active.error_count = Set(0);
+
+                if let Some(new_url) = permanent_url {
+                    if new_url != source.url {
+                        tracing::info!(
+                            old = %source.url,
+                            new = %new_url,
+                            source = %source.name,
+                            "[PhantasiScheduler] Feed permanently moved; updating URL"
+                        );
+                        active.url = Set(new_url);
+                    }
+                }
 
                 if source.name.is_empty() || source.name == source.url {
                     active.name = Set(feed.title.clone());
@@ -686,17 +706,22 @@ impl PhantasiSchedulerEngine {
         let mut active: phantasi_sources::ActiveModel = source.clone().into();
         active.last_fetched_at = Set(Some(now.into()));
 
-        let fetch_result: Result<ParsedFeed, String> = match source.feed_type {
+        let fetch_result: Result<(ParsedFeed, Option<String>), String> = match source.feed_type {
             phantasi_sources::FeedType::Notion => {
-                Self::fetch_notion_source(&self.notion_service, &source).await
+                Self::fetch_notion_source(&self.notion_service, &source)
+                    .await
+                    .map(|feed| (feed, None))
             }
             phantasi_sources::FeedType::RssHub => {
-                Self::fetch_rsshub_source(&self.rsshub_service, &source).await
+                Self::fetch_rsshub_source(&self.rsshub_service, &source)
+                    .await
+                    .map(|feed| (feed, None))
             }
             _ => self
                 .parser
-                .fetch_and_parse(&source.url)
+                .fetch_feed(&source.url)
                 .await
+                .map(|fetched| (fetched.feed, fetched.permanent_url))
                 .map_err(|error| {
                     tracing::warn!(%error, "phantasi fetch failed");
                     error.user_message()
@@ -704,10 +729,22 @@ impl PhantasiSchedulerEngine {
         };
 
         match fetch_result {
-            Ok(feed) => {
+            Ok((feed, permanent_url)) => {
                 active.last_success_at = Set(Some(now.into()));
                 active.last_error = Set(None);
                 active.error_count = Set(0);
+
+                if let Some(new_url) = permanent_url {
+                    if new_url != source.url {
+                        tracing::info!(
+                            old = %source.url,
+                            new = %new_url,
+                            source = %source.name,
+                            "[PhantasiScheduler] Feed permanently moved; updating URL"
+                        );
+                        active.url = Set(new_url);
+                    }
+                }
 
                 if source.description.is_none() {
                     active.description = Set(feed.description.clone());

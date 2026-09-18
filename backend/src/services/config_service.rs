@@ -1271,6 +1271,15 @@ impl ConfigService {
             }
         }
 
+        // 精确位置（高级设置）：缺省 false，不向浏览器申请定位许可。
+        if let Some(v) = map.get("precise_location_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.precise_location_enabled = b;
+            } else if let Some(s) = v.as_str() {
+                config.precise_location_enabled = s == "true" || s == "1";
+            }
+        }
+
         // 网络代理配置
         if let Some(v) = map.get("proxy_enabled") {
             if let Some(b) = v.as_bool() {
@@ -1493,6 +1502,30 @@ mod tests {
 
         let missing = ConfigService::parse_config(HashMap::new());
         assert!(!missing.merope_speech_enabled);
+    }
+
+    #[test]
+    fn parses_precise_location_flag_from_database_config() {
+        let on = ConfigService::parse_config(HashMap::from([(
+            "precise_location_enabled".into(),
+            json!(true),
+        )]));
+        assert!(on.precise_location_enabled);
+
+        let from_str = ConfigService::parse_config(HashMap::from([(
+            "precise_location_enabled".into(),
+            json!("true"),
+        )]));
+        assert!(from_str.precise_location_enabled);
+
+        let off = ConfigService::parse_config(HashMap::from([(
+            "precise_location_enabled".into(),
+            json!(false),
+        )]));
+        assert!(!off.precise_location_enabled);
+
+        let missing = ConfigService::parse_config(HashMap::new());
+        assert!(!missing.precise_location_enabled);
     }
 
     #[test]

@@ -1196,6 +1196,18 @@ mod settings_backup_tests {
     }
 
     #[test]
+    fn ui_precise_location_flag_persists_bool() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field("precise_location_enabled", "true")];
+        let on = collect_database_updates(&config);
+        assert_eq!(on.get("precise_location_enabled"), Some(&json!(true)));
+
+        config.ui_config.config_fields = vec![ui_field("precise_location_enabled", "false")];
+        let off = collect_database_updates(&config);
+        assert_eq!(off.get("precise_location_enabled"), Some(&json!(false)));
+    }
+
+    #[test]
     fn ui_merope_flag_persists_bool() {
         let mut config = empty_config();
         config.ui_config.config_fields = vec![ui_field("merope_enabled", "true")];

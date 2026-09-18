@@ -325,10 +325,13 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        manager.get_connection().execute_unprepared(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner \
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner \
              ON users ((true)) WHERE is_owner = true",
-        ).await?;
+            )
+            .await?;
 
         // 约束
         manager.get_connection().execute_unprepared(

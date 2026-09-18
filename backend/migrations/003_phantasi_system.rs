@@ -1020,12 +1020,15 @@ CREATE TRIGGER phantasi_content_revision BEFORE UPDATE ON phantasi_items FOR EAC
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(
-            "DROP TRIGGER IF EXISTS phantasi_content_revision ON phantasi_items; \
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "DROP TRIGGER IF EXISTS phantasi_content_revision ON phantasi_items; \
              DROP TRIGGER IF EXISTS phantasi_state_revision ON phantasi_user_states; \
              DROP FUNCTION IF EXISTS phantasi_advance_content_revision(); \
              DROP FUNCTION IF EXISTS phantasi_advance_state_revision();",
-        ).await?;
+            )
+            .await?;
         manager.get_connection().execute_unprepared("DROP TABLE IF EXISTS phantasi_note_history; DROP FUNCTION IF EXISTS phantasi_capture_note_history() CASCADE;").await?;
         manager
             .get_connection()
