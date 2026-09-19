@@ -1,7 +1,8 @@
-import { chromium } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { appendFileSync, writeFileSync } from 'node:fs'
+import process from 'node:process'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { chromium } from '@playwright/test'
 
 const PORT = 4199
 const TOTAL_MS = 3_000_000

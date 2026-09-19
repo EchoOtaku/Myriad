@@ -1,6 +1,6 @@
-import type { User } from '../../contexts/AuthContext'
 import { LuX } from '@lib/chromeStrokeIcons'
 import React, {
+  lazy,
   memo,
   Suspense,
   useCallback,
@@ -19,9 +19,14 @@ import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
 import { lockScroll } from '../../utils/scrollLock'
 import { Avatar } from '../Avatar'
-import LoginForm from '../LoginForm'
-import '../UserModal.css'
-import { UserModal } from './UserModal'
+import './UserSection.css'
+
+const loadUserModalEntrance = () => import('./UserModalEntrance')
+const UserModalEntrance = lazy(loadUserModalEntrance)
+const loadUserModal = () => import('./UserModal')
+const UserModal = lazy(loadUserModal)
+const loadLoginForm = () => import('../LoginForm')
+const LoginForm = lazy(loadLoginForm)
 
 interface UserInfo {
   name: string
@@ -38,28 +43,15 @@ interface UserSectionProps {
 
 export const UserSection: React.FC<UserSectionProps> = memo(
   ({ onClosePanel, onNavigateFromPanel }) => {
-    const {
-      isAuthenticated: authIsAuthenticated,
-      user: authUser,
-      checkAuth,
-    } = useAuth()
+    const { isAuthenticated, user, checkAuth } = useAuth()
     const { t } = useI18n()
     const location = useLocation()
-    const [user, setUser] = useState<User | null>(null)
-    const [isAuthenticated, setIsAuthenticated] = useState(false)
 
     const [modalState, setModalState] = useState<
       'closed' | 'mounting' | 'visible' | 'closing'
     >('closed')
 
     useEffect(() => {
-      if (modalState === 'mounting') {
-        const timer = setTimeout(() => {
-          setModalState('visible')
-        }, 16)
-        return () => clearTimeout(timer)
-      }
-
       if (modalState === 'closing') {
         const timer = setTimeout(() => {
           setModalState('closed')
@@ -67,6 +59,14 @@ export const UserSection: React.FC<UserSectionProps> = memo(
         return () => clearTimeout(timer)
       }
     }, [modalState])
+
+    const onModalReady = useCallback(() => {
+      setModalState(state => state === 'mounting' ? 'visible' : state)
+    }, [])
+    const prepareUserModal = useCallback(() => {
+      const loading = isAuthenticated ? loadUserModal() : loadLoginForm()
+      void Promise.all([loadUserModalEntrance(), loading]).catch(() => {})
+    }, [isAuthenticated])
 
     // 必须锁 html：本站滚动容器是 html 不是 body。
     useEffect(() => {
@@ -76,31 +76,26 @@ export const UserSection: React.FC<UserSectionProps> = memo(
     }, [modalState])
 
     const { profile: ownerProfile } = useSiteOwnerProfile({
-      enabled: authUser?.is_owner === true,
+      enabled: user?.is_owner === true,
     })
 
     const userInfo: UserInfo | null = useMemo(() => {
-      if (!authUser) return null
+      if (!user) return null
       const sessionName =
-        authUser.display_name || authUser.username || t.userModal.unknownUser
+        user.display_name || user.username || t.userModal.unknownUser
       return {
         name: ownerProfile?.name || sessionName,
-        avatar: authUser.avatar_url ?? null,
-        bio: ownerProfile?.bio || authUser.bio || t.userModal.defaultBio,
+        avatar: user.avatar_url ?? null,
+        bio: ownerProfile?.bio || user.bio || t.userModal.defaultBio,
         platform:
           ownerProfile?.platform ||
-          (authUser.auth_provider === 'github'
+          (user.auth_provider === 'github'
             ? 'GitHub'
-            : authUser.auth_provider === 'local'
+            : user.auth_provider === 'local'
               ? 'Local'
-              : authUser.auth_provider || t.userModal.unknownPlatform),
+              : user.auth_provider || t.userModal.unknownPlatform),
       }
-    }, [authUser, ownerProfile, t])
-
-    useEffect(() => {
-      setIsAuthenticated(authIsAuthenticated)
-      setUser(authUser as User | null)
-    }, [authIsAuthenticated, authUser])
+    }, [user, ownerProfile, t])
 
     useEffect(() => {
       return onProfileDisplayChanged(() => void checkAuth())
@@ -108,13 +103,14 @@ export const UserSection: React.FC<UserSectionProps> = memo(
 
     const openModal = useCallback(() => {
       if (
-        !authIsAuthenticated &&
+        !isAuthenticated &&
         (location.pathname === '/login' || location.pathname === '/register')
       ) {
         onClosePanel()
         return
       }
       if (modalState === 'closed') {
+        prepareUserModal()
         setModalState('mounting')
         setForegroundSurface('user_modal')
         void import('../../utils/analyticsEvents').then(
@@ -125,7 +121,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
           },
         )
       }
-    }, [authIsAuthenticated, location.pathname, modalState, onClosePanel])
+    }, [isAuthenticated, location.pathname, modalState, onClosePanel, prepareUserModal])
 
     const closeModal = useCallback(() => {
       if (modalState === 'visible' || modalState === 'mounting') {
@@ -156,10 +152,6 @@ export const UserSection: React.FC<UserSectionProps> = memo(
         window.removeEventListener('open-user-modal', handleOpenUserModal)
       }
     }, [openModal])
-
-    const handleUserInfoClick = () => {
-      openModal()
-    }
 
     const handleLogout = useCallback(async () => {
       onClosePanel()
@@ -214,7 +206,9 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       <>
         <button
           type="button"
-          onClick={handleUserInfoClick}
+          onClick={openModal}
+          onPointerEnter={prepareUserModal}
+          onFocus={prepareUserModal}
           className="user-info-button flex items-center gap-3"
         >
           {isAuthenticated && userInfo ? (
@@ -260,40 +254,42 @@ export const UserSection: React.FC<UserSectionProps> = memo(
         {modalState !== 'closed' &&
           createPortal(
             <Suspense fallback={null}>
-              <div
-                className={`user-modal-overlay surface-dialog-backdrop ${isAuthenticated ? '' : 'user-modal-overlay--plain'} ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}
-                onClick={closeModal}
-              />
-              {isAuthenticated && user && userInfo ? (
-                <UserModal
-                  user={user}
-                  userInfo={userInfo}
-                  isClosing={modalState === 'closing'}
-                  canAnimate={modalState === 'visible'}
-                  onClose={closeModal}
-                  onLogout={handleLogout}
-                  onNavigateFromPanel={onNavigateFromPanel}
-                  onProfileApplied={() => void checkAuth()}
-                />
-              ) : (
+              <UserModalEntrance onReady={onModalReady}>
                 <div
-                  className={`user-modal-login-only glass surface-dialog ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="login-form-title"
-                >
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="user-modal-chrome-hit user-modal-close-float"
-                    aria-label={t.common.close}
-                    title={t.common.close}
+                  className={`user-modal-overlay surface-dialog-backdrop ${isAuthenticated ? '' : 'user-modal-overlay--plain'} ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}
+                  onClick={closeModal}
+                />
+                {isAuthenticated && user && userInfo ? (
+                  <UserModal
+                    user={user}
+                    userInfo={userInfo}
+                    isClosing={modalState === 'closing'}
+                    canAnimate={modalState === 'visible'}
+                    onClose={closeModal}
+                    onLogout={handleLogout}
+                    onNavigateFromPanel={onNavigateFromPanel}
+                    onProfileApplied={() => void checkAuth()}
+                  />
+                ) : (
+                  <div
+                    className={`user-modal-login-only glass surface-dialog ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="login-form-title"
                   >
-                    <LuX aria-hidden />
-                  </button>
-                  <LoginForm />
-                </div>
-              )}
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="user-modal-chrome-hit user-modal-close-float"
+                      aria-label={t.common.close}
+                      title={t.common.close}
+                    >
+                      <LuX aria-hidden />
+                    </button>
+                    <LoginForm />
+                  </div>
+                )}
+              </UserModalEntrance>
             </Suspense>,
             document.body,
           )}

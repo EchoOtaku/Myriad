@@ -1,6 +1,8 @@
 import type { Layer, Psd } from 'ag-psd'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { getDefaultLocale } from '../../../i18n'
+import { loadShellNamespace } from '../../../i18n/loadLocale'
 import { anime25DImportCopy } from './anime25dImportCopy'
 import {
   anime25DBaseRole,
@@ -11,6 +13,8 @@ import {
 import { syntheticSeeThroughPsd } from './anime25dImporter.fixture'
 import { gridMesh } from './anime25dSkeletonCompiler'
 import { CHARACTER_ASSET_CONTRACT_VERSION } from './contract'
+
+await loadShellNamespace('merope', getDefaultLocale())
 
 test('matches Anime2.5DRig normalization without merging numbered hair groups', () => {
   assert.equal(normalizeAnime25DLayerName('eyeclose2_L'), 'eye-close2-l')

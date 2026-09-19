@@ -1,22 +1,24 @@
 import type { WidgetComponentProps } from '../widgetGridTypes'
 import { MyriadStoreIcon } from '@lib/brandIcons'
+import { MotionEntrance } from '@lib/motionEntrance'
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
 import {
-  useHomeVisibilityInterval,
   useLoopAnimation,
+  useVisibilityInterval,
 } from '../../hooks/animation'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { ClampText, FitText } from './shared/FitText'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
+import { useWelcomeTime, welcomeGreetingKey } from './useWelcomeTime'
 
 interface NavigationGuide {
   title: string
@@ -28,7 +30,7 @@ interface NavigationGuide {
 
 const WELCOME_ICON_ASSET = '/icons/widgets/welcome.webp'
 
-export const WelcomeWidget = memo(
+const WelcomeWidgetContent = memo(
   ({ config, isEditMode, isPreview }: WidgetComponentProps) => {
     const { containerRef, scale, fontScale, height } = useWidgetSize(
       config.size,
@@ -48,7 +50,8 @@ export const WelcomeWidget = memo(
 
     const navigate = useNavigate()
     const [currentGuideIndex, setCurrentGuideIndex] = useState(0)
-    const [greeting, setGreeting] = useState('')
+    const now = useWelcomeTime()
+    const greeting = isPreview ? t.greeting.welcome : t.greeting[welcomeGreetingKey(now.getHours())]
 
     const navigationGuides = useMemo(
       () => [
@@ -84,26 +87,10 @@ export const WelcomeWidget = memo(
       [t],
     )
 
-    useEffect(() => {
-      if (isPreview) {
-        setGreeting(t.greeting.welcome)
-        return
-      }
-      const hour = new Date().getHours()
-      if (hour < 6) setGreeting(t.greeting.lateNight)
-      else if (hour < 9) setGreeting(t.greeting.morning)
-      else if (hour < 12) setGreeting(t.greeting.morning)
-      else if (hour < 14) setGreeting(t.greeting.noon)
-      else if (hour < 18) setGreeting(t.greeting.afternoon)
-      else if (hour < 22) setGreeting(t.greeting.evening)
-      else setGreeting(t.greeting.night)
-    }, [isPreview, t])
-
-    useHomeVisibilityInterval(
+    useVisibilityInterval(
       () =>
         setCurrentGuideIndex((prev) => (prev + 1) % navigationGuides.length),
-      5000,
-      !isEditMode && !isPreview && anim.widgetUiRotation,
+      { delay: 5000, enabled: !isEditMode && !isPreview && anim.widgetUiRotation },
     )
 
     const currentGuide = useMemo(
@@ -135,12 +122,12 @@ export const WelcomeWidget = memo(
     )
 
     const formattedDate = useMemo(() => {
-      return new Date().toLocaleDateString(locale, {
+      return now.toLocaleDateString(locale, {
         month: 'long',
         day: 'numeric',
         weekday: 'long',
       })
-    }, [locale])
+    }, [locale, now])
 
     const is2x2 = config.size === '2x2'
 
@@ -480,5 +467,16 @@ export const WelcomeWidget = memo(
     )
   },
 )
+
+WelcomeWidgetContent.displayName = 'WelcomeWidgetContent'
+
+export const WelcomeWidget = memo((props: WidgetComponentProps) => {
+  const anim = useAnimationLevel()
+  return (
+    <MotionEntrance enabled={!props.isEditMode && !isExlight(anim)}>
+      <WelcomeWidgetContent {...props} />
+    </MotionEntrance>
+  )
+})
 
 WelcomeWidget.displayName = 'WelcomeWidget'

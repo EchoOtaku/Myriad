@@ -1,7 +1,6 @@
 import {
   startFpsMonitor as _startFpsMonitor,
   stopFpsMonitor as _stopFpsMonitor,
-  isLowFps,
 } from '../hooks/animation'
 
 export function startFpsMonitor(): void {
@@ -10,40 +9,6 @@ export function startFpsMonitor(): void {
 
 export function stopFpsMonitor(): void {
   _stopFpsMonitor()
-}
-
-export function rafThrottle<T extends (...args: any[]) => any>(
-  fn: T,
-  options?: {
-    skipOnLowFps?: boolean
-  },
-): ((...args: Parameters<T>) => void) & { cancel: () => void } {
-  let rafId: number | null = null
-  const { skipOnLowFps = false } = options ?? {}
-
-  const throttled = function (this: any, ...args: Parameters<T>) {
-    if (rafId !== null) {
-      return
-    }
-
-    if (skipOnLowFps && isLowFps()) {
-      return
-    }
-
-    rafId = requestAnimationFrame(() => {
-      fn.call(this, ...args)
-      rafId = null
-    })
-  } as ((...args: Parameters<T>) => void) & { cancel: () => void }
-
-  throttled.cancel = () => {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId)
-      rafId = null
-    }
-  }
-
-  return throttled
 }
 
 export class MemoryManager {

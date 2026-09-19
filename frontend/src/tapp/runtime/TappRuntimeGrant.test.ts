@@ -25,5 +25,4 @@ describe('TappRuntimeGrant destroy / re-mint seed', () => {
     assert.equal(c.isDestroyed(), false)
     c.destroy()
   })
-
 })

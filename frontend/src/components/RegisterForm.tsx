@@ -1,6 +1,6 @@
 import type { FC, SubmitEvent } from 'react'
-import { FaLock, FaUser } from 'react-icons/fa'
 import { useState } from 'react'
+import { FaLock, FaUser } from 'react-icons/fa'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { fetchJson } from '../utils/apiHelper'

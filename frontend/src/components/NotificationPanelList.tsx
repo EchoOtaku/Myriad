@@ -3,16 +3,13 @@ import type { AppNotification } from '../services/notificationApi'
 import type { NotificationSourceKey } from '../services/notificationPreferencesApi'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
-import { currentCopy } from '../i18n/localeCopy'
-import { apiService } from '../services/api'
-import { federationApi } from '../services/federationApi'
 import { notificationSourceFor } from '../services/notificationDelivery'
 import { getGreeting } from '../utils/dynamicContent'
+import { formatUserFacingError } from '../utils/formatUserFacingError'
 import {
   notificationFacingBody,
   notificationFacingTitle,
 } from '../utils/notificationFacing'
-import { formatUserFacingError } from '../utils/formatUserFacingError'
 import { showToast } from '../utils/toastManager'
 import { NotificationSourceIcon } from './notifications/NotificationIcons'
 import { TappResidentNotice } from './TappResidentNotice'
@@ -39,66 +36,6 @@ function parseNotifActions(n: AppNotification): NotifAction[] {
     })
   }
   return out
-}
-
-async function runFederationInviteAction(
-  n: AppNotification,
-  actionId: string,
-): Promise<void> {
-  const kind = n.metadata?.kind
-  const roomId =
-    typeof n.metadata?.room_id === 'string' ? n.metadata.room_id : ''
-  const channelId =
-    typeof n.metadata?.channel_id === 'string' ? n.metadata.channel_id : ''
-
-  if (kind === 'room_invite' || (roomId && !channelId)) {
-    if (!roomId) throw new Error(currentCopy().errors.inviteInvalid)
-    if (actionId === 'accept') {
-      await federationApi.acceptRoomInvite(roomId)
-      return
-    }
-    if (actionId === 'reject') {
-      await federationApi.rejectRoomInvite(roomId)
-      return
-    }
-  }
-  if (kind === 'channel_invite' || channelId) {
-    if (!channelId) throw new Error(currentCopy().errors.inviteInvalid)
-    if (actionId === 'accept') {
-      await federationApi.acceptChannel(channelId)
-      return
-    }
-    if (actionId === 'reject') {
-      await federationApi.closeChannel(channelId)
-      return
-    }
-  }
-  throw new Error(currentCopy().errors.agentUnsupported)
-}
-
-function seoReviewDrafts(
-  n: AppNotification,
-): Record<string, string> {
-  const body: Record<string, string> = {}
-  for (const key of [
-    'site_description',
-    'site_keywords',
-    'site_ai_intro',
-  ] as const) {
-    const value = n.metadata?.[key]
-    if (typeof value === 'string' && value.trim()) {
-      body[key] = value
-    }
-  }
-  return body
-}
-
-async function runSeoReviewApply(n: AppNotification): Promise<void> {
-  const drafts = seoReviewDrafts(n)
-  if (Object.keys(drafts).length === 0) {
-    throw new Error(currentCopy().errors.seoApplyMissingDraft)
-  }
-  await apiService.post('/seo/apply-copy', drafts)
 }
 
 const PILL_BTN =
@@ -269,6 +206,7 @@ function NotificationPanelList({
       setActionError(null)
       setActionErrorId(n.id)
       try {
+        const { runFederationInviteAction, runSeoReviewApply } = await import('../services/notificationActions')
         if (
           n.metadata?.event_key === 'heartbeat.seo_review' &&
           actionId === 'apply'

@@ -91,8 +91,6 @@ function CustomScrollbarInner() {
   const dragMetricsRef = useRef<LockedDragMetrics | null>(null)
   const savedScrollBehaviorRef = useRef({ html: '', body: '' })
   const lastScrollTopRef = useRef(0)
-  const isRouteTransitioningRef = useRef(false) // 路由切换中禁止更新。
-  const routeTransitionTimeRef = useRef(0)
   const cachedDocumentHeightRef = useRef(0)
   const lastHeightCheckRef = useRef(0)
 
@@ -120,11 +118,8 @@ function CustomScrollbarInner() {
     return cachedDocumentHeightRef.current
   }, [])
 
-  const updateThumb = useCallback(() => {
+  const updateThumb = useCallback((animate: boolean | 'preserve' = false) => {
     if (!thumbRef.current || isDraggingRef.current) return
-
-    // 路由切换中禁止更新。
-    if (isRouteTransitioningRef.current) return
 
     const layout = computeThumbLayout({
       windowHeight: window.innerHeight,
@@ -137,11 +132,10 @@ function CustomScrollbarInner() {
       return
     }
 
-    const timeSinceRouteTransition = Date.now() - routeTransitionTimeRef.current
-    if (timeSinceRouteTransition >= 1000 && timeSinceRouteTransition < 1700) {
-      // 路由过渡已在外部设置，这里不要改 transition。
-    } else {
-      thumbRef.current.style.transition = 'none'
+    if (animate !== 'preserve') {
+      thumbRef.current.style.transition = animate
+        ? 'top 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+        : 'none'
     }
 
     paintThumb(layout.thumbTop, layout.thumbHeight)
@@ -153,8 +147,17 @@ function CustomScrollbarInner() {
     updateThumb()
   }, [updateThumb])
 
+  const handleGeometryChange = useCallback(() => {
+    // A real layout change invalidates the cache immediately, even if the last
+    // scroll read was recent. Ordinary scroll frames keep reusing the cache.
+    cachedDocumentHeightRef.current = 0
+    // A resize can arrive just after the route starts its transition. Retarget
+    // that transition; only direct scrolling should switch to immediate tracking.
+    updateThumb('preserve')
+  }, [updateThumb])
+
   useSharedScroll(handleUpdate)
-  useSharedResize(handleUpdate)
+  useSharedResize(handleGeometryChange)
 
   useEffect(() => {
     const syncCanvas = () => {
@@ -178,76 +181,18 @@ function CustomScrollbarInner() {
   }, [])
 
   useEffect(() => {
-    let throttleTimer: number | null = null
-    let initialRaf: number | null = null
-    let initialFollowUpTimer: number | null = null
-
-    const handleUpdateThrottled = () => {
-      if (throttleTimer !== null) return
-      throttleTimer = window.setTimeout(() => {
-        handleUpdate()
-        throttleTimer = null
-      }, 100)
-    }
-
-    initialRaf = requestAnimationFrame(() => {
-      updateThumb()
-      initialFollowUpTimer = window.setTimeout(updateThumb, 100)
-    })
-
-    const unobserve = observeResize(
-      document.documentElement,
-      handleUpdateThrottled,
-    )
-
-    return () => {
-      unobserve()
-      if (throttleTimer !== null) clearTimeout(throttleTimer)
-      if (initialRaf !== null) cancelAnimationFrame(initialRaf)
-      if (initialFollowUpTimer !== null) clearTimeout(initialFollowUpTimer)
-    }
-  }, [updateThumb, handleUpdate])
+    const unobserve = observeResize(document.documentElement, handleGeometryChange)
+    return unobserve
+  }, [handleGeometryChange])
 
   useEffect(() => {
-    if (!thumbRef.current) return
-
-    let updateDelay: ReturnType<typeof setTimeout> | null = null
-    let transitionTimer: ReturnType<typeof setTimeout> | null = null
-    let thumbRaf = 0
-
-    routeTransitionTimeRef.current = Date.now()
-
-    isRouteTransitioningRef.current = true
-
-    const initialDelay = setTimeout(() => {
-      if (!thumbRef.current) return
-
-      thumbRef.current.style.transition =
-        'top 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
-
-      updateDelay = setTimeout(() => {
-        isRouteTransitioningRef.current = false
-        cachedDocumentHeightRef.current = 0
-        thumbRaf = requestAnimationFrame(() => {
-          thumbRaf = 0
-          updateThumb()
-        })
-      }, 150)
-
-      transitionTimer = setTimeout(() => {
-        if (thumbRef.current) {
-          thumbRef.current.style.transition = 'none'
-        }
-      }, 700)
-    }, 1000)
-
-    return () => {
-      clearTimeout(initialDelay)
-      if (updateDelay !== null) clearTimeout(updateDelay)
-      if (transitionTimer !== null) clearTimeout(transitionTimer)
-      if (thumbRaf) cancelAnimationFrame(thumbRaf)
-      isRouteTransitioningRef.current = false
-    }
+    // Animate the route's new geometry on the next frame. Scrolling can take
+    // over immediately; it must never wait for a fixed route timeout.
+    const frame = requestAnimationFrame(() => {
+      cachedDocumentHeightRef.current = 0
+      updateThumb(true)
+    })
+    return () => cancelAnimationFrame(frame)
   }, [location.pathname, updateThumb])
 
   useEffect(() => {

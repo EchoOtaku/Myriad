@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { getDefaultLocale } from '../../../i18n'
+import { loadShellNamespace } from '../../../i18n/loadLocale'
 import {
   CLOTHING_STYLE_OPTIONS,
   clothingStyleFromProfile,
@@ -23,7 +25,8 @@ test('default name style follows UI locale', () => {
   assert.equal(defaultNameStyle('en-US'), 'european')
 })
 
-test('flatten then parse keeps character fields', () => {
+test('flatten then parse keeps character fields', async () => {
+  await loadShellNamespace('merope', getDefaultLocale())
   const persona = {
     summary: '话少，认真。',
     temperament: ['克制', '细心'],

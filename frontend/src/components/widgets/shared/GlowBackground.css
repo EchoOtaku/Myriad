@@ -1,5 +1,6 @@
 .glow-orb {
   --glow-at: center;
+
   position: absolute;
   border-radius: 9999px;
   pointer-events: none;
@@ -25,12 +26,14 @@
 
 .glow-right {
   --glow-at: 100% 0%;
+
   right: -2rem;
   top: -2rem;
 }
 
 .glow-left {
   --glow-at: 0% 100%;
+
   left: -1.5rem;
   bottom: -1.5rem;
 }

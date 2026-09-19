@@ -1,10 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 
-import { API_URL } from '../config'
-import { currentCopy } from '../i18n/localeCopy'
-import { formatUserFacingError } from '../utils/formatUserFacingError'
+import { authSubject } from '../utils/authSubject'
 import { getUIConfigDeduped } from '../utils/requestDedup'
-import { showError } from '../utils/toastManager'
 import { resyncWallpaperBlur } from '../utils/wallpaperState'
 
 export type WidgetSurface = 'glass' | 'solid' | 'flat' | 'outline' | 'liquid'
@@ -15,7 +12,7 @@ interface WidgetThemeState {
   glow: WidgetGlowMode
 }
 
-type WidgetThemeListener = (state: WidgetThemeState) => void
+type WidgetThemeListener = () => void
 
 export const SURFACE_OPTIONS: readonly {
   id: WidgetSurface
@@ -78,58 +75,37 @@ function isGlowMode(v: unknown): v is WidgetGlowMode {
 
 const DEFAULT_THEME: WidgetThemeState = { surface: 'glass', glow: 'identity' }
 
-let globalState: WidgetThemeState = { ...DEFAULT_THEME }
+let globalState = DEFAULT_THEME
+const edited = new Set<keyof WidgetThemeState>()
 const listeners = new Set<WidgetThemeListener>()
 let isGlobalInitialized = false
 let initPromise: Promise<void> | null = null
 
-function notifyListeners() {
-  const state = { ...globalState }
-  listeners.forEach((listener) => listener(state))
+function subscribeTheme(listener: WidgetThemeListener) {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
 }
+
+const getTheme = () => globalState
+const getServerTheme = () => DEFAULT_THEME
 
 function updateGlobalState(updates: Partial<WidgetThemeState>) {
-  const prev = globalState
-  globalState = { ...globalState, ...updates }
-  if (globalState.surface !== prev.surface || globalState.glow !== prev.glow) {
-    applyThemeToRoot(globalState)
-  }
-  notifyListeners()
+  const next = { ...globalState, ...updates }
+  if (next.surface === globalState.surface && next.glow === globalState.glow) return
+  globalState = next
+  applyThemeToRoot(globalState)
+  listeners.forEach(listener => listener())
 }
 
-let saveTimeout: ReturnType<typeof setTimeout> | null = null
-const SAVE_DEBOUNCE_MS = 500
-
-// 保存完整主题 JSON，避免部分键合并问题。
-function debouncedSave(csrfToken: string) {
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-  }
-
-  saveTimeout = setTimeout(async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/config/dashboard`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-        },
-        credentials: 'include',
-        body: JSON.stringify({ widget_theme: JSON.stringify(globalState) }),
-      })
-      if (!res.ok) {
-        throw new Error(`Failed to save widget theme: HTTP ${res.status}`)
-      }
-    } catch (err) {
-      console.error('保存小组件主题失败:', err)
-      showError(
-        await formatUserFacingError(
-          err,
-          currentCopy().errors.widgetThemeSaveFailed,
-        ),
-      )
-    }
-  }, SAVE_DEBOUNCE_MS)
+async function persistTheme(csrfToken: string) {
+  const owner = authSubject.signal
+  // The endpoint replaces the entire theme. Resolve untouched server fields
+  // before taking the snapshot, while local preview remains immediate.
+  await initGlobalState()
+  if (owner.aborted) return
+  const widget_theme = JSON.stringify(globalState)
+  const { saveDashboardAppearance } = await import('../services/dashboardAppearancePersistence')
+  saveDashboardAppearance(csrfToken, { widget_theme }, 'widgetThemeSaveFailed', owner)
 }
 
 async function initGlobalState(): Promise<void> {
@@ -143,10 +119,10 @@ async function initGlobalState(): Promise<void> {
         try {
           const parsed = JSON.parse(data.widget_theme)
           const updates: Partial<WidgetThemeState> = {}
-          if (isSurface(parsed?.surface)) {
+          if (!edited.has('surface') && isSurface(parsed?.surface)) {
             updates.surface = parsed.surface
           }
-          if (isGlowMode(parsed?.glow)) {
+          if (!edited.has('glow') && isGlowMode(parsed?.glow)) {
             updates.glow = parsed.glow
           }
           if (Object.keys(updates).length > 0) {
@@ -168,33 +144,16 @@ async function initGlobalState(): Promise<void> {
 }
 
 export function useWidgetTheme() {
-  const [state, setState] = useState<WidgetThemeState>(globalState)
-  const mountedRef = useRef(true)
-
-  useEffect(() => {
-    mountedRef.current = true
-
-    const listener: WidgetThemeListener = (newState) => {
-      if (mountedRef.current) {
-        setState(newState)
-      }
-    }
-
-    listeners.add(listener)
-    initGlobalState()
-
-    return () => {
-      mountedRef.current = false
-      listeners.delete(listener)
-    }
-  }, [])
+  const state = useSyncExternalStore(subscribeTheme, getTheme, getServerTheme)
+  useEffect(() => { void initGlobalState() }, [])
 
   const setSurface = useCallback(
     (surface: WidgetSurface, csrfToken?: string) => {
       if (!isSurface(surface)) return
+      edited.add('surface')
       updateGlobalState({ surface })
       if (csrfToken) {
-        debouncedSave(csrfToken)
+        void persistTheme(csrfToken)
       }
     },
     [],
@@ -203,9 +162,10 @@ export function useWidgetTheme() {
   const setGlowMode = useCallback(
     (glow: WidgetGlowMode, csrfToken?: string) => {
       if (!isGlowMode(glow)) return
+      edited.add('glow')
       updateGlobalState({ glow })
       if (csrfToken) {
-        debouncedSave(csrfToken)
+        void persistTheme(csrfToken)
       }
     },
     [],

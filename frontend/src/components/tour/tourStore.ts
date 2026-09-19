@@ -1,6 +1,6 @@
 import type { TourStepDef } from './tourTypes'
-import { markTourDone } from './tourDone'
 import { setTourDomActive } from './tourDom'
+import { markTourDone } from './tourDone'
 
 export interface TourSnapshot {
   active: boolean

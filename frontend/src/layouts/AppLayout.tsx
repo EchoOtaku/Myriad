@@ -16,7 +16,6 @@ import { SurfaceThemeApplier } from '../components/SurfaceThemeApplier'
 import { ToastContainer } from '../components/ToastContainer'
 import { TourHint, TourOverlay } from '../components/tour'
 
-
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 // Live <html data-nav-layout> after first paint is owned by NavigationIsland

@@ -10,8 +10,8 @@ const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('is
 const { build } = createRequire(import.meta.resolve('tsx/package.json'))('esbuild')
 
 test('task polling waits for completion, stops at terminal states, and discards stale work', async () => {
-  const dom = new JSDOM('<div id="root"></div>')
-  const globals = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true }
+  const dom = new JSDOM('<div id="root"></div>', { url: 'https://test.invalid' })
+  const globals = { window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true }
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value })
   const timers = new Map<number, { callback: () => void; delay: number }>()

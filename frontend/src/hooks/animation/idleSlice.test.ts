@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   IDLE_TIMEOUT_BATCH,
   runIdleSlice,
+  runTaskSlice,
   TASK_FLUSH_BATCH,
 } from './idleSlice'
 
@@ -54,8 +55,32 @@ describe('runIdleSlice', () => {
   })
 })
 
-describe('TASK_FLUSH_BATCH', () => {
-  it('stays small enough to keep a MessageChannel flush off the Long Task budget', () => {
-    assert.equal(TASK_FLUSH_BATCH, 8)
+describe('runTaskSlice', () => {
+  it('yields costly work before draining a count-limited batch', () => {
+    let time = 0
+    const queue = [1, 2, 3, 4, 5]
+    const ran: number[] = []
+    runTaskSlice(queue, item => { ran.push(item); time += 3 }, () => time)
+    assert.deepEqual(ran, [1, 2])
+    assert.deepEqual(queue, [3, 4, 5])
+  })
+
+  it('keeps a count bound even when callbacks are cheap', () => {
+    const queue = Array.from({ length: 100 }, (_, index) => index)
+    runTaskSlice(queue, () => {}, () => 0)
+    assert.equal(queue.length, 100 - TASK_FLUSH_BATCH)
+  })
+
+  it('does not pull recursively scheduled work into the same slice', () => {
+    const queue = [1]
+    runTaskSlice(queue, item => queue.push(item + 1), () => 0)
+    assert.deepEqual(queue, [2])
+  })
+
+  it('makes progress when one callback alone exceeds the budget', () => {
+    let time = 0
+    const queue = [1, 2]
+    runTaskSlice(queue, () => { time += 20 }, () => time)
+    assert.deepEqual(queue, [2])
   })
 })

@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react'
 import { useLazyMotion } from './lazyMotion'
+import { useMotionInitialPolicy } from './motionEntrance'
 
 type SupportedTag =
   | 'div'
@@ -156,7 +157,9 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
     style.filter = filters.join(' ')
   }
 
-  if (transforms.length > 0) {
+  if (typeof initialState.transform === 'string') {
+    style.transform = initialState.transform
+  } else if (transforms.length > 0) {
     style.transform = transforms.join(' ')
   }
 
@@ -174,6 +177,12 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
 
 function createShim(tag: SupportedTag) {
   const MotionShim = forwardRef<any, any>((props, ref) => {
+    const initialPolicy = useMotionInitialPolicy()
+    const resolvedProps = initialPolicy === 'suppress'
+      ? { ...props, initial: false }
+      : initialPolicy === 'hold' && props.initial && props.animate
+        ? { ...props, animate: props.initial }
+        : props
     // Any animation-related prop needs real motion.
     const hasAnimation =
       props?.initial ||
@@ -191,12 +200,12 @@ function createShim(tag: SupportedTag) {
 
     if (motion) {
       const Comp: any = motion[tag]
-      return <Comp ref={ref} {...props} />
+      return <Comp ref={ref} {...resolvedProps} />
     } else {
       // Apply initial CSS so content does not flash.
       const Tag = tag as any
-      const filteredProps = filterMotionProps(props ?? {})
-      const initialStyle = getInitialStyle(props)
+      const filteredProps = filterMotionProps(resolvedProps ?? {})
+      const initialStyle = getInitialStyle(resolvedProps)
 
       if (initialStyle) {
         filteredProps.style = { ...filteredProps.style, ...initialStyle }

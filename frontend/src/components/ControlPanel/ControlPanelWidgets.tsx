@@ -15,28 +15,23 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import { API_URL as CONFIG_API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
-import {
-  useHomeResizeObserver,
-  useHomeVisibilityInterval,
-} from '../../hooks/animation'
+import { useVisibilityInterval } from '../../hooks/animation'
 import { useEditModeEscape } from '../../hooks/useEditModeEscape'
 import { useTappWidgets } from '../../hooks/useTappWidgets'
-import { getCSRFToken } from '../../utils/csrf'
-import { getUIConfigDeduped } from '../../utils/requestDedup'
-import { formatUserFacingError } from '../../utils/formatUserFacingError'
-import { showError } from '../../utils/toastManager'
 import WidgetGrid, { startGridLibraryDrag } from '../WidgetGrid'
 import { getBuiltinWidgets } from '../widgets/builtinWidgets'
 import {
   PANEL_MORPH_BASE_MS,
   PANEL_SETTLE_SLACK_MS,
 } from './panelTransition'
+import { useWidgetGestures } from './useWidgetGestures'
+import { useWidgetLayout } from './useWidgetLayout'
 import {
   isHoverCapablePointer,
   shouldAutoAdvanceWidgets,
 } from './widgetCarousel'
+import { saveControlPanelLayout } from './widgetLayoutPersistence'
 import {
   mergeVisibleWithHidden,
   packControlPanelWidgets,
@@ -44,23 +39,6 @@ import {
 import './ControlPanelWidgets.css'
 
 const WidgetLibraryIsland = lazy(() => import('../WidgetLibraryIsland'))
-
-const API_URL = CONFIG_API_URL
-
-const DEFAULT_CONTROL_PANEL_LAYOUT: WidgetConfig[] = [
-  {
-    id: 'cp-weather',
-    type: 'weather',
-    size: '2x2',
-    position: { x: 0, y: 0 },
-  },
-  {
-    id: 'cp-quote',
-    type: 'quote',
-    size: '2x2',
-    position: { x: 2, y: 0 },
-  },
-]
 
 interface ControlPanelWidgetsProps {
   isAdmin?: boolean
@@ -84,12 +62,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
       [BUILTIN_WIDGETS, tappWidgets],
     )
 
-    const [widgets, setWidgets] = useState<WidgetConfig[]>(
-      DEFAULT_CONTROL_PANEL_LAYOUT,
-    )
-    const [rawLayoutData, setRawLayoutData] = useState<WidgetConfig[] | null>(
-      null,
-    )
+    const { widgets, gridRows, editLayout } = useWidgetLayout(t.errors.controlPanelLoadFailed)
     const [isEditMode, setIsEditMode] = useState(false)
     const gridRef = useRef<WidgetGridHandle>(null)
     useEditModeEscape(isEditMode, () => setIsEditMode(false))
@@ -103,111 +76,15 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
       [],
     )
     const [currentPage, setCurrentPage] = useState(0)
-    const [gridRows, setGridRows] = useState(2)
-    const [_isLoading, setIsLoading] = useState(true)
     const [isHovering, setIsHovering] = useState(false)
-    const longPressTimer = useRef<NodeJS.Timeout | null>(null)
-    const wheelCooldown = useRef(false)
-    const startYRef = useRef(0)
-    const startRowsRef = useRef(2)
-    const currentDragRowsRef = useRef(2)
-    const isDraggingRef = useRef(false)
     // overflow 用 ref，避免编辑回调随布局重建。
     const hiddenWidgetsRef = useRef<WidgetConfig[]>([])
     const heightBeforeRowsRef = useRef<number | null>(null)
-    // 行数切换动画中 ResizeObserver 不要把中间高度报给外壳。
-    const rowsAnimatingRef = useRef(false)
-    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
 
-    useEffect(() => {
-      const loadConfig = async () => {
-        try {
-          const data = await getUIConfigDeduped()
-          if (data.control_panel_layout) {
-            try {
-              const layout = JSON.parse(data.control_panel_layout)
-              if (Array.isArray(layout) && layout.length > 0) {
-                setRawLayoutData(layout)
-                setWidgets(layout)
-              }
-            } catch (e) {
-              console.error('Failed to parse control panel layout', e)
-              showError(
-                await formatUserFacingError(
-                  e,
-                  t.errors.controlPanelLoadFailed,
-                ),
-              )
-            }
-          }
-          if (data.control_panel_rows) {
-            setGridRows(data.control_panel_rows)
-          }
-        } catch (e) {
-          console.error('Failed to load control panel config', e)
-          showError(
-            await formatUserFacingError(e, t.errors.controlPanelLoadFailed),
-          )
-        } finally {
-          setIsLoading(false)
-        }
-      }
-      loadConfig()
-    }, [])
-
-    useEffect(() => {
-      if (isTappWidgetsLoading || !rawLayoutData || tappWidgets.length === 0)
-        return
-      setWidgets(rawLayoutData)
-    }, [isTappWidgetsLoading, tappWidgets, rawLayoutData])
-
-    const saveToBackend = useCallback(
-      async (layout: WidgetConfig[], rows: number) => {
-        if (!isAdmin) return
-
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current)
-        }
-
-        saveTimeoutRef.current = setTimeout(async () => {
-          try {
-            const csrfToken = await getCSRFToken(true)
-            if (!csrfToken) {
-              showError(t.errors.csrfUnavailable)
-              return
-            }
-
-            const res = await fetch(`${API_URL}/api/config/control-panel`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken,
-              },
-              credentials: 'include',
-              body: JSON.stringify({
-                control_panel_layout: JSON.stringify(layout),
-                control_panel_rows: rows,
-              }),
-            })
-            if (!res.ok) {
-              throw new Error(
-                `Failed to save control panel: HTTP ${res.status}`,
-              )
-            }
-          } catch (err) {
-            console.error('Failed to save control panel config:', err)
-            showError(
-              await formatUserFacingError(
-                err,
-                t.errors.controlPanelSaveFailed,
-              ),
-            )
-          }
-        }, 500)
-      },
-      [isAdmin, t.errors.controlPanelSaveFailed, t.errors.csrfUnavailable],
-    )
+    const saveToBackend = useCallback((layout: WidgetConfig[], rows: number) => {
+      if (isAdmin) saveControlPanelLayout(layout, rows)
+    }, [isAdmin])
 
     const handleWidgetsChange = useCallback(
       (newWidgets: WidgetConfig[]) => {
@@ -223,13 +100,12 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
           validWidgets,
           hiddenWidgetsRef.current,
         )
-        setWidgets(merged)
-        setRawLayoutData(merged)
+        editLayout(merged)
         if (!isTappWidgetsLoading) {
           saveToBackend(merged, gridRows)
         }
       },
-      [gridRows, saveToBackend, CONTROL_PANEL_WIDGETS, isTappWidgetsLoading],
+      [gridRows, saveToBackend, CONTROL_PANEL_WIDGETS, isTappWidgetsLoading, editLayout],
     )
 
     const handleRowsChange = useCallback(
@@ -239,7 +115,6 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
         heightBeforeRowsRef.current = el
           ? el.getBoundingClientRect().height
           : null
-        setGridRows(rows)
 
         let updatedWidgets: WidgetConfig[]
         if (rows === 1) {
@@ -267,14 +142,13 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
         }
 
         // 只改 size，不做打包/裁剪；1 行装不下的必须留在数据里。
-        setWidgets(updatedWidgets)
-        setRawLayoutData(updatedWidgets)
+        editLayout(updatedWidgets, rows)
         // Tapp 目录未就绪时不要把过滤后的布局写盘。
         if (!isTappWidgetsLoading) {
           saveToBackend(updatedWidgets, rows)
         }
       },
-      [widgets, saveToBackend, CONTROL_PANEL_WIDGETS, isTappWidgetsLoading],
+      [widgets, saveToBackend, CONTROL_PANEL_WIDGETS, isTappWidgetsLoading, editLayout],
     )
 
     // 行数切换用 FLIP 钉显式高度，并同帧 immediate 重测；auto 不能 transition，外壳节流会露白或裁按钮。
@@ -292,7 +166,6 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
         new CustomEvent('gcp-remeasure', { detail: { immediate: true } }),
       )
 
-      rowsAnimatingRef.current = true
       el.style.height = `${from}px`
       void el.offsetHeight
       el.style.height = `${to}px`
@@ -305,7 +178,6 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
         el.removeEventListener('transitionend', done)
         el.removeEventListener('transitioncancel', done)
         window.clearTimeout(fallback)
-        rowsAnimatingRef.current = false
         el.style.height = ''
       }
       // 跟外壳同一条 --gcp-morph 时钟；写死 1200ms 会在 reduced-motion/exlight 丢 transitionend 时把高度钉住。
@@ -324,93 +196,6 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
       return finish
     }, [gridRows])
 
-    const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver()
-
-    useEffect(() => {
-      const widgetContainer = containerRef.current
-      if (!widgetContainer) return
-
-      let throttleTimer: ReturnType<typeof setTimeout> | null = null
-      const THROTTLE_MS = 150
-
-      observeHomeResize(widgetContainer, () => {
-        if (rowsAnimatingRef.current) return
-        if (throttleTimer) return
-
-        throttleTimer = setTimeout(() => {
-          throttleTimer = null
-          window.dispatchEvent(new CustomEvent('control-panel-content-resize'))
-        }, THROTTLE_MS)
-      })
-
-      return () => {
-        if (throttleTimer) clearTimeout(throttleTimer)
-        unobserveHomeResize(widgetContainer)
-      }
-    }, [observeHomeResize, unobserveHomeResize])
-
-    const handleResizeStart = (e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      startYRef.current = e.clientY
-      startRowsRef.current = gridRows
-      currentDragRowsRef.current = gridRows
-      isDraggingRef.current = false
-
-      document.addEventListener('mousemove', handleResizeMove)
-      document.addEventListener('mouseup', handleResizeEnd)
-    }
-
-    const handleResizeMove = (e: MouseEvent) => {
-      const deltaY = e.clientY - startYRef.current
-
-      if (Math.abs(deltaY) > 5) {
-        isDraggingRef.current = true
-      }
-
-      const threshold = 10
-      let targetRows = startRowsRef.current
-
-      if (startRowsRef.current === 2) {
-        if (deltaY < -threshold) {
-          targetRows = 1
-        } else {
-          targetRows = 2
-        }
-      } else {
-        if (deltaY > threshold) {
-          targetRows = 2
-        } else {
-          targetRows = 1
-        }
-      }
-
-      if (targetRows !== currentDragRowsRef.current) {
-        currentDragRowsRef.current = targetRows
-        handleRowsChange(targetRows)
-      }
-    }
-
-    const handleResizeEnd = () => {
-      document.removeEventListener('mousemove', handleResizeMove)
-      document.removeEventListener('mouseup', handleResizeEnd)
-    }
-
-    const handleMouseDown = useCallback(() => {
-      if (!isAdmin || isEditMode) return
-      void import('../WidgetLibraryIsland')
-      longPressTimer.current = setTimeout(() => {
-        setIsEditMode(true)
-      }, 800)
-    }, [isAdmin, isEditMode])
-
-    const handleMouseUp = () => {
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current)
-        longPressTimer.current = null
-      }
-    }
-
     useEffect(() => {
       if (!isEditMode) return
       const root = document.documentElement
@@ -419,9 +204,9 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
     }, [isEditMode])
 
     useEffect(() => {
-      if (panelVisible) return
+      if (panelVisible && isAdmin) return
       setIsEditMode(false)
-    }, [panelVisible])
+    }, [panelVisible, isAdmin])
 
     // 打包放渲染层不放 state；widgets 保持完整列表，换回更大行数时溢出项会回来。
     const { placed: displayWidgets, overflow: hiddenWidgets } = useMemo(
@@ -451,10 +236,9 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
     }, [maxPage, currentPage])
 
     // 自动翻页另接 panelVisible 与 isHovering：收起/通知页或指针停在卡片上时不要翻。
-    useHomeVisibilityInterval(
+    useVisibilityInterval(
       () => setCurrentPage((prev) => (prev >= maxPage ? 0 : prev + 1)),
-      10000,
-      shouldAutoAdvanceWidgets({ isEditMode, maxPage, panelVisible, isHovering }),
+      { delay: 10000, enabled: shouldAutoAdvanceWidgets({ isEditMode, maxPage, panelVisible, isHovering }) },
     )
 
     const filteredWidgets = useMemo((): WidgetType[] => {
@@ -485,25 +269,18 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
       return CONTROL_PANEL_WIDGETS
     }, [gridRows, CONTROL_PANEL_WIDGETS])
 
-    const handleWheel = (e: React.WheelEvent) => {
-      if (wheelCooldown.current) return
-
-      if (Math.abs(e.deltaY) > 30) {
-        if (e.deltaY > 0) {
-          if (currentPage < maxPage) {
-            setCurrentPage((p) => p + 1)
-            wheelCooldown.current = true
-            setTimeout(() => (wheelCooldown.current = false), 400)
-          }
-        } else {
-          if (currentPage > 0) {
-            setCurrentPage((p) => p - 1)
-            wheelCooldown.current = true
-            setTimeout(() => (wheelCooldown.current = false), 400)
-          }
-        }
-      }
-    }
+    const { handleMouseDown, handleMouseUp, handleResizeStart, handleWheel, isDraggingRef } = useWidgetGestures({
+      visible: panelVisible,
+      isAdmin,
+      editing: isEditMode,
+      rows: gridRows,
+      page: currentPage,
+      maxPage,
+      onEdit: () => setIsEditMode(true),
+      onPrepareEdit: () => { void import('../WidgetLibraryIsland') },
+      onRows: handleRowsChange,
+      onPage: setCurrentPage,
+    })
 
     return (
       <>
@@ -532,6 +309,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
           }}
           onTouchStart={handleMouseDown}
           onTouchEnd={handleMouseUp}
+          onTouchCancel={handleMouseUp}
         >
           <div className="bg-gray-100/50 dark:bg-white/5 rounded-2xl p-1 border border-gray-200/50 dark:border-white/5 shadow-inner overflow-hidden relative group/container transition-all duration-300 ease-in-out">
             <div className="w-full overflow-hidden" onWheel={handleWheel}>

@@ -376,14 +376,6 @@ export function layoutsAfterWidgetRegistry(
   }
 }
 
-/** In-flight first-paint must not replace a newer restore. */
-export function shouldAcceptHomeLayoutApply(
-  applyGeneration: number,
-  currentGeneration: number,
-): boolean {
-  return applyGeneration === currentGeneration
-}
-
 export function serializeDashboardLayout(
   layouts: HomeDashboardLayouts,
 ): string {

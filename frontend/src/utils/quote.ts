@@ -1,8 +1,10 @@
 import { API_URL } from '../config'
 import { currentCopy } from '../i18n/localeCopy'
 import apiService from '../services/api'
+import { awaitAbortable } from './awaitAbortable'
 import { formatUserFacingError } from './formatUserFacingError'
 import { httpStatusMessage } from './httpStatus'
+import { RequestCache } from './requestCache'
 
 export interface QuoteData {
   text: string
@@ -80,23 +82,18 @@ export function normalizeHitokotoConfig(
 
 /* Do not persist hitokoto config in localStorage. */
 const HITOKOTO_CONFIG_TTL = 5 * 60 * 1000
-let cachedHitokotoConfig: HitokotoConfig | null = null
-let cachedHitokotoConfigAt = 0
-let hitokotoConfigInflight: Promise<HitokotoConfig> | null = null
+const hitokotoConfigCache = new RequestCache(1)
+const HITOKOTO_CONFIG_KEY = '/config/hitokoto'
 
 export function clearHitokotoConfigCache(): void {
-  cachedHitokotoConfig = null
-  cachedHitokotoConfigAt = 0
-  hitokotoConfigInflight = null
+  hitokotoConfigCache.clear()
 }
 
 if (typeof window !== 'undefined') {
   window.addEventListener(HITOKOTO_CONFIG_UPDATED_EVENT, (event: Event) => {
     const detail = (event as CustomEvent<HitokotoConfig | undefined>).detail
     if (detail && typeof detail.sourceId === 'string') {
-      cachedHitokotoConfig = normalizeHitokotoConfig(detail)
-      cachedHitokotoConfigAt = Date.now()
-      hitokotoConfigInflight = null
+      hitokotoConfigCache.set(HITOKOTO_CONFIG_KEY, normalizeHitokotoConfig(detail), HITOKOTO_CONFIG_TTL)
       return
     }
     clearHitokotoConfigCache()
@@ -106,31 +103,23 @@ if (typeof window !== 'undefined') {
 export async function fetchHitokotoConfig(
   options?: { force?: boolean },
 ): Promise<HitokotoConfig> {
-  if (!options?.force) {
-    if (
-      cachedHitokotoConfig &&
-      Date.now() - cachedHitokotoConfigAt < HITOKOTO_CONFIG_TTL
-    ) {
-      return cachedHitokotoConfig
-    }
-    if (hitokotoConfigInflight) return hitokotoConfigInflight
-  }
+  // Force detaches the previous request; its late result must not own the cache.
+  if (options?.force) hitokotoConfigCache.delete(HITOKOTO_CONFIG_KEY)
+  return hitokotoConfigCache.fetch(HITOKOTO_CONFIG_KEY, async () => {
+    const response = await apiService.get<HitokotoConfigResponse>(HITOKOTO_CONFIG_KEY)
+    return normalizeHitokotoConfig(response.config)
+  }, HITOKOTO_CONFIG_TTL)
+}
 
-  hitokotoConfigInflight = (async () => {
+/** Cached presentation is optional and must not block confirmed config updates. */
+export function clearQuoteContentCache(): void {
+  for (const key of ['quote_cache', 'quote_cache_time', 'quote_cache_source', 'quote_data_cache']) {
     try {
-      const response = await apiService.get<HitokotoConfigResponse>(
-        '/config/hitokoto',
-      )
-      const config = normalizeHitokotoConfig(response.config)
-      cachedHitokotoConfig = config
-      cachedHitokotoConfigAt = Date.now()
-      return config
-    } finally {
-      hitokotoConfigInflight = null
+      localStorage.removeItem(key)
+    } catch {
+      // Continue invalidating the remaining keys if one storage operation fails.
     }
-  })()
-
-  return hitokotoConfigInflight
+  }
 }
 
 export async function updateHitokotoConfig(
@@ -149,13 +138,8 @@ export async function updateHitokotoConfig(
     )
   }
   const saved = normalizeHitokotoConfig(response.config)
-  cachedHitokotoConfig = saved
-  cachedHitokotoConfigAt = Date.now()
-  hitokotoConfigInflight = null
-  localStorage.removeItem('quote_cache')
-  localStorage.removeItem('quote_cache_time')
-  localStorage.removeItem('quote_cache_source')
-  localStorage.removeItem('quote_data_cache')
+  hitokotoConfigCache.set(HITOKOTO_CONFIG_KEY, saved, HITOKOTO_CONFIG_TTL)
+  clearQuoteContentCache()
   window.dispatchEvent(
     new CustomEvent(HITOKOTO_CONFIG_UPDATED_EVENT, { detail: saved }),
   )
@@ -200,30 +184,50 @@ function resolveHitokotoSourceFromConfig(
   )
 }
 
+function readQuoteCache(sourceUrl: string): QuoteData | null {
+  try {
+    const cached = localStorage.getItem('quote_cache')
+    const time = localStorage.getItem('quote_cache_time')
+    const source = localStorage.getItem('quote_cache_source')
+    if (!cached || !time || source !== sourceUrl) return null
+    if (!(Date.now() - Number.parseInt(time) < 10 * 60 * 1000)) return null
+    const data = JSON.parse(cached)
+    return typeof data?.text === 'string' && data.text.trim() ? data : null
+  } catch {
+    return null
+  }
+}
+
+function writeQuoteCache(data: QuoteData, sourceUrl: string): void {
+  try {
+    localStorage.setItem('quote_cache', JSON.stringify(data))
+    localStorage.setItem('quote_cache_time', Date.now().toString())
+    localStorage.setItem('quote_cache_source', sourceUrl)
+  } catch {
+    // Keep the network result even when persistent storage is unavailable.
+  }
+}
+
 export async function getRandomQuote(
   locale?: string,
+  signal?: AbortSignal,
 ): Promise<QuoteData | null> {
   let source: HitokotoSource | null
   try {
-    source = await resolveHitokotoSource()
+    signal?.throwIfAborted()
+    const resolving = resolveHitokotoSource()
+    source = await (signal ? awaitAbortable(resolving, signal) : resolving)
+    signal?.throwIfAborted()
   } catch (error) {
+    signal?.throwIfAborted()
     console.warn('Failed to load hitokoto config:', error)
     return getLocalQuote(locale)
   }
   if (!source) return getLocalQuote(locale)
 
   try {
-    // Cache must match the current source URL.
-    const cachedQuote = localStorage.getItem('quote_cache')
-    const cacheTime = localStorage.getItem('quote_cache_time')
-    const cacheSource = localStorage.getItem('quote_cache_source')
-
-    if (cachedQuote && cacheTime && cacheSource === source.url) {
-      const cacheAge = Date.now() - Number.parseInt(cacheTime)
-      if (cacheAge < 10 * 60 * 1000) {
-        return JSON.parse(cachedQuote)
-      }
-    }
+    const cached = readQuoteCache(source.url)
+    if (cached) return cached
 
     // Proxy (CORS).
     const proxyUrl =
@@ -232,7 +236,9 @@ export async function getRandomQuote(
         : `${API_URL}/api/proxy/hitokoto?url=${encodeURIComponent(source.url)}`
 
     const response = await fetch(proxyUrl, {
-      signal: AbortSignal.timeout(10000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(10000)])
+        : AbortSignal.timeout(10000),
     })
 
     if (!response.ok) throw new Error(httpStatusMessage(response.status))
@@ -253,12 +259,12 @@ export async function getRandomQuote(
       author: typeof author === 'string' && author.trim() ? author : undefined,
     }
 
-    localStorage.setItem('quote_cache', JSON.stringify(quoteData))
-    localStorage.setItem('quote_cache_time', Date.now().toString())
-    localStorage.setItem('quote_cache_source', source.url)
+    signal?.throwIfAborted()
+    writeQuoteCache(quoteData, source.url)
 
     return quoteData
   } catch (error) {
+    signal?.throwIfAborted()
     console.warn('Failed to fetch quote:', error)
     return getLocalQuote(locale)
   }

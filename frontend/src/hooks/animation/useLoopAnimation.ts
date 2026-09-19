@@ -20,7 +20,6 @@ export function useLoopAnimation(
   const [isAnimating, setIsAnimating] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
-  const isFirstRender = useRef(true)
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -53,27 +52,17 @@ export function useLoopAnimation(
   }, [clearTimer])
 
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-
-      if (enabled && trigger !== undefined) {
-        startAnimation()
-      }
-      return
-    }
-
-    if (enabled && trigger !== undefined) {
-      startAnimation()
-    }
-  }, [trigger, enabled, startAnimation])
-
-  useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
       clearTimer()
     }
   }, [clearTimer])
+
+  useEffect(() => {
+    if (!enabled) stopAnimation()
+    else if (trigger !== undefined) startAnimation()
+  }, [trigger, enabled, startAnimation, stopAnimation])
 
   return {
     isAnimating,

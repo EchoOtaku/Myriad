@@ -15,12 +15,6 @@ export {
 export { pageIdFromPath } from './pageId'
 
 export {
-  useHomeResizeObserver,
-  useHomeScheduler,
-  useHomeVisibilityInterval,
-} from './pages/home'
-
-export {
   useLibraryIntersectionObserver,
   useLibraryScheduler,
 } from './pages/library'
@@ -33,17 +27,19 @@ export {
   usePhantasiAnimationConfig,
 } from './pages/phantasi'
 
-export { useTappScheduler, useTappStagger } from './pages/tapp'
-export { useLoopAnimation } from './useLoopAnimation'
+export { useTappStagger } from './pages/tapp'
 
+export { useLoopAnimation } from './useLoopAnimation'
 export { usePageReady } from './usePageReady'
 
 export { usePageTransition } from './usePageTransition'
-export { useRouteScheduler } from './useRouteScheduler'
 
+export { useRouteScheduler } from './useRouteScheduler'
 export { useStaggerAnimation } from './useStaggerAnimation'
 
 export { useVisibilityInterval } from './useVisibilityPause'
+
+export { useWidgetResizeObserver } from './useWidgetResizeObserver'
 
 export function configureAnimationCoordinator(
   config: Partial<import('./types').CoordinatorConfig>,
@@ -78,9 +74,8 @@ export function batchWrite(callback: () => void): void {
 export function observeResize(
   element: Element,
   callback: (entry: ResizeObserverEntry) => void,
-  options?: { immediate?: boolean },
 ): () => void {
-  return coordinator.observeResize(element, callback, options)
+  return coordinator.observeResize(element, callback)
 }
 
 export function getCachedSize(

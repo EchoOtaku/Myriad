@@ -1,12 +1,10 @@
 import type { TranslationKeys } from '../../i18n'
-import type { WeatherData } from '../../utils/dynamicContent'
 
 import type { WidgetConfig } from '../widgetGridTypes'
 import { motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import {
-  useHomeVisibilityInterval,
   useLoopAnimation,
 } from '../../hooks/animation'
 import {
@@ -16,20 +14,14 @@ import {
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import {
   getAirQualityIcon,
-  getWeatherInfo,
-  normalizeWeatherIconAssets,
   WEATHER_DETAIL_ICON_ASSETS,
-  WEATHER_ICON_ASSETS,
 } from '../../utils/dynamicContent'
-import { userFacingError } from '../../utils/userFacingError'
 import { WeatherAssetIcon } from '../weather/WeatherAssetIcon'
 import { FitText } from './shared/FitText'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeleton } from './shared/WidgetSkeleton'
-
-const CACHE_KEY = 'weather_data_cache'
-const CACHE_DURATION = 30 * 60 * 1000
+import { useWeatherContent } from './useWeatherContent'
 
 // WMO 码→翻译键；模块级常量，别在函数里重建。
 const WEATHER_KEY_BY_CODE: Record<number, keyof TranslationKeys['weather']> = {
@@ -104,91 +96,7 @@ export const WeatherWidget = memo(
     const MDiv = motion.div
     const MSpan = motion.span
 
-    const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [fetchError, setFetchError] = useState('')
-
-    const loadFromCache = useCallback(() => {
-      try {
-        const cached = localStorage.getItem(CACHE_KEY)
-        if (cached) {
-          const { data, timestamp } = JSON.parse(cached)
-          if (Date.now() - timestamp < CACHE_DURATION) {
-            setWeatherData(normalizeWeatherIconAssets(data))
-            return true
-          }
-        }
-      } catch (err) {
-        console.error(`${t.weatherWidget.loadCacheFailed}:`, err)
-      }
-      return false
-    }, [t])
-
-    const saveToCache = useCallback(
-      (data: WeatherData) => {
-        try {
-          localStorage.setItem(
-            CACHE_KEY,
-            JSON.stringify({
-              data,
-              timestamp: Date.now(),
-            }),
-          )
-        } catch (err) {
-          console.error(`${t.weatherWidget.saveCacheFailed}:`, err)
-        }
-      },
-      [t],
-    )
-
-    const fetchWeather = useCallback(async () => {
-      try {
-        const weather = await getWeatherInfo()
-        if (weather) {
-          setWeatherData(weather)
-          setFetchError('')
-          saveToCache(weather)
-        }
-      } catch (error) {
-        console.error(`${t.weatherWidget.fetchWeatherFailed}:`, error)
-        setFetchError(
-          userFacingError(error, t.weatherWidget.fetchWeatherFailed),
-        )
-      } finally {
-        setLoading(false)
-      }
-    }, [saveToCache, t])
-
-    useEffect(() => {
-      if (isPreview) {
-        setWeatherData({
-          temperature: '24°',
-          weather: t.weatherWidget.sunny,
-          city: t.weatherWidget.sampleCity,
-          icon: WEATHER_ICON_ASSETS.sunny,
-          humidity: 45,
-          windSpeed: 12,
-          weatherCode: 0,
-        })
-        setLoading(false)
-        return
-      }
-
-      const hasCache = loadFromCache()
-      if (hasCache) {
-        setLoading(false)
-      }
-
-      fetchWeather()
-    }, [
-      loadFromCache,
-      fetchWeather,
-      isPreview,
-      t.weatherWidget.sunny,
-      t.weatherWidget.sampleCity,
-    ])
-
-    useHomeVisibilityInterval(fetchWeather, CACHE_DURATION, !isPreview)
+    const { weatherData, loading, fetchError } = useWeatherContent(isPreview)
 
     const themeColor = useMemo(() => {
       if (!weatherData) return '#10b981'

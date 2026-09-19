@@ -503,12 +503,12 @@ const GamePresenceWidget = memo(
           })
       }
       const idle =
-        'requestIdleCallback' in window
+        typeof window.requestIdleCallback === 'function'
           ? window.requestIdleCallback(start, { timeout: 4000 })
           : window.setTimeout(start, 1)
       return () => {
         cancelled = true
-        if ('requestIdleCallback' in window) {
+        if (typeof window.requestIdleCallback === 'function') {
           window.cancelIdleCallback(idle)
         } else {
           window.clearTimeout(idle)

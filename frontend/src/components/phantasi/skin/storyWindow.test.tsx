@@ -3,8 +3,9 @@ import { createRequire, registerHooks } from 'node:module'
 import { after, describe, it } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { I18nNamespace } from '../../../contexts/I18nContext'
 import { getDefaultLocale } from '../../../i18n'
-import { loadLocale } from '../../../i18n/loadLocale'
+import { loadShellLocale, loadShellNamespace } from '../../../i18n/loadLocale'
 import { makeItem, makeSource } from '../logic/fixtures'
 // CSS is exercised by the browser replay; Node measures the real component tree.
 const css = registerHooks({
@@ -17,7 +18,6 @@ const css = registerHooks({
 const { default: PhantasiList } = await import('./PhantasiList')
 const { default: PhantasiNotes } = await import('./PhantasiNotes')
 css.deregister()
-await loadLocale(getDefaultLocale())
 
 // Use real Web Storage so metadata reads have the same semantics as the browser.
 const require = createRequire(import.meta.url)
@@ -37,6 +37,7 @@ after(() => {
   else Reflect.deleteProperty(globalThis, 'localStorage')
   dom.window.close()
 })
+await Promise.all([loadShellLocale(getDefaultLocale()), loadShellNamespace('phantasi', getDefaultLocale())])
 function noop() {}
 
 describe('large journal walls', () => {
@@ -63,7 +64,7 @@ describe('large journal walls', () => {
               onItemSelect: noop,
               onLoadMore: noop,
             })
-      const html = renderToStaticMarkup(wall)
+      const html = renderToStaticMarkup(createElement(I18nNamespace, { names: ['phantasi'], children: wall }))
       const cards = [...html.matchAll(/data-rail-col=/g)]
       assert.ok(
         cards.length > 0 && cards.length < 64,

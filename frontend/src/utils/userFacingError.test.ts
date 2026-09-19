@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
-import { currentCopy, formatCurrent } from '../i18n/localeCopy.ts'
 import { loadShellNamespace } from '../i18n/loadLocale.ts'
+import { currentCopy, formatCurrent } from '../i18n/localeCopy.ts'
 import { ApiError } from '../services/api.ts'
 import {
   httpStatusMessage,
@@ -95,7 +95,7 @@ describe('userFacingError', () => {
       ),
       copy,
     )
-    assert.equal(/Not Found|not found/i.test(copy), false)
+    assert.equal(/not found/i.test(copy), false)
   })
 
   it('maps locale_invalid from the catalog', () => {

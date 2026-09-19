@@ -3,12 +3,15 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { getDefaultLocale } from '../../../i18n'
+import { loadShellNamespace } from '../../../i18n/loadLocale'
 import { annotationChrome } from './annotationChrome.ts'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 
 describe('annotation chrome', () => {
-  it('falls unknown types back to term colors', () => {
+  it('falls unknown types back to term colors', async () => {
+    await loadShellNamespace('phantasi', getDefaultLocale())
     const term = annotationChrome('term')
     const unknown = annotationChrome('not-a-type')
     assert.equal(unknown.color, term.color)

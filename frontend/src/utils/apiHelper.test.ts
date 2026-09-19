@@ -64,3 +64,30 @@ describe('handleErrorResponse', () => {
     assert.deepEqual(parsed, body)
   })
 })
+
+describe('JSON response cancellation', () => {
+  for (const status of [200, 503]) {
+    for (const name of ['AbortError', 'TimeoutError']) {
+      it(`preserves ${name} while reading an HTTP ${status} body`, async () => {
+        let body!: ReadableStreamDefaultController<Uint8Array>
+        const response = new Response(new ReadableStream<Uint8Array>({
+          start(controller) { body = controller },
+        }), { status, headers: { 'content-type': 'application/json' } })
+        const reason = new DOMException('Reading was cancelled', name)
+        const read = readJsonOk(response)
+        body.error(reason)
+        await assert.rejects(read, error => error === reason)
+      })
+    }
+  }
+
+  it('still normalizes malformed JSON instead of exposing parser details', async () => {
+    const response = new Response('{ broken', { headers: { 'content-type': 'application/json' } })
+    await assert.rejects(readJsonOk(response), error => {
+      assert.ok(error instanceof Error)
+      assert.equal(error instanceof SyntaxError, false)
+      assert.equal(error.message.includes('{ broken'), false)
+      return true
+    })
+  })
+})

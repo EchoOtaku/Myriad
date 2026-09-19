@@ -6,6 +6,10 @@ import { withAiTimeoutSignal } from './aiRequestTimeout.mjs'
 import { httpStatusMessage } from './httpStatus'
 import { isUselessErrorText } from './uselessErrorText'
 
+function isResponseCancellation(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+}
+
 export async function parseJsonResponse(response: Response): Promise<any> {
   const contentType = response.headers.get('content-type')
   const hasJson = contentType && contentType.includes('application/json')
@@ -19,7 +23,8 @@ export async function parseJsonResponse(response: Response): Promise<any> {
 
   try {
     return await response.json()
-  } catch {
+  } catch (error) {
+    if (isResponseCancellation(error)) throw error
     throw new Error(
       formatCurrent(currentCopy().errors.invalidResponse, {
         status: response.status,
@@ -50,7 +55,7 @@ export async function handleErrorResponse(
         parsed.hint,
       )
     } catch (error) {
-      if (error instanceof ApiError) throw error
+      if (error instanceof ApiError || isResponseCancellation(error)) throw error
       throw new ApiError(
         `${defaultMessage} (${response.status})`,
         response.status,

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { makePreviews, makeSource } from '../../../src/components/phantasi/logic/fixtures'
 import { PhantasiViewLane } from '../../../src/components/phantasi/skin/PhantasiChip'
 import PhantasiFeeds from '../../../src/components/phantasi/skin/PhantasiFeeds'
-import { I18nProvider } from '../../../src/contexts/I18nContext'
+import { I18nNamespace, I18nProvider } from '../../../src/contexts/I18nContext'
 import './phantasiProduction.css'
 import '../../../src/components/phantasi/ui/phantasi.css'
 
@@ -47,4 +47,4 @@ function Harness() {
     </div>
   </>
 }
-createRoot(document.getElementById('root')!).render(<I18nProvider><Harness /></I18nProvider>)
+createRoot(document.getElementById('root')!).render(<I18nProvider><I18nNamespace names={['phantasi']}><Harness /></I18nNamespace></I18nProvider>)

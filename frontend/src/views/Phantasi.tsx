@@ -68,8 +68,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useReadingListOptional } from '../contexts/ReadingListContext'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { usePhantasiKeyboard } from '../hooks/usePhantasiKeyboard'
-import { useMediaQuery } from '../hooks/useSharedEventListener'
 import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,

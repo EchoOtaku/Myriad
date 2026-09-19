@@ -10,7 +10,7 @@ import {
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { useBreakpoints } from '../../hooks/useSharedEventListener'
+import { useBreakpoints } from '../../hooks/useBreakpoints'
 import { getCurrentMetadata } from '../../utils/siteMetadata'
 import {
   prefersReducedMotion,

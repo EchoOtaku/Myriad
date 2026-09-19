@@ -1,10 +1,10 @@
 import type { SourceSortMode } from '../components/phantasi/logic/board'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { normalizeSourceSortMode } from '../components/phantasi/logic/sourceSort'
 import { currentCopy } from '../i18n/localeCopy'
 import apiService from '../services/api'
 import { formatUserFacingError } from './formatUserFacingError'
-import { dedupedFetch } from './requestDedup'
+import { clearDedupCache, dedupedFetch } from './requestDedup'
 
 export type ModuleVisibilityLevel = 'all' | 'authenticated' | 'admin'
 export type ModuleVisibilityKey =
@@ -196,6 +196,7 @@ let sessionPreferences: ModuleVisibilityPreferences | null = null
 let sessionLoadedAt = 0
 let sessionInflight: Promise<ModuleVisibilityPreferences> | null = null
 let sessionLoadGeneration = 0
+const sessionSubscribers = new Set<() => void>()
 
 /** Soft TTL: remounts reuse; refresh when stale. */
 const SESSION_PREFERENCES_TTL_MS = 60_000
@@ -205,7 +206,16 @@ function rememberSessionPreferences(
 ): ModuleVisibilityPreferences {
   sessionPreferences = preferences
   sessionLoadedAt = Date.now()
+  for (const subscriber of [...sessionSubscribers]) subscriber()
   return preferences
+}
+
+/** Confirmed writes and update events supersede every older read. */
+function acceptSessionPreferences(preferences: ModuleVisibilityPreferences) {
+  ++sessionLoadGeneration
+  sessionInflight = null
+  clearDedupCache('/config/module-visibility')
+  return rememberSessionPreferences(preferences)
 }
 
 export function getCachedModuleVisibilityPreferences(): ModuleVisibilityPreferences | null {
@@ -228,6 +238,7 @@ export async function ensureModuleVisibilityPreferences(
     return sessionInflight
   }
 
+  if (force) clearDedupCache('/config/module-visibility')
   const generation = ++sessionLoadGeneration
   const flight = fetchModuleVisibilityPreferences()
     .then((prefs) => {
@@ -273,7 +284,7 @@ export async function updateModuleVisibilityPreferences(
     )
   }
   const next = normalizeModuleVisibilityPreferences(response.preferences)
-  rememberSessionPreferences(next)
+  acceptSessionPreferences(next)
   return next
 }
 
@@ -281,7 +292,7 @@ export function dispatchModuleVisibilityPreferencesUpdated(
   preferences: ModuleVisibilityPreferences,
 ) {
   const normalized = normalizeModuleVisibilityPreferences(preferences)
-  rememberSessionPreferences(normalized)
+  acceptSessionPreferences(normalized)
   if (typeof window === 'undefined') return
   window.dispatchEvent(
     new CustomEvent(MODULE_VISIBILITY_UPDATED_EVENT, {
@@ -290,53 +301,47 @@ export function dispatchModuleVisibilityPreferencesUpdated(
   )
 }
 
-export function useModuleVisibilityPreferences() {
-  const [preferences, setPreferences] = useState<ModuleVisibilityPreferences>(
-    () => sessionPreferences ?? DEFAULT_MODULE_VISIBILITY_PREFERENCES,
-  )
-  // Block first paint until session resolves once.
-  const [isLoading, setIsLoading] = useState(() => sessionPreferences === null)
+function handleSessionUpdate(event: Event) {
+  const detail = (event as CustomEvent<ModuleVisibilityPreferences>).detail
+  // The dispatcher already published this exact snapshot to the store.
+  if (detail === sessionPreferences) return
+  acceptSessionPreferences(normalizeModuleVisibilityPreferences(detail))
+}
 
+function subscribeSessionPreferences(subscriber: () => void) {
+  if (sessionSubscribers.size === 0) {
+    window.addEventListener(MODULE_VISIBILITY_UPDATED_EVENT, handleSessionUpdate)
+  }
+  sessionSubscribers.add(subscriber)
+  return () => {
+    sessionSubscribers.delete(subscriber)
+    if (sessionSubscribers.size === 0) {
+      window.removeEventListener(MODULE_VISIBILITY_UPDATED_EVENT, handleSessionUpdate)
+    }
+  }
+}
+
+const getServerSessionPreferences = () => null
+
+/** Every consumer observes the same confirmed snapshot; reads belong to the session. */
+export function useModuleVisibilityPreferences() {
+  const snapshot = useSyncExternalStore(
+    subscribeSessionPreferences,
+    getCachedModuleVisibilityPreferences,
+    getServerSessionPreferences,
+  )
   const reload = useCallback(async (force = true) => {
-    // Do not set isLoading true again once session data exists.
-    if (sessionPreferences === null) {
-      setIsLoading(true)
-    }
-    try {
-      const nextPreferences = await ensureModuleVisibilityPreferences(force)
-      setPreferences(nextPreferences)
-    } catch {
-      const fallback =
-        sessionPreferences ?? DEFAULT_MODULE_VISIBILITY_PREFERENCES
-      setPreferences(fallback)
-    } finally {
-      setIsLoading(false)
-    }
+    await ensureModuleVisibilityPreferences(force)
   }, [])
 
   useEffect(() => {
-    // Warm session: paint immediately; refresh when stale.
-    const age = Date.now() - sessionLoadedAt
-    if (sessionPreferences && age < SESSION_PREFERENCES_TTL_MS) {
-      setPreferences(sessionPreferences)
-      setIsLoading(false)
-    } else {
-      void reload(sessionPreferences !== null)
-    }
+    // Stale mounts share one refresh and keep displaying the last snapshot.
+    void ensureModuleVisibilityPreferences()
+  }, [])
 
-    const handleUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<ModuleVisibilityPreferences>).detail
-      const next = normalizeModuleVisibilityPreferences(detail)
-      rememberSessionPreferences(next)
-      setPreferences(next)
-      setIsLoading(false)
-    }
-
-    window.addEventListener(MODULE_VISIBILITY_UPDATED_EVENT, handleUpdated)
-    return () => {
-      window.removeEventListener(MODULE_VISIBILITY_UPDATED_EVENT, handleUpdated)
-    }
-  }, [reload])
-
-  return { preferences, isLoading, reload }
+  return {
+    preferences: snapshot ?? DEFAULT_MODULE_VISIBILITY_PREFERENCES,
+    isLoading: snapshot === null,
+    reload,
+  }
 }

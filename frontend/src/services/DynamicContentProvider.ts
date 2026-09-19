@@ -38,19 +38,60 @@ export interface ContentProviderConfig {
   lastUpdate?: number
 }
 
-export interface ContentUpdateEvent {
-  type: 'add' | 'update' | 'remove' | 'clear'
-  providerId: string
-  content?: DynamicContentItem
-  contentType?: DynamicContentType
-}
-
-export type ContentUpdateListener = (event: ContentUpdateEvent) => void
-
-class DynamicContentProviderService {
+export class DynamicContentProviderService {
   private providers: Map<string, ContentProviderConfig> = new Map()
   private contents: Map<string, DynamicContentItem[]> = new Map()
-  private listeners: Set<ContentUpdateListener> = new Set()
+  private revision = 0
+  private subscribers = new Set<() => void>()
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null
+
+  getSnapshot = (): number => this.revision
+
+  /** Recheck wall-clock expiry after the browser has suspended timers. */
+  refreshSnapshot(): void {
+    this.publish()
+  }
+
+  subscribe = (callback: () => void): (() => void) => {
+    this.subscribers.add(callback)
+    this.scheduleExpiry()
+    return () => {
+      this.subscribers.delete(callback)
+      this.scheduleExpiry()
+    }
+  }
+
+  private publish() {
+    // Commit all data before subscribers read their next snapshot.
+    this.revision++
+    this.scheduleExpiry()
+    for (const callback of [...this.subscribers]) {
+      if (!this.subscribers.has(callback)) continue
+      try { callback() } catch (error) {
+        console.error('[DynamicContentProvider] Subscriber error:', error)
+      }
+    }
+  }
+
+  private scheduleExpiry() {
+    if (this.expiryTimer !== null) clearTimeout(this.expiryTimer)
+    this.expiryTimer = null
+    if (this.subscribers.size === 0) return
+    const now = Date.now()
+    let next = Infinity
+    for (const [id, contents] of this.contents) {
+      if (!this.providers.get(id)?.enabled) continue
+      for (const content of contents) {
+        if (content.expiresAt && content.expiresAt > now) next = Math.min(next, content.expiresAt)
+      }
+    }
+    if (!Number.isFinite(next)) return
+    this.expiryTimer = setTimeout(() => {
+      this.expiryTimer = null
+      this.publish()
+    }, Math.min(next - now, 2_147_483_647))
+  }
+
   private currentLocale: string = getDefaultLocale()
 
   constructor() {
@@ -62,34 +103,31 @@ class DynamicContentProviderService {
   }
 
   registerProvider(config: ContentProviderConfig): void {
-    this.providers.set(config.id, config)
+    this.providers.set(config.id, { ...config })
     this.contents.set(config.id, [])
+    this.publish()
   }
 
   unregisterProvider(providerId: string): void {
-    const contents = this.contents.get(providerId) ?? []
-    for (const content of contents) {
-      this.notifyListeners({
-        type: 'remove',
-        providerId,
-        contentType: content.type,
-      })
-    }
-
+    if (!this.providers.has(providerId)) return
     this.providers.delete(providerId)
     this.contents.delete(providerId)
+    this.publish()
   }
 
   getProvider(providerId: string): ContentProviderConfig | undefined {
-    return this.providers.get(providerId)
+    const provider = this.providers.get(providerId)
+    return provider ? { ...provider } : undefined
   }
 
   getAllProviders(): ContentProviderConfig[] {
-    return Iterator.from(this.providers.values()).toArray()
+    return [...this.providers.values()].map(provider => ({ ...provider }))
   }
 
   setLocale(locale: string): void {
+    if (this.currentLocale === locale) return
     this.currentLocale = locale
+    this.publish()
   }
 
   getLocale(): string {
@@ -108,25 +146,12 @@ class DynamicContentProviderService {
     const contents = this.contents.get(providerId) ?? []
     const existingIndex = contents.findIndex((c) => c.type === content.type)
 
-    if (existingIndex >= 0) {
-      contents[existingIndex] = content
-      this.notifyListeners({
-        type: 'update',
-        providerId,
-        content,
-      })
-    } else {
-      contents.push(content)
-      this.notifyListeners({
-        type: 'add',
-        providerId,
-        content,
-      })
-    }
-
-    this.contents.set(providerId, contents)
-
+    const stored = copyContent(content)
+    this.contents.set(providerId, existingIndex >= 0
+      ? contents.toSpliced(existingIndex, 1, stored)
+      : [...contents, stored])
     provider.lastUpdate = Date.now()
+    this.publish()
   }
 
   removeContent(providerId: string, contentType: DynamicContentType): void {
@@ -136,24 +161,18 @@ class DynamicContentProviderService {
     const index = contents.findIndex((c) => c.type === contentType)
     if (index >= 0) {
       this.contents.set(providerId, contents.toSpliced(index, 1))
-      this.notifyListeners({
-        type: 'remove',
-        providerId,
-        contentType,
-      })
+      this.publish()
     }
   }
 
   clearProviderContents(providerId: string): void {
+    if (!this.providers.has(providerId)) return
     this.contents.set(providerId, [])
-    this.notifyListeners({
-      type: 'clear',
-      providerId,
-    })
+    this.publish()
   }
 
   getProviderContents(providerId: string): DynamicContentItem[] {
-    return this.contents.get(providerId) ?? []
+    return (this.contents.get(providerId) ?? []).map(copyContent)
   }
 
   getAllContents(): DynamicContentItem[] {
@@ -165,7 +184,7 @@ class DynamicContentProviderService {
       if (!provider?.enabled) continue
 
       for (const content of contents) {
-        if (content.expiresAt && content.expiresAt < now) continue
+        if (content.expiresAt && content.expiresAt <= now) continue
         allContents.push(this.localizeContent(content))
       }
     }
@@ -175,9 +194,9 @@ class DynamicContentProviderService {
 
   /** 未命中当前语言则 en-US，再原文。 */
   private localizeContent(content: DynamicContentItem): DynamicContentItem {
-    if (!content.i18n) return content
+    if (!content.i18n) return { ...content }
 
-    const localized = { ...content }
+    const localized = copyContent(content)
     const locale = this.currentLocale
 
     if (content.i18n.text) {
@@ -193,25 +212,6 @@ class DynamicContentProviderService {
     }
 
     return localized
-  }
-
-  addListener(listener: ContentUpdateListener): () => void {
-    this.listeners.add(listener)
-    return () => this.listeners.delete(listener)
-  }
-
-  removeListener(listener: ContentUpdateListener): void {
-    this.listeners.delete(listener)
-  }
-
-  private notifyListeners(event: ContentUpdateEvent): void {
-    for (const listener of this.listeners) {
-      try {
-        listener(event)
-      } catch (error) {
-        console.error('[DynamicContentProvider] Listener error:', error)
-      }
-    }
   }
 
   registerTappProvider(tappInstance: TappInstance): string {
@@ -268,7 +268,8 @@ class DynamicContentProviderService {
   getTappContent(tappId: string): DynamicContentItem | undefined {
     const providerId = `tapp-${tappId}`
     const contents = this.contents.get(providerId) ?? []
-    return contents.find((c) => c.sourceTappId === tappId)
+    const content = contents.find((c) => c.sourceTappId === tappId)
+    return content ? copyContent(content) : undefined
   }
 
   /** 默认仅 weather/theme；tapp 有 subtext 才显示。 */
@@ -301,6 +302,16 @@ class DynamicContentProviderService {
     if (!content) return fallback
     if (!this.shouldShowSubtext(content)) return undefined
     return content.subtext || fallback
+  }
+}
+
+function copyContent(content: DynamicContentItem): DynamicContentItem {
+  return {
+    ...content,
+    ...(content.i18n ? { i18n: {
+      ...(content.i18n.text ? { text: { ...content.i18n.text } } : {}),
+      ...(content.i18n.subtext ? { subtext: { ...content.i18n.subtext } } : {}),
+    } } : {}),
   }
 }
 

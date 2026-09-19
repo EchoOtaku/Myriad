@@ -23,19 +23,19 @@ export const TOUR_HOLE_PAD = 8
 export const TOUR_VIEWPORT_PAD = 16
 export const TOUR_CARD_GAP = 14
 export {
-  TOUR_ACTIVE_ATTR,
-  TOUR_ACTIVE_EVENT,
   isTourDomActive,
   setTourDomActive,
+  TOUR_ACTIVE_ATTR,
+  TOUR_ACTIVE_EVENT,
 } from './tourDom'
 export {
   homeBrowseTourPanelPose,
+  type HomeBrowseTourPanelPose,
   homeEditTourDockPose,
+  type HomeEditTourDockPose,
   isHomeEditSurface,
   setHomeEditSurface,
   subscribeHomeEditSurface,
-  type HomeBrowseTourPanelPose,
-  type HomeEditTourDockPose,
 } from './tourHomePose'
 
 export type ConfigTourSurface = 'browse' | 'persona' | 'ai-persona' | 'none'

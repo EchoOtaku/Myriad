@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
+import { awaitAbortable } from '../utils/awaitAbortable'
 
 // Execute the production module with only browser/config/CSRF dependencies replaced.
 function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
@@ -18,7 +19,8 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
     '../utils/aiRequestTimeout.mjs': { aiRequestTimeoutMs: () => 0 },
     '../utils/csrf': { getCSRFToken: csrf, clearCSRFToken: () => {} },
     '../utils/httpRateLimitToast': { notifyHttpRateLimit: () => {} },
-    '../utils/userFacingError': { httpStatusMessage: () => 'error' },
+    '../utils/awaitAbortable': { awaitAbortable },
+    '../utils/httpStatus': { httpStatusMessage: () => 'error' },
   }
   const exports = {} as { apiService: typeof import('./api').apiService }
   runInNewContext(js, {
@@ -123,4 +125,53 @@ test('blob body cancellation propagates caller identity loss', async () => {
   await entered.promise
   subject.abort()
   await assert.rejects(pending, { name: 'AbortError' })
+})
+
+test('cancelling a pending CSRF wait settles immediately without dispatching a POST', async () => {
+  const token = Promise.withResolvers<string>()
+  const subject = new AbortController()
+  let calls = 0
+  const api = harness(() => token.promise, async () => { calls++; return Response.json({}) })
+  const request = api.post('/agent/presence', {}, { signal: subject.signal })
+  subject.abort()
+  const result = await Promise.race([
+    request.catch(error => error.name),
+    new Promise(resolve => setTimeout(resolve, 50, 'hung')),
+  ])
+  assert.equal(result, 'AbortError')
+  token.resolve('late-token')
+  await Promise.resolve()
+  assert.equal(calls, 0)
+})
+
+test('request timeout covers CSRF acquisition, not just the eventual fetch', async () => {
+  let calls = 0
+  const token = Promise.withResolvers<string>()
+  const api = harness(() => token.promise, async () => { calls++; return Response.json({}) })
+  const result = await Promise.race([
+    api.post('/agent/presence', {}, { timeout: 5 }).catch(error => error.code),
+    new Promise(resolve => setTimeout(resolve, 50, 'hung')),
+  ])
+  assert.equal(result, 'TIMEOUT')
+  token.resolve('late-token')
+  await Promise.resolve()
+  assert.equal(calls, 0)
+})
+
+test('timeout while refreshing rejected CSRF does not dispatch a retry', async () => {
+  const token = Promise.withResolvers<string>()
+  let reads = 0
+  let calls = 0
+  const api = harness(() => ++reads === 1 ? Promise.resolve('old-token') : token.promise, async () => {
+    calls++
+    return Response.json({ error: 'invalid csrf' }, { status: 403 })
+  })
+  const result = await Promise.race([
+    api.post('/agent/presence', {}, { timeout: 5 }).catch(error => error.code),
+    new Promise(resolve => setTimeout(resolve, 50, 'hung')),
+  ])
+  assert.equal(result, 'TIMEOUT')
+  token.resolve('late-token')
+  await Promise.resolve()
+  assert.equal(calls, 1)
 })

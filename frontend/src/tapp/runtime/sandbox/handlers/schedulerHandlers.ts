@@ -94,8 +94,7 @@ export function registerSchedulerHandlers(
     }
     try {
       const scheduler = takeScheduler()
-      let task
-      task = await scheduler.registerTask(
+      const task = await scheduler.registerTask(
         tappInstance.id,
         opts,
         await bridge.getRuntimeGrant(),

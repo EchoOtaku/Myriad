@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { coordinator } from './coordinator'
 import { AnimationPriority, AnimationState } from './types'
 
@@ -8,111 +8,70 @@ interface UseStaggerAnimationOptions {
   baseDelay?: number
   waitForPage?: boolean
   enabled?: boolean
-}
-
-interface StaggerAnimationResult {
-  canAnimate: boolean
-  onComplete: () => void
+  priority?: AnimationPriority
 }
 
 let staggerIdCounter = 0
 
-export function useStaggerAnimation(
-  options: UseStaggerAnimationOptions,
-): StaggerAnimationResult {
-  const {
-    groupId,
-    index,
-    baseDelay,
-    waitForPage = true,
-    enabled = true,
-  } = options
-
-  const idRef = useRef<string>('')
-  if (!idRef.current) {
-    idRef.current = `stagger-${groupId}-${++staggerIdCounter}`
-  }
+/** Admission is one-shot; ownership lasts until completion or unmount. */
+export function useStaggerAnimation({
+  groupId,
+  index,
+  baseDelay,
+  waitForPage = true,
+  enabled = true,
+  priority = AnimationPriority.ELEMENT,
+}: UseStaggerAnimationOptions) {
+  const pageRevision = useSyncExternalStore(
+    coordinator.subscribePage,
+    coordinator.getPageRevision,
+    coordinator.getPageRevision,
+  )
+  const idRef = useRef('')
+  if (!idRef.current) idRef.current = `stagger-${groupId}-${++staggerIdCounter}`
   const id = idRef.current
-
-  // 延迟只由协调器执行，避免与 Motion 重复等待。
+  const [canAnimate, setCanAnimate] = useState(!enabled)
+  const admitted = useRef(!enabled)
+  const unsubscribe = useRef<(() => void) | null>(null)
   const coordinatedDelay = coordinator.getStaggerDelay(index, baseDelay)
 
-  const stateRef = useRef<AnimationState>(
-    enabled ? AnimationState.WAITING : AnimationState.COMPLETED,
-  )
-
-  const scheduledRef = useRef(false)
-  const [, forceUpdate] = useReducer((x) => x + 1, 0)
-
-  const canAnimate =
-    stateRef.current === AnimationState.READY ||
-    stateRef.current === AnimationState.RUNNING ||
-    stateRef.current === AnimationState.COMPLETED
+  const cancel = useCallback(() => {
+    if (!unsubscribe.current) return
+    // Release before removing the listener so its state is also removed.
+    coordinator.skip(id)
+    unsubscribe.current()
+    unsubscribe.current = null
+  }, [id])
 
   useEffect(() => {
-    if (!enabled) {
-      stateRef.current = AnimationState.COMPLETED
-      forceUpdate()
+    if (!enabled || !waitForPage) {
+      cancel()
+      admitted.current = true
+      setCanAnimate(true)
       return
     }
-
-    // 已经直接显示过的元素不在偏好切换后重播入场。
-    if (stateRef.current === AnimationState.COMPLETED) return
-
-    if (!waitForPage) {
-      stateRef.current = AnimationState.READY
-      forceUpdate()
-      return
-    }
-
-    if (scheduledRef.current) {
-      return
-    }
-    scheduledRef.current = true
-
-    // 显式 delay 只交一次；不再同时交 groupId/index。
-    coordinator.schedule({
-      id,
-      priority: AnimationPriority.ELEMENT,
-      delay: coordinatedDelay,
+    // Reordering and preference changes only affect entrances still waiting.
+    // Running cards keep both their visible pose and their concurrency slot.
+    if (admitted.current) return
+    cancel()
+    coordinator.schedule({ id, priority, delay: coordinatedDelay })
+    unsubscribe.current = coordinator.subscribe(id, (state) => {
+      if (state !== AnimationState.READY || admitted.current) return
+      admitted.current = true
+      coordinator.markRunning(id)
+      setCanAnimate(true)
     })
+  }, [cancel, coordinatedDelay, enabled, id, pageRevision, priority, waitForPage])
 
-    const unsubscribe = coordinator.subscribe(id, (state) => {
-      const prevState = stateRef.current
-      stateRef.current = state
+  useEffect(() => cancel, [cancel])
 
-      if (state === AnimationState.READY) {
-        stateRef.current = AnimationState.RUNNING
-        coordinator.markRunning(id)
-      }
-
-      if (prevState !== state && state === AnimationState.READY) {
-        forceUpdate()
-      }
-    })
-
-    return () => {
-      unsubscribe()
-      scheduledRef.current = false
-      if (stateRef.current !== AnimationState.COMPLETED) {
-        coordinator.skip(id)
-        stateRef.current = AnimationState.SKIPPED
-      }
-    }
-  }, [coordinatedDelay, enabled, id, waitForPage])
-
-  const onComplete = () => {
-    if (
-      stateRef.current === AnimationState.READY ||
-      stateRef.current === AnimationState.RUNNING
-    ) {
+  const onComplete = useCallback(() => {
+    if (admitted.current && unsubscribe.current) {
       coordinator.markCompleted(id)
-      stateRef.current = AnimationState.COMPLETED
+      unsubscribe.current()
+      unsubscribe.current = null
     }
-  }
+  }, [id])
 
-  return {
-    canAnimate,
-    onComplete,
-  }
+  return { canAnimate, onComplete }
 }

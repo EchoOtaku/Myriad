@@ -1,4 +1,5 @@
-import { runIdleSlice, TASK_FLUSH_BATCH } from './idleSlice'
+import { createFrameResizeObserver } from './frameResizeObserver'
+import { runIdleSlice, runTaskSlice } from './idleSlice'
 import { Feature, hasFeature } from './pageFeatures'
 
 export type Unsubscribe = () => void
@@ -7,7 +8,6 @@ let currentPageId: string | null = null
 
 let visibilityInitialized = false
 let messageChannelInitialized = false
-let resizeObserverInitialized = false
 
 let _isPageVisible = true
 let _visibilityHandler: (() => void) | null = null
@@ -31,6 +31,8 @@ function initVisibility() {
       'data-page-hidden',
       document.hidden,
     )
+
+    if (_isPageVisible) scheduleIdleRun()
 
     for (const sub of _visibilitySubscribers) {
       try {
@@ -59,6 +61,7 @@ export function isPageVisible(): boolean {
 }
 
 let _channel: MessageChannel | null = null
+let _taskFlushScheduled = false
 const _pendingCallbacks: Array<() => void> = []
 
 function initMessageChannel() {
@@ -68,9 +71,11 @@ function initMessageChannel() {
   if (typeof MessageChannel !== 'undefined') {
     _channel = new MessageChannel()
     _channel.port1.onmessage = () => {
-      const cbs = _pendingCallbacks.splice(0, TASK_FLUSH_BATCH)
-      for (let i = 0; i < cbs.length; i++) cbs[i]()
+      runTaskSlice(_pendingCallbacks, (callback) => {
+        try { callback() } catch (error) { console.error('Scheduled task error:', error) }
+      })
       if (_pendingCallbacks.length > 0) _channel?.port2.postMessage(null)
+      else _taskFlushScheduled = false
     }
   }
 }
@@ -80,7 +85,8 @@ export function scheduleTask(callback: () => void): void {
   initMessageChannel()
   if (_channel) {
     _pendingCallbacks.push(callback)
-    if (_pendingCallbacks.length === 1) {
+    if (!_taskFlushScheduled) {
+      _taskFlushScheduled = true
       _channel.port2.postMessage(null)
     }
   } else {
@@ -88,97 +94,25 @@ export function scheduleTask(callback: () => void): void {
   }
 }
 
-let _cachedNow = 0
-let _nowValid = false
-
-/** 同一帧内复用缓存时间戳。 */
+/** Scheduling deadlines must use current time, including after idle gaps. */
 export function now(): number {
-  if (!_nowValid) {
-    _cachedNow = performance.now()
-    _nowValid = true
-    queueMicrotask(() => {
-      _nowValid = false
-    })
-  }
-  return _cachedNow
+  return performance.now()
 }
 
-export function refreshNow(): number {
-  _cachedNow = performance.now()
-  _nowValid = true
-  return _cachedNow
-}
-
-let _resizeObserver: ResizeObserver | null = null
-const _resizeCallbacks = new WeakMap<
-  Element,
-  (entry: ResizeObserverEntry) => void
->()
-const _resizeElements = new Set<Element>()
-let _resizeBatch: ResizeObserverEntry[] = []
-let _resizeScheduled = false
-const RESIZE_THROTTLE = 50
-let _lastResizeTime = 0
-
-function initResizeObserver() {
-  if (resizeObserverInitialized || typeof ResizeObserver === 'undefined') return
-  resizeObserverInitialized = true
-
-  _resizeObserver = new ResizeObserver((entries) => {
-    if (!_isPageVisible) return
-
-    const nowTime = performance.now()
-    if (nowTime - _lastResizeTime < RESIZE_THROTTLE) {
-      _resizeBatch.push(...entries)
-      if (!_resizeScheduled) {
-        _resizeScheduled = true
-        setTimeout(flushResizeBatch, RESIZE_THROTTLE)
-      }
-      return
-    }
-
-    _lastResizeTime = nowTime
-    for (const entry of entries) {
-      const cb = _resizeCallbacks.get(entry.target)
-      if (cb) cb(entry)
-    }
-  })
-}
-
-function flushResizeBatch() {
-  _resizeScheduled = false
-  const batch = _resizeBatch
-  _resizeBatch = []
-  _lastResizeTime = performance.now()
-
-  for (const entry of batch) {
-    const cb = _resizeCallbacks.get(entry.target)
-    if (cb) cb(entry)
-  }
-}
+const frameResize = createFrameResizeObserver({ isVisible: isPageVisible })
 
 export function observeResize(
   element: Element,
   callback: (entry: ResizeObserverEntry) => void,
 ): Unsubscribe {
-  initResizeObserver()
-  if (!_resizeObserver) return () => {}
-
-  _resizeCallbacks.set(element, callback)
-  _resizeElements.add(element)
-  _resizeObserver.observe(element)
-
-  return () => {
-    _resizeCallbacks.delete(element)
-    _resizeElements.delete(element)
-    _resizeObserver?.unobserve(element)
-  }
+  return frameResize.observe(element, callback)
 }
 
 interface IdleTask {
   id: string
   task: () => void
   priority: number
+  timeout?: number
 }
 
 let _idleTasks: IdleTask[] = []
@@ -201,6 +135,7 @@ function scheduleIdleRun() {
   _idleCallbackId = run(
     (deadline) => {
       _idleCallbackId = null
+      if (!isPageVisible()) return
 
       runIdleSlice(_idleTasks, deadline, (task) => {
         _registeredTasks.delete(task.id)
@@ -211,7 +146,7 @@ function scheduleIdleRun() {
 
       if (_idleTasks.length > 0) scheduleIdleRun()
     },
-    { timeout: 2000 },
+    { timeout: _idleTasks[0]?.timeout ?? 2000 },
   ) as number
 }
 
@@ -219,13 +154,14 @@ export function scheduleIdle(
   id: string,
   task: () => void,
   priority: 'low' | 'normal' | 'high' = 'normal',
+  options: { timeout?: number, dedupe?: boolean } = {},
 ): Unsubscribe {
-  if (_registeredTasks.has(id)) {
+  if (options.dedupe !== false && _registeredTasks.has(id)) {
     return () => cancelIdle(id)
   }
 
   const p = priority === 'high' ? 2 : priority === 'normal' ? 1 : 0
-  _idleTasks.push({ id, task, priority: p })
+  _idleTasks.push({ id, task, priority: p, timeout: options.timeout })
   _registeredTasks.add(id)
 
   for (let i = _idleTasks.length - 1; i > 0; i--) {
@@ -240,7 +176,7 @@ export function scheduleIdle(
   return () => cancelIdle(id)
 }
 
-function cancelIdle(id: string): boolean {
+export function cancelIdle(id: string): boolean {
   const idx = _idleTasks.findIndex((t) => t.id === id)
   if (idx !== -1) {
     _idleTasks = _idleTasks.toSpliced(idx, 1)
@@ -304,10 +240,6 @@ export function runPageCleanup(pageId: string): void {
 export function startPage(pageId: string): void {
   if (currentPageId === pageId) return
 
-  if (currentPageId) {
-    cleanupPage()
-  }
-
   currentPageId = pageId
 
   if (hasFeature(pageId, Feature.Visibility) && !visibilityInitialized) {
@@ -315,110 +247,8 @@ export function startPage(pageId: string): void {
   }
 }
 
-function cleanupPage(): void {
-  _idleTasks.length = 0
-  _registeredTasks.clear()
-  if (_idleCallbackId !== null) {
-    if (typeof cancelIdleCallback !== 'undefined') {
-      cancelIdleCallback(_idleCallbackId)
-    }
-    _idleCallbackId = null
-  }
-
-  _reads.length = 0
-  _writes.length = 0
-  _domBatchScheduled = false
-
-  _resizeBatch.length = 0
-  _resizeScheduled = false
-
-  _pendingCallbacks.length = 0
-}
-
+// Shared tasks/DOM batches are owned by their callers. Route cleanup only
+// releases resources registered for that route via runPageCleanup.
 export function resume(): void {
   scheduleIdleRun()
-}
-
-interface PageResizeManager {
-  observe: (
-    element: Element,
-    callback: (entry: ResizeObserverEntry) => void,
-  ) => void
-  unobserve: (element: Element) => void
-  cleanup: () => void
-}
-
-const _pageResizeManagers = new Map<string, PageResizeManager>()
-
-export function getPageResizeManager(pageId: string): PageResizeManager {
-  let manager = _pageResizeManagers.get(pageId)
-  if (manager) return manager
-
-  let observer: ResizeObserver | null = null
-  const callbacks = new Map<Element, (entry: ResizeObserverEntry) => void>()
-
-  function getObserver(): ResizeObserver {
-    if (!observer) {
-      observer = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const cb = callbacks.get(entry.target)
-          if (cb) cb(entry)
-        }
-      })
-    }
-    return observer
-  }
-
-  manager = {
-    observe(element, callback) {
-      callbacks.set(element, callback)
-      getObserver().observe(element)
-    },
-    unobserve(element) {
-      callbacks.delete(element)
-      observer?.unobserve(element)
-    },
-    cleanup() {
-      observer?.disconnect()
-      observer = null
-      callbacks.clear()
-      _pageResizeManagers.delete(pageId)
-    },
-  }
-
-  _pageResizeManagers.set(pageId, manager)
-  return manager
-}
-
-interface PageIntervalManager {
-  add: (id: ReturnType<typeof setInterval>) => void
-  remove: (id: ReturnType<typeof setInterval>) => void
-  cleanup: () => void
-}
-
-const _pageIntervalManagers = new Map<string, PageIntervalManager>()
-
-export function getPageIntervalManager(pageId: string): PageIntervalManager {
-  let manager = _pageIntervalManagers.get(pageId)
-  if (manager) return manager
-
-  const intervals = new Set<ReturnType<typeof setInterval>>()
-
-  manager = {
-    add(id) {
-      intervals.add(id)
-    },
-    remove(id) {
-      clearInterval(id)
-      intervals.delete(id)
-    },
-    cleanup() {
-      for (const id of intervals) clearInterval(id)
-      intervals.clear()
-      _pageIntervalManagers.delete(pageId)
-    },
-  }
-
-  _pageIntervalManagers.set(pageId, manager)
-  return manager
 }

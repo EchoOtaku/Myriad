@@ -36,8 +36,9 @@ describe('long-task guards', () => {
       'utf8',
     )
     assert.match(core, /runIdleSlice/)
-    assert.match(coordinator, /runIdleSlice/)
-    assert.match(core, /TASK_FLUSH_BATCH/)
+    assert.match(coordinator, /return coreScheduleIdle\(id, task, options\.priority, options\)/)
+    assert.match(coordinator, /return coreCancelIdle\(id\)/)
+    assert.match(core, /runTaskSlice\(_pendingCallbacks/)
     assert.equal(core.includes('deadline.didTimeout)'), false)
     assert.equal(coordinator.includes('deadline.didTimeout)'), false)
   })

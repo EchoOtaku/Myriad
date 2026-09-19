@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { effectiveWallpaperBlur } from '../utils/wallpaperState'
 import { batchWrite, isPageVisible, onVisibility } from './animation/core'
+import { createFrameClock } from './animation/frameClock'
 
 const SMOOTH = 0.08
 const SMOOTH_RETURN = 0.04
 const MAX_DELTA = 100
-const THROTTLE_MS = 50
 const THRESHOLD = 0.05
 
 const PARALLAX_SCALE = 1.02
@@ -98,7 +98,6 @@ const RIPPLE_DURATION = 2000
 const RIPPLE_SPEED = 400
 const RIPPLE_WAVELENGTH = 80
 const RIPPLE_AMPLITUDE = 15
-const RIPPLE_FRAME_MS = 17
 
 const SIN_TABLE_SIZE = 1024
 const SIN_TABLE = new Float32Array(SIN_TABLE_SIZE)
@@ -159,7 +158,6 @@ interface EvocativeState {
   pageVisible: boolean
   el: HTMLElement | null
   raf: number | null
-  lastTime: number
   returning: boolean
 
   parallaxTx: number
@@ -187,14 +185,13 @@ interface EvocativeState {
   destImageData: ImageData | null
   activeRipples: Array<{ x: number; y: number; startTime: number }>
   rippleRaf: number | null
-  lastRippleFrameTime: number
   rippleFadeoutTimer: ReturnType<typeof setTimeout> | null
   rippleIsFadingOut: boolean
 }
 
 function buildTransform(cx: number, cy: number): string {
-  const rx = ((cx * 10 + 0.5) | 0) / 10
-  const ry = ((cy * 10 + 0.5) | 0) / 10
+  const rx = Math.round(cx * 10) / 10
+  const ry = Math.round(cy * 10) / 10
   return `${STATIC_TF_PREFIX}${rx}px,${ry}px${STATIC_TF_SUFFIX}`
 }
 
@@ -542,7 +539,7 @@ export function useEvocativeWallpaper(
 
   const enableRipple = ripple.enabled ?? false
 
-  const frameMs = fps >= 60 ? 17 : 33
+  const targetFps = fps >= 60 ? 60 : 30
   const rippleScale = Math.max(0.5, Math.min(1.0, rippleQuality))
 
   const stateRef = useRef<EvocativeState>({
@@ -550,7 +547,6 @@ export function useEvocativeWallpaper(
     pageVisible: true,
     el: null,
     raf: null,
-    lastTime: 0,
     returning: false,
 
     parallaxTx: 0,
@@ -578,7 +574,6 @@ export function useEvocativeWallpaper(
     destImageData: null,
     activeRipples: [],
     rippleRaf: null,
-    lastRippleFrameTime: 0,
     rippleFadeoutTimer: null,
     rippleIsFadingOut: false,
   })
@@ -632,7 +627,6 @@ export function useEvocativeWallpaper(
     s.pageVisible = isPageVisible()
     s.el = el
     s.raf = null
-    s.lastTime = 0
     s.returning = false
 
     s.parallaxTx = 0
@@ -655,7 +649,6 @@ export function useEvocativeWallpaper(
 
     s.activeRipples = []
     s.rippleRaf = null
-    s.lastRippleFrameTime = 0
 
     el.style.transformOrigin = 'center'
     const willChangeProps: string[] = []
@@ -704,16 +697,17 @@ export function useEvocativeWallpaper(
       })
     }
 
+    const motionClock = createFrameClock(targetFps)
+    const rippleClock = createFrameClock(60)
+
     const rippleAnimationLoop = (now: number) => {
       if (!s.active || !s.rippleCanvas || !s.rippleCtx || !s.sourceImageData)
         return
 
-      const deltaFrame = now - s.lastRippleFrameTime
-      if (deltaFrame < RIPPLE_FRAME_MS) {
+      if (rippleClock.advance(now) === null) {
         s.rippleRaf = requestAnimationFrame(rippleAnimationLoop)
         return
       }
-      s.lastRippleFrameTime = now
 
       if (s.el) {
         s.rippleCanvas.style.transform = buildCanvasTransform(
@@ -821,7 +815,7 @@ export function useEvocativeWallpaper(
       })
 
       if (!s.rippleRaf) {
-        s.lastRippleFrameTime = performance.now()
+        rippleClock.reset(performance.now())
         s.rippleRaf = requestAnimationFrame(rippleAnimationLoop)
       }
     }
@@ -842,12 +836,12 @@ export function useEvocativeWallpaper(
         return
       }
 
-      let delta = t - s.lastTime
-      if (delta >= frameMs) {
+      let delta = motionClock.advance(t)
+      if (delta !== null) {
         if (delta > MAX_DELTA) delta = MAX_DELTA
 
         const smoothFactor = s.returning ? SMOOTH_RETURN : SMOOTH
-        const factor = delta * smoothFactor * 0.0625
+        const factor = 1 - (1 - smoothFactor) ** (delta / 16)
 
         let needsContinue = false
 
@@ -855,24 +849,22 @@ export function useEvocativeWallpaper(
           const dx = (s.parallaxTx - s.parallaxCx) * factor
           const dy = (s.parallaxTy - s.parallaxCy) * factor
 
-          const txAbs = s.parallaxTx < 0 ? -s.parallaxTx : s.parallaxTx
-          const tyAbs = s.parallaxTy < 0 ? -s.parallaxTy : s.parallaxTy
-          const dxAbs = dx < 0 ? -dx : dx
-          const dyAbs = dy < 0 ? -dy : dy
+          const remainingX = Math.abs(s.parallaxTx - s.parallaxCx)
+          const remainingY = Math.abs(s.parallaxTy - s.parallaxCy)
 
-          if (txAbs + tyAbs < THRESHOLD && dxAbs + dyAbs < THRESHOLD) {
+          if (remainingX + remainingY < THRESHOLD) {
             s.parallaxIdle = true
-            s.parallaxCx = s.parallaxCy = 0
-            if (s.parallaxLastRx !== 0 || s.parallaxLastRy !== 0) {
-              s.parallaxLastRx = s.parallaxLastRy = 0
-              el.style.transform = IDLE_TF
-            }
+            s.parallaxCx = s.parallaxTx
+            s.parallaxCy = s.parallaxTy
+            s.parallaxLastRx = Math.round(s.parallaxCx * 10) / 10
+            s.parallaxLastRy = Math.round(s.parallaxCy * 10) / 10
+            el.style.transform = buildTransform(s.parallaxCx, s.parallaxCy)
           } else {
             s.parallaxCx += dx
             s.parallaxCy += dy
 
-            const rx = ((s.parallaxCx * 10 + 0.5) | 0) / 10
-            const ry = ((s.parallaxCy * 10 + 0.5) | 0) / 10
+            const rx = Math.round(s.parallaxCx * 10) / 10
+            const ry = Math.round(s.parallaxCy * 10) / 10
 
             if (rx !== s.parallaxLastRx || ry !== s.parallaxLastRy) {
               s.parallaxLastRx = rx
@@ -915,8 +907,6 @@ export function useEvocativeWallpaper(
           }
         }
 
-        s.lastTime = t
-
         if (needsContinue) {
           s.raf = requestAnimationFrame(tick)
         } else {
@@ -939,7 +929,7 @@ export function useEvocativeWallpaper(
         if (blurNeedsWake) s.blurIdle = false
 
         if (!s.raf) {
-          s.lastTime = performance.now()
+          motionClock.reset(performance.now())
           s.raf = requestAnimationFrame(tick)
         }
       }
@@ -947,25 +937,33 @@ export function useEvocativeWallpaper(
 
     const unsubscribeVisibility = onVisibility((visible) => {
       s.pageVisible = visible
-      if (visible && s.active) {
+      if (!visible) {
+        if (s.raf !== null) cancelAnimationFrame(s.raf)
+        s.raf = null
+        if (s.rippleRaf !== null) cancelAnimationFrame(s.rippleRaf)
+        s.rippleRaf = null
+        return
+      }
+      if (s.active) {
         const needsResume =
           (enableParallax && !s.parallaxIdle) ||
           (enableDynamicBlur && !s.blurIdle)
         if (needsResume && !s.raf) {
-          s.lastTime = performance.now()
+          motionClock.reset(performance.now())
           s.raf = requestAnimationFrame(tick)
+        }
+        if (s.activeRipples.length > 0 && s.rippleRaf === null) {
+          rippleClock.reset(performance.now())
+          s.rippleRaf = requestAnimationFrame(rippleAnimationLoop)
         }
       }
     })
 
-    let lastMouseTime = 0
+    // Input only updates targets; the frame loop coalesces DOM writes. Keep the
+    // final event in a burst so a stationary pointer never leaves a stale target.
     const onMouseMove = (e: MouseEvent) => {
       if (!s.pageVisible || !interactionReady) return
       if (s.gyroEnabled) return
-
-      const now = performance.now()
-      if (now - lastMouseTime < THROTTLE_MS) return
-      lastMouseTime = now
 
       s.returning = false
 
@@ -1043,16 +1041,11 @@ export function useEvocativeWallpaper(
       startRipple(localX, localY)
     }
 
-    let lastGyroTime = 0
     const onGyro = (e: DeviceOrientationEvent) => {
-      if (!interactionReady) return
+      if (!s.pageVisible || !interactionReady) return
       const beta = e.beta
       const gamma = e.gamma
       if (beta == null || gamma == null) return
-
-      const now = performance.now()
-      if (now - lastGyroTime < THROTTLE_MS) return
-      lastGyroTime = now
 
       const b = (beta < -45 ? -45 : beta > 45 ? 45 : beta) / 45
       const g = (gamma < -45 ? -45 : gamma > 45 ? 45 : gamma) / 45
@@ -1206,7 +1199,7 @@ export function useEvocativeWallpaper(
     unblurZone,
     elementId,
     // 配置保存改 FPS / 涟漪画质后需重绑（不改动效算法，只重挂监听）
-    frameMs,
+    targetFps,
     rippleScale,
   ])
 }

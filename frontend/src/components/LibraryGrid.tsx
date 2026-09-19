@@ -83,6 +83,8 @@ import { LibraryPlayingWaveBorder } from './library/libraryWaveBorder'
 import { useLibraryListWindow } from './library/useLibraryListWindow'
 import PlatformIcon from './PlatformIcon'
 import { QuickTransition } from './SkeletonTransition'
+import { Spinner } from './Spinner'
+import { getLibraryTourSurfaceSnapshot, isTourDomActive } from './tour/tourLogic'
 
 function requireLibraryPage(
   data: { success?: boolean; message?: unknown },
@@ -93,8 +95,6 @@ function requireLibraryPage(
     typeof data.message === 'string' ? data.message.trim() : ''
   throw new Error(message && !isUselessErrorText(message) ? message : fallback)
 }
-import { Spinner } from './Spinner'
-import { getLibraryTourSurfaceSnapshot, isTourDomActive } from './tour/tourLogic'
 
 function injectLibraryStyle(id: string, css: string) {
   if (typeof document === 'undefined') return

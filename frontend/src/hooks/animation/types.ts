@@ -22,7 +22,6 @@ export interface AnimationConfig {
   index?: number
   delay?: number
   duration?: number
-  canSkip?: boolean
 }
 
 export type AnimationListener = (state: AnimationState) => void
@@ -33,17 +32,12 @@ export interface CoordinatorConfig {
   baseConcurrent: number
   burstConcurrent: number
   burstDuration: number
-  minInterval: number
   defaultStaggerDelay: number
-  flushInterval: number
-  maxLoopSlots?: number
 }
 
 export const DEFAULT_CONFIG: CoordinatorConfig = {
   baseConcurrent: 16,
   burstConcurrent: 48,
   burstDuration: 5000,
-  minInterval: 16,
   defaultStaggerDelay: 35,
-  flushInterval: 16,
 }

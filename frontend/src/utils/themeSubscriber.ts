@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 type ThemeCallback = (isDark: boolean) => void
 
@@ -11,7 +11,7 @@ const subscribers = new Set<ThemeCallback>()
 let observer: MutationObserver | null = null
 
 function notifySubscribers() {
-  const newIsDark = document.documentElement.classList.contains('dark')
+  const newIsDark = getIsDarkMode()
   if (newIsDark !== isDarkMode) {
     isDarkMode = newIsDark
     // Snapshot listeners before notify.
@@ -56,10 +56,10 @@ function cleanupObserver() {
 }
 
 export function subscribeToTheme(callback: ThemeCallback): () => void {
-  subscribers.add(callback)
   ensureObserver()
-
-  callback(isDarkMode)
+  notifySubscribers()
+  subscribers.add(callback)
+  callback(getIsDarkMode())
 
   return () => {
     subscribers.delete(callback)
@@ -68,19 +68,13 @@ export function subscribeToTheme(callback: ThemeCallback): () => void {
 }
 
 export function getIsDarkMode(): boolean {
-  return isDarkMode
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+}
+
+function subscribeSnapshot(callback: () => void): () => void {
+  return subscribeToTheme(() => callback())
 }
 
 export function useThemeMode(): boolean {
-  const [isDark, setIsDark] = useState(() =>
-    typeof document !== 'undefined'
-      ? document.documentElement.classList.contains('dark')
-      : false,
-  )
-
-  useEffect(() => {
-    return subscribeToTheme(setIsDark)
-  }, [])
-
-  return isDark
+  return useSyncExternalStore(subscribeSnapshot, getIsDarkMode, () => false)
 }

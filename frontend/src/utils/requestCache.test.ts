@@ -130,3 +130,19 @@ describe('shared request cancellation', () => {
     assert.equal(await cache.fetch('retry', async () => 'recovered'), 'recovered')
   })
 })
+
+it('zero TTL coalesces in-flight work but never reuses a completed result in the same millisecond', async context => {
+  context.mock.timers.enable({ apis: ['Date'] })
+  const cache = new RequestCache()
+  const held = deferred<number>()
+  let calls = 0
+  const first = cache.fetch('config', () => { calls++; return held.promise }, 0)
+  const joined = cache.fetch('config', async () => { calls++; return 99 }, 0)
+  held.resolve(1)
+  assert.deepEqual(await Promise.all([first, joined]), [1, 1])
+  assert.equal(calls, 1)
+  const next = await cache.fetch('config', async () => { calls++; return 2 }, 0)
+  assert.equal(next, 2)
+  assert.equal(calls, 2)
+  assert.equal(cache.size, 0)
+})

@@ -15,6 +15,9 @@ import {
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
+import { I18nNamespace } from '../../../contexts/I18nContext'
+import { getDefaultLocale } from '../../../i18n'
+import { loadShellLocale, loadShellNamespace } from '../../../i18n/loadLocale'
 import { prepareNoteReaderHtml } from './noteImageUrl.ts'
 import { noteWidgetInstanceId } from './noteWidgetId.ts'
 import {
@@ -93,6 +96,7 @@ for (const key of ['HTMLElement', 'Element', 'Node', 'DocumentFragment'] as cons
 }
 const globals = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 globals.IS_REACT_ACT_ENVIRONMENT = true
+await Promise.all([loadShellLocale(getDefaultLocale()), loadShellNamespace('phantasi', getDefaultLocale())])
 
 function mountPoint(): HTMLElement {
   let el = dom.window.document.getElementById('root')
@@ -106,6 +110,9 @@ function mountPoint(): HTMLElement {
 
 describe('useNoteWidgetHydration', () => {
   let root: Root | null = null
+  function renderWithCopy(children: ReactNode) {
+    root!.render(createElement(I18nNamespace, { names: ['phantasi'], children }))
+  }
 
   afterEach(async () => {
     if (!root) return
@@ -151,7 +158,7 @@ describe('useNoteWidgetHydration', () => {
 
     root = createRoot(mountPoint())
     await act(async () => {
-      root!.render(createElement(Harness, { html: THREE, editable: true }))
+      renderWithCopy(createElement(Harness, { html: THREE, editable: true }))
     })
 
     const hosts = [...dom.window.document.querySelectorAll('.note-widget')] as HTMLElement[]
@@ -207,7 +214,7 @@ describe('useNoteWidgetHydration', () => {
     try {
       root = createRoot(mountPoint())
       await act(async () => {
-        root!.render(createElement(Bare, { html: THREE }))
+        renderWithCopy(createElement(Bare, { html: THREE }))
       })
     } finally {
       console.error = prev
@@ -292,7 +299,7 @@ describe('useNoteWidgetHydration', () => {
 
     root = createRoot(mountPoint())
     await act(async () => {
-      root!.render(
+      renderWithCopy(
         createElement(Editor, {
           pane: 'visual',
           visualHtml: THREE,
@@ -311,7 +318,7 @@ describe('useNoteWidgetHydration', () => {
     const firstNode = firstHosts[0]
 
     await act(async () => {
-      root!.render(
+      renderWithCopy(
         createElement(Editor, {
           pane: 'visual',
           visualHtml: `${THREE}<p>typed</p>`,
@@ -329,7 +336,7 @@ describe('useNoteWidgetHydration', () => {
 
     const typed = `${THREE}<p>typed</p>`
     await act(async () => {
-      root!.render(
+      renderWithCopy(
         createElement(Editor, {
           pane: 'visual',
           visualHtml: typed,
@@ -344,7 +351,7 @@ describe('useNoteWidgetHydration', () => {
     )
 
     await act(async () => {
-      root!.render(
+      renderWithCopy(
         createElement(Editor, {
           pane: 'write',
           visualHtml: typed,
@@ -360,7 +367,7 @@ describe('useNoteWidgetHydration', () => {
     assert.equal(dom.window.document.querySelectorAll('[data-visual] [data-note-nav]').length, 3)
 
     await act(async () => {
-      root!.render(
+      renderWithCopy(
         createElement(Editor, {
           pane: 'visual',
           visualHtml: typed,
@@ -376,7 +383,7 @@ describe('useNoteWidgetHydration', () => {
     assert.equal(noteWidgetInstanceId(firstNode, 'friend-links'), firstId)
 
     await act(async () => {
-      root!.render(
+      renderWithCopy(
         createElement(Editor, {
           pane: 'preview',
           visualHtml: THREE,

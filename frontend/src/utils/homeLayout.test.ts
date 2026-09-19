@@ -37,7 +37,6 @@ import {
   readHomeLayoutMode,
   resolveFreeHomeGrid,
   serializeDashboardLayout,
-  shouldAcceptHomeLayoutApply,
   standardHomeCellSize,
   standardHomeGridWidth,
   stickerPixelSize,
@@ -383,11 +382,6 @@ describe('home dashboard first-paint vs registry', () => {
     assert.equal(filtered.free.length, 1)
     assert.equal(isHomeStickerItem(filtered.free[0]!), true)
   })
-
-  it('rejects a stale first-paint apply after restore advanced the generation', () => {
-    assert.equal(shouldAcceptHomeLayoutApply(1, 1), true)
-    assert.equal(shouldAcceptHomeLayoutApply(1, 2), false)
-  })
 })
 
 describe('home shell CSS contract', () => {
@@ -433,8 +427,7 @@ describe('home shell CSS contract', () => {
     assert.equal(home.includes('max-w-7xl'), false)
     assert.equal(/py-6/.test(home), false)
     assert.equal(home.includes('filterLayouts'), false)
-    assert.equal(home.includes('layoutsForFirstPaint'), true)
-    assert.equal(home.includes('shouldAcceptHomeLayoutApply'), true)
+    assert.equal(home.includes('startHomeDashboardLoad'), true)
     assert.match(css, /\.home-status-bar\b/)
     assert.match(css, /grid-template-columns:\s*0fr/)
     assert.match(css, /grid-template-columns:\s*1fr/)
@@ -442,8 +435,9 @@ describe('home shell CSS contract', () => {
     assert.match(css, /\.home-status-bar__mode\b/)
     assert.equal(css.includes('margin-right: calc(var(--home-status-bar-gap) * -1)'), false)
     assert.equal(home.includes('layoutDependency={isEditMode}'), false)
-    assert.equal(home.includes('home-status-bar__actions'), true)
-    assert.equal(home.includes('bg-black/5 dark:bg-white/5'), true)
+    const chrome = readFileSync(new URL('../components/home/HomeAdminChrome.tsx', import.meta.url), 'utf8')
+    assert.equal(chrome.includes('home-status-bar__actions'), true)
+    assert.equal(chrome.includes('bg-black/5 dark:bg-white/5'), true)
     assert.match(
       home,
       /pointer-events-none z-0 transition-opacity duration-300 hidden md:block/,

@@ -1,69 +1,52 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { isPageVisible, onVisibility } from './core'
 
 interface UseVisibilityIntervalOptions {
-
   delay: number
   enabled?: boolean
-
   immediate?: boolean
 }
 
+/** Component-owned polling/rotation; route cleanup must not stop global widgets. */
 export function useVisibilityInterval(
   callback: () => void,
-  options: UseVisibilityIntervalOptions,
+  { delay, enabled = true, immediate = false }: UseVisibilityIntervalOptions,
 ) {
-  const { delay, enabled = true, immediate = false } = options
   const savedCallback = useRef(callback)
-  const timeoutIdRef = useRef<number | null>(null)
-  const cancelledRef = useRef(false)
-
   useEffect(() => {
     savedCallback.current = callback
   }, [callback])
 
-  const clearTimer = useCallback(() => {
-    if (timeoutIdRef.current !== null) {
-      clearTimeout(timeoutIdRef.current)
-      timeoutIdRef.current = null
-    }
-  }, [])
-
-  const scheduleNext = useCallback(() => {
-    if (cancelledRef.current || !isPageVisible()) return
-
-    timeoutIdRef.current = window.setTimeout(() => {
-      if (cancelledRef.current || !isPageVisible()) return
-      savedCallback.current()
-      scheduleNext()
-    }, delay)
-  }, [delay])
-
   useEffect(() => {
     if (!enabled) return
-
-    cancelledRef.current = false
-
-    if (immediate && isPageVisible()) {
-      savedCallback.current()
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const clearTimer = () => {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
     }
-
-    scheduleNext()
-
-    const unsubscribe = onVisibility((isVisible) => {
-      if (isVisible) {
-        if (timeoutIdRef.current === null && !cancelledRef.current) {
-          scheduleNext()
+    const schedule = () => {
+      if (cancelled || !isPageVisible() || timer !== null) return
+      timer = setTimeout(() => {
+        timer = null
+        if (cancelled || !isPageVisible()) return
+        try {
+          savedCallback.current()
+        } finally {
+          schedule()
         }
-      } else {
-        clearTimer()
-      }
+      }, delay)
+    }
+    const unsubscribe = onVisibility((visible) => {
+      if (visible) schedule()
+      else clearTimer()
     })
-
+    if (immediate && isPageVisible()) savedCallback.current()
+    schedule()
     return () => {
-      cancelledRef.current = true
+      cancelled = true
       clearTimer()
       unsubscribe()
     }
-  }, [enabled, delay, immediate, scheduleNext, clearTimer])
+  }, [delay, enabled, immediate])
 }

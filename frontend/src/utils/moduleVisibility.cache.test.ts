@@ -9,6 +9,7 @@ import {
   areModuleVisibilityPreferencesEqual,
   DEFAULT_MODULE_VISIBILITY_PREFERENCES,
   dispatchModuleVisibilityPreferencesUpdated,
+  ensureModuleVisibilityPreferences,
   fetchModuleVisibilityPreferences,
   getCachedModuleVisibilityPreferences,
   normalizeModuleVisibilityPreferences,
@@ -116,4 +117,43 @@ it('failed default-sort save retains the confirmed default', async (t) => {
   t.mock.method(apiService, 'put', async () => { throw new Error('offline') })
   await assert.rejects(updateModuleVisibilityPreferences(normalizeModuleVisibilityPreferences({ journalSourceSort: 'pinyin' })), /offline/)
   assert.equal(getCachedModuleVisibilityPreferences()?.journalSourceSort, 'update')
+})
+
+it('an authoritative preference update invalidates older session loads', async t => {
+  const held = Promise.withResolvers<{ preferences: typeof DEFAULT_MODULE_VISIBILITY_PREFERENCES }>()
+  t.mock.method(apiService, 'get', () => held.promise)
+  const old = ensureModuleVisibilityPreferences(true)
+  const saved = normalizeModuleVisibilityPreferences({ journalSourceSort: 'pinyin' })
+  dispatchModuleVisibilityPreferencesUpdated(saved)
+  held.resolve({ preferences: DEFAULT_MODULE_VISIBILITY_PREFERENCES })
+  assert.deepEqual(await old, saved)
+  assert.deepEqual(getCachedModuleVisibilityPreferences(), saved)
+})
+
+it('a forced session refresh starts a fresh transport and owns the final snapshot', async t => {
+  const old = Promise.withResolvers<{ preferences: typeof DEFAULT_MODULE_VISIBILITY_PREFERENCES }>()
+  const fresh = Promise.withResolvers<{ preferences: typeof DEFAULT_MODULE_VISIBILITY_PREFERENCES }>()
+  let calls = 0
+  t.mock.method(apiService, 'get', () => ++calls === 1 ? old.promise : fresh.promise)
+  const first = ensureModuleVisibilityPreferences(true)
+  const second = ensureModuleVisibilityPreferences(true)
+  const saved = normalizeModuleVisibilityPreferences({ journalSourceSort: 'pinyin' })
+  fresh.resolve({ preferences: saved })
+  assert.deepEqual(await second, saved)
+  old.resolve({ preferences: DEFAULT_MODULE_VISIBILITY_PREFERENCES })
+  assert.deepEqual(await first, saved)
+  assert.equal(calls, 2)
+  assert.deepEqual(getCachedModuleVisibilityPreferences(), saved)
+})
+
+it('a successful save supersedes an already pending session read', async t => {
+  const held = Promise.withResolvers<{ preferences: typeof DEFAULT_MODULE_VISIBILITY_PREFERENCES }>()
+  const saved = normalizeModuleVisibilityPreferences({ journalSourceSort: 'update' })
+  t.mock.method(apiService, 'get', () => held.promise)
+  t.mock.method(apiService, 'put', async () => ({ success: true, preferences: saved }))
+  const old = ensureModuleVisibilityPreferences(true)
+  await updateModuleVisibilityPreferences(saved)
+  held.resolve({ preferences: DEFAULT_MODULE_VISIBILITY_PREFERENCES })
+  assert.deepEqual(await old, saved)
+  assert.deepEqual(getCachedModuleVisibilityPreferences(), saved)
 })

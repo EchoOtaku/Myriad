@@ -4,7 +4,7 @@ import { afterEach, describe, it, mock } from 'node:test'
 import {
   __resetSiteOwnerProfileInflightForTests,
   fetchSiteOwnerProfile,
-} from './useSiteOwnerProfile.ts'
+} from './siteOwnerProfile.ts'
 
 interface FetchCall {
   url: string
@@ -198,6 +198,42 @@ describe('fetchSiteOwnerProfile', () => {
     assert.equal(pa?.name, 'Once')
     assert.equal(pb?.name, 'Once')
     assert.equal(calls.length, 1)
+  })
+
+  it('a newly mounted consumer joins the mutation refresh instead of the old cold request', async () => {
+    const cold = Promise.withResolvers<Response>()
+    const fresh = Promise.withResolvers<Response>()
+    const { calls } = mockFetch((_url, init) => init?.cache === 'no-store' ? fresh.promise : cold.promise)
+    const first = fetchSiteOwnerProfile()
+    const forced = fetchSiteOwnerProfile({ force: true })
+    const newcomer = fetchSiteOwnerProfile()
+    fresh.resolve(jsonResponse({ success: true, user_info: { name: 'Fresh' } }))
+    assert.equal((await forced)?.name, 'Fresh')
+    assert.equal((await newcomer)?.name, 'Fresh')
+    assert.equal(calls.length, 2)
+    cold.resolve(jsonResponse({ success: true, user_info: { name: 'Old' } }))
+    await first
+  })
+
+  it('a detached cold request cannot be reused or clear its replacement after a refresh', async () => {
+    const old = Promise.withResolvers<Response>()
+    const replacement = Promise.withResolvers<Response>()
+    let coldCalls = 0
+    const { calls } = mockFetch((_url, init) => {
+      if (init?.cache === 'no-store') return jsonResponse({ success: true, user_info: { name: 'Updated' } })
+      return ++coldCalls === 1 ? old.promise : replacement.promise
+    })
+    const first = fetchSiteOwnerProfile()
+    await fetchSiteOwnerProfile({ force: true })
+    const next = fetchSiteOwnerProfile()
+    assert.equal(calls.length, 3)
+    old.resolve(jsonResponse({ success: true, user_info: { name: 'Old' } }))
+    await first
+    const concurrent = fetchSiteOwnerProfile()
+    assert.equal(calls.length, 3)
+    replacement.resolve(jsonResponse({ success: true, user_info: { name: 'Updated' } }))
+    assert.equal((await next)?.name, 'Updated')
+    assert.equal((await concurrent)?.name, 'Updated')
   })
 
   it('returns null on non-OK or malformed payloads', async () => {

@@ -4,7 +4,8 @@ import { createRequire } from 'node:module'
 import { it } from 'node:test'
 import React, { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { loadShellLocale } from '../../../i18n/loadLocale'
+import { I18nNamespace } from '../../../contexts/I18nContext'
+import { loadShellLocale, loadShellNamespace } from '../../../i18n/loadLocale'
 import { NoteEditorSettings } from './NoteEditorSettings'
 
 it('history downloads only the selected version and ignores a stale selection response', async () => {
@@ -12,7 +13,7 @@ it('history downloads only the selected version and ignores a stale selection re
   const { JSDOM } = require(require.resolve('jsdom', { paths: [require.resolve('isomorphic-dompurify')] }))
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://test.invalid' })
   dom.window.localStorage.setItem('locale', 'en-US')
-  await loadShellLocale('en-US')
+  await Promise.all([loadShellLocale('en-US'), loadShellNamespace('phantasi', 'en-US')])
   const prior = new Map<string, PropertyDescriptor | undefined>()
   const urls: string[] = []
   const entries: NoteHistoryEntry[] = [1, 2].map(revision => ({
@@ -45,9 +46,12 @@ it('history downloads only the selected version and ignores a stale selection re
   }
   const root = createRoot(dom.window.document.getElementById('root')!)
   try {
-    await act(async () => root.render(createElement(NoteEditorSettings, {
-      cloudId: 918, defaultView: 'write', preferenceBusy: false, busy: false,
-      onDefaultView: async () => {}, onRestore: async entry => { restored = entry },
+    await act(async () => root.render(createElement(I18nNamespace, {
+      names: ['phantasi'],
+      children: createElement(NoteEditorSettings, {
+        cloudId: 918, defaultView: 'write', preferenceBusy: false, busy: false,
+        onDefaultView: async () => {}, onRestore: async entry => { restored = entry },
+      }),
     })))
     assert.deepEqual(urls, ['/api/phantasi/notes/docs/918/history'])
     assert.equal(dom.window.document.querySelector('pre'), null)

@@ -3,6 +3,7 @@ import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { currentCopy } from '../i18n/localeCopy'
 import { fetchWithAiConfiguration } from '../utils/aiConfiguration'
 import { aiRequestTimeoutMs } from '../utils/aiRequestTimeout.mjs'
+import { awaitAbortable } from '../utils/awaitAbortable'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { httpStatusMessage } from '../utils/httpStatus'
@@ -114,28 +115,27 @@ async function request<T>(
   const method = fetchOptions.method?.toUpperCase() || 'GET'
   const needsCSRF = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
 
-  if (needsCSRF) {
-    const csrfToken = await getCSRFToken()
-    options.signal?.throwIfAborted()
-    if (csrfToken) {
-      headers['X-CSRF-Token'] = csrfToken
-    }
-  }
-
   const url = buildUrl(endpoint, params)
   const timeout = Math.max(timeoutOpt, aiRequestTimeoutMs(url) ?? 0)
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
 
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, controller.signal])
+    : controller.signal
+
   try {
+    if (needsCSRF) {
+      const csrfToken = await awaitAbortable(getCSRFToken(), signal)
+      signal.throwIfAborted()
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken
+    }
     const response = await fetchWithAiConfiguration(url, {
       ...fetchOptions,
       headers,
       credentials: 'include',
-      signal: options.signal
-        ? AbortSignal.any([options.signal, controller.signal])
-        : controller.signal,
+      signal,
     })
 
     options.signal?.throwIfAborted()
@@ -176,7 +176,8 @@ async function request<T>(
           '— refreshing token and retrying once',
         )
         clearCSRFToken()
-        const newToken = await getCSRFToken(true)
+        const newToken = await awaitAbortable(getCSRFToken(true), signal)
+        signal.throwIfAborted()
         if (newToken) {
           return request<T>(endpoint, options, false)
         }

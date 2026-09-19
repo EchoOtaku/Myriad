@@ -26,10 +26,9 @@ import AnimatedView from '../../components/AnimatedView'
 import { GlowBackground } from '../../components/widgets/shared/GlowBackground'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { useTappScheduler } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { useBreakpoints } from '../../hooks/useBreakpoints'
 import { usePageSeo } from '../../hooks/usePageSeo'
-import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { useResolvedTitleColor, useTitleFont } from '../../hooks/useTitleFont'
 import {
   canAccessModuleVisibility,
@@ -147,8 +146,6 @@ export function TappListPage() {
     },
     [],
   )
-
-  useTappScheduler()
 
   const mapSiteDetails = useCallback(
     (details: Awaited<ReturnType<typeof listTappDetails>>): TappInstance[] => {

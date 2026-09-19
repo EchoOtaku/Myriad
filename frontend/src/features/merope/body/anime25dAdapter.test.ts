@@ -211,7 +211,7 @@ test('production chat and perception go through the body adapters', () => {
     'utf8',
   )
   const panel = readFileSync(
-    new URL('../../../components/GlobalControlPanel.tsx', import.meta.url),
+    new URL('../../../components/ControlPanel/useControlPanelNotifications.tsx', import.meta.url),
     'utf8',
   )
   const arbitration = readFileSync(

@@ -68,7 +68,7 @@ test('persona updates refresh the sticker cache', () => {
 
 test('agent notification toasts use the source icon', () => {
   const panel = readFileSync(
-    new URL('../../components/GlobalControlPanel.tsx', import.meta.url),
+    new URL('../../components/ControlPanel/useControlPanelNotifications.tsx', import.meta.url),
     'utf8',
   )
   const toast = readFileSync(

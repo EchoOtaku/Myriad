@@ -252,7 +252,7 @@ test('Chat start then engine cancel releases occupancy so visible Work may speak
 
 test('notification center and engine cancel go through the gated Work/Chat helpers', () => {
   const panel = readFileSync(
-    new URL('../../components/GlobalControlPanel.tsx', import.meta.url),
+    new URL('../../components/ControlPanel/useControlPanelNotifications.tsx', import.meta.url),
     'utf8',
   )
   const engine = readFileSync(

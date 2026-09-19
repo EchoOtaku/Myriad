@@ -25,6 +25,7 @@ import {
   HomeLayoutRail,
   HomeStatusBarActions,
 } from '../components/home/HomeAdminChrome'
+import { useHomeLayoutTransition } from '../components/home/useHomeLayoutTransition'
 import {
   homeEditTourDockPose,
   setHomeEditSurface,
@@ -43,18 +44,20 @@ import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useImmersiveChrome } from '../contexts/NavigationContext'
-import { useHomeScheduler, usePageReady } from '../hooks/animation'
-import { useEditModeEscape } from '../hooks/useEditModeEscape'
-import { usePageSeo } from '../hooks/usePageSeo'
+import { usePageReady } from '../hooks/animation'
 import {
   useBreakpoints,
   useDesktopLayoutBand,
-} from '../hooks/useSharedEventListener'
+} from '../hooks/useBreakpoints'
+import { useEditModeEscape } from '../hooks/useEditModeEscape'
+import { usePageSeo } from '../hooks/usePageSeo'
 import { useSiteOwnerProfile } from '../hooks/useSiteOwnerProfile'
 import { useTappWidgets } from '../hooks/useTappWidgets'
 import { useResolvedTitleColor, useTitleFont } from '../hooks/useTitleFont'
 import { currentCopy } from '../i18n/localeCopy'
 import { ensureMotionReady } from '../lib/lazyMotion'
+import { formatUserFacingError } from '../utils/formatUserFacingError'
+import { startHomeDashboardLoad } from '../utils/homeDashboardLoader'
 import {
   cloneHomeWidgets,
   createHomeStickerItem,
@@ -63,22 +66,15 @@ import {
   isHomeStickerItem,
   isHomeWidgetItem,
   layoutsAfterWidgetRegistry,
-  layoutsForFirstPaint,
-  parseDashboardLayoutJson,
-  parseHomeLayoutMode,
   peekStoredHomeLayoutMode,
   persistHomeLayoutMode,
   serializeDashboardLayout,
-  shouldAcceptHomeLayoutApply,
   stickerPixelSize,
 } from '../utils/homeLayout'
-import { restoreStickerAssets } from '../utils/homeLayoutStickerAssets'
 import { stickerCropForSlot } from '../utils/homeStickerCrop'
-import { generateHomeSticker, uploadHomeSticker } from '../utils/homeStickers'
 import { stickerAspectKey } from '../utils/homeStickerSize'
 import { buildHomePageSeo } from '../utils/modulePageSeo'
 import { getUIConfigDeduped } from '../utils/requestDedup'
-import { formatUserFacingError } from '../utils/formatUserFacingError'
 import { hasSessionHint } from '../utils/sessionDetection'
 import {
   showError,
@@ -104,8 +100,6 @@ function readHomeEditTourDockPose() {
 }
 
 export default function Home() {
-  useHomeScheduler()
-
   const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth()
   const { t, format } = useI18n()
   const isPageReady = usePageReady()
@@ -133,18 +127,6 @@ export default function Home() {
     readHomeEditTourDockPose,
     readHomeEditTourDockPose,
   )
-  const [layoutFade, setLayoutFade] = useState<'out' | 'in' | null>(null)
-  const layoutFadeTimersRef = useRef<{ out?: number; in?: number }>({})
-  useEffect(() => {
-    return () => {
-      if (layoutFadeTimersRef.current.out) {
-        window.clearTimeout(layoutFadeTimersRef.current.out)
-      }
-      if (layoutFadeTimersRef.current.in) {
-        window.clearTimeout(layoutFadeTimersRef.current.in)
-      }
-    }
-  }, [])
   const [stickerPicking, setStickerPicking] = useState(false)
   const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const layoutImportInFlightRef = useRef(false)
@@ -298,19 +280,19 @@ export default function Home() {
   const layoutApplyGenerationRef = useRef(0)
 
   // Start motion after first paint so parse does not contend with Home commit.
-  // applyLayouts still awaits ensureMotionReady (3s cap).
+  // The dashboard loader also awaits readiness, with a 3s cap.
   useEffect(() => {
     let idle = 0
     const start = () => {
       void ensureMotionReady()
     }
-    if ('requestIdleCallback' in window) {
+    if (typeof window.requestIdleCallback === 'function') {
       idle = requestIdleCallback(start, { timeout: 1200 })
     } else {
       idle = window.setTimeout(start, 0)
     }
     return () => {
-      if ('requestIdleCallback' in window) {
+      if (typeof window.requestIdleCallback === 'function') {
         cancelIdleCallback(idle)
       } else {
         window.clearTimeout(idle)
@@ -318,82 +300,24 @@ export default function Home() {
     }
   }, [])
 
-  useEffect(() => {
-    // Preload lazy widgets + report-card pack before mount (3s cap). report-* must not split during render.
-    const fallbackLayouts = (): HomeDashboardLayouts => ({
-      standard: DEFAULT_WIDGETS,
-      free: cloneHomeWidgets(DEFAULT_WIDGETS),
-    })
-
-    async function applyLayouts(next: HomeDashboardLayouts) {
-      const generation = ++layoutApplyGenerationRef.current
-      await Promise.race([
-        Promise.all([
-          preloadBuiltinWidgets(
-            [...next.standard, ...next.free].map((widget) => widget.type),
-          ),
-          ensureMotionReady(),
-        ]),
-        new Promise((resolve) => setTimeout(resolve, 3000)),
-      ])
-      if (
-        !shouldAcceptHomeLayoutApply(
-          generation,
-          layoutApplyGenerationRef.current,
-        )
-      ) {
-        return
-      }
-      setLayouts(next)
-    }
-
-    async function loadDashboardConfig() {
-      try {
-        const data = await getUIConfigDeduped()
-        const mode = parseHomeLayoutMode(data.dashboard_layout_mode)
-        persistHomeLayoutMode(
-          mode,
-          typeof window === 'undefined' ? null : window.localStorage,
-        )
-        setLayoutMode(mode)
-        setDashboardTitle(data.dashboard_title || 'Dashboard')
-
-        if (data.dashboard_layout) {
-          try {
-            const parsed = parseDashboardLayoutJson(data.dashboard_layout)
-            setRawLayouts(parsed)
-            // First paint: do not filter by registry; unknown types already have placeholders.
-            await applyLayouts(
-              homeLayoutsHaveTiles(parsed)
-                ? layoutsForFirstPaint(parsed)
-                : fallbackLayouts(),
-            )
-          } catch (e) {
-            console.error('解析仪表盘布局失败:', e)
-            showError(
-              await formatUserFacingError(e, currentCopy().config.loadConfigFailed),
-            )
-            await applyLayouts(fallbackLayouts())
-          }
-        } else {
-          await applyLayouts(fallbackLayouts())
-        }
-      } catch (err) {
-        console.error('加载配置失败:', err)
-        showError(
-          await formatUserFacingError(err, currentCopy().config.loadConfigFailed),
-        )
-        persistHomeLayoutMode(
-          'standard',
-          typeof window === 'undefined' ? null : window.localStorage,
-        )
-        setLayoutMode('standard')
-        await applyLayouts(fallbackLayouts())
-        setDashboardTitle('Dashboard')
-      }
-    }
-    loadDashboardConfig()
-  }, [])
+  useEffect(() => startHomeDashboardLoad({
+    read: getUIConfigDeduped,
+    preload: next => Promise.all([
+      preloadBuiltinWidgets([...next.standard, ...next.free].map(widget => widget.type)),
+      ensureMotionReady(),
+    ]),
+    fallback: () => ({ standard: DEFAULT_WIDGETS, free: cloneHomeWidgets(DEFAULT_WIDGETS) }),
+    generation: layoutApplyGenerationRef,
+    mode: mode => {
+      persistHomeLayoutMode(mode, window.localStorage)
+      setLayoutMode(mode)
+    },
+    title: setDashboardTitle,
+    raw: setRawLayouts,
+    apply: setLayouts,
+    error: error => formatUserFacingError(error, currentCopy().config.loadConfigFailed),
+    notify: showError,
+  }), [])
 
   useEffect(() => {
     if (isTappWidgetsLoading || !rawLayouts || tappWidgets.length === 0) return
@@ -473,8 +397,12 @@ export default function Home() {
         layoutSaveTimerRef.current = null
       }
       try {
-        const { getCSRFToken } = await import('../utils/csrf')
-        const { clearDedupCache } = await import('../utils/requestDedup')
+        const [{ getCSRFToken }, { clearDedupCache }, { restoreStickerAssets }, { uploadHomeSticker }] = await Promise.all([
+          import('../utils/csrf'),
+          import('../utils/requestDedup'),
+          import('../utils/homeLayoutStickerAssets'),
+          import('../utils/homeStickers'),
+        ])
         const token = (await getCSRFToken(true)) || csrfToken
         if (!token) {
           showError(t.errors.csrfUnavailable)
@@ -547,35 +475,9 @@ export default function Home() {
     [csrfToken, isAdmin, t, format],
   )
 
+  const { layoutFade, transitionTo } = useHomeLayoutTransition(commitLayoutMode)
   const handleLayoutModeToggle = () => {
-    if (layoutFade) return
-    const next: HomeLayoutMode =
-      resolvedLayoutMode === 'free' ? 'standard' : 'free'
-    const reduce =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduce) {
-      commitLayoutMode(next)
-      return
-    }
-    if (layoutFadeTimersRef.current.out) {
-      window.clearTimeout(layoutFadeTimersRef.current.out)
-    }
-    if (layoutFadeTimersRef.current.in) {
-      window.clearTimeout(layoutFadeTimersRef.current.in)
-    }
-    setLayoutFade('out')
-    layoutFadeTimersRef.current.out = window.setTimeout(() => {
-      commitLayoutMode(next)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setLayoutFade('in'))
-      })
-      layoutFadeTimersRef.current.in = window.setTimeout(() => {
-        setLayoutFade(null)
-        layoutFadeTimersRef.current.in = undefined
-      }, 240)
-      layoutFadeTimersRef.current.out = undefined
-    }, 180)
+    transitionTo(resolvedLayoutMode === 'free' ? 'standard' : 'free')
   }
 
   // Debounce 500ms (same as control panel); UI updates immediately.
@@ -648,7 +550,10 @@ export default function Home() {
     if (!stickerDraft || stickerBusy) return
     setStickerBusy(true)
     try {
-      const { getCSRFToken } = await import('../utils/csrf')
+      const [{ getCSRFToken }, { generateHomeSticker }] = await Promise.all([
+        import('../utils/csrf'),
+        import('../utils/homeStickers'),
+      ])
       const token = (await getCSRFToken(true)) || csrfToken
       if (!token) {
         showError(t.errors.csrfUnavailable)
@@ -696,7 +601,10 @@ export default function Home() {
     if (!stickerDraft || stickerBusy) return
     setStickerBusy(true)
     try {
-      const { getCSRFToken } = await import('../utils/csrf')
+      const [{ getCSRFToken }, { uploadHomeSticker }] = await Promise.all([
+        import('../utils/csrf'),
+        import('../utils/homeStickers'),
+      ])
       const token = (await getCSRFToken(true)) || csrfToken
       if (!token) {
         showError(t.errors.csrfUnavailable)

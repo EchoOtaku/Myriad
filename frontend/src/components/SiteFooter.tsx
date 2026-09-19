@@ -1,14 +1,15 @@
 import type { FooterCustomItem } from '../utils/footerCustomLogic'
 
-import React, { memo, useCallback, useEffect, useState } from 'react'
+import React, { memo } from 'react'
 import { useI18n } from '../contexts/I18nContext'
+import { useMediaQuery } from '../hooks/useMediaQuery'
+import { usePublicUiConfig } from '../hooks/usePublicUiConfig'
 import { getBuildInfo, REPOSITORY_URL } from '../utils/buildInfo'
 import {
 
   isFooterCustomHref,
   parseFooterCustom,
 } from '../utils/footerCustomLogic'
-import { getUIConfigDeduped } from '../utils/requestDedup'
 import './SiteFooter.css'
 
 interface SiteConfig {
@@ -125,8 +126,8 @@ interface SiteFooterProps {
 export const SiteFooter: React.FC<SiteFooterProps> = memo(
   ({ isHomePage = false }) => {
     const { t } = useI18n()
-    const [config, setConfig] = useState<SiteConfig | null>(null)
-    const [isMobile, setIsMobile] = useState(false)
+    const config = usePublicUiConfig<SiteConfig>('footerConfigChanged')
+    const isMobile = useMediaQuery('(width < 768px)')
     const buildInfo = getBuildInfo()
 
     const providerName = (key: string, fallback: string) => {
@@ -135,40 +136,6 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
       if (key === 'edgeone') return t.config.edgeone
       return fallback
     }
-
-    useEffect(() => {
-      const checkMobile = () => setIsMobile(window.innerWidth < 768)
-      checkMobile()
-      let timerId: ReturnType<typeof setTimeout>
-      const handleResize = () => {
-        clearTimeout(timerId)
-        timerId = setTimeout(checkMobile, 150)
-      }
-      window.addEventListener('resize', handleResize, { passive: true })
-      return () => {
-        window.removeEventListener('resize', handleResize)
-        clearTimeout(timerId)
-      }
-    }, [])
-
-    const loadConfig = useCallback(async () => {
-      try {
-        const data = await getUIConfigDeduped()
-        setConfig(data as SiteConfig)
-      } catch {
-      }
-    }, [])
-
-    useEffect(() => {
-      void loadConfig()
-      const onFooterChanged = () => {
-        void loadConfig()
-      }
-      window.addEventListener('footerConfigChanged', onFooterChanged)
-      return () => {
-        window.removeEventListener('footerConfigChanged', onFooterChanged)
-      }
-    }, [loadConfig])
 
     const providers = config?.cloud_sponsors
       ? config.cloud_sponsors

@@ -10,10 +10,8 @@ import {
   WIDGET_COMPACT_SCALE,
   WIDGET_MINI_SCALE,
 } from '../utils/widgetSizeScale'
-import { getCachedSize } from './animation'
-import { useHomeResizeObserver } from './animation/pages/home'
-import { isReducedAnimation, useAnimationLevel } from './useAnimationLevel'
-import { useMediaQuery } from './useSharedEventListener'
+import { useWidgetResizeObserver } from './animation/useWidgetResizeObserver'
+import { useMediaQuery } from './useMediaQuery'
 
 export const STANDARD_CELL_SIZE = STANDARD_CELL_SIZE_CONST
 export { STANDARD_CELL_BY_BAND, WIDGET_COMPACT_SCALE, WIDGET_MINI_SCALE }
@@ -42,27 +40,18 @@ export function useWidgetSize(
 ): WidgetSizeInfo {
   const [size, setSize] = useState({ width: 0, height: 0 })
   const elementRef = useRef<HTMLDivElement | null>(null)
-  const anim = useAnimationLevel()
   const viewportBand = useViewportBand()
 
-  // 低性能 / 低端：仅首次测量，不持续监听。
-  const reduceResizeWork = isReducedAnimation(anim)
-  const reduceResizeWorkRef = useRef(reduceResizeWork)
-  reduceResizeWorkRef.current = reduceResizeWork
-
-  const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver()
+  const { observeWidgetResize, unobserveWidgetResize } = useWidgetResizeObserver()
 
   const handleSizeChange = useCallback((entry: ResizeObserverEntry) => {
     const { width, height } = entry.contentRect
     if (width <= 0) return
 
     setSize((prev) => {
-      // 2px 忽略亚像素；更大的阈值硬切后会滞后换档。
-      const THRESHOLD = 2
-      if (
-        Math.abs(prev.width - width) < THRESHOLD &&
-        Math.abs(prev.height - height) < THRESHOLD
-      ) {
+      // ResizeObserver already coalesces layout changes. Preserve small final
+      // sizes as well as every step of a continuous resize.
+      if (prev.width === width && prev.height === height) {
         return prev
       }
       return { width, height }
@@ -72,57 +61,26 @@ export function useWidgetSize(
   const containerRef = useCallback(
     (node: HTMLDivElement | null) => {
       if (elementRef.current) {
-        unobserveHomeResize(elementRef.current)
+        unobserveWidgetResize(elementRef.current)
       }
 
       elementRef.current = node
 
       if (node) {
-        if (reduceResizeWorkRef.current) {
-          const cached = getCachedSize(node)
-          if (cached && cached.width > 0) {
-            setSize(cached)
-          } else {
-            requestAnimationFrame(() => {
-              if (node.isConnected) {
-                const rect = node.getBoundingClientRect()
-                if (rect.width > 0) {
-                  setSize({ width: rect.width, height: rect.height })
-                }
-              }
-            })
-          }
-        } else {
-          observeHomeResize(node, handleSizeChange)
-        }
+        // Layout observation is needed at every animation level, including viewport resizes.
+        observeWidgetResize(node, handleSizeChange)
       }
     },
-    [handleSizeChange, observeHomeResize, unobserveHomeResize],
+    [handleSizeChange, observeWidgetResize, unobserveWidgetResize],
   )
 
   useEffect(() => {
     return () => {
       if (elementRef.current) {
-        unobserveHomeResize(elementRef.current)
+        unobserveWidgetResize(elementRef.current)
       }
     }
-  }, [unobserveHomeResize])
-
-  useEffect(() => {
-    if (
-      reduceResizeWorkRef.current &&
-      elementRef.current?.isConnected
-    ) {
-      requestAnimationFrame(() => {
-        if (elementRef.current?.isConnected) {
-          const rect = elementRef.current.getBoundingClientRect()
-          if (rect.width > 0) {
-            setSize({ width: rect.width, height: rect.height })
-          }
-        }
-      })
-    }
-  }, [widgetSize])
+  }, [unobserveWidgetResize])
 
   const scale = useMemo(() => {
     if (forceScale !== undefined) return forceScale

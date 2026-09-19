@@ -685,8 +685,9 @@ describe('story paint window sync', () => {
           const can = storyPaintColCanReuse(col, prevWin, nextWin)
           const node = nodes[col - nextWin.from]
           const old = prev[col - prevWin.from]
-          if (can) assert.equal(node, old)
-          else if (old) {
+          if (can) {
+            assert.equal(node, old)
+          } else if (old) {
             assert.notEqual(node, old)
             sawRemake = true
           }

@@ -14,8 +14,8 @@ import { refreshConfigTourSurface } from '../../tour/tourLogic'
 import MyriadConfigIcon from '../MyriadConfigIcon'
 import {
   CONFIG_NAV_DEFAULT_SECTION,
-  loadConfigNavPersisted,
   federationSettingsVisible,
+  loadConfigNavPersisted,
   resolveConfigSectionFromSearch,
   resolveInitialConfigSection,
   saveConfigNavPersisted,

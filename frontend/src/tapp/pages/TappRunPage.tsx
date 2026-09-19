@@ -22,8 +22,8 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { useBreakpoints } from '../../hooks/useBreakpoints'
 import { usePageSeo } from '../../hooks/usePageSeo'
-import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,

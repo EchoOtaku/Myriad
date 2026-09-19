@@ -1,7 +1,7 @@
 import { LuKeyboard, LuSearch, LuX } from '@lib/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
-import { useMediaQuery } from '../../../hooks/useSharedEventListener'
+import { useMediaQuery } from '../../../hooks/useMediaQuery'
 import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import { cx } from './cx'

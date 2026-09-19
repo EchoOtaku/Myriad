@@ -392,7 +392,10 @@ describe('home layout transfer wiring', () => {
       new URL('../components/home/HomeLayoutTransfer.tsx', import.meta.url),
       'utf8',
     )
-    assert.equal(home.includes('HomeLayoutTransferButtons'), true)
+    const chrome = readFileSync(new URL('../components/home/HomeAdminChrome.tsx', import.meta.url), 'utf8')
+    assert.equal(home.includes('HomeStatusBarActions'), true)
+    assert.equal(home.includes('HomeLayoutRail'), true)
+    assert.equal(chrome.includes('HomeLayoutTransferButtons'), true)
     assert.equal(home.includes('showLabel={false}'), false)
     assert.equal(home.includes('restoreStickerAssets'), true)
     assert.equal(home.includes('layoutImportInFlightRef'), true)

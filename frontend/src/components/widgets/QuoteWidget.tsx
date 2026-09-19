@@ -1,23 +1,15 @@
-import type { QuoteData } from '../../utils/dynamicContent'
-
 import type { WidgetConfig } from '../widgetGridTypes'
 import { motionShim as motion } from '@lib/motionShim'
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { useHomeVisibilityInterval } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import {
-  getRandomQuote,
-  HITOKOTO_CONFIG_UPDATED_EVENT,
-} from '../../utils/dynamicContent'
-import { userFacingError } from '../../utils/userFacingError'
 import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
+import { useQuoteContent } from './useQuoteContent'
 
-const CACHE_KEY = 'quote_data_cache'
-const CACHE_DURATION = 60 * 60 * 1000
+const THEME_COLOR = 'var(--color-primary, #a855f7)'
 
 export interface QuoteWidgetProps {
   config: WidgetConfig
@@ -32,142 +24,8 @@ export const QuoteWidget = memo(
       isPreview ? 1 : undefined,
     )
     const anim = useAnimationLevel()
-    const { t, locale } = useI18n()
-    const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [fetchError, setFetchError] = useState('')
-    const [themeColor, setThemeColor] = useState('#a855f7')
-
-    const loadFromCache = useCallback(() => {
-      try {
-        const cached = localStorage.getItem(CACHE_KEY)
-        if (cached) {
-          const { data, timestamp } = JSON.parse(cached)
-          if (Date.now() - timestamp < CACHE_DURATION) {
-            setQuoteData(data)
-            return true
-          }
-        }
-      } catch (err) {
-        console.error(`${t.quoteWidget.loadCacheFailed}:`, err)
-      }
-      return false
-    }, [t])
-
-    const saveToCache = useCallback(
-      (data: QuoteData) => {
-        try {
-          localStorage.setItem(
-            CACHE_KEY,
-            JSON.stringify({
-              data,
-              timestamp: Date.now(),
-            }),
-          )
-        } catch (err) {
-          console.error(`${t.quoteWidget.saveCacheFailed}:`, err)
-        }
-      },
-      [t],
-    )
-
-    const fetchQuote = useCallback(async () => {
-      try {
-        const quote = await getRandomQuote(locale)
-        if (quote) {
-          setQuoteData(quote)
-          setFetchError('')
-          saveToCache(quote)
-        }
-      } catch (error) {
-        console.error(`${t.quoteWidget.fetchQuoteFailed}:`, error)
-        setFetchError(
-          userFacingError(error, t.quoteWidget.fetchQuoteFailed),
-        )
-      } finally {
-        setLoading(false)
-      }
-    }, [saveToCache, t, locale])
-
-    useEffect(() => {
-      if (isPreview) {
-        setQuoteData({
-          text: t.quoteWidget.defaultQuote,
-          author: t.quoteWidget.anonymous,
-        })
-        setLoading(false)
-        return
-      }
-
-      const hasCache = loadFromCache()
-      if (hasCache) {
-        setLoading(false)
-      }
-
-      fetchQuote()
-    }, [
-      loadFromCache,
-      fetchQuote,
-      isPreview,
-      t.quoteWidget.defaultQuote,
-      t.quoteWidget.anonymous,
-    ])
-
-    useEffect(() => {
-      if (isPreview) return
-      const onConfigUpdated = () => {
-        try {
-          localStorage.removeItem(CACHE_KEY)
-          localStorage.removeItem('quote_cache')
-          localStorage.removeItem('quote_cache_time')
-          localStorage.removeItem('quote_cache_source')
-        } catch {
-        }
-        void fetchQuote()
-      }
-      window.addEventListener(HITOKOTO_CONFIG_UPDATED_EVENT, onConfigUpdated)
-      return () => {
-        window.removeEventListener(
-          HITOKOTO_CONFIG_UPDATED_EVENT,
-          onConfigUpdated,
-        )
-      }
-    }, [fetchQuote, isPreview])
-
-    useHomeVisibilityInterval(fetchQuote, CACHE_DURATION, !isPreview)
-
-    const updateThemeColor = useCallback(() => {
-      requestAnimationFrame(() => {
-        const primaryColor =
-          getComputedStyle(document.documentElement)
-            .getPropertyValue('--color-primary')
-            .trim() || '#a855f7'
-        setThemeColor((prev) => (prev !== primaryColor ? primaryColor : prev))
-      })
-    }, [])
-
-    useEffect(() => {
-      updateThemeColor()
-      let throttleTimer: ReturnType<typeof setTimeout> | null = null
-      const throttledUpdate = () => {
-        if (throttleTimer) return
-        throttleTimer = setTimeout(() => {
-          throttleTimer = null
-          updateThemeColor()
-        }, 300)
-      }
-
-      const observer = new MutationObserver(throttledUpdate)
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['style'],
-      })
-
-      return () => {
-        if (throttleTimer) clearTimeout(throttleTimer)
-        observer.disconnect()
-      }
-    }, [updateThemeColor])
+    const { t } = useI18n()
+    const { quoteData, loading, fetchError } = useQuoteContent(isPreview)
 
     if (loading) {
       return (
@@ -196,7 +54,7 @@ export const QuoteWidget = memo(
           background={
             <>
               <GlowBackground
-                color={themeColor}
+                color={THEME_COLOR}
                 animLevel={anim.level}
                 shouldAnimate={anim.loop}
                 variant="single-left"
@@ -252,7 +110,7 @@ export const QuoteWidget = memo(
           contentClassName="flex items-center"
           background={
             <GlowBackground
-              color={themeColor}
+              color={THEME_COLOR}
               animLevel={anim.level}
               shouldAnimate={false}
               variant="single-left"
@@ -298,7 +156,7 @@ export const QuoteWidget = memo(
         contentClassName="flex flex-col"
         background={
           <GlowBackground
-            color={themeColor}
+            color={THEME_COLOR}
             animLevel={anim.level}
             shouldAnimate={anim.loop}
             variant="single"
@@ -322,7 +180,7 @@ export const QuoteWidget = memo(
           <svg
             className="w-6 h-6"
             style={{
-              color: themeColor,
+              color: THEME_COLOR,
               width: `${24 * scale}px`,
               height: `${24 * scale}px`,
             }}

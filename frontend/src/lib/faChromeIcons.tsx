@@ -2,7 +2,7 @@ import type { SVGProps } from 'react'
 
 /** Toolbar Font Awesome marks. Do not import react-icons/fa on the home graph. */
 
-type FaProps = SVGProps<SVGSVGElement> & { size?: number | string }
+type FaProps = SVGProps<SVGSVGElement> & { size?: number | string; title?: string }
 
 function faPath(viewBox: string, d: string) {
   return function Icon({ size = '1em', style, title, ...props }: FaProps) {

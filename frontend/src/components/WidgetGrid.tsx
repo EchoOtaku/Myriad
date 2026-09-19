@@ -16,7 +16,7 @@ import React, {
   useState,
 } from 'react'
 import { useI18n } from '../contexts/I18nContext'
-import { useHomeResizeObserver } from '../hooks/animation'
+import { useWidgetResizeObserver } from '../hooks/animation'
 import { isExlight, useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
 import {
@@ -232,31 +232,31 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       [drag.startNewWidgetDrag],
     )
 
-    const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver()
+    const { observeWidgetResize, unobserveWidgetResize } = useWidgetResizeObserver()
     const gridRef = useCallback(
       (node: HTMLDivElement | null) => {
         if (containerRef.current) {
-          unobserveHomeResize(containerRef.current)
+          unobserveWidgetResize(containerRef.current)
         }
         containerRef.current = node
         if (node) {
-          observeHomeResize(node, (entry) => {
+          observeWidgetResize(node, (entry) => {
             setContainerWidth(entry.contentRect.width)
             gridRectRef.current = node.getBoundingClientRect()
           })
           setContainerWidth(node.getBoundingClientRect().width)
         }
       },
-      [observeHomeResize, unobserveHomeResize],
+      [observeWidgetResize, unobserveWidgetResize],
     )
 
     useEffect(() => {
       return () => {
         if (containerRef.current) {
-          unobserveHomeResize(containerRef.current)
+          unobserveWidgetResize(containerRef.current)
         }
       }
-    }, [unobserveHomeResize])
+    }, [unobserveWidgetResize])
 
     const handleRemoveWidget = useCallback(
       (widgetId: string) => {

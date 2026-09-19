@@ -1,3 +1,4 @@
+import type { ColorPalette } from './colorPalette'
 import {
   harmonizeGradientPalette,
   pickGradientCompanion,
@@ -5,20 +6,19 @@ import {
 import {
   DEFAULT_PALETTE,
   isDefaultPalette,
-  type ColorPalette,
 } from './colorPalette'
 import { coverUrlForColorExtract } from './coverUrlForColorExtract'
 import { imagePool, withPooledCanvas } from './objectPool'
 import { wallpaperState } from './wallpaperState'
 import { yieldToMain } from './yieldToMain'
 
-export { coverUrlForColorExtract } from './coverUrlForColorExtract'
 export {
   applyColorPalette,
+  type ColorPalette,
   DEFAULT_PALETTE,
   isDefaultPalette,
-  type ColorPalette,
 } from './colorPalette'
+export { coverUrlForColorExtract } from './coverUrlForColorExtract'
 
 interface CachedColorData {
   url: string

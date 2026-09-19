@@ -1,5 +1,5 @@
 import type { QqPairingStatus } from '../../services/agent/agentApi'
-import { LuCopy } from '@lib/icons'
+import { Copy as LuCopy } from 'lucide-react'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConfigI18n as useI18n } from '../../contexts/I18nContext'

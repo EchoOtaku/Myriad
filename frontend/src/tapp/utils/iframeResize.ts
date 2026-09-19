@@ -20,8 +20,6 @@ export interface IframeDimensions {
 
 const BASE_CELL_SIZE = STANDARD_CELL_SIZE
 
-const RESIZE_THRESHOLD = 10
-
 const DEFAULT_DIMENSIONS: IframeDimensions = {
   width: 0,
   height: 0,
@@ -91,8 +89,8 @@ export function useIframeResize<T extends HTMLElement = HTMLDivElement>(): {
       const prev = lastDimensionsRef.current
 
       const isInitial = !initializedRef.current
-      const widthChanged = Math.abs(prev.width - width) > RESIZE_THRESHOLD
-      const heightChanged = Math.abs(prev.height - height) > RESIZE_THRESHOLD
+      const widthChanged = prev.width !== width
+      const heightChanged = prev.height !== height
 
       if (isInitial || widthChanged || heightChanged) {
         const newDimensions = calculateDimensions(width, height)

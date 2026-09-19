@@ -91,6 +91,11 @@ export class RequestCache {
   set<T>(key: string, data: T, ttl: number = 5 * 60 * 1000): void {
     this.pendingRequests.delete(key)
     this.cache.delete(key)
+    // A zero TTL deduplicates active transport only, even within one clock tick.
+    if (ttl <= 0) {
+      this.stopSweepIfIdle()
+      return
+    }
     this.cache.set(key, {
       data,
       timestamp: Date.now(),

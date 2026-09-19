@@ -193,8 +193,9 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
       if (
         detail?.sessionId !== sessionId ||
         !history.rows.some((row) => row.id === detail.messageId)
-      )
+      ) {
         return
+      }
       if (detail.success) history.select(null)
       else setHistoryAnswerError(true)
     }
@@ -267,12 +268,13 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
                     key={message.id}
                     message={message}
                     onAnswer={(messageId, answer) => {
-                      if (sessionId && history.page && message.question)
+                      if (sessionId && history.page && message.question) {
                         dispatchAgentPanelAnswer(messageId, answer, {
                           sessionId,
                           page: history.page,
                           questionId: message.question.id,
                         })
+                      }
                     }}
                     onSuggest={onSubmit}
                     onWorkOffer={onWorkOffer}

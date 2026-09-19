@@ -5,6 +5,7 @@ import type {
   WidgetType,
 } from './widgetGridTypes'
 import { LuSparkles, LuX } from '@lib/chromeStrokeIcons'
+import { MotionEntranceHost } from '@lib/motionEntrance'
 import { motionShim as motion } from '@lib/motionShim'
 import React, {
   lazy,
@@ -16,12 +17,11 @@ import React, {
   useState,
 } from 'react'
 import { useI18n } from '../contexts/I18nContext'
-import { useStaggerAnimation } from '../hooks/animation'
 import {
   isExlight,
-  isStandardAnimation,
   useAnimationLevel,
 } from '../hooks/useAnimationLevel'
+import { useWidgetEntrance } from '../hooks/useWidgetEntrance'
 import {
   HOME_STANDARD_COLS,
   HOME_STANDARD_ROWS,
@@ -36,6 +36,7 @@ import {
 import { stickerSizesSharingAspect } from '../utils/homeStickerSize'
 import { widgetSizeSpan } from '../utils/widgetSizeScale'
 import { RenderErrorBoundary } from './RenderErrorBoundary'
+import { widgetEntranceMotion } from './widgetEntranceMotion'
 import { widgetDisplayLabel } from './widgetLibraryModel'
 import { shouldSkipWidgetEntrance } from './widgetPlacementPreview'
 import {
@@ -202,12 +203,10 @@ export const WidgetGridItem = React.memo(
 
     const animationsEnabled = !isExlight(anim)
     const skipEntrance = shouldSkipWidgetEntrance(isEditMode)
-    const { canAnimate, onComplete } = useStaggerAnimation({
-      groupId: 'widget-grid',
-      index: index || 0,
-      baseDelay: 115,
-      enabled: animationsEnabled && !skipEntrance,
-    })
+    const { phase: entrancePhase, canAnimate, onComplete } = useWidgetEntrance(
+      index,
+      !animationsEnabled || skipEntrance,
+    )
 
     const dim = widgetSizeSpan(widget.size)
 
@@ -258,8 +257,6 @@ export const WidgetGridItem = React.memo(
       ? stickerSizesSharingAspect(widget.size).length > 1
       : !widgetType.supportedSizes || widgetType.supportedSizes.length > 1
 
-    const useLiteTransition = !anim.spring || !isStandardAnimation(anim)
-
     const dragStart = (
       point: { x: number; y: number },
       origin = point,
@@ -288,26 +285,20 @@ export const WidgetGridItem = React.memo(
         style={style}
         initial={
           animationsEnabled && !skipEntrance
-            ? { opacity: 0, scale: 0.9, y: 14 }
+            ? widgetEntranceMotion.hidden
             : false
         }
         animate={
           !animationsEnabled || skipEntrance || canAnimate
-            ? { opacity: 1, scale: 1, y: 0 }
-            : { opacity: 0, scale: 0.9, y: 14 }
+            ? widgetEntranceMotion.visible
+            : widgetEntranceMotion.hidden
         }
-        exit={animationsEnabled ? { opacity: 0, scale: 0.9 } : undefined}
+        exit={animationsEnabled ? widgetEntranceMotion.exit : undefined}
         onAnimationComplete={onComplete}
         transition={
           !animationsEnabled
             ? { duration: 0 }
-            : useLiteTransition
-              ? { type: 'tween', duration: 0.48 }
-              : {
-                  type: 'spring',
-                  stiffness: 230,
-                  damping: 29,
-                }
+            : widgetEntranceMotion.transition
         }
       >
         <div
@@ -481,13 +472,15 @@ export const WidgetGridItem = React.memo(
                 />
               )}
             >
-              <WidgetGridItemBody
-                widget={widget}
-                widgetType={widgetType}
-                isEditMode={isEditMode}
-                isPreview={isPreview}
-                onConfigChange={onConfigChange}
-              />
+              <MotionEntranceHost phase={entrancePhase}>
+                <WidgetGridItemBody
+                  widget={widget}
+                  widgetType={widgetType}
+                  isEditMode={isEditMode}
+                  isPreview={isPreview}
+                  onConfigChange={onConfigChange}
+                />
+              </MotionEntranceHost>
             </RenderErrorBoundary>
             {isEditMode && isHomeStickerItem(widget) && stickerSrc ? (
               <Suspense fallback={null}>

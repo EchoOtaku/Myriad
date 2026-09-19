@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
-import config from '../i18n/config.en-US.json' with { type: 'json' }
-import { currentCopy } from '../i18n/localeCopy.ts'
+import { loadLocale } from '../i18n/loadLocale'
 import { ApiError } from '../services/api.ts'
 import { messageForAdminUserError } from './authErrorMessages.ts'
 import { passwordValidationCode } from './passwordValidation.ts'
 
-it('shows localized password requirements for admin creation instead of HTTP 400', () => {
-  const t = { ...currentCopy(), config }
+it('shows localized password requirements for admin creation instead of HTTP 400', async () => {
+  const t = await loadLocale('en-US')
   for (const [code, expected] of [
     ['password_too_short', t.errors.passwordMinLength],
     ['password_too_long', t.auth.passwordLengthError],

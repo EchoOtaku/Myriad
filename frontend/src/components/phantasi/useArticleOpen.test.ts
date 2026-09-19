@@ -90,13 +90,15 @@ it('Phantasi hooks reject stale opens, retry failed pages, and settle partial un
     assert.deepEqual(errors, [])
 
     const requested: string[] = []
-    const projections: (string | null)[] = []
+    const listPaths: string[] = []
     let failNextPage = true
     globalThis.fetch = async (input) => {
       const url = new URL(String(input), 'https://test.invalid')
       const cursor = url.searchParams.get('cursor') ?? ''
       requested.push(cursor)
-      projections.push(url.searchParams.get('projection'))
+      listPaths.push(url.pathname)
+      assert.equal(url.searchParams.has('projection'), false)
+      assert.equal(url.searchParams.get('filter'), 'starred')
       if (cursor && failNextPage) {
         failNextPage = false
         return Response.json({ error: 'page unavailable' }, { status: 503 })
@@ -118,7 +120,7 @@ it('Phantasi hooks reject stale opens, retry failed pages, and settle partial un
     await act(async () => { list.loadMore(); list.loadMore() })
     await act(async () => { list.loadMore() })
     assert.deepEqual(requested, ['', '1:1', '1:1'])
-    assert.deepEqual(projections, ['preview', 'preview', 'preview'])
+    assert.deepEqual(listPaths, Array.from({ length: 3 }, () => '/api/phantasi/items'))
     assert.deepEqual(list.items.map(item => item.id), [1, 2])
     assert.equal(list.items[0]?.content, null)
 

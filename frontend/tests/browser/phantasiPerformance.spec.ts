@@ -14,6 +14,8 @@ for (const width of [390, 1440]) {
       await cdp.send('Performance.enable')
       const results = []
       for (const direction of ['advance', 'return']) {
+        const track = page.locator('[data-phantasi-rail-track="sites"]')
+        const startOffset = await track.evaluate(el => Number((el as HTMLElement).dataset.phantasiRailScroll) || 0)
         const before = await cdp.send('Performance.getMetrics')
         await page.evaluate(() => {
           const frames: number[] = []
@@ -42,13 +44,16 @@ for (const width of [390, 1440]) {
         await page.mouse.wheel(direction === 'advance' ? 700 : -700, 0)
         await page.waitForTimeout(600)
         await expect(feeds).not.toHaveClass(/is-sites-flipping/)
+        const endOffset = await track.evaluate(el => Number((el as HTMLElement).dataset.phantasiRailScroll) || 0)
+        if (direction === 'advance') expect(endOffset).toBeGreaterThan(startOffset)
+        else expect(endOffset).toBeLessThan(startOffset)
         const sample = await page.evaluate(() => (window as any).finishPhantasiMeasurement()) as { frames: number[]; tasks: number[] }
         const after = await cdp.send('Performance.getMetrics')
         const delta = (name: string) => (after.metrics.find(metric => metric.name === name)?.value ?? 0) - (before.metrics.find(metric => metric.name === name)?.value ?? 0)
         const sorted = sample.frames.slice(1).sort((a, b) => a - b)
         expect(sorted.length).toBeGreaterThan(0)
         await expect(page.locator('[data-phantasi-ghost]')).toHaveCount(0)
-        results.push({ direction, width, count, samples: sorted.length, frameP95Ms: sorted[Math.floor(sorted.length * 0.95)], maxFrameMs: sorted.at(-1), longTasks: sample.tasks.length, maxLongTaskMs: Math.max(0, ...sample.tasks), layoutCount: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000, scriptMs: delta('ScriptDuration') * 1000 })
+        results.push({ direction, width, count, startOffset, endOffset, samples: sorted.length, frameP95Ms: sorted[Math.floor(sorted.length * 0.95)], maxFrameMs: sorted.at(-1), longTasks: sample.tasks.length, maxLongTaskMs: Math.max(0, ...sample.tasks), layoutCount: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000, scriptMs: delta('ScriptDuration') * 1000 })
       }
       await test.info().attach('feed-motion-metrics', { body: JSON.stringify(results, null, 2), contentType: 'application/json' })
       console.log(JSON.stringify(results))

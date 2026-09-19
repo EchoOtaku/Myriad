@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { DashboardAppearancePatch } from '../services/dashboardAppearancePersistence'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
-import { API_URL } from '../config'
-import { currentCopy } from '../i18n/localeCopy'
 import { SITE_TITLE_FONTS } from '../siteFonts.mjs'
+import { authSubject } from '../utils/authSubject'
 import { usePrimaryColor } from '../utils/colorSubscriber'
-import { formatUserFacingError } from '../utils/formatUserFacingError'
 import { deriveAdaptiveTitleColor } from '../utils/readableColor'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { useThemeMode } from '../utils/themeSubscriber'
-import { showError } from '../utils/toastManager'
 
 export interface FontOption {
   id: string
@@ -34,7 +32,7 @@ interface TitleStyle {
   color: string
 }
 
-type TitleStyleListener = (style: TitleStyle) => void
+type TitleStyleListener = () => void
 
 export const AVAILABLE_COLORS: readonly ColorOption[] = Object.freeze([
   {
@@ -146,81 +144,44 @@ function loadFont(font: FontOption): Promise<void> {
   return promise
 }
 
-let globalState: TitleStyle = {
+const defaultState: TitleStyle = {
   font: 'qwitcher-grypen',
   fontSize: 1.0,
 
   color: 'adaptive',
 }
 
+let globalState = defaultState
+// 用户选择从发起时生效：慢字体和晚到的初始配置均不得覆盖它。
+const editRevision = { font: 0, fontSize: 0, color: 0 }
+
 const listeners = new Set<TitleStyleListener>()
 let isGlobalInitialized = false
 let initPromise: Promise<void> | null = null
 
-function notifyListeners() {
-  const state = { ...globalState }
-  listeners.forEach((listener) => listener(state))
+function subscribeTitleStyle(listener: TitleStyleListener) {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
 }
+
+const getTitleStyle = () => globalState
+const getServerTitleStyle = () => defaultState
 
 function updateGlobalState(updates: Partial<TitleStyle>) {
-  globalState = { ...globalState, ...updates }
-  notifyListeners()
+  const next = { ...globalState, ...updates }
+  if (next.font === globalState.font && next.fontSize === globalState.fontSize && next.color === globalState.color) return
+  globalState = next
+  listeners.forEach(listener => listener())
 }
 
-let saveTimeout: ReturnType<typeof setTimeout> | null = null
-const SAVE_DEBOUNCE_MS = 500
-let pendingSave: Partial<{
-  title_font: string
-  title_font_size: number
-  title_color: string
-}> = {}
-let pendingCsrfToken = ''
+function useTitleStyle() {
+  const state = useSyncExternalStore(subscribeTitleStyle, getTitleStyle, getServerTitleStyle)
+  useEffect(() => { void initGlobalState() }, [])
+  return state
+}
 
-async function debouncedSave(
-  csrfToken: string,
-  settings: Partial<{
-    title_font: string
-    title_font_size: number
-    title_color: string
-  }>,
-) {
-  pendingSave = { ...pendingSave, ...settings }
-  pendingCsrfToken = csrfToken || pendingCsrfToken
-
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-  }
-
-  saveTimeout = setTimeout(async () => {
-    const payload = { ...pendingSave }
-    const token = pendingCsrfToken
-    pendingSave = {}
-    pendingCsrfToken = ''
-    saveTimeout = null
-    if (Object.keys(payload).length === 0) return
-    try {
-      const res = await fetch(`${API_URL}/api/config/dashboard`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': token,
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        throw new Error(`Failed to save title style: HTTP ${res.status}`)
-      }
-    } catch (err) {
-      console.error('保存标题样式失败:', err)
-      showError(
-        await formatUserFacingError(
-          err,
-          currentCopy().errors.titleStyleSaveFailed,
-        ),
-      )
-    }
-  }, SAVE_DEBOUNCE_MS)
+function persistTitleStyle(token: string, settings: DashboardAppearancePatch, owner = authSubject.signal) {
+  void import('../services/dashboardAppearancePersistence').then(({ saveDashboardAppearance }) => saveDashboardAppearance(token, settings, 'titleStyleSaveFailed', owner))
 }
 
 async function initGlobalState(): Promise<void> {
@@ -234,20 +195,20 @@ async function initGlobalState(): Promise<void> {
 
       const updates: Partial<TitleStyle> = {}
 
-      if (data.title_font && fontMap.has(data.title_font)) {
+      if (editRevision.font === 0 && data.title_font && fontMap.has(data.title_font)) {
         updates.font = data.title_font
         const font = fontMap.get(data.title_font)
         if (font) loadFont(font)
       }
 
-      if (data.title_font_size != null) {
+      if (editRevision.fontSize === 0 && data.title_font_size != null) {
         const fontSize = Number(data.title_font_size)
         if (!Number.isNaN(fontSize) && sizeMap.has(fontSize)) {
           updates.fontSize = fontSize
         }
       }
 
-      if (data.title_color && colorMap.has(data.title_color)) {
+      if (editRevision.color === 0 && data.title_color && colorMap.has(data.title_color)) {
         updates.color = data.title_color
       }
 
@@ -269,9 +230,10 @@ async function initGlobalState(): Promise<void> {
 }
 
 export function useTitleFont() {
-  const [state, setState] = useState<TitleStyle>(globalState)
+  const state = useTitleStyle()
   const [isLoading, setIsLoading] = useState(false)
   const mountedRef = useRef(true)
+  const fontRequest = useRef(0)
 
   const currentFont = useMemo(
     () => fontMap.get(state.font) ?? AVAILABLE_FONTS[0],
@@ -289,19 +251,7 @@ export function useTitleFont() {
   useEffect(() => {
     mountedRef.current = true
 
-    const listener: TitleStyleListener = (newState) => {
-      if (mountedRef.current) {
-        setState(newState)
-      }
-    }
-
-    listeners.add(listener)
-    initGlobalState()
-
-    return () => {
-      mountedRef.current = false
-      listeners.delete(listener)
-    }
+    return () => { mountedRef.current = false }
   }, [])
 
   const setTitleFont = useCallback(
@@ -309,15 +259,19 @@ export function useTitleFont() {
       const font = fontMap.get(fontId)
       if (!font) return
 
+      const owner = authSubject.signal
+      const revision = ++editRevision.font
+      const request = ++fontRequest.current
       setIsLoading(true)
       try {
         await loadFont(font)
+        if (owner.aborted || revision !== editRevision.font) return
         updateGlobalState({ font: fontId })
         if (csrfToken) {
-          debouncedSave(csrfToken, { title_font: fontId })
+          persistTitleStyle(csrfToken, { title_font: fontId }, owner)
         }
       } finally {
-        if (mountedRef.current) {
+        if (mountedRef.current && request === fontRequest.current) {
           setIsLoading(false)
         }
       }
@@ -326,16 +280,20 @@ export function useTitleFont() {
   )
 
   const setTitleFontSize = useCallback((size: number, csrfToken?: string) => {
+    if (!sizeMap.has(size)) return
+    editRevision.fontSize++
     updateGlobalState({ fontSize: size })
     if (csrfToken) {
-      debouncedSave(csrfToken, { title_font_size: size })
+      persistTitleStyle(csrfToken, { title_font_size: size })
     }
   }, [])
 
   const setTitleColor = useCallback((colorId: string, csrfToken?: string) => {
+    if (!colorMap.has(colorId)) return
+    editRevision.color++
     updateGlobalState({ color: colorId })
     if (csrfToken) {
-      debouncedSave(csrfToken, { title_color: colorId })
+      persistTitleStyle(csrfToken, { title_color: colorId })
     }
   }, [])
 
@@ -382,7 +340,7 @@ export function getTitleColorCss(colorId?: string, isDark?: boolean): string {
 export function useResolvedTitleColor(
   colorType: 'primary' | 'accent' = 'primary',
 ): string {
-  const { titleColor } = useTitleFont()
+  const { color: titleColor } = useTitleStyle()
   const isDark = useThemeMode()
 
   const primaryColor = usePrimaryColor()

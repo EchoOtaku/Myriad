@@ -54,27 +54,37 @@ export interface WeatherData {
 
 let weatherInflight: Promise<WeatherData | null> | null = null
 
-function readLastWeather(): WeatherData | null {
+/** Persistent storage is optional; failure must not become a weather failure. */
+function readWeatherCache(dataKey: string, timeKey: string): { data: WeatherData, timestamp: number } | null {
   try {
-    const cached = localStorage.getItem(LAST_WEATHER_KEY)
-    const cacheTime = localStorage.getItem(LAST_WEATHER_TIME_KEY)
+    const cached = localStorage.getItem(dataKey)
+    const cacheTime = localStorage.getItem(timeKey)
     if (!cached || !cacheTime) return null
     const timestamp = Number.parseInt(cacheTime)
     if (!Number.isFinite(timestamp) || Date.now() - timestamp >= WEATHER_CACHE_TTL) {
       return null
     }
-    return normalizeWeatherIconAssets(JSON.parse(cached))
+    return { data: normalizeWeatherIconAssets(JSON.parse(cached)), timestamp }
   } catch {
     return null
   }
 }
 
-function writeLastWeather(data: WeatherData, timestamp: number): void {
+function writeWeatherCache(dataKey: string, timeKey: string, data: WeatherData, timestamp: number): void {
   try {
-    localStorage.setItem(LAST_WEATHER_KEY, JSON.stringify(data))
-    localStorage.setItem(LAST_WEATHER_TIME_KEY, String(timestamp))
+    localStorage.setItem(dataKey, JSON.stringify(data))
+    localStorage.setItem(timeKey, String(timestamp))
   } catch {
+    // Quota/privacy restrictions do not invalidate a successful response.
   }
+}
+
+function readLastWeather(): WeatherData | null {
+  return readWeatherCache(LAST_WEATHER_KEY, LAST_WEATHER_TIME_KEY)?.data ?? null
+}
+
+function writeLastWeather(data: WeatherData, timestamp: number): void {
+  writeWeatherCache(LAST_WEATHER_KEY, LAST_WEATHER_TIME_KEY, data, timestamp)
 }
 
 export async function getWeatherInfo(): Promise<WeatherData | null> {
@@ -124,16 +134,10 @@ async function getWeatherDataWithCache(location: {
   const cacheKey = `weather_data_${locationKey}`
   const cacheTimeKey = `weather_time_${locationKey}`
 
-  const cached = localStorage.getItem(cacheKey)
-  const cacheTime = localStorage.getItem(cacheTimeKey)
-
-  if (cached && cacheTime) {
-    const timestamp = Number.parseInt(cacheTime)
-    if (Number.isFinite(timestamp) && Date.now() - timestamp < WEATHER_CACHE_TTL) {
-      const data = normalizeWeatherIconAssets(JSON.parse(cached))
-      writeLastWeather(data, timestamp)
-      return data
-    }
+  const cached = readWeatherCache(cacheKey, cacheTimeKey)
+  if (cached) {
+    writeLastWeather(cached.data, cached.timestamp)
+    return cached.data
   }
 
   try {
@@ -212,8 +216,7 @@ async function getWeatherDataWithCache(location: {
     }
 
     const timestamp = Date.now()
-    localStorage.setItem(cacheKey, JSON.stringify(result))
-    localStorage.setItem(cacheTimeKey, timestamp.toString())
+    writeWeatherCache(cacheKey, cacheTimeKey, result, timestamp)
     writeLastWeather(result, timestamp)
 
     return result

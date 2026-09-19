@@ -1,7 +1,5 @@
 import type { DynamicContentType } from '../services/DynamicContentProvider'
-
-import type { AppNotification } from '../services/notificationApi'
-import type { QuoteData, WeatherData } from '../utils/dynamicContent'
+import type { DynamicContent } from './ControlPanel/islandContentTypes'
 import type { PanelTab } from './ControlPanel/panelTransition'
 import React, {
   useCallback,
@@ -13,65 +11,41 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react'
-
 import { useNavigate } from 'react-router-dom'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { resetMeropeState } from '../features/merope/meropeAffectState'
 import { setForegroundSurface } from '../features/merope/perception/surface'
-import { batchRead, batchWrite, observeResize } from '../hooks/animation'
-import {
-  isReducedAnimation,
-  useAnimationLevel,
-} from '../hooks/useAnimationLevel'
+
+import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useMusicPlayer } from '../hooks/useMusicPlayer'
-import { useNotificationCenter } from '../hooks/useNotificationCenter'
-import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
+import { usePublicUiConfig } from '../hooks/usePublicUiConfig'
+
+import { useThemePreference } from '../hooks/useThemePreference'
+import { useVisibleState } from '../hooks/useVisibleState'
 import { useWallpaper } from '../hooks/useWallpaper'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
-import {
-  notificationSourceFor,
-  notificationToastType,
-  shouldEmitNotificationToast,
-  shouldSurfaceNotification,
-} from '../services/notificationDelivery'
 import { useBackgroundResidents } from '../tapp/runtime/backgroundResidentStore'
 import {
-  getGreeting,
-  getRandomQuote,
-  getWeatherInfo,
-  WEATHER_ICON_ASSETS,
-} from '../utils/dynamicContent'
-import {
   allowsIslandType,
-  DEFAULT_ISLAND_CONTENT,
   ISLAND_CONTENT_CHANGED_EVENT,
   islandContentFromPublicUi,
 } from '../utils/islandContent'
-import { CONTROL_PANEL_HEIGHT_COMPENSATION } from '../utils/libraryDockStage'
 import { formatMusicError } from '../utils/musicError'
 import {
   getNavLayoutSnapshot,
   getServerNavLayoutSnapshot,
   subscribeNavLayout,
 } from '../utils/navLayout'
-import {
-  notificationFacingBody,
-  notificationFacingTitle,
-} from '../utils/notificationFacing'
-import { getUIConfigDeduped } from '../utils/requestDedup'
-import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
 import { showToast } from '../utils/toastManager'
-import {
-  isLookingAtAgentPanel,
-  subscribeLookingAtAgentPanel,
-} from './agent-panel/agentPanelVisible'
-import { ADDRESSEE_UPDATED_EVENT } from './agent/meropeVitals'
+import { ControlPanelWidgets } from './ControlPanel/ControlPanelWidgets'
 import { ControlQuickActions } from './ControlPanel/ControlQuickActions'
 import { islandPanelTabForClick } from './ControlPanel/islandClick'
+import { MusicPlayer } from './ControlPanel/MusicPlayer'
+import { trackPanelHeight } from './ControlPanel/panelHeight'
 import {
   initialPanelState,
   isPanelMorphing,
@@ -85,80 +59,25 @@ import {
   showsPanelContent,
   showsProgressUi,
 } from './ControlPanel/panelTransition'
-import { ControlPanelWidgets } from './ControlPanel/ControlPanelWidgets'
-import { MusicPlayer } from './ControlPanel/MusicPlayer'
+import { useBuiltinIslandContents } from './ControlPanel/useBuiltinIslandContents'
+import { useControlPanelNotifications } from './ControlPanel/useControlPanelNotifications'
+import { useIslandCarousel } from './ControlPanel/useIslandCarousel'
+import { useIslandMusicContent } from './ControlPanel/useIslandMusicContent'
+import { useIslandTextMotion } from './ControlPanel/useIslandTextMotion'
 import { UserSection } from './ControlPanel/UserSection'
+import { useTappIslandContents } from './ControlPanel/useTappIslandContents'
 import { isHoverCapablePointer } from './ControlPanel/widgetCarousel'
-import {
-  NotificationSourceIcon,
-  notificationSourceIconAsset,
-} from './notifications/NotificationIcons'
+import NotificationPanelList from './NotificationPanelList'
 import { homeBrowseTourPanelPose } from './tour/tourHomePose'
 import {
   getTourSnapshot,
   subscribeTour,
 } from './tour/tourStore'
-import NotificationPanelList from './NotificationPanelList'
-import { WeatherAssetIcon } from './weather/WeatherAssetIcon'
 import './GlobalControlPanel.css'
 
 function readHomeBrowseTourPanelPose() {
   const snapshot = getTourSnapshot()
   return homeBrowseTourPanelPose(snapshot.tourId, snapshot.step?.id ?? null)
-}
-
-const GREETING_ICON_ASSETS = {
-  sunrise: '/icons/greeting/sunrise.webp',
-  sun: WEATHER_ICON_ASSETS.sunny,
-  cloudSun: WEATHER_ICON_ASSETS.partlyCloudy,
-  sunset: '/icons/greeting/sunset.webp',
-  moon: '/icons/greeting/night.webp',
-} as const
-
-const DYNAMIC_ICON_ASSETS = {
-  quote: '/icons/dynamic/quote.webp',
-  music: '/icons/dynamic/music.webp',
-  musicPaused: '/icons/dynamic/music-paused.webp',
-} as const
-
-type ThemePreference = 'light' | 'dark' | 'auto'
-
-const THEME_CYCLE: ThemePreference[] = ['light', 'dark', 'auto']
-
-function getStoredThemePreference(): ThemePreference {
-  if (typeof localStorage === 'undefined') return 'auto'
-  const stored = localStorage.getItem('theme')
-  return stored === 'light' || stored === 'dark' ? stored : 'auto'
-}
-
-function applyThemeClass(dark: boolean) {
-  const html = document.documentElement
-  if (dark) {
-    html.classList.add('dark')
-    html.classList.remove('light')
-  } else {
-    html.classList.add('light')
-    html.classList.remove('dark')
-  }
-
-  const metaThemeColor = document.querySelector('meta[name="theme-color"]')
-  if (metaThemeColor) {
-    const primaryColor =
-      getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-primary')
-        .trim() || '#94a3b8'
-    metaThemeColor.setAttribute('content', primaryColor)
-  }
-}
-
-interface DynamicContent {
-  type: DynamicContentType
-  icon: React.ReactNode
-  text: string
-  subtext?: string
-  showSubtext?: boolean
-  sourceTappId?: string
-  lyricDuration?: number
 }
 
 const GlobalControlPanel: React.FC = () => {
@@ -174,16 +93,8 @@ const GlobalControlPanel: React.FC = () => {
     getNavLayoutSnapshot,
     getServerNavLayoutSnapshot,
   )
-  const lookingAtAgent = useSyncExternalStore(
-    subscribeLookingAtAgentPanel,
-    isLookingAtAgentPanel,
-    () => false,
-  )
   // 触控带不挂天气/一言格，只留播放器与设置。
   const showControlPanelWidgets = navLayout === 'desktop'
-  const { preferences: notificationPreferences } = useNotificationPreferences(
-    user?.id,
-  )
   // 展开/收起唯一状态：phase（issue #320）。
   const [panel, dispatchPanel] = useReducer(panelReducer, initialPanelState)
   const isExpanded = isPanelOpen(panel)
@@ -193,243 +104,41 @@ const GlobalControlPanel: React.FC = () => {
   const panelTab = panel.tab
   const isDark = useThemeMode()
 
-  const [isPageVisible, setIsPageVisible] = useState(!document.hidden)
-  const pendingUpdatesRef = useRef<
-    Array<(prev: DynamicContent[]) => DynamicContent[]>
-  >([])
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      const visible = !document.hidden
-      setIsPageVisible(visible)
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [])
-
-  const [dynamicContents, setDynamicContents] = useState<DynamicContent[]>([])
-  const [currentContentIndex, setCurrentContentIndex] = useState(0)
+  const [transientContents, updateTransientContents] = useVisibleState<DynamicContent[]>([])
   const [isHovering, setIsHovering] = useState(false)
-  const [isTransitioning, setIsTransitioning] = useState(false)
-  const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
-  const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
-  const [islandContent, setIslandContent] = useState(DEFAULT_ISLAND_CONTENT)
+  const uiConfig = usePublicUiConfig(ISLAND_CONTENT_CHANGED_EVENT)
+  const islandContent = useMemo(() => islandContentFromPublicUi(uiConfig), [uiConfig])
 
-  const safeSetDynamicContents = useCallback(
-    (updater: (prev: DynamicContent[]) => DynamicContent[]) => {
-      if (document.hidden) {
-        pendingUpdatesRef.current.push(updater)
-      } else {
-        setDynamicContents(updater)
-      }
-    },
-    [],
-  )
-
-  useEffect(() => {
-    if (isPageVisible && pendingUpdatesRef.current.length > 0) {
-      // 先截取队列再 setState：updater 不在调用点同步跑，先清空会丢后台累积。
-      const pendingUpdates = pendingUpdatesRef.current
-      pendingUpdatesRef.current = []
-
-      setDynamicContents((prev) => {
-        let result = prev
-        for (const updater of pendingUpdates) {
-          result = updater(result)
-        }
-        return result
-      })
-    }
-  }, [isPageVisible])
-
-  const notifCarouselTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  )
-
-  useEffect(
-    () => () => {
-      if (notifCarouselTimerRef.current) {
-        clearTimeout(notifCarouselTimerRef.current)
-      }
-    },
-    [],
-  )
-
-  const handleNewNotification = useCallback(
-    (n: AppNotification) => {
-      const source = notificationSourceFor(n)
-      const icon = (
-        <NotificationSourceIcon source={source} className="h-4 w-4" />
-      )
-      const title = notificationFacingTitle(n)
-      const body = notificationFacingBody(n)
-      const snippet = body.length > 60 ? `${body.slice(0, 60)}…` : body
-
-      if (
-        shouldSurfaceNotification(
-          notificationPreferences,
-          n,
-          'island',
-          lookingAtAgent,
-        )
-      ) {
-        safeSetDynamicContents((prev) => [
-          {
-            type: 'notification',
-            icon,
-            text: title,
-            subtext: snippet,
-            showSubtext: true,
-          },
-          ...prev.filter((c) => c.type !== 'notification'),
-        ])
-        setCurrentContentIndex(0)
-        if (notifCarouselTimerRef.current) {
-          clearTimeout(notifCarouselTimerRef.current)
-        }
-        notifCarouselTimerRef.current = setTimeout(() => {
-          safeSetDynamicContents((prev) =>
-            prev.filter((c) => c.type !== 'notification'),
-          )
-        }, 20000)
-      }
-
-      // Toast 只改视觉类型，不决定是否展示。
-      if (
-        shouldEmitNotificationToast(
-          notificationPreferences,
-          n,
-          lookingAtAgent,
-        )
-      ) {
-        const showInPanel = shouldSurfaceNotification(
-          notificationPreferences,
-          n,
-          'panel',
-          lookingAtAgent,
-        )
-        showToast({
-          title,
-          message: snippet,
-          type: notificationToastType(n),
-          icon: notificationSourceIconAsset(source),
-          duration: 6000,
-          showCloseButton: true,
-          onClick: showInPanel
-            ? () => {
-                // 复用打开面板事件带 tab：已展开则只切 tab。
-                window.dispatchEvent(
-                  new CustomEvent('open-control-panel', {
-                    detail: { tab: 'notifications' },
-                  }),
-                )
-              }
-            : undefined,
-        })
-      }
-
-      if (
-        document.hidden &&
-        shouldSurfaceNotification(
-          notificationPreferences,
-          n,
-          'browser',
-          lookingAtAgent,
-        ) &&
-        typeof Notification !== 'undefined' &&
-        Notification.permission === 'granted'
-      ) {
-        try {
-          // Notification 构造即展示；同 id 用 tag 去重。
-          void new Notification(title, {
-            body: body.slice(0, 200),
-            tag: n.id,
-            icon: notificationSourceIconAsset(source),
-          })
-        } catch {
-        }
-      }
-    },
-    [lookingAtAgent, notificationPreferences, safeSetDynamicContents],
-  )
-
-  const includeNotificationInPanel = useCallback(
-    (notification: AppNotification) =>
-      shouldSurfaceNotification(
-        notificationPreferences,
-        notification,
-        'panel',
-        lookingAtAgent,
-      ),
-    [lookingAtAgent, notificationPreferences],
-  )
-
-  const handleLiveSpeech = useCallback(
-    (speech: {
-      id: string
-      event_key: string
-      body: string
-      performance?: unknown
-      merope_state?: unknown
-    }) => {
-      void Promise.all([
-        import('../features/merope/faceSpeechArbitration'),
-        import('../features/merope/agentFaceChannel'),
-      ]).then(([{ deliverProactiveFace, faceSpeechGate }, { agentFace }]) => {
-        deliverProactiveFace(agentFace, faceSpeechGate, {
-          id: speech.id,
-          eventKey: speech.event_key,
-          body: speech.body,
-          performance: speech.performance,
-          meropeState: speech.merope_state,
-        })
-      })
-    },
-    [],
-  )
-
-  const notifCenter = useNotificationCenter({
-    enabled: !!user,
-    userId: user?.id,
-    onNew: handleNewNotification,
-    onLiveSpeech: handleLiveSpeech,
-    onLiveSpeechMotion: (id, performance) => {
-      void import('../features/merope/faceSpeechArbitration').then(
-        ({ refineProactiveFace, faceSpeechGate }) => {
-          refineProactiveFace(faceSpeechGate, id, performance)
-        },
-      )
-    },
-    onMeropeState: (state) => {
-      void import('../features/merope/agentFaceChannel').then(({ agentFace }) => {
-        agentFace.updateState(state)
-      })
-    },
-    onMeropeResync: () => window.dispatchEvent(new Event(ADDRESSEE_UPDATED_EVENT)),
-    includeInPanel: includeNotificationInPanel,
-  })
-  const { loaded: notifLoaded, loadHistory: loadNotifHistory } = notifCenter
-
-  // hook 预载失败时，打开通知页再试一次。
-  useEffect(() => {
-    if (panelTab === 'notifications' && !notifLoaded) {
-      void loadNotifHistory()
-    }
-  }, [panelTab, notifLoaded, loadNotifHistory])
-
+  const anim = useAnimationLevel()
+  const tappContents = useTappIslandContents()
+  const builtinContents = useBuiltinIslandContents(user?.username, locale, t)
   const validContents = useMemo(() => {
-    return dynamicContents.filter((c) => {
+    return [...transientContents, ...builtinContents, ...tappContents].filter((c) => {
       if (!c.icon || !c.text) return false
       if (typeof c.text === 'string' && c.text.trim().length === 0) return false
       if (!allowsIslandType(islandContent, String(c.type))) return false
       return true
     })
-  }, [dynamicContents, islandContent])
+  }, [transientContents, builtinContents, tappContents, islandContent])
+  const { currentContentIndex, setCurrentContentIndex, isTransitioning } = useIslandCarousel(
+    validContents.length,
+    isExpanded || isHovering,
+    anim.durationScale,
+  )
 
-  const textRef = useRef<HTMLSpanElement>(null)
-  const [needsScroll, setNeedsScroll] = useState(false)
+  const onIslandNotification = useCallback((content: DynamicContent | null) => {
+    updateTransientContents(prev => {
+      const rest = prev.filter(item => item.type !== 'notification')
+      return content ? [content, ...rest] : rest
+    })
+    if (content) setCurrentContentIndex(0)
+  }, [updateTransientContents])
+  const { notifCenter, notificationPreferences } = useControlPanelNotifications({
+    enabled: !!user,
+    userId: user?.id,
+    panelTab,
+    onIslandNotification,
+  })
 
   const {
     canRefresh: canRefreshWallpaper,
@@ -452,7 +161,6 @@ const GlobalControlPanel: React.FC = () => {
   // morphing 必须是组件级 ref，局部变量会随测量 effect 重建丢失。
   const morphingRef = useRef(false)
   const perf = usePerformanceProfile()
-  const anim = useAnimationLevel()
 
   // 同一套状态机按档位选 transition，不维护第二套交互。
   const motion = useMemo(
@@ -499,7 +207,6 @@ const GlobalControlPanel: React.FC = () => {
   }, [panel])
 
   useEffect(() => {
-    loadDynamicContents()
     loadWallpaper()
   }, []) // 只在挂载跑一次，避免循环依赖。
 
@@ -509,391 +216,9 @@ const GlobalControlPanel: React.FC = () => {
     dynamicContentProvider.setLocale(locale)
   }, [locale, dynamicContentProvider])
 
-  const loadIslandContent = useCallback(async () => {
-    try {
-      const cfg = (await getUIConfigDeduped()) as Record<string, unknown>
-      setIslandContent(islandContentFromPublicUi(cfg))
-    } catch {
-      setIslandContent(DEFAULT_ISLAND_CONTENT)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadIslandContent()
-    const onChanged = () => {
-      void loadIslandContent()
-    }
-    window.addEventListener(ISLAND_CONTENT_CHANGED_EVENT, onChanged)
-    return () => {
-      window.removeEventListener(ISLAND_CONTENT_CHANGED_EVENT, onChanged)
-    }
-  }, [loadIslandContent])
-
-  useEffect(() => {
-    const unsubscribe = dynamicContentProvider.addListener((event) => {
-      if (
-        event.type === 'add' ||
-        event.type === 'update' ||
-        event.type === 'remove' ||
-        event.type === 'clear'
-      ) {
-        refreshTappContents()
-      }
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [dynamicContentProvider])
-
-  const refreshTappContents = useCallback(() => {
-    safeSetDynamicContents((prev) => {
-      const builtinContents = prev.filter(
-        (c) => !c.type.toString().startsWith('tapp-'),
-      )
-
-      const tappContents = dynamicContentProvider
-        .getAllContents()
-        .filter((c) => c.type.toString().startsWith('tapp-'))
-        .map((c) => ({
-          type: c.type,
-          icon: c.icon,
-          text: c.text,
-          subtext: c.subtext,
-          showSubtext: c.showSubtext,
-          sourceTappId: c.sourceTappId,
-        }))
-
-      return [...builtinContents, ...tappContents]
-    })
-  }, [dynamicContentProvider, safeSetDynamicContents])
-
-  const getWeatherText = useCallback(
-    (code: number): string => {
-      const weatherT = t.weather ?? {}
-      if (code === 0 || code === 1) return weatherT.sunny ?? 'Sunny'
-      if (code === 2 || code === 3) return weatherT.cloudy ?? 'Cloudy'
-      if (code === 45 || code === 48) return weatherT.foggy ?? 'Foggy'
-      if (code >= 51 && code <= 67) return weatherT.rainy ?? 'Rainy'
-      if (code >= 80 && code <= 82) return weatherT.rainy ?? 'Rainy'
-      if (code >= 71 && code <= 77) return weatherT.snowy ?? 'Snowy'
-      if (code >= 85 && code <= 86) return weatherT.snowy ?? 'Snowy'
-      if (code >= 95 && code <= 99)
-        return weatherT.thunderstorm ?? 'Thunderstorm'
-      return weatherT.unavailable ?? 'Unknown'
-    },
-    [t.weather],
-  )
-
-  const renderWeatherIcon = useCallback((icon: string) => {
-    return (
-      <WeatherAssetIcon
-        icon={icon}
-        className="h-6 w-6 object-contain"
-        fallbackClassName="dynamic-icon-emoji"
-      />
-    )
-  }, [])
-
-  const renderDynamicAssetIcon = useCallback((icon: string) => {
-    return (
-      <WeatherAssetIcon
-        icon={icon}
-        className="h-6 w-6 object-contain"
-        fallbackClassName="dynamic-icon-emoji"
-      />
-    )
-  }, [])
-
-  const loadDynamicContents = useCallback(async () => {
-    const contents: DynamicContent[] = []
-
-    const greetingTranslations = {
-      morning: t.greeting?.morning ?? 'Good morning',
-      forenoon: t.greeting?.forenoon ?? t.greeting?.morning ?? 'Good morning',
-      noon: t.greeting?.noon ?? 'Good afternoon',
-      afternoon: t.greeting?.afternoon ?? 'Good afternoon',
-      dusk: t.greeting?.dusk ?? t.greeting?.evening ?? 'Good evening',
-      evening: t.greeting?.evening ?? 'Good evening',
-      night: t.greeting?.night ?? 'Good night',
-    }
-    const greeting = getGreeting(user?.username, greetingTranslations, locale)
-    let greetingIcon: string
-    switch (greeting.icon) {
-      case 'sunrise':
-        greetingIcon = GREETING_ICON_ASSETS.sunrise
-        break
-      case 'sunset':
-        greetingIcon = GREETING_ICON_ASSETS.sunset
-        break
-      case 'moon':
-        greetingIcon = GREETING_ICON_ASSETS.moon
-        break
-      case 'cloud-sun':
-        greetingIcon = GREETING_ICON_ASSETS.cloudSun
-        break
-      case 'sun':
-      default:
-        greetingIcon = GREETING_ICON_ASSETS.sun
-        break
-    }
-    contents.push({
-      type: 'greeting',
-      icon: (
-        <WeatherAssetIcon
-          icon={greetingIcon}
-          className="h-6 w-6 object-contain"
-          fallbackClassName="dynamic-icon-emoji"
-        />
-      ),
-      text: greeting.text || greetingTranslations.afternoon,
-      subtext: greeting.time,
-    })
-
-    safeSetDynamicContents((prev) => {
-      const preserved = prev.filter(
-        (c) => c.type === 'music' || c.type.toString().startsWith('tapp-'),
-      )
-      return [...contents, ...preserved]
-    })
-
-    dynamicContentProvider.setContent('builtin', {
-      type: 'greeting',
-      icon: greeting.icon,
-      text: greeting.text || greetingTranslations.afternoon,
-      subtext: greeting.time,
-      priority: 100,
-    })
-
-    if (weatherData) {
-      const weatherText = `${weatherData.temperature} ${getWeatherText(weatherData.weatherCode)}`
-      const weatherCity = weatherData.city || ''
-
-      safeSetDynamicContents((prev) => {
-        const filtered = prev.filter((c) => c.type !== 'weather')
-        const greetingIndex = filtered.findIndex((c) => c.type === 'greeting')
-        const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
-        return filtered.toSpliced(insertIndex, 0, {
-          type: 'weather',
-          icon: renderWeatherIcon(weatherData.icon),
-          text: weatherText,
-          subtext: weatherCity,
-          showSubtext: true,
-        })
-      })
-
-      dynamicContentProvider.setContent('builtin', {
-        type: 'weather',
-        icon: weatherData.icon,
-        text: weatherText,
-        subtext: weatherCity,
-        priority: 90,
-        showSubtext: true,
-      })
-    } else {
-      loadResource.high('weather-info', async () => {
-        try {
-          const weather = await getWeatherInfo()
-          if (weather) {
-            setWeatherData(weather)
-
-            const weatherText = `${weather.temperature} ${getWeatherText(weather.weatherCode)}`
-            const weatherCity = weather.city || ''
-
-            safeSetDynamicContents((prev) => {
-              const filtered = prev.filter((c) => c.type !== 'weather')
-              const greetingIndex = filtered.findIndex(
-                (c) => c.type === 'greeting',
-              )
-              const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
-              return filtered.toSpliced(insertIndex, 0, {
-                type: 'weather',
-                icon: renderWeatherIcon(weather.icon),
-                text: weatherText,
-                subtext: weatherCity,
-                showSubtext: true,
-              })
-            })
-
-            dynamicContentProvider.setContent('builtin', {
-              type: 'weather',
-              icon: weather.icon,
-              text: weatherText,
-              subtext: weatherCity,
-              priority: 90,
-              showSubtext: true,
-            })
-          }
-        } catch (error) {
-          console.debug('[GlobalControlPanel] Weather unavailable:', error)
-        }
-      })
-    }
-
-    if (quoteData) {
-      safeSetDynamicContents((prev) => {
-        const filtered = prev.filter((c) => c.type !== 'quote')
-        return [
-          ...filtered,
-          {
-            type: 'quote',
-            icon: renderDynamicAssetIcon(DYNAMIC_ICON_ASSETS.quote),
-            text: quoteData.text,
-            subtext: quoteData.author || undefined,
-            showSubtext: false,
-          },
-        ]
-      })
-
-      dynamicContentProvider.setContent('builtin', {
-        type: 'quote',
-        icon: 'quote',
-        text: quoteData.text,
-        subtext: quoteData.author || undefined,
-        priority: 50,
-        showSubtext: false,
-      })
-    } else {
-      loadResource.high('quote-info', async () => {
-        try {
-          const quote = await getRandomQuote(locale)
-          if (quote?.text) {
-            setQuoteData(quote)
-            safeSetDynamicContents((prev) => {
-              const filtered = prev.filter((c) => c.type !== 'quote')
-              return [
-                ...filtered,
-                {
-                  type: 'quote',
-                  icon: renderDynamicAssetIcon(DYNAMIC_ICON_ASSETS.quote),
-                  text: quote.text,
-                  subtext: quote.author || undefined,
-                  showSubtext: false,
-                },
-              ]
-            })
-
-            dynamicContentProvider.setContent('builtin', {
-              type: 'quote',
-              icon: 'quote',
-              text: quote.text,
-              subtext: quote.author || undefined,
-              priority: 50,
-              showSubtext: false,
-            })
-          }
-        } catch (error) {
-          console.debug('[GlobalControlPanel] Quote unavailable:', error)
-        }
-      })
-    }
-
-    refreshTappContents()
-  }, [
-    user?.username,
-    t,
-    locale,
-    dynamicContentProvider,
-    refreshTappContents,
-    safeSetDynamicContents,
-    weatherData,
-    quoteData,
-    getWeatherText,
-    renderWeatherIcon,
-    renderDynamicAssetIcon,
-  ])
-
-  useEffect(() => {
-    if (user) {
-      loadDynamicContents()
-    }
-  }, [user, loadDynamicContents])
-
-  useEffect(() => {
-    loadDynamicContents()
-  }, [locale, loadDynamicContents])
-
   useEffect(() => {
     musicPlayer.loadMusicConfig()
   }, [])
-
-  useEffect(() => {
-    if (
-      validContents.length > 0 &&
-      currentContentIndex >= validContents.length
-    ) {
-      setCurrentContentIndex(0)
-    }
-  }, [validContents.length, currentContentIndex])
-
-  useEffect(() => {
-    if (validContents.length === 0 || isExpanded || isHovering) {
-      // 淡出窗口内依赖变化会取消换页定时器，必须同步撤销淡出，否则内容停在 hidden。
-      setIsTransitioning(false)
-      return
-    }
-
-    let cycleTimerId: number | null = null
-    let swapTimerId: number | null = null
-    let revealTimerId: number | null = null
-    let cancelled = false
-
-    const clearTimers = () => {
-      if (cycleTimerId !== null) {
-        clearTimeout(cycleTimerId)
-        cycleTimerId = null
-      }
-      if (swapTimerId !== null) {
-        clearTimeout(swapTimerId)
-        swapTimerId = null
-      }
-      if (revealTimerId !== null) {
-        clearTimeout(revealTimerId)
-        revealTimerId = null
-      }
-    }
-
-    const cycle = () => {
-      if (cancelled || document.hidden) return
-      setIsTransitioning(true)
-      swapTimerId = window.setTimeout(() => {
-        swapTimerId = null
-        if (cancelled) return
-        setCurrentContentIndex((prev) => (prev + 1) % validContents.length)
-        revealTimerId = window.setTimeout(() => {
-          revealTimerId = null
-          if (!cancelled) setIsTransitioning(false)
-        }, 80)
-        const base = 15000
-        const nextDelay = Math.round(base * (anim.durationScale || 1))
-        cycleTimerId = window.setTimeout(cycle, nextDelay)
-      }, 300)
-    }
-
-    const startDelay = Math.round(6000 * (anim.durationScale || 1))
-    cycleTimerId = window.setTimeout(cycle, startDelay)
-
-    const handleVisibility = () => {
-      if (document.hidden) {
-        // 隐藏时中止过渡，避免停在已淡出未换页的中间态。
-        clearTimers()
-        setIsTransitioning(false)
-      } else if (!cancelled) {
-        clearTimers()
-        setIsTransitioning(false)
-        const restartDelay = Math.round(2000 * (anim.durationScale || 1))
-        cycleTimerId = window.setTimeout(cycle, restartDelay)
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-
-    return () => {
-      cancelled = true
-      clearTimers()
-      setIsTransitioning(false)
-      document.removeEventListener('visibilitychange', handleVisibility)
-    }
-  }, [validContents.length, isExpanded, isHovering, anim.durationScale])
 
   useLayoutEffect(() => {
     if (!triggerRef.current) return
@@ -906,161 +231,12 @@ const GlobalControlPanel: React.FC = () => {
     if (!expandedContentRef.current) return
     const contentEl = expandedContentRef.current
 
-    let lastHeight = 0
-    let lastUpdateTime = 0
-    let pendingMeasure = false
-    let measureTimeout: number | null = null
-    let visibilityTimeout: number | null = null
+    return trackPanelHeight(triggerEl, contentEl, () => morphingRef.current)
+  }, [isExpanded])
 
-    // 触控/低性能：加大节流，跳过 ResizeObserver。
-    const isMobileDevice = perf.isMobile || isReducedAnimation(anim)
-
-    const THROTTLE_MS = isMobileDevice ? 1200 : 600
-
-    // duringMorph 与 immediate 独立：morph 中不写高度；immediate 只跳过节流，仍服从 morph 闸门。
-    const measure = (opts?: { immediate?: boolean, duringMorph?: boolean }) => {
-      if (morphingRef.current && !opts?.duringMorph) return
-
-      const now = Date.now()
-      if (now - lastUpdateTime < THROTTLE_MS && !opts?.immediate) {
-        if (!pendingMeasure) {
-          pendingMeasure = true
-          const delay = THROTTLE_MS - (now - lastUpdateTime)
-          measureTimeout = window.setTimeout(() => {
-            pendingMeasure = false
-            measureTimeout = null
-            measure()
-          }, delay)
-        }
-        return
-      }
-      lastUpdateTime = now
-
-      // DEV：scrollHeight 依赖内容宽度钉在展开终值；改回 100%/flex 压缩会按中间帧算高。
-      if (import.meta.env.DEV) {
-        const rootFontSize = Number.parseFloat(
-          getComputedStyle(document.documentElement).fontSize,
-        )
-        // 宽度与 CSS 一致：桌面 356px，移动 calc(100vw - 4.25rem)。
-        const expectedWidth =
-          window.innerWidth <= 640
-            ? window.innerWidth - 4.25 * rootFontSize
-            : 356
-        if (Math.abs(contentEl.offsetWidth - expectedWidth) > 2) {
-          console.warn(
-            `[GlobalControlPanel] 面板内容宽度 ${contentEl.offsetWidth}px 偏离预期终值 ${Math.round(expectedWidth)}px：` +
-              'scrollHeight 高度测量依赖 .expanded-panel-content 的固定宽度契约' +
-              '（GlobalControlPanel.css），请勿改回 width: 100% 或移除 flex-shrink: 0',
-          )
-        }
-      }
-
-      // 内容宽度已钉在展开终值，直接读布局高度，勿再克隆到 body。
-      const raw = contentEl.scrollHeight
-
-      const compensated = Math.ceil(raw * CONTROL_PANEL_HEIGHT_COMPENSATION)
-
-      if (Math.abs(compensated - lastHeight) > 4) {
-        lastHeight = compensated
-        triggerEl.style.height = `${compensated}px`
-      }
-    }
-
-    measure({ immediate: true, duringMorph: true })
-
-    // 动画结束后重测，补齐 morph 期间丢弃的内容变化。闸门读组件级 morphingRef。
-    const handleAnimationEnd = () => {
-      lastUpdateTime = 0
-      measure({ immediate: true, duringMorph: true })
-    }
-    window.addEventListener('gcp-animation-end', handleAnimationEnd)
-
-    const handleRemeasure = (e: Event) => {
-      const detail = (e as CustomEvent<{ immediate?: boolean } | undefined>)
-        .detail
-      measure({ immediate: detail?.immediate })
-    }
-    window.addEventListener('gcp-remeasure', handleRemeasure)
-    window.addEventListener('control-panel-content-resize', handleRemeasure)
-
-    const handleViewportChange = () => {
-      lastUpdateTime = 0
-      measure()
-    }
-    window.addEventListener('resize', handleViewportChange)
-    window.addEventListener('orientationchange', handleViewportChange)
-
-    // 可见性重测定时器必须可清理，否则迟到的 measure 会朝旧外壳写高度。
-    const handleVisibility = () => {
-      if (!document.hidden) {
-        lastUpdateTime = 0
-        if (visibilityTimeout !== null) clearTimeout(visibilityTimeout)
-        visibilityTimeout = window.setTimeout(() => {
-          visibilityTimeout = null
-          measure()
-        }, 100)
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-
-    let unobserveResize: (() => void) | null = null
-    if (!isMobileDevice) {
-      unobserveResize = observeResize(contentEl, () => measure())
-    }
-
-    const mutationObserver = new MutationObserver(() => measure())
-    mutationObserver.observe(contentEl, {
-      childList: true,
-    })
-
-    return () => {
-      window.removeEventListener('gcp-animation-end', handleAnimationEnd)
-      window.removeEventListener('gcp-remeasure', handleRemeasure)
-      window.removeEventListener(
-        'control-panel-content-resize',
-        handleRemeasure,
-      )
-      window.removeEventListener('resize', handleViewportChange)
-      window.removeEventListener('orientationchange', handleViewportChange)
-      document.removeEventListener('visibilitychange', handleVisibility)
-      if (unobserveResize) {
-        unobserveResize()
-      }
-      mutationObserver.disconnect()
-      if (measureTimeout !== null) {
-        clearTimeout(measureTimeout)
-      }
-      if (visibilityTimeout !== null) {
-        clearTimeout(visibilityTimeout)
-      }
-    }
-    // 壁纸项与管理员项在孙节点，MutationObserver 看不到；加入 deps 翻转后强制重测。
-  }, [
-    isExpanded,
-    perf.highHardware,
-    perf.isMobile,
-    anim.level,
-    canRefreshWallpaper,
-    user?.is_admin,
-  ])
-
-  const [themePreference, setThemePreference] = useState<ThemePreference>(
-    getStoredThemePreference,
-  )
-
+  const { themePreference, cycleThemePreference } = useThemePreference()
   const cycleTheme = useCallback(() => {
-    const next =
-      THEME_CYCLE[
-        (THEME_CYCLE.indexOf(themePreference) + 1) % THEME_CYCLE.length
-      ]
-    setThemePreference(next)
-    localStorage.setItem('theme', next)
-
-    const dark =
-      next === 'auto'
-        ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        : next === 'dark'
-    applyThemeClass(dark)
+    const next = cycleThemePreference()
     void import('../utils/analyticsEvents').then(
       ({ trackProductEvent, AnalyticsEvents }) => {
         trackProductEvent(AnalyticsEvents.THEME_SWITCH, {
@@ -1069,7 +245,7 @@ const GlobalControlPanel: React.FC = () => {
         })
       },
     )
-  }, [themePreference])
+  }, [cycleThemePreference])
 
   // 相位由外壳 transitionend 推进，定时器只兜底。
   useEffect(() => {
@@ -1309,95 +485,13 @@ const GlobalControlPanel: React.FC = () => {
     // t 不入依赖：只在错误出现时弹一次，语言切换不重弹。
   }, [musicErrorDetail, musicErrorKey])
 
-  const lastLyricTextRef = useRef<string>('')
-  const lastSongIdRef = useRef<string>('')
-  const lastPlayingStateRef = useRef<boolean>(false)
-
-  useEffect(() => {
-    const { currentSong, isPlaying, lyrics, currentLyricIndex } = musicPlayer
-
-    if (isExpanded) return
-
-    if (
-      currentSong &&
-      isPlaying &&
-      lyrics.length > 0 &&
-      currentLyricIndex >= 0
-    ) {
-      const currentLyric = lyrics[currentLyricIndex]
-
-      if (lastLyricTextRef.current === currentLyric.text) {
-        return
-      }
-      lastLyricTextRef.current = currentLyric.text
-      lastSongIdRef.current = currentSong.id
-      lastPlayingStateRef.current = true
-
-      let lyricDuration = 5
-      if (currentLyricIndex < lyrics.length - 1) {
-        const nextLyric = lyrics[currentLyricIndex + 1]
-        lyricDuration = Math.max(1, nextLyric.time - currentLyric.time)
-      } else {
-        lyricDuration = 8
-      }
-
-      // 播放中写歌词用函数式更新，避免闭包过期。
-      safeSetDynamicContents((prev) => {
-        const filtered = prev.filter((c) => c.type !== 'music')
-        return [
-          {
-            type: 'music' as const,
-            icon: renderDynamicAssetIcon(DYNAMIC_ICON_ASSETS.music),
-            text: currentLyric.text,
-            subtext: `${currentSong.name} - ${currentSong.artist}`,
-            lyricDuration,
-          },
-          ...filtered,
-        ]
-      })
-    } else if (currentSong) {
-      const songChanged = lastSongIdRef.current !== currentSong.id
-      const playingChanged = lastPlayingStateRef.current !== isPlaying
-
-      if (!songChanged && !playingChanged && lastLyricTextRef.current === '') {
-        return
-      }
-
-      lastLyricTextRef.current = ''
-      lastSongIdRef.current = currentSong.id
-      lastPlayingStateRef.current = isPlaying
-
-      safeSetDynamicContents((prev) => {
-        const filtered = prev.filter((c) => c.type !== 'music')
-        return [
-          {
-            type: 'music' as const,
-            icon: renderDynamicAssetIcon(
-              isPlaying
-                ? DYNAMIC_ICON_ASSETS.music
-                : DYNAMIC_ICON_ASSETS.musicPaused,
-            ),
-            text: currentSong.name,
-            subtext: currentSong.artist,
-          },
-          ...filtered,
-        ]
-      })
-    } else if (lastSongIdRef.current !== '') {
-      lastLyricTextRef.current = ''
-      lastSongIdRef.current = ''
-      lastPlayingStateRef.current = false
-      safeSetDynamicContents((prev) => prev.filter((c) => c.type !== 'music'))
-    }
-  }, [
-    musicPlayer.currentSong?.id,
-    musicPlayer.lyrics.length,
-    musicPlayer.currentLyricIndex,
-    musicPlayer.isPlaying,
-    isExpanded,
-    safeSetDynamicContents,
-    renderDynamicAssetIcon,
-  ])
+  const onIslandMusic = useCallback((content: DynamicContent | null) => {
+    updateTransientContents(previous => {
+      const rest = previous.filter(item => item.type !== 'music')
+      return content ? [content, ...rest] : rest
+    })
+  }, [updateTransientContents])
+  useIslandMusicContent(musicPlayer, isExpanded, onIslandMusic)
 
   const safeContentIndex =
     validContents.length > 0
@@ -1407,115 +501,7 @@ const GlobalControlPanel: React.FC = () => {
   const currentContent =
     validContents.length > 0 ? validContents[safeContentIndex] : null
 
-  const prevLyricTextRef = useRef<string>('')
-  const scrollResetKeyRef = useRef<number>(0)
-
-  useEffect(() => {
-    if (!textRef.current || !currentContent) return
-
-    const element = textRef.current
-    const isMusic = currentContent.type === 'music'
-    const textChanged =
-      isMusic &&
-      prevLyricTextRef.current !== '' &&
-      prevLyricTextRef.current !== currentContent.text
-
-    if (textChanged) {
-      element.classList.add('lyric-transition')
-      const timer = setTimeout(() => {
-        element.classList.remove('lyric-transition')
-      }, 100)
-
-      scrollResetKeyRef.current++
-
-      return () => clearTimeout(timer)
-    }
-
-    if (isMusic) {
-      prevLyricTextRef.current = currentContent.text
-    } else {
-      prevLyricTextRef.current = ''
-    }
-  }, [currentContent?.text, currentContent?.type])
-
-  useEffect(() => {
-    if (!textRef.current || !currentContent || isExpanded) {
-      setNeedsScroll(false)
-      return
-    }
-
-    const element = textRef.current
-
-    const updateScrollAnimation = () => {
-      let scrollHeight = 0
-      let overflowAmount = 0
-      let shouldScroll = false
-
-      batchRead(() => {
-        const twoLineHeight = 34
-        scrollHeight = element.scrollHeight
-        overflowAmount = scrollHeight - twoLineHeight
-        shouldScroll = overflowAmount > 5
-      })
-
-      batchWrite(() => {
-        if (shouldScroll) {
-          element.style.setProperty('--scroll-distance', `-${overflowAmount}px`)
-
-          let duration: number
-          let delay: string
-
-          if (currentContent.type === 'music' && currentContent.lyricDuration) {
-            duration = Math.max(1.5, currentContent.lyricDuration - 0.5)
-            delay = '0.3s'
-          } else if (currentContent.type === 'music') {
-            duration = 4
-            delay = '0.5s'
-          } else {
-            duration = Math.max(
-              10,
-              Math.min(20, Math.ceil(overflowAmount / 20) + 10),
-            )
-            delay = '1.5s'
-          }
-
-          element.style.setProperty('--scroll-duration', `${duration}s`)
-          element.style.setProperty('--scroll-delay', delay)
-
-          setNeedsScroll(false)
-          requestAnimationFrame(() => {
-            setNeedsScroll(true)
-          })
-        } else {
-          element.style.removeProperty('--scroll-distance')
-          element.style.removeProperty('--scroll-duration')
-          element.style.removeProperty('--scroll-delay')
-          setNeedsScroll(false)
-        }
-      })
-    }
-
-    const unobserve = observeResize(
-      element,
-      (_entry) => {
-        updateScrollAnimation()
-      },
-      { immediate: true },
-    )
-
-    updateScrollAnimation()
-
-    return () => {
-      unobserve()
-    }
-  }, [
-    isExpanded,
-    currentContent?.text,
-    currentContent?.type,
-    currentContent?.lyricDuration,
-    currentContentIndex,
-    scrollResetKeyRef.current,
-  ])
+  const { textRef, needsScroll } = useIslandTextMotion(currentContent, !isExpanded)
 
   const shouldShowSubtext = useCallback((content: DynamicContent): boolean => {
     if (content.showSubtext !== undefined) {

@@ -26,6 +26,7 @@ import {
 import { LyricWaveScroll } from '../shared/LyricWaveScroll'
 import { PlayingSpectrum } from '../shared/PlayingSpectrum'
 import { FitText } from '../widgets/shared/FitText'
+import { trackActivePlaylistItem } from './playlistAutoScroll'
 import '../MusicPlayer.css'
 
 interface MusicPlayerProps {
@@ -848,86 +849,13 @@ const MusicPlaylistView: React.FC<{
     }
   }, [])
 
-  // 播放列表自动锁定：打开列表 / 切歌时把当前曲滚到视口中部
-  // 两列 grid 用相对容器坐标，避免 offsetTop 偏差；布局未就绪时重试
+  // Reconnect for the selected song or filtered list; geometry owns readiness.
   useEffect(() => {
-    if (!visible) return
-    if (isPanelAnimating) return
-    if (playlist.length === 0) return
-    if (playlistSearchQuery.trim()) return
-
-    let cancelled = false
-    let attempt = 0
-    let rafId = 0
-    let timerId = 0
-    let remeasureTimer = 0
-    const maxAttempts = 10
-
-    const scrollToActive = (): boolean => {
-      const scroller = playlistScrollRef.current
-      if (!scroller) return false
-      const activeElement = scroller.querySelector(
-        '.music-playlist-item.active',
-      ) as HTMLElement | null
-      if (!activeElement) return false
-      // 高度尚未展开（父容器 remeasure 前）则失败重试
-      if (scroller.clientHeight < 16) return false
-
-      const scrollerRect = scroller.getBoundingClientRect()
-      const itemRect = activeElement.getBoundingClientRect()
-      const elementTop =
-        itemRect.top - scrollerRect.top + scroller.scrollTop
-      const elementHeight = itemRect.height || 1
-      const containerHeight = scroller.clientHeight
-      const maxScroll = Math.max(0, scroller.scrollHeight - containerHeight)
-      const target = elementTop - containerHeight / 2 + elementHeight / 2
-
-      // auto：打开即锁定，避免 smooth 与多次重试互相打断
-      scroller.scrollTo({
-        top: Math.max(0, Math.min(target, maxScroll)),
-        behavior: 'auto',
-      })
-      return true
-    }
-
-    const tryScroll = () => {
-      if (cancelled) return
-      if (scrollToActive()) return
-      if (attempt++ >= maxAttempts) return
-      rafId = requestAnimationFrame(tryScroll)
-    }
-
-    // 等 mode 内边距 / grid 首帧布局，再开锁定；仍失败则 rAF 重试
-    timerId = window.setTimeout(() => {
-      rafId = requestAnimationFrame(tryScroll)
-    }, 40)
-
-    // 面板高度重测后再锁一次（MusicPlayer 会 dispatch gcp-remeasure）
-    const onRemeasure = () => {
-      if (cancelled) return
-      window.clearTimeout(remeasureTimer)
-      remeasureTimer = window.setTimeout(() => {
-        remeasureTimer = 0
-        if (!cancelled) scrollToActive()
-      }, 30)
-    }
-    window.addEventListener('gcp-remeasure', onRemeasure)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timerId)
-      window.clearTimeout(remeasureTimer)
-      if (rafId) cancelAnimationFrame(rafId)
-      window.removeEventListener('gcp-remeasure', onRemeasure)
-    }
-  }, [
-    visible,
-    currentSongIndex,
-    playlist.length,
-    playlistSearchQuery,
-    playlistScrollRef,
-    isPanelAnimating,
-  ])
+    if (!visible || isPanelAnimating || playlist.length === 0 || playlistSearchQuery.trim()) return
+    const scroller = playlistScrollRef.current
+    if (!scroller) return
+    return trackActivePlaylistItem(scroller)
+  }, [visible, isPanelAnimating, playlist, currentSongIndex, playlistSearchQuery, excludeVipSongs, playlistScrollRef])
 
   // 预计算歌曲 ID 到索引的映射，避免 O(n²) 查找
   const songIdToIndex = useMemo(() => {
@@ -1123,15 +1051,6 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   musicPlayerViewRef.current = musicPlayerView
   songIdRef.current = songId
   lyricsLenRef.current = lyricsLen
-
-  // 视图切换时触发父容器重测高度（仅面板展开时有意义）
-  useEffect(() => {
-    if (!panelVisible) return
-    const timer = setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('gcp-remeasure'))
-    }, 50)
-    return () => clearTimeout(timer)
-  }, [musicPlayerView, panelVisible])
 
   // 歌词视图自动返回：无词时延迟回 info。
   // 勿依赖整个 player 对象（每帧新引用会重置 timer，永远不回退）

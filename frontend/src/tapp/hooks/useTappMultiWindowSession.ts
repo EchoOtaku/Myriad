@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useBreakpoints } from '../../hooks/useSharedEventListener'
+import { useBreakpoints } from '../../hooks/useBreakpoints'
 import { isWebKit } from '../../utils/platformDetect'
 
 export function useTappMultiWindowSession(): boolean {

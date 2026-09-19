@@ -219,7 +219,6 @@ function applyAnimationConfigGlobals(
         baseConcurrent: 4,
         burstConcurrent: 8,
         burstDuration: 3000,
-        maxLoopSlots: 2,
       })
       break
     case 'light':
@@ -227,7 +226,6 @@ function applyAnimationConfigGlobals(
         baseConcurrent: isMobile ? 6 : 10,
         burstConcurrent: isMobile ? 16 : 24,
         burstDuration: 6000,
-        maxLoopSlots: isMobile ? 4 : 6,
       })
       break
     case 'standard':
@@ -235,7 +233,6 @@ function applyAnimationConfigGlobals(
         baseConcurrent: isMobile ? 12 : 20,
         burstConcurrent: isMobile ? 32 : 64,
         burstDuration: 10000,
-        maxLoopSlots: isMobile ? 8 : 16,
       })
       break
   }

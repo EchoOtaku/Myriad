@@ -7,19 +7,15 @@ import type {
 import {
   batchRead as coreBatchRead,
   batchWrite as coreBatchWrite,
+  cancelIdle as coreCancelIdle,
   isPageVisible as coreIsPageVisible,
   now as coreNow,
-  refreshNow as coreRefreshNow,
+  scheduleIdle as coreScheduleIdle,
   onVisibility,
   scheduleTask,
 } from './core'
-import { runIdleSlice } from './idleSlice'
+import { createFrameResizeObserver } from './frameResizeObserver'
 import { AnimationPriority, AnimationState, DEFAULT_CONFIG } from './types'
-
-interface IdleDeadline {
-  didTimeout: boolean
-  timeRemaining: () => number
-}
 
 interface AnimationSlot {
   id: string
@@ -46,6 +42,21 @@ class AnimationCoordinator {
 
   private currentPageId: string | null = null
   private isPageReady = false
+  private pageRevision = 0
+  private pageGeneration = 0
+  private pageSubscribers = new Set<() => void>()
+
+  subscribePage = (callback: () => void): Unsubscribe => {
+    this.pageSubscribers.add(callback)
+    return () => { this.pageSubscribers.delete(callback) }
+  }
+
+  getPageRevision = () => this.pageRevision
+  getPageReadySnapshot = () => this.isPageReady
+
+  private notifyPage() {
+    for (const callback of this.pageSubscribers) callback()
+  }
 
   private pageReadyCallbacks = new Set<() => void>()
 
@@ -80,6 +91,8 @@ class AnimationCoordinator {
     executeAt: number
     priority: AnimationPriority
   }> = []
+
+  private hiddenAt: number | null = coreIsPageVisible() ? null : coreNow()
 
   private delayTimerId: ReturnType<typeof setTimeout> | null = null
 
@@ -120,44 +133,10 @@ class AnimationCoordinator {
   private refreshRateDetected: boolean = false
   private lowFpsThreshold: number = 45
 
-  private sharedResizeObserver: ResizeObserver | null = null
-
-  private resizeCallbacks = new WeakMap<
-    Element,
-    (entry: ResizeObserverEntry) => void
-  >()
-
-  private observedElements = new Set<Element>()
-
-  private resizeBatchQueue: Array<{
-    element: Element
-    entry: ResizeObserverEntry
-  }> = []
-
-  private resizeBatchScheduled: boolean = false
-
-  private readonly RESIZE_THROTTLE_MS = 50
-
-  private lastResizeProcessTime: number = 0
-
-  /** 小于 4px 的尺寸变化忽略。 */
-  private readonly RESIZE_THRESHOLD_PX = 4
-
-  private elementSizeCache = new WeakMap<
-    Element,
-    { width: number; height: number }
-  >()
-
-  private idleTaskQueue: Array<{
-    id: string
-    task: () => void
-    timeout?: number
-    priority: number // 0=低, 1=中, 2=高
-  }> = []
-
-  private idleCallbackId: number | null = null
-
-  private registeredIdleTasks = new Set<string>()
+  private frameResize = createFrameResizeObserver({
+    isVisible: coreIsPageVisible,
+    box: 'border-box',
+  })
 
   private waitingQueueIndex = new Map<string, number>()
 
@@ -169,14 +148,24 @@ class AnimationCoordinator {
 
     onVisibility((visible) => {
       if (visible) {
+        if (this.hiddenAt !== null) {
+          const pausedFor = coreNow() - this.hiddenAt
+          for (const item of this.delayedQueue) item.executeAt += pausedFor
+          for (const slot of this.activeSlots.values()) slot.startTime += pausedFor
+          this.burstStartTime += pausedFor
+          this.hiddenAt = null
+        }
+        this.processDelayedQueue()
         if (this.fpsMonitorRunning) {
           this.lastFrameTimestamp = performance.now()
           this.lastFpsUpdateTime = this.lastFrameTimestamp
           this.pumpFpsMonitor()
         }
         this.processWaitQueue()
-        this.scheduleIdleCallback()
       } else {
+        this.hiddenAt ??= coreNow()
+        if (this.delayTimerId !== null) clearTimeout(this.delayTimerId)
+        this.delayTimerId = null
         this.pauseFpsMonitorLoop()
       }
     })
@@ -213,7 +202,7 @@ class AnimationCoordinator {
       return
     }
 
-    const now = coreRefreshNow()
+    const now = coreNow()
     let hasTimedOut = false
 
     for (const [id, slot] of this.activeSlots) {
@@ -261,7 +250,7 @@ class AnimationCoordinator {
 
   private activateBurstMode(duration: number) {
     this.inBurstMode = true
-    this.burstStartTime = coreRefreshNow()
+    this.burstStartTime = coreNow()
     this.currentBurstDuration = duration
   }
 
@@ -276,6 +265,8 @@ class AnimationCoordinator {
 
     this.currentPageId = pageId
     this.isPageReady = false
+    this.pageRevision++
+    this.notifyPage()
 
     // 页面切换爆发 10s。
     this.activateBurstMode(10000)
@@ -286,6 +277,7 @@ class AnimationCoordinator {
     if (pageId && this.currentPageId !== pageId) return false
 
     this.isPageReady = true
+    this.notifyPage()
 
     const callbackCount = this.pageReadyCallbacks.size
     if (callbackCount > 0) {
@@ -322,18 +314,19 @@ class AnimationCoordinator {
   }
 
   onPageReady(callback: () => void): Unsubscribe {
-    if (this.isPageReady) {
-      let active = true
-      queueMicrotask(() => {
-        if (active) callback()
-      })
-      return () => {
-        active = false
-      }
+    let active = true
+    const generation = this.pageGeneration
+    const run = () => {
+      if (!active || this.pageGeneration !== generation) return
+      active = false
+      callback()
     }
-
-    this.pageReadyCallbacks.add(callback)
-    return () => this.pageReadyCallbacks.delete(callback)
+    if (this.isPageReady) queueMicrotask(run)
+    else this.pageReadyCallbacks.add(run)
+    return () => {
+      active = false
+      this.pageReadyCallbacks.delete(run)
+    }
   }
 
   getPageReadyState(): boolean {
@@ -341,6 +334,7 @@ class AnimationCoordinator {
   }
 
   private cleanupPage(_pageId: string) {
+    this.pageGeneration++
     this.pageReadyCallbacks.clear()
 
     this.states.clear()
@@ -421,6 +415,10 @@ class AnimationCoordinator {
     id: string,
     priority: AnimationPriority,
   ): AnimationState {
+    if (!coreIsPageVisible()) {
+      this.addToWaitQueue(id, priority)
+      return AnimationState.SCHEDULED
+    }
     const maxConcurrent = this.getMaxConcurrent()
 
     if (this.activeSlots.size < maxConcurrent) {
@@ -429,11 +427,8 @@ class AnimationCoordinator {
       return AnimationState.READY
     }
 
-    if (this.canPreempt(priority)) {
-      this.preemptLowestPriority(id, priority)
-      return AnimationState.READY
-    }
-
+    // Priority controls admission to the next free slot. Skipping an active
+    // animation here can hide a card halfway through its visible transition.
     this.addToWaitQueue(id, priority)
     return AnimationState.SCHEDULED
   }
@@ -451,42 +446,6 @@ class AnimationCoordinator {
       this.peakActiveSlots = this.activeSlots.size
     }
     this.startTimeoutChecker()
-  }
-
-  private canPreempt(priority: AnimationPriority): boolean {
-    // 数值越小优先级越高；仅 SECTION 及以上可抢占。
-    if (priority > AnimationPriority.SECTION) return false
-
-    if (this.activeSlots.size === 0) return false
-
-    for (const slot of this.activeSlots.values()) {
-      if (slot.priority > priority) {
-        return true
-      }
-    }
-    return false
-  }
-
-  private preemptLowestPriority(id: string, priority: AnimationPriority) {
-    let lowestPriority = -1
-    let victimSlot: AnimationSlot | null = null
-
-    for (const slot of this.activeSlots.values()) {
-      if (slot.priority > lowestPriority) {
-        lowestPriority = slot.priority
-        victimSlot = slot
-      }
-    }
-
-    if (victimSlot) {
-      const victimId = victimSlot.id
-
-      this.releaseSlot(victimId)
-      this.skip(victimId)
-
-      this.acquireSlot(id, priority)
-      this.markReady(id)
-    }
   }
 
   private addToWaitQueue(id: string, priority: AnimationPriority) {
@@ -558,7 +517,7 @@ class AnimationCoordinator {
   }
 
   private processWaitQueue() {
-    if (this.waitingQueue.length === 0) return
+    if (!coreIsPageVisible() || this.waitingQueue.length === 0) return
 
     this.checkAndTriggerBurst()
 
@@ -594,7 +553,7 @@ class AnimationCoordinator {
     delay: number,
     priority: AnimationPriority = AnimationPriority.COMPONENT,
   ) {
-    const executeAt = coreNow() + delay
+    const executeAt = (this.hiddenAt ?? coreNow()) + delay
     const item = { id, executeAt, priority }
 
     const queueLen = this.delayedQueue.length
@@ -619,11 +578,16 @@ class AnimationCoordinator {
     }
     this.delayedQueue = this.delayedQueue.toSpliced(left, 0, item)
 
+    // Inserting an earlier deadline must also advance the wake-up timer.
+    if (left === 0 && this.delayTimerId !== null) {
+      clearTimeout(this.delayTimerId)
+      this.delayTimerId = null
+    }
     this.scheduleNextDelay()
   }
 
   private scheduleNextDelay() {
-    if (this.delayTimerId || this.delayedQueue.length === 0) return
+    if (!coreIsPageVisible() || this.delayTimerId || this.delayedQueue.length === 0) return
 
     const next = this.delayedQueue[0]
     const wait = Math.max(0, next.executeAt - coreNow())
@@ -635,7 +599,8 @@ class AnimationCoordinator {
   }
 
   private processDelayedQueue() {
-    const now = coreRefreshNow()
+    if (!coreIsPageVisible()) return
+    const now = coreNow()
 
     while (this.delayedQueue.length > 0) {
       const next = this.delayedQueue[0]
@@ -751,7 +716,10 @@ class AnimationCoordinator {
     const state = this.states.get(id)
     if (state) {
       queueMicrotask(() => {
-        if (this.listeners.get(id)?.has(callback)) callback(state)
+        if (this.listeners.get(id)?.has(callback)) {
+          const current = this.states.get(id)
+          if (current) callback(current)
+        }
       })
     }
 
@@ -831,6 +799,7 @@ class AnimationCoordinator {
   }
 
   reset() {
+    this.pageGeneration++
     this.states.clear()
     this.listeners.clear()
     this.pendingUpdates.clear()
@@ -855,6 +824,8 @@ class AnimationCoordinator {
 
     this.isPageReady = false
     this.currentPageId = null
+    this.pageRevision++
+    this.notifyPage()
   }
 
   startFpsMonitor(): void {
@@ -1071,119 +1042,20 @@ class AnimationCoordinator {
     coreBatchWrite(callback)
   }
 
-  private initSharedResizeObserver(): void {
-    if (typeof ResizeObserver === 'undefined') return
-
-    this.sharedResizeObserver = new ResizeObserver((entries) => {
-      if (!coreIsPageVisible()) return
-
-      for (const entry of entries) {
-        const callback = this.resizeCallbacks.get(entry.target)
-        if (callback) {
-          const { width, height } = entry.contentRect
-          const cached = this.elementSizeCache.get(entry.target)
-
-          if (cached) {
-            const widthDiff = Math.abs(cached.width - width)
-            const heightDiff = Math.abs(cached.height - height)
-
-            if (
-              widthDiff < this.RESIZE_THRESHOLD_PX &&
-              heightDiff < this.RESIZE_THRESHOLD_PX
-            ) {
-              continue
-            }
-          }
-
-          this.elementSizeCache.set(entry.target, { width, height })
-
-          this.resizeBatchQueue.push({ element: entry.target, entry })
-        }
-      }
-
-      this.scheduleResizeBatch()
-    })
-  }
-
-  private scheduleResizeBatch(): void {
-    if (this.resizeBatchScheduled || this.resizeBatchQueue.length === 0) return
-
-    const now = coreNow()
-    const timeSinceLastProcess = now - this.lastResizeProcessTime
-
-    if (timeSinceLastProcess >= this.RESIZE_THROTTLE_MS) {
-      this.resizeBatchScheduled = true
-      requestAnimationFrame(() => {
-        this.flushResizeBatch()
-      })
-    } else {
-      this.resizeBatchScheduled = true
-      setTimeout(() => {
-        requestAnimationFrame(() => {
-          this.flushResizeBatch()
-        })
-      }, this.RESIZE_THROTTLE_MS - timeSinceLastProcess)
-    }
-  }
-
-  private flushResizeBatch(): void {
-    this.resizeBatchScheduled = false
-    this.lastResizeProcessTime = coreNow()
-
-    const batch = this.resizeBatchQueue
-    this.resizeBatchQueue = []
-
-    for (const { element, entry } of batch) {
-      const callback = this.resizeCallbacks.get(element)
-      if (callback) {
-        try {
-          callback(entry)
-        } catch (e) {
-          console.error('ResizeObserver callback error:', e)
-        }
-      }
-    }
-  }
-
   observeResize(
     element: Element,
     callback: (entry: ResizeObserverEntry) => void,
-    _options?: { immediate?: boolean },
   ): () => void {
-    if (!element) {
-      return () => {}
-    }
-    if (!this.sharedResizeObserver) this.initSharedResizeObserver()
-    if (!this.sharedResizeObserver) return () => {}
-
-    this.resizeCallbacks.set(element, callback)
-    this.observedElements.add(element)
-
-    this.sharedResizeObserver.observe(element, { box: 'border-box' })
-    // `immediate` used to synthesize a ResizeObserverEntry via
-    // getBoundingClientRect (forced reflow). Callers that need a first size
-    // already measure themselves; the observer still delivers the next frame.
-
-    return () => {
-      this.unobserveResize(element)
-    }
+    // Initial size is delivered by the native observer, never a forced layout.
+    return this.frameResize.observe(element, callback)
   }
 
   unobserveResize(element: Element): void {
-    if (!this.sharedResizeObserver) return
-
-    this.sharedResizeObserver.unobserve(element)
-    this.resizeCallbacks.delete(element)
-    this.observedElements.delete(element)
-    this.elementSizeCache.delete(element)
-
-    this.resizeBatchQueue = this.resizeBatchQueue.filter(
-      (item) => item.element !== element,
-    )
+    this.frameResize.unobserve(element)
   }
 
   getCachedSize(element: Element): { width: number; height: number } | null {
-    return this.elementSizeCache.get(element) ?? null
+    return this.frameResize.getCachedSize(element)
   }
 
   scheduleIdleTask(
@@ -1195,86 +1067,11 @@ class AnimationCoordinator {
       dedupe?: boolean
     } = {},
   ): () => void {
-    const { timeout, priority = 'normal', dedupe = true } = options
-
-    if (dedupe && this.registeredIdleTasks.has(id)) {
-      return () => this.cancelIdleTask(id)
-    }
-
-    const priorityValue =
-      priority === 'high' ? 2 : priority === 'normal' ? 1 : 0
-
-    this.idleTaskQueue.push({ id, task, timeout, priority: priorityValue })
-    this.registeredIdleTasks.add(id)
-
-    this.idleTaskQueue = this.idleTaskQueue.toSorted(
-      (a, b) => b.priority - a.priority,
-    )
-
-    this.scheduleIdleCallback()
-
-    return () => this.cancelIdleTask(id)
+    return coreScheduleIdle(id, task, options.priority, options)
   }
 
   cancelIdleTask(id: string): boolean {
-    const index = this.idleTaskQueue.findIndex((t) => t.id === id)
-    if (index !== -1) {
-      this.idleTaskQueue = this.idleTaskQueue.toSpliced(index, 1)
-      this.registeredIdleTasks.delete(id)
-      return true
-    }
-    return false
-  }
-
-  private scheduleIdleCallback() {
-    if (this.idleCallbackId !== null || this.idleTaskQueue.length === 0) return
-
-    if (!coreIsPageVisible()) return
-
-    const scheduleIdle =
-      typeof requestIdleCallback !== 'undefined'
-        ? requestIdleCallback
-        : (cb: IdleRequestCallback) =>
-            setTimeout(
-              () =>
-                cb({
-                  didTimeout: false,
-                  timeRemaining: () => 50,
-                }),
-              1,
-            )
-
-    const highestPriorityTask = this.idleTaskQueue[0]
-
-    this.idleCallbackId = scheduleIdle(
-      (deadline: IdleDeadline) => {
-        this.idleCallbackId = null
-        this.processIdleTasks(deadline)
-      },
-      highestPriorityTask?.timeout
-        ? { timeout: highestPriorityTask.timeout }
-        : undefined,
-    ) as number
-  }
-
-  private processIdleTasks(deadline: IdleDeadline) {
-    runIdleSlice(
-      this.idleTaskQueue,
-      deadline,
-      (taskInfo) => {
-        this.registeredIdleTasks.delete(taskInfo.id)
-        try {
-          taskInfo.task()
-        } catch (e) {
-          console.error(`[Coordinator] Idle task "${taskInfo.id}" error:`, e)
-        }
-      },
-      5,
-    )
-
-    if (this.idleTaskQueue.length > 0) {
-      this.scheduleIdleCallback()
-    }
+    return coreCancelIdle(id)
   }
 }
 

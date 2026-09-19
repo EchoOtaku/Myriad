@@ -11,7 +11,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useI18n } from '../../contexts/I18nContext'
-import { useHomeVisibilityInterval } from '../../hooks/animation'
+import { useVisibilityInterval } from '../../hooks/animation'
 import {
   isExlight,
   useAnimationLevel,
@@ -345,10 +345,9 @@ export const FriendLinksWidget = memo(
       }, BATCH_TRANSITION_DURATION)
     }, [anim.durationScale, anim.level, batchCount])
 
-    useHomeVisibilityInterval(
+    useVisibilityInterval(
       advanceBatch,
-      BATCH_INTERVAL,
-      !isPreview && !isEditMode && batchCount > 1 && anim.widgetUiRotation,
+      { delay: BATCH_INTERVAL, enabled: !isPreview && !isEditMode && batchCount > 1 && anim.widgetUiRotation },
     )
 
     const openPhantasi = useCallback(() => {

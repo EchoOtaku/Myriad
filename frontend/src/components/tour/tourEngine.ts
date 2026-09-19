@@ -1,4 +1,5 @@
 import type { TourDefinition, TourStepDef, TourSurfacePick } from './tourTypes'
+import { setTourDomActive } from './tourDom'
 import {
   firstVisibleIndex,
   isTourStepAvailable,
@@ -8,7 +9,6 @@ import {
   tourStepBlocksAdvance,
 } from './tourLogic'
 import { pickRegisteredTour } from './tourRegistry'
-import { setTourDomActive } from './tourDom'
 import {
   emitTourSnapshot,
   getTourSnapshot,
@@ -16,7 +16,6 @@ import {
   setTourVisibleSteps,
   stopTour,
   stopTourInternal,
-  subscribeTour,
 } from './tourStore'
 
 export type { StopTourReason, TourSnapshot } from './tourStore'
