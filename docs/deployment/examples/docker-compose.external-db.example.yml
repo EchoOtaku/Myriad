@@ -288,7 +288,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   docker-guard:
-    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+    image: ${MYRIAD_TCB_GUARD_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
     container_name: myriad-docker-guard
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -304,7 +304,7 @@ services:
       MYRIAD_BACKEND_EXTRA_NETWORK: ${MYRIAD_BACKEND_EXTRA_NETWORK:-myriad-backend-ext}
       DOCKER_GUARD_COMPOSE_DIR: /host/compose
       DOCKER_GUARD_STATE_DIR: /host/state
-      DOCKER_GUARD_EXPECTED_IMAGE: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+      DOCKER_GUARD_EXPECTED_IMAGE: ${MYRIAD_TCB_GUARD_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
       DOCKER_GUARD_HOST_POLICY_PATH: /guard-policy/docker-guard.env
       DOCKER_GUARD_SELF_UPDATE_TOKEN: ${GUARD_SELF_UPDATE_TOKEN:?Host Guard self-update token is required}
       RUST_LOG: ${DOCKER_GUARD_LOG:-info}
@@ -336,7 +336,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   updater:
-    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+    image: ${MYRIAD_TCB_UPDATER_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
     container_name: myriad-updater
     environment:
       UPDATE_TOKEN: ${UPDATE_TOKEN}
@@ -345,12 +345,12 @@ services:
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
       MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-Myriad-You/Myriad}
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-3600}
-      UPDATER_STATE_DIR: /host/compose/state
-      UPDATER_ENV_FILE: /host/compose/.env
+      UPDATER_STATE_DIR: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/state
+      UPDATER_ENV_FILE: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/.env
       # External DB: skip pgdata snapshot/restore. Operator owns backups (pg_dump / cloud).
       # UPDATER_PGDATA is intentionally omitted; do not create an empty ./pgdata bind.
       MYRIAD_DB_MODE: ${MYRIAD_DB_MODE:-external}
-      UPDATER_COMPOSE_DIR: /host/compose
+      UPDATER_COMPOSE_DIR: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}
       DOCKER_HOST: tcp://docker-guard:2375
       DOCKER_GUARD_SELF_UPDATE_TOKEN: ${GUARD_SELF_UPDATE_TOKEN:?Host Guard self-update token is required}
       UPDATER_GUARD_ENV_FILE: /run/secrets/docker-guard.env
@@ -364,14 +364,14 @@ services:
     volumes:
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}
-        target: /host/compose
+        target: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}
         read_only: true
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}/.env
-        target: /host/compose/.env
+        target: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/.env
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}/state
-        target: /host/compose/state
+        target: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/state
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}/guard-policy
         target: /run/secrets
@@ -392,7 +392,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   updater-gateway:
-    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+    image: ${MYRIAD_TCB_GATEWAY_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
     container_name: myriad-updater-gateway
     entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/myriad-updater-gateway"]
     environment:

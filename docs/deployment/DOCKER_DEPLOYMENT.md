@@ -256,8 +256,10 @@ bash scripts/extra/deploy.sh upgrade
 This requires the current Compose file: older `image:` expressions that prefer
 pins remain pin-first until the host composition is updated. Guard refreshes
 records after inspecting the healthy deployment. Automated self-updates and
-rollbacks use a temporary exact-image Compose override for that transaction only;
-they do not leave a persistent override that could defeat the next manual TAG change.
+rollbacks select the verified exact digests for that transaction through
+process-only `MYRIAD_TCB_*_IMAGE` variables: they are never written to `.env`
+nor passed as a Compose `-f` override, so a later host-side rebuild (1Panel)
+falls back to `UPDATER_TAG` and cannot be pinned by a leftover selector.
 
 Day-to-day updates should be started from the admin UI:
 
@@ -309,6 +311,19 @@ The updater mounts the deployment root once at `/host/compose`; `pgdata`, state,
 snapshots, and `.env` are accessed below that root without additional host binds.
 With `MYRIAD_DB_MODE=external`, do not leave an empty unused `./pgdata` directory
 as if it were live data.
+
+By default the updater sees the deployment root at `/host/compose`. Docker
+Compose records the `-f` path it is given in the container label
+`com.docker.compose.project.config_files`, and `--project-directory` in
+`com.docker.compose.project.working_dir`. A container-only path such as
+`/host/compose/docker-compose.yml` is meaningless on the host, so host-side
+compose managers (1Panel, Portainer) that resolve those labels cannot find the
+file. Set `MYRIAD_COMPOSE_HOST_ROOT` to the **absolute** path of the deployment
+root (e.g. `/opt/1panel/docker/compose/myriad`) to mount it at the same path
+inside the updater. The updater then passes host-valid `-f` /
+`--project-directory` values and the recorded labels resolve on the host. Leave
+it unset to keep the legacy `/host/compose` layout; it must be an absolute path
+when set (it is used as a bind target).
 
 ## Development
 

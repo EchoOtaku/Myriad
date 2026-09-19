@@ -390,9 +390,11 @@ services:
 
   docker-guard:
     # Writes ./guard-policy/docker-guard.env on first start.
-    # Normal host deployment follows TAG. Trusted handoffs use a temporary,
-    # operation-scoped Compose override with freshly verified exact digests.
-    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+    # Normal host deployment follows TAG. Trusted handoffs select freshly
+    # verified exact digests through process-only MYRIAD_TCB_GUARD_IMAGE, which
+    # is never written to .env nor passed as a `-f` override, so later host-side
+    # rebuilds fall back to TAG.
+    image: ${MYRIAD_TCB_GUARD_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
     container_name: myriad-docker-guard
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -410,7 +412,7 @@ services:
       MYRIAD_BACKEND_EXTRA_NETWORK: ${MYRIAD_BACKEND_EXTRA_NETWORK:-myriad-backend-ext}
       DOCKER_GUARD_COMPOSE_DIR: /host/compose
       DOCKER_GUARD_STATE_DIR: /host/state
-      DOCKER_GUARD_EXPECTED_IMAGE: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+      DOCKER_GUARD_EXPECTED_IMAGE: ${MYRIAD_TCB_GUARD_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
       DOCKER_GUARD_HOST_POLICY_PATH: /guard-policy/docker-guard.env
       # Dedicated capability from the host-owned policy file. It is separate
       # from UPDATE_TOKEN and prevents unrelated guard-net peers from invoking
@@ -446,7 +448,7 @@ services:
 
   updater:
     # Cached pins never override an operator's deployment target.
-    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+    image: ${MYRIAD_TCB_UPDATER_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
     container_name: myriad-updater
     environment:
       UPDATE_TOKEN: ${UPDATE_TOKEN}
@@ -455,13 +457,20 @@ services:
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
       MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-Myriad-You/Myriad}
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-3600}
-      UPDATER_STATE_DIR: /host/compose/state
-      UPDATER_ENV_FILE: /host/compose/.env
+      # Keep the deployment root at the *same* path inside and outside the
+      # container. Docker Compose records the `-f` path in the container label
+      # com.docker.compose.project.config_files; an in-container-only path
+      # (e.g. /host/compose) makes external tools (1Panel) look for a compose
+      # file that does not exist on the host. Defaulting to /host/compose keeps
+      # the legacy layout; set MYRIAD_COMPOSE_HOST_ROOT to the absolute host
+      # path to make the paths identical (see docs/deployment/DOCKER_DEPLOYMENT.md).
+      UPDATER_STATE_DIR: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/state
+      UPDATER_ENV_FILE: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/.env
       # Prefer the path *inside* the compose-dir bind mount. Renaming a dedicated
       # mount point (./pgdata:/host/pgdata) returns EBUSY on Linux and used to break
       # snapshot restore / automatic rollback.
-      UPDATER_PGDATA: /host/compose/pgdata
-      UPDATER_COMPOSE_DIR: /host/compose
+      UPDATER_PGDATA: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/pgdata
+      UPDATER_COMPOSE_DIR: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}
       DOCKER_HOST: tcp://docker-guard:2375
       DOCKER_GUARD_SELF_UPDATE_TOKEN: ${GUARD_SELF_UPDATE_TOKEN:?Host Guard self-update token is required}
       # Guard policy directory is mounted read-only. After first start the file
@@ -486,17 +495,17 @@ services:
       # only the state it genuinely owns as writable submounts.
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}
-        target: /host/compose
+        target: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}
         read_only: true
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}/.env
-        target: /host/compose/.env
+        target: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/.env
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}/state
-        target: /host/compose/state
+        target: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/state
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}/pgdata
-        target: /host/compose/pgdata
+        target: ${MYRIAD_COMPOSE_HOST_ROOT:-/host/compose}/pgdata
       - type: bind
         source: ${MYRIAD_COMPOSE_HOST_ROOT:-.}/guard-policy
         target: /run/secrets
@@ -523,7 +532,7 @@ services:
     # Same image/tag as updater; thin binary injects UPDATE_TOKEN for backend.
     # Requires UPDATER_GATEWAY_SECRET from backend hop. Not created via docker-guard
     # create API — managed business services only; TCB upgrades use Guard's dedicated handoff.
-    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}
+    image: ${MYRIAD_TCB_GATEWAY_IMAGE:-${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG:?Set UPDATER_TAG to a release or dev tag}}
     container_name: myriad-updater-gateway
     entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/myriad-updater-gateway"]
     environment:
