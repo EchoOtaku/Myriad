@@ -623,10 +623,60 @@ mod image_proxy_tests {
         let long = format!("https://i0.hdslb.com/{}.png", "a".repeat(3000));
         assert!(long.len() > 2048);
     }
+    #[test]
+    fn play_url_http_cache_never_outlives_remaining_server_ttl() {
+        for format in [None, Some("json")] {
+            let response = respond_netease_play_url(
+                "https://music.126.net/song",
+                format,
+                Duration::from_secs(12),
+            );
+            assert_eq!(
+                response.headers()[header::CACHE_CONTROL],
+                "private, max-age=12"
+            );
+            for remaining in [Duration::ZERO, Duration::from_millis(999)] {
+                let response =
+                    respond_netease_play_url("https://music.126.net/song", format, remaining);
+                assert_eq!(
+                    response.headers()[header::CACHE_CONTROL],
+                    "private, no-store"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn play_url_cache_hit_does_not_restart_browser_ttl() {
+        let id = "8999911262";
+        MUSIC_CACHE.write().await.insert(
+            format!("netease_play_url:{id}"),
+            CacheEntry {
+                data: json!({"url": "https://music.126.net/test.mp3"}),
+                expires_at: Instant::now() + Duration::from_secs(20),
+            },
+        );
+        let response = proxy_netease_play_url(
+            Path(id.into()),
+            Query(NeteasePlayUrlQuery {
+                format: Some("json".into()),
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let policy = response.headers()[header::CACHE_CONTROL].to_str().unwrap();
+        let age: u64 = policy
+            .strip_prefix("private, max-age=")
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(age <= 20);
+    }
+
     #[tokio::test]
     async fn respond_netease_play_url_json_and_redirect() {
         let cdn = "https://m801.music.126.net/song.mp3?sign=abc";
-        let json_resp = respond_netease_play_url(cdn, Some("json"));
+        let json_resp = respond_netease_play_url(cdn, Some("json"), Duration::from_secs(300));
         assert_eq!(json_resp.status(), StatusCode::OK);
         let body = to_bytes(json_resp.into_body(), 64 * 1024)
             .await
@@ -634,7 +684,7 @@ mod image_proxy_tests {
         let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(v["url"], cdn);
 
-        let redir = respond_netease_play_url(cdn, None);
+        let redir = respond_netease_play_url(cdn, None, Duration::from_secs(300));
         assert_eq!(redir.status(), StatusCode::FOUND);
         let loc = redir
             .headers()
@@ -889,7 +939,11 @@ pub async fn proxy_netease_play_url(
         if let Some(entry) = cache.get(&cache_key) {
             if entry.expires_at > Instant::now() {
                 if let Some(url) = entry.data.get("url").and_then(|v| v.as_str()) {
-                    return respond_netease_play_url(url, query.format.as_deref());
+                    return respond_netease_play_url(
+                        url,
+                        query.format.as_deref(),
+                        entry.expires_at.saturating_duration_since(Instant::now()),
+                    );
                 }
             }
         }
@@ -898,17 +952,23 @@ pub async fn proxy_netease_play_url(
     let service = NeteaseService::new();
     match service.fetch_audio_url(song_id_i64).await {
         Ok(audio_url) => {
-            {
+            if audio_url.cache_until > Instant::now() {
                 let mut cache = MUSIC_CACHE.write().await;
                 cache.insert(
                     cache_key,
                     CacheEntry {
-                        data: json!({ "url": audio_url }),
-                        expires_at: Instant::now() + Duration::from_secs(5 * 60),
+                        data: json!({ "url": audio_url.url }),
+                        expires_at: audio_url.cache_until,
                     },
                 );
             }
-            respond_netease_play_url(&audio_url, query.format.as_deref())
+            respond_netease_play_url(
+                &audio_url.url,
+                query.format.as_deref(),
+                audio_url
+                    .cache_until
+                    .saturating_duration_since(Instant::now()),
+            )
         }
         Err(e) => {
             tracing::error!("Failed to resolve Netease play URL for {}: {}", song_id, e);
@@ -921,13 +981,25 @@ pub async fn proxy_netease_play_url(
     }
 }
 
-pub(crate) fn respond_netease_play_url(audio_url: &str, format: Option<&str>) -> Response {
+pub(crate) fn respond_netease_play_url(
+    audio_url: &str,
+    format: Option<&str>,
+    remaining: Duration,
+) -> Response {
+    let max_age = remaining
+        .as_secs()
+        .min(if format == Some("json") { 300 } else { 60 });
+    let cache_control = if max_age == 0 {
+        "private, no-store".to_string()
+    } else {
+        format!("private, max-age={max_age}")
+    };
     if format == Some("json") {
         return (
             StatusCode::OK,
             [
-                (header::CACHE_CONTROL, "private, max-age=300"),
-                (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+                (header::CACHE_CONTROL, cache_control),
+                (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_string()),
             ],
             Json(json!({ "url": audio_url })),
         )
@@ -940,7 +1012,7 @@ pub(crate) fn respond_netease_play_url(audio_url: &str, format: Option<&str>) ->
         StatusCode::FOUND,
         [
             (header::LOCATION, audio_url.to_string()),
-            (header::CACHE_CONTROL, "private, max-age=60".to_string()),
+            (header::CACHE_CONTROL, cache_control),
             (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_string()),
         ],
     )
@@ -975,7 +1047,7 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
             let client = MEDIA_FETCH_CLIENT.clone();
 
             match client
-                .get(&audio_url)
+                .get(&audio_url.url)
                 .header("Referer", "https://music.163.com/")
                 .header("Range", "bytes=0-")
                 .send()

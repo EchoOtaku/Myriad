@@ -18,6 +18,43 @@ use super::netease_utils::{
 
 mod player;
 
+/// A resolved CDN URL and its conservative cache deadline, including request time.
+pub struct NeteaseAudioUrl {
+    pub url: String,
+    pub cache_until: Instant,
+}
+
+fn parse_audio_url(data: &Value, requested_at: Instant) -> Result<NeteaseAudioUrl> {
+    let item = data["data"]
+        .get(0)
+        .ok_or_else(|| anyhow!("No audio URL found"))?;
+    let resource = item
+        .get("uf")
+        .filter(|uf| uf["url"].is_string())
+        .unwrap_or(item);
+    let url = resource["url"]
+        .as_str()
+        .filter(|url| !url.is_empty() && *url != "null")
+        .ok_or_else(|| anyhow!("Audio not available (copyright or geo-restriction)"))?;
+    // Use the selected resource's expiry, with the parent as an upper bound.
+    // Missing/malformed expiry gets a short fallback; explicit zero/negative
+    // expiry must never turn into a fresh fallback TTL.
+    let ttl_for = |value: Option<&Value>| match value.and_then(Value::as_i64) {
+        Some(seconds) => Duration::from_secs(seconds.max(0) as u64)
+            .saturating_sub(Duration::from_secs(30))
+            .min(Duration::from_secs(300)),
+        None => Duration::from_secs(60),
+    };
+    let mut ttl = ttl_for(resource.get("expi"));
+    if !std::ptr::eq(resource, item) && item.get("expi").and_then(Value::as_i64).is_some() {
+        ttl = ttl.min(ttl_for(item.get("expi")));
+    }
+    Ok(NeteaseAudioUrl {
+        url: ensure_https_url(url),
+        cache_until: requested_at + ttl,
+    })
+}
+
 // 内存保护：限制单个歌单最大处理数量（避免 OOM）
 const MAX_TRACKS_LIMIT: usize = 5000;
 // 内存保护：限制缓存最大条目数
@@ -896,7 +933,8 @@ impl NeteaseService {
     }
 
     /// 获取音频流 URL
-    pub async fn fetch_audio_url(&self, song_id: i64) -> Result<String> {
+    pub async fn fetch_audio_url(&self, song_id: i64) -> Result<NeteaseAudioUrl> {
+        let requested_at = Instant::now();
         let device_id = generate_device_id();
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -935,31 +973,82 @@ impl NeteaseService {
 
         let data: Value = response.json().await?;
 
-        let audio_url = data["data"]
-            .get(0)
-            .and_then(|item| {
-                if let Some(uf_url) = item.get("uf").and_then(|uf| uf["url"].as_str()) {
-                    Some(uf_url)
-                } else {
-                    item["url"].as_str()
-                }
-            })
-            .ok_or_else(|| anyhow!("No audio URL found"))?;
-
-        if audio_url.is_empty() || audio_url == "null" {
-            return Err(anyhow!(
-                "Audio not available (copyright or geo-restriction)"
-            ));
-        }
-
-        // 官方接口偶发返回 http://music.126.net CDN；HTTPS 页面直连会 Mixed Content
-        Ok(ensure_https_url(audio_url))
+        parse_audio_url(&data, requested_at)
     }
 }
 
 impl Default for NeteaseService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod audio_url_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_expiry_bounds_cache_and_missing_expiry_uses_short_fallback() {
+        let start = Instant::now();
+        for (expiry, seconds) in [
+            (json!(1200), 300),
+            (json!(120), 90),
+            (json!(31), 1),
+            (json!(30), 0),
+            (json!(5), 0),
+            (json!(0), 0),
+            (json!(-1), 0),
+            (Value::Null, 60),
+            (json!("invalid"), 60),
+            (json!(1.5), 60),
+        ] {
+            let data = json!({"data": [{"url": "http://music.126.net/song.mp3", "expi": expiry}]});
+            let result = parse_audio_url(&data, start).unwrap();
+            assert_eq!(result.cache_until, start + Duration::from_secs(seconds));
+            assert_eq!(result.url, "https://music.126.net/song.mp3");
+        }
+        let missing = parse_audio_url(
+            &json!({"data": [{"url": "https://music.126.net/song"}]}),
+            start,
+        )
+        .unwrap();
+        assert_eq!(missing.cache_until, start + Duration::from_secs(60));
+    }
+
+    #[test]
+    fn selected_resource_expiry_and_request_time_are_respected() {
+        let start = Instant::now() - Duration::from_secs(70);
+        let data = json!({"data": [{"url": "https://music.126.net/main", "expi": 1200,
+            "uf": {"url": "http://music.126.net/uf", "expi": 90}}]});
+        let result = parse_audio_url(&data, start).unwrap();
+        assert_eq!(result.url, "https://music.126.net/uf");
+        assert_eq!(result.cache_until, start + Duration::from_secs(60));
+        assert!(result.cache_until < Instant::now());
+        let data = json!({"data": [{"url": "https://music.126.net/main", "expi": 40,
+            "uf": {"url": "https://music.126.net/uf", "expi": 1200}}]});
+        assert_eq!(
+            parse_audio_url(&data, start).unwrap().cache_until,
+            start + Duration::from_secs(10)
+        );
+        let data = json!({"data": [{"url": "https://music.126.net/main", "expi": 1200,
+            "uf": {"url": "https://music.126.net/uf"}}]});
+        assert_eq!(
+            parse_audio_url(&data, start).unwrap().cache_until,
+            start + Duration::from_secs(60)
+        );
+    }
+
+    #[test]
+    fn missing_playable_url_is_still_an_error() {
+        for data in [
+            json!({}),
+            json!({"data": []}),
+            json!({"data": [{"url": null}]}),
+            json!({"data": [{"url": "null"}]}),
+            json!({"data": [{"url": ""}]}),
+        ] {
+            assert!(parse_audio_url(&data, Instant::now()).is_err());
+        }
     }
 }
 

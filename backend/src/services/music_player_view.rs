@@ -510,72 +510,76 @@ mod tests {
     #[tokio::test]
     async fn concurrent_misses_share_success_and_failure_then_allow_retry() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        for fail in [false, true] {
-            let id = if fail {
-                "coalesced-failure"
-            } else {
-                "coalesced-success"
-            };
-            let calls = Arc::new(AtomicUsize::new(0));
-            let release = Arc::new(tokio::sync::Notify::new());
-            let mut requests = Vec::new();
-            for _ in 0..100 {
-                let calls = calls.clone();
-                let release = release.clone();
-                requests.push(tokio::spawn(async move {
-                    load_player_playlist(PlayerMusicSource::Netease, id, || async {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        release.notified().await;
-                        if fail {
-                            Err(PlayerPlaylistError::FetchFailed)
-                        } else {
-                            Ok(empty_playlist(id))
-                        }
-                    })
-                    .await
-                }));
-            }
-            wait_for_loaders(id, 100).await;
-            assert_eq!(calls.load(Ordering::SeqCst), 1);
-            release.notify_waiters();
-            let results =
-                tokio::time::timeout(Duration::from_secs(5), futures::future::join_all(requests))
-                    .await
-                    .unwrap()
-                    .into_iter()
-                    .map(Result::unwrap)
-                    .collect::<Vec<_>>();
-            assert_eq!(calls.load(Ordering::SeqCst), 1);
-            if fail {
+        for (count, success_id, failure_id) in [
+            (1, "coalesced-success-1", "coalesced-failure-1"),
+            (10, "coalesced-success-10", "coalesced-failure-10"),
+            (100, "coalesced-success-100", "coalesced-failure-100"),
+        ] {
+            for fail in [false, true] {
+                let id = if fail { failure_id } else { success_id };
+                let calls = Arc::new(AtomicUsize::new(0));
+                let release = Arc::new(tokio::sync::Notify::new());
+                let mut requests = Vec::new();
+                for _ in 0..count {
+                    let calls = calls.clone();
+                    let release = release.clone();
+                    requests.push(tokio::spawn(async move {
+                        load_player_playlist(PlayerMusicSource::Netease, id, || async {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            release.notified().await;
+                            if fail {
+                                Err(PlayerPlaylistError::FetchFailed)
+                            } else {
+                                Ok(empty_playlist(id))
+                            }
+                        })
+                        .await
+                    }));
+                }
+                wait_for_loaders(id, count).await;
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                release.notify_waiters();
+                let results = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    futures::future::join_all(requests),
+                )
+                .await
+                .unwrap()
+                .into_iter()
+                .map(Result::unwrap)
+                .collect::<Vec<_>>();
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                if fail {
+                    assert!(
+                        results
+                            .iter()
+                            .all(|result| *result == Err(PlayerPlaylistError::FetchFailed))
+                    );
+                } else {
+                    let first = results[0].as_ref().unwrap();
+                    assert!(
+                        results
+                            .iter()
+                            .all(|result| Arc::ptr_eq(first, result.as_ref().unwrap()))
+                    );
+                }
+                let next = load_player_playlist(PlayerMusicSource::Netease, id, || async {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(empty_playlist(id))
+                })
+                .await
+                .unwrap();
+                assert_eq!(calls.load(Ordering::SeqCst), if fail { 2 } else { 1 });
+                if !fail {
+                    assert!(Arc::ptr_eq(&next, results[0].as_ref().unwrap()));
+                }
                 assert!(
-                    results
-                        .iter()
-                        .all(|result| *result == Err(PlayerPlaylistError::FetchFailed))
-                );
-            } else {
-                let first = results[0].as_ref().unwrap();
-                assert!(
-                    results
-                        .iter()
-                        .all(|result| Arc::ptr_eq(first, result.as_ref().unwrap()))
+                    !PLAYER_PLAYLIST_LOADS
+                        .read()
+                        .await
+                        .contains_key(&player_playlist_cache_key(PlayerMusicSource::Netease, id))
                 );
             }
-            let next = load_player_playlist(PlayerMusicSource::Netease, id, || async {
-                calls.fetch_add(1, Ordering::SeqCst);
-                Ok(empty_playlist(id))
-            })
-            .await
-            .unwrap();
-            assert_eq!(calls.load(Ordering::SeqCst), if fail { 2 } else { 1 });
-            if !fail {
-                assert!(Arc::ptr_eq(&next, results[0].as_ref().unwrap()));
-            }
-            assert!(
-                !PLAYER_PLAYLIST_LOADS
-                    .read()
-                    .await
-                    .contains_key(&player_playlist_cache_key(PlayerMusicSource::Netease, id))
-            );
         }
     }
 
