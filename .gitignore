@@ -319,3 +319,7 @@ backend/data/.bootstrap-claimed
 !frontend/tests/browser/fixture/musicPlaylist.tsx
 
 !frontend/tests/browser/musicLyrics.spec.ts
+
+# Agent host startup regression coverage
+!/frontend/tests/browser/agentSessionStartup.spec.ts
+!/frontend/tests/browser/fixture/agentSessionStartup.tsx

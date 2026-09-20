@@ -1,5 +1,6 @@
 import type { QueuedAgentPanelOpen } from './agentPanelEvents'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { isDocumentReady, subscribeDocumentReady } from '../../utils/pageLoader'
 import {
   AGENT_PANEL_OPEN_EVENT,
   AGENT_PANEL_OPEN_SESSION_EVENT,
@@ -19,9 +20,10 @@ const WAKE_EVENTS = [
   'arael-open-manage',
 ] as const
 
+// React lazy surfaces import failures through its render boundary; warming is optional.
 function preloadAgentSession(): void {
-  void import('./AgentEngine')
-  void import('./AgentPanel')
+  void import('./AgentEngine').catch(() => {})
+  void import('./AgentPanel').catch(() => {})
 }
 
 /**
@@ -29,6 +31,7 @@ function preloadAgentSession(): void {
  * 打开面板立刻挂；否则首屏后 5s + idle，避开 3s 后台 Tapp。挂上之后关面板不卸。
  */
 export function AgentSessionHost({ children }: { children: React.ReactNode }) {
+  const documentReady = useSyncExternalStore(subscribeDocumentReady, isDocumentReady, () => false)
   const [ready, setReady] = useState(false)
 
   const wake = useCallback((queued?: QueuedAgentPanelOpen) => {
@@ -61,7 +64,7 @@ export function AgentSessionHost({ children }: { children: React.ReactNode }) {
       window.addEventListener(name, onEvent)
     }
     let idleId: number | null = null
-    const timerId = window.setTimeout(() => {
+    const timerId = documentReady ? window.setTimeout(() => {
       if ('requestIdleCallback' in window) {
         idleId = requestIdleCallback(() => wake(), {
           timeout: AGENT_SESSION_IDLE_TIMEOUT_MS,
@@ -69,17 +72,17 @@ export function AgentSessionHost({ children }: { children: React.ReactNode }) {
       } else {
         wake()
       }
-    }, AGENT_SESSION_DELAY_MS)
+    }, AGENT_SESSION_DELAY_MS) : null
     return () => {
       for (const name of WAKE_EVENTS) {
         window.removeEventListener(name, onEvent)
       }
-      window.clearTimeout(timerId)
+      if (timerId !== null) window.clearTimeout(timerId)
       if (idleId !== null && 'cancelIdleCallback' in window) {
         cancelIdleCallback(idleId)
       }
     }
-  }, [ready, wake])
+  }, [documentReady, ready, wake])
 
   const { indicator } = useLongPress(
     LONG_PRESS_DURATION,

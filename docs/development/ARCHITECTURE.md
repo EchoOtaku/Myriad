@@ -57,10 +57,18 @@ commits. This is not a guarantee that every widget or network request has finish
 Missing route modules and unavailable locale catalogs must expose recovery rather
 than leave the document hidden behind its loading screen.
 
-Background TAPP startup and speculative route warming begin after this document
-signal. Their pending timers and idle callbacks are cancelled on unmount; route
+Background TAPP startup, automatic Agent session startup, and speculative route
+warming begin after this document signal. Explicitly opening the Agent session
+wakes it immediately, and closing its panel does not unmount the session. Pending
+timers and idle callbacks are cancelled on unmount; route
 warming shares imports and contains speculative failures. These scheduling rules
 do not alter the TAPP authorization or instance destruction rules.
+
+`AuthProvider` owns the initial session probe. Pages consume its result rather
+than queue another probe while it is pending. Profile changes and authenticated
+actions may explicitly refresh it. Identity transitions invalidate old probes
+and asynchronous completion events; logout and provider unmount also abort the
+outstanding request.
 
 ## Backend surfaces (high level)
 
