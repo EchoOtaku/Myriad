@@ -1224,7 +1224,10 @@ mod tests {
         let collect = src
             .split("pub(crate) fn collect_database_updates(")
             .nth(1)
-            .and_then(|rest| rest.split("pub(crate) fn collect_database_updates_with_vendor").next())
+            .and_then(|rest| {
+                rest.split("pub(crate) fn collect_database_updates_with_vendor")
+                    .next()
+            })
             .expect("collect_database_updates");
         assert!(!collect.contains("try_read"));
         assert!(!collect.contains("GLOBAL_DYNAMIC_CONFIG"));

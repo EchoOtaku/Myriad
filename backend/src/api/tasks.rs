@@ -67,18 +67,16 @@ pub async fn submit_task(
 
     // 提交任务到后台处理器
     match submit_and_start_platform_task(platform.clone()).await {
-        Ok(task_id) => {
-            (
-                StatusCode::ACCEPTED,
-                Json(json!({
-                    "success": true,
-                    "task_id": task_id,
-                    "platform": platform,
-                    "status": "pending",
-                    "message": "Task submitted successfully. Use GET /api/tasks/{task_id} to check status."
-                })),
-            )
-        }
+        Ok(task_id) => (
+            StatusCode::ACCEPTED,
+            Json(json!({
+                "success": true,
+                "task_id": task_id,
+                "platform": platform,
+                "status": "pending",
+                "message": "Task submitted successfully. Use GET /api/tasks/{task_id} to check status."
+            })),
+        ),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
@@ -294,10 +292,9 @@ mod tests {
         let mut task = None;
         for _ in 0..50 {
             task = BACKGROUND_PROCESSOR.get_task_status(&task_id).await;
-            if task
-                .as_ref()
-                .is_some_and(|t| t.status != crate::services::background_processor::TaskStatus::Pending)
-            {
+            if task.as_ref().is_some_and(|t| {
+                t.status != crate::services::background_processor::TaskStatus::Pending
+            }) {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;

@@ -443,8 +443,27 @@ pub(crate) async fn start_process_run(
     // 后端 run 独立于本次 HTTP 连接；前端只订阅事件。
     // SSE 断连不取消任务：刷新 / reattach 依赖 run 继续存活；
     // 用户中断走 cancel_task / cancel_task_for_user。
-    let run = create_run(user_id, has_session.then_some(session_id.clone())).await;
-    let run_id_for_meta = run.run_id().to_string();
+    let run_id_for_meta = format!("run_{}", uuid::Uuid::new_v4().simple());
+    // Acquire input references before admission can launch an executor. This also
+    // covers non-channel callers carrying local media in custom_data.
+    if let Some(payload) = user_request
+        .context
+        .as_ref()
+        .and_then(|ctx| ctx.custom_data.as_ref())
+    {
+        use sea_orm::TransactionTrait;
+        let txn = db
+            .begin()
+            .await
+            .map_err(|_| agent_turn_error("Could not save media references".into()))?;
+        crate::services::media::bind_channel_message(&txn, &run_id_for_meta, payload, &[])
+            .await
+            .map_err(|error| HttpError(error.into()))?;
+        txn.commit()
+            .await
+            .map_err(|_| agent_turn_error("Could not save media references".into()))?;
+    }
+
     begin_intention_work(
         &db,
         source_intent_id.as_deref(),
@@ -453,6 +472,12 @@ pub(crate) async fn start_process_run(
         Some(run_id_for_meta.clone()),
     )
     .await?;
+    let run = crate::services::agent::run_hub::create_run_with_id(
+        run_id_for_meta.clone(),
+        user_id,
+        has_session.then_some(session_id.clone()),
+    )
+    .await;
     // 注入 run_id，供确认手持（confirmation）复用同一 run hub / 通知身份
     if let Some(ref mut ctx) = user_request.context {
         ctx.run_id = Some(run_id_for_meta.clone());

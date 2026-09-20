@@ -33,8 +33,8 @@ pub use store::{
     generation_inputs_changed, get_or_create_state, get_persona, get_persona_on, insert_diary,
     insert_proactive, latest_diary, list_diary_from_sources, normalize_persona_fields,
     portrait_generation_is_pending, promote_activity, recent_proactive, release_avatar_generation,
-    release_portrait_generation, set_activity, set_dnd_schedule, set_do_not_disturb,
-    sticker_avatar_asset_id, update_affect, upsert_persona_on,
+    release_portrait_generation, rewrite_persona_media_urls, set_activity, set_dnd_schedule,
+    set_do_not_disturb, sticker_avatar_asset_id, update_affect, upsert_persona_on,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).

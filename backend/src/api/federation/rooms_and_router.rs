@@ -26,13 +26,7 @@ async fn federation_list_transfers(
         Ok(id) => id,
         Err(response) => return response,
     };
-    match federation::file_transfer::list_transfers(
-        &channel_id,
-        user_id,
-        &db,
-    )
-    .await
-    {
+    match federation::file_transfer::list_transfers(&channel_id, user_id, &db).await {
         Ok(transfers) => (
             StatusCode::OK,
             Json(json!({"transfers": transfers, "total": transfers.len()})),
@@ -78,13 +72,8 @@ async fn federation_list_room_transfers(
         Ok(id) => id,
         Err(response) => return response,
     };
-    match federation::file_transfer::list_room_transfers(
-        &room_id,
-        user_id,
-        &claims.username,
-        &db,
-    )
-    .await
+    match federation::file_transfer::list_room_transfers(&room_id, user_id, &claims.username, &db)
+        .await
     {
         Ok(transfers) => (
             StatusCode::OK,
@@ -133,13 +122,8 @@ async fn federation_get_transfer(
         Ok(id) => id,
         Err(response) => return response,
     };
-    match federation::file_transfer::get_transfer(
-        &transfer_id,
-        user_id,
-        &claims.username,
-        &db,
-    )
-    .await
+    match federation::file_transfer::get_transfer(&transfer_id, user_id, &claims.username, &db)
+        .await
     {
         Ok(t) => (StatusCode::OK, Json(json!(t))).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),

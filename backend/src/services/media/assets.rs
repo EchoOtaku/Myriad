@@ -168,6 +168,7 @@ SET write_lease_until = NOW() + make_interval(secs => $1::double precision),
 WHERE id = $2
   AND write_token = $3
   AND state = 'staging'
+  AND write_lease_until > NOW()
 "#,
             [lease_secs.into(), id.into(), write_token.into()],
         ))

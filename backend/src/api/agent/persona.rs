@@ -384,24 +384,38 @@ pub async fn put_persona(
     let live_asset = merope_rig::persist_active_asset(&transaction, live_rig.as_deref())
         .await
         .map_err(|error| persona_store_http("update persona portrait", error))?;
-    crate::services::media::bind_persona(
+    let portrait_url = match saved.portrait_asset_id.as_deref() {
+        Some(url) => Some(
+            crate::services::media::publish_local_url(&transaction, url, &[])
+                .await
+                .map_err(|error| HttpError(error.into()))?,
+        ),
+        None => None,
+    };
+    let avatar_url = match saved.avatar_asset_id.as_deref() {
+        Some(url) => Some(
+            crate::services::media::publish_local_url(&transaction, url, &[])
+                .await
+                .map_err(|error| HttpError(error.into()))?,
+        ),
+        None => None,
+    };
+    let saved = merope::rewrite_persona_media_urls(
         &transaction,
-        saved.portrait_asset_id.as_deref(),
-        saved.avatar_asset_id.as_deref(),
-        saved.visual_profile.as_ref(),
-        &[],
+        saved,
+        portrait_url.clone(),
+        avatar_url.clone(),
     )
     .await
-    .map_err(|error| HttpError(error.into()))?;
-    crate::services::media::publish_cited_media(
+    .map_err(|error| persona_store_http("rewrite persona media urls", error))?;
+    crate::services::media::bind_persona(
         &transaction,
+        portrait_url
+            .as_deref()
+            .or(saved.portrait_asset_id.as_deref()),
+        avatar_url.as_deref().or(saved.avatar_asset_id.as_deref()),
+        saved.visual_profile.as_ref(),
         &[],
-        saved.portrait_asset_id.as_deref(),
-        &saved
-            .visual_profile
-            .clone()
-            .unwrap_or(json!({}))
-            .to_string(),
     )
     .await
     .map_err(|error| HttpError(error.into()))?;

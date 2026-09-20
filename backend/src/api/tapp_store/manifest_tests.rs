@@ -243,7 +243,9 @@ async fn first_install_commit_error_preserves_live_candidate() {
         uuid::Uuid::new_v4().simple()
     ));
     let live = root.join("com.example.app");
-    tokio::fs::create_dir_all(root.join("_parent")).await.unwrap();
+    tokio::fs::create_dir_all(root.join("_parent"))
+        .await
+        .unwrap();
     let stage = TappDirStage::create(&live).await.unwrap();
     tokio::fs::write(stage.path().join("main.js"), "candidate")
         .await

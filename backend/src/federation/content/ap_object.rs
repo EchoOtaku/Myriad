@@ -298,9 +298,8 @@ pub(super) async fn build_ap_object(
                         .map_err(db_err)?
                         .ok_or_else(|| not_found("Library metadata not found"))?;
                     (
-                        row_positive_id(&row, "id").map_err(|error| {
-                            db_err(sea_orm::DbErr::Custom(error))
-                        })?,
+                        row_positive_id(&row, "id")
+                            .map_err(|error| db_err(sea_orm::DbErr::Custom(error)))?,
                         row.try_get::<String>("", "platform_name")
                             .unwrap_or_default(),
                         row.try_get::<serde_json::Value>("", "raw_data")
@@ -332,9 +331,8 @@ pub(super) async fn build_ap_object(
                             not_found(&format!("No library metadata for platform '{}'", platform))
                         })?;
                     (
-                        row_positive_id(&row, "id").map_err(|error| {
-                            db_err(sea_orm::DbErr::Custom(error))
-                        })?,
+                        row_positive_id(&row, "id")
+                            .map_err(|error| db_err(sea_orm::DbErr::Custom(error)))?,
                         row.try_get::<String>("", "platform_name")
                             .unwrap_or_else(|_| platform.to_string()),
                         row.try_get::<serde_json::Value>("", "raw_data")
@@ -1062,7 +1060,10 @@ mod tests {
         let fan = src
             .split("pub(crate) async fn fan_out_to_followers")
             .nth(1)
-            .and_then(|rest| rest.split("pub(super) async fn fan_out_to_room_peers").next())
+            .and_then(|rest| {
+                rest.split("pub(super) async fn fan_out_to_room_peers")
+                    .next()
+            })
             .expect("fan_out_to_followers");
         assert!(fan.contains("Result<u32, String>"));
         assert!(!fan.contains("unwrap_or_default()"));

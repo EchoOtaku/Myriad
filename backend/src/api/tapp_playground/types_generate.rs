@@ -725,7 +725,9 @@ async fn run_playground_generation(
 ) -> Result<PlaygroundGenerateResponse, GenerationError> {
     let owner = crate::services::ai_cost_ledger::resolve_site_owner_id()
         .await
-        .map_err(|error| GenerationError::Api(api_error(StatusCode::INTERNAL_SERVER_ERROR, error)))?;
+        .map_err(|error| {
+            GenerationError::Api(api_error(StatusCode::INTERNAL_SERVER_ERROR, error))
+        })?;
     crate::services::ai_cost_ledger::with_site_ai_ledger(
         owner,
         "playground",

@@ -854,7 +854,8 @@ mod tests {
             .and_then(|rest| rest.split("#[cfg(test)]").next())
             .expect("restore_waiting_runs_after_boot");
         assert!(!boot.contains("persist_task_async"));
-        let confirmation = include_str!("../../services/agent/confirmation_and_tasks/confirmation.rs");
+        let confirmation =
+            include_str!("../../services/agent/confirmation_and_tasks/confirmation.rs");
         let wait = confirmation
             .split("store.store(user_id, task_state.clone())")
             .nth(1)

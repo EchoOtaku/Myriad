@@ -9,31 +9,39 @@ mod access;
 mod assets;
 mod cite;
 mod error;
+#[cfg(test)]
+mod integration_tests;
 pub(crate) mod legacy;
+mod maintenance;
 mod migration;
 mod recovery;
 mod references;
 mod scan;
 pub(crate) mod serve;
 mod store;
+#[cfg(test)]
+mod test_support;
 mod types;
+pub(crate) mod upgrade;
 mod urls;
 mod validate;
 
 pub use access::{can_manage, can_read};
 pub use cite::{
-    bind_ai_task, bind_channel_message, bind_consumer, bind_note_draft, bind_note_published,
-    bind_persona, bind_stickers, clear_note_doc, extract_registered_paths, publish_asset_ids,
-    publish_cited_media, references_from_fields, references_from_urls, resolve_asset_id,
+    bind_ai_task, bind_and_publish_dashboard_layout, bind_channel_message, bind_consumer,
+    bind_note_draft, bind_note_published, bind_persona, bind_stickers, clear_note_doc,
+    extract_registered_paths, publish_asset_ids, publish_cited_media, publish_local_url,
+    references_from_fields, references_from_urls, resolve_asset_id,
 };
 pub use error::MediaError;
 pub use legacy::{LegacyClass, LegacyPaths};
+pub use maintenance::maintain;
 pub use migration::{
     MigrationBatch, MigrationJobInput, MigrationStats, migrate_catalog_batch, upsert_job,
 };
 pub use recovery::{RecoverPlan, plan_recovery};
 pub use references::{NewReference, active_count, parse_consumer_type, replace_for_consumer};
-pub use scan::{backfill_known_consumers, catalog_labels_for_assets};
+pub use scan::catalog_labels_for_assets;
 pub use serve::{
     FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, resolve_authenticated_content,
     resolve_public_asset,
@@ -110,27 +118,66 @@ impl MediaService {
         };
         let public_id = row.public_id.ok_or(MediaError::StoreFailed)?;
         let key = row.storage_key.clone().ok_or(MediaError::StoreFailed)?;
-        if let Err(error) = self
-            .store
-            .publish_bytes(&key, write_token, &input.bytes)
-            .await
-        {
+        let write = async {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(
+                (WRITE_LEASE_SECS / 3) as u64,
+            ));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let staged = self.store.stage_bytes(write_token, &input.bytes);
+            tokio::pin!(staged);
+            loop {
+                tokio::select! {
+                    result = &mut staged => { result?; break; }
+                    _ = tick.tick() => { self.renew_write_lease(db, row.id, write_token).await?; }
+                }
+            }
+            let filename = filename_for_mime(&row.name, &payload.mime, public_id)?;
+            let catalog_url = match input.exposure {
+                MediaExposure::Public => compatible_url(public_id, &filename),
+                MediaExposure::Private => content_path(row.id),
+            };
+            self.commit_staged(db, row.id, write_token, &key, &catalog_url)
+                .await
+        }
+        .await;
+        if let Err(error) = write {
             let _ = self.store.remove_owned_temp(write_token).await;
             return Err(error);
-        }
-        let filename = filename_for_mime(&row.name, &payload.mime, public_id)?;
-        let catalog_url = match input.exposure {
-            MediaExposure::Public => compatible_url(public_id, &filename),
-            MediaExposure::Private => content_path(row.id),
-        };
-        if !assets::commit_ready(db, row.id, write_token, &catalog_url).await? {
-            let _ = self.store.remove_owned_temp(write_token).await;
-            return Err(MediaError::NotReady);
         }
         let saved = assets::find_by_id(db, row.id)
             .await?
             .ok_or(MediaError::Missing)?;
         assets::to_domain(saved, 0)
+    }
+
+    async fn commit_staged(
+        &self,
+        db: &DatabaseConnection,
+        id: i32,
+        token: Uuid,
+        key: &str,
+        url: &str,
+    ) -> Result<(), MediaError> {
+        let txn = db.begin().await?;
+        let row = assets::lock_by_id(&txn, id)
+            .await?
+            .ok_or(MediaError::Missing)?;
+        if row.state.as_deref() != Some("staging")
+            || row.write_token != Some(token)
+            || row
+                .write_lease_until
+                .is_none_or(|until| until <= chrono::Utc::now())
+        {
+            return Err(MediaError::NotReady);
+        }
+        // The recovery claim uses this same row lock. An expired writer may
+        // never rename after a recovery worker has taken ownership.
+        self.store.publish_staged(key, token).await?;
+        if !assets::commit_ready(&txn, id, token, url).await? {
+            return Err(MediaError::NotReady);
+        }
+        txn.commit().await?;
+        Ok(())
     }
 
     /// Persist bytes as a ready asset. `created` is false when `producer_key` hits.
@@ -403,21 +450,10 @@ mod tests {
 
     #[tokio::test]
     async fn postgres_create_recover_delete_when_configured() {
-        let Ok(url) = std::env::var("MYRIAD_MEDIA_TEST_DATABASE_URL") else {
-            eprintln!(
-                "skipping: set MYRIAD_MEDIA_TEST_DATABASE_URL to run media lifecycle DB tests"
-            );
+        let Some(fixture) = super::test_support::Fixture::new().await else {
             return;
         };
-        let db = sea_orm::Database::connect(&url)
-            .await
-            .expect("connect media test database");
-        sea_orm::ConnectionTrait::execute_unprepared(
-            &db,
-            include_str!("../../../migrations/media_asset_model.sql"),
-        )
-        .await
-        .expect("apply media asset model");
+        let db = fixture.db.clone();
 
         let root = std::env::temp_dir().join(format!("myriad-media-pg-{}", Uuid::new_v4()));
         let service = MediaService::new(root.clone());
@@ -573,6 +609,7 @@ mod tests {
             ServeOutcome::NotFound { no_store: true }
         ));
         let _ = tokio::fs::remove_dir_all(root).await;
+        fixture.close().await;
     }
 
     #[test]

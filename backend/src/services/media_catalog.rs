@@ -1,7 +1,8 @@
 //! 媒体目录查询。常规写入走 `services::media`，这里不再登记新文件。
 
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
+    QueryOrder,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -20,6 +21,12 @@ pub struct MediaAssetView {
     pub size: i64,
     pub created_at: i64,
     pub references: Vec<String>,
+    pub state: Option<String>,
+    pub exposure: Option<String>,
+    pub content_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_path: Option<String>,
+    pub references_complete: bool,
 }
 
 /// 目录只收本站上传/生成路径。外链和 `cache_image` 结果不进。
@@ -56,6 +63,11 @@ pub fn catalogs_cache_image() -> bool {
 
 pub async fn list_assets(db: &DatabaseConnection) -> Result<Vec<MediaAssetView>, DbErr> {
     let rows = media_assets::Entity::find()
+        .filter(
+            Condition::any()
+                .add(media_assets::Column::State.is_null())
+                .add(media_assets::Column::State.is_not_in(["deleted", "deleting", "staging"])),
+        )
         .order_by_desc(media_assets::Column::CreatedAt)
         .all(db)
         .await?;
@@ -261,6 +273,8 @@ async fn media_references(db: &DatabaseConnection, url: &str) -> Result<Vec<Stri
 }
 
 fn to_view(row: media_assets::Model, references: Vec<String>) -> MediaAssetView {
+    let content_path = crate::services::media::content_path(row.id);
+    let public_path = (row.exposure.as_deref() == Some("public")).then(|| row.url.clone());
     MediaAssetView {
         id: row.id,
         kind: row.kind,
@@ -270,6 +284,11 @@ fn to_view(row: media_assets::Model, references: Vec<String>) -> MediaAssetView 
         size: row.size,
         created_at: row.created_at.timestamp_millis(),
         references,
+        state: row.state,
+        exposure: row.exposure,
+        content_path,
+        public_path,
+        references_complete: row.references_complete,
     }
 }
 

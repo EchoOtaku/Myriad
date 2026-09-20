@@ -412,6 +412,21 @@ WHERE id = $1
     Ok(())
 }
 
+/// URL normalization changes no visual inputs and must not invalidate generated art.
+pub async fn rewrite_persona_media_urls<C: ConnectionTrait>(
+    db: &C,
+    persona: agent_persona::Model,
+    portrait: Option<String>,
+    avatar: Option<String>,
+) -> Result<agent_persona::Model, anyhow::Error> {
+    let mut active: agent_persona::ActiveModel = persona.into();
+    active.portrait_asset_id = Set(portrait);
+    active.avatar_asset_id = Set(avatar);
+    let saved = active.update(db).await?;
+    resync_persona_avatar_snapshots(db, saved.avatar_asset_id.as_deref()).await?;
+    Ok(saved)
+}
+
 /// 只在本次请求仍持锁、且名字、外观与主立绘都没变时落盘。
 pub async fn complete_avatar_generation<C>(
     db: &C,
@@ -543,9 +558,9 @@ pub async fn load_affect_baseline<C>(db: &C) -> Result<AffectBaseline, anyhow::E
 where
     C: ConnectionTrait,
 {
-    let lookup = get_persona_on(db).await.map(|persona| {
-        persona.map(|row| (row.persona_json, row.personality))
-    });
+    let lookup = get_persona_on(db)
+        .await
+        .map(|persona| persona.map(|row| (row.persona_json, row.personality)));
     affect_baseline_from_persona_lookup(lookup)
 }
 
@@ -1240,7 +1255,10 @@ mod tests {
     #[test]
     fn persona_lookup_error_is_not_default_baseline() {
         let err = super::affect_baseline_from_persona_lookup(Err(anyhow::anyhow!("db down")));
-        assert!(err.is_err(), "DB failure must not become the default personality");
+        assert!(
+            err.is_err(),
+            "DB failure must not become the default personality"
+        );
         let missing = super::affect_baseline_from_persona_lookup(Ok(None)).unwrap();
         assert_eq!(missing, super::AffectBaseline::default());
     }

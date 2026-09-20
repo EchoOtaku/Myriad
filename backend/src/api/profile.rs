@@ -38,8 +38,8 @@ fn site_owner_error(error: String) -> (StatusCode, Json<Value>) {
     )
 }
 
-
-async fn fresh_configured_platform_cache() -> Option<crate::services::platform_refresh::PlatformDataCache> {
+async fn fresh_configured_platform_cache()
+-> Option<crate::services::platform_refresh::PlatformDataCache> {
     let files = load_platform_cache_files();
     let required = {
         let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;

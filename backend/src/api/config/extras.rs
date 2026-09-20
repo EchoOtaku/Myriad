@@ -20,25 +20,42 @@ pub async fn update_dashboard_config(
     crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<DashboardConfigPayload>,
 ) -> (StatusCode, Json<Value>) {
-    if let Some(layout) = payload.layout.as_deref() {
-        if let Err(error) = bind_and_publish_stickers(&db, layout).await {
-            tracing::error!(%error, "failed to bind dashboard sticker references");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "success": false,
-                    "error": "Failed to record media references",
-                    "code": error.code(),
-                    "message": "Failed to record media references"
-                })),
-            );
+    let txn = match db.begin().await {
+        Ok(txn) => txn,
+        Err(error) => {
+            tracing::error!(%error, "failed to start dashboard config transaction");
+            return dashboard_config_failed();
         }
-    }
-    let config_service = crate::services::config_service::ConfigService::new(db);
+    };
     let mut updates = std::collections::HashMap::new();
 
     if let Some(layout) = payload.layout {
-        updates.insert("dashboard_layout".to_string(), json!(layout));
+        match crate::services::media::bind_and_publish_dashboard_layout(&txn, &layout, &[]).await {
+            Ok(rewritten) => {
+                updates.insert("dashboard_layout".to_string(), json!(rewritten));
+            }
+            Err(error) => {
+                tracing::error!(%error, "failed to bind dashboard sticker references");
+                let _ = txn.rollback().await;
+                let status = match error {
+                    crate::services::media::MediaError::Invalid { .. }
+                    | crate::services::media::MediaError::Conflict { .. } => StatusCode::BAD_REQUEST,
+                    crate::services::media::MediaError::NotReady
+                    | crate::services::media::MediaError::InUse
+                    | crate::services::media::MediaError::PublicInUse => StatusCode::CONFLICT,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                };
+                return (
+                    status,
+                    Json(json!({
+                        "success": false,
+                        "error": error.to_string(),
+                        "code": error.code(),
+                        "message": error.to_string()
+                    })),
+                );
+            }
+        }
     }
 
     if let Some(layout_mode) = payload.layout_mode {
@@ -74,17 +91,16 @@ pub async fn update_dashboard_config(
         updates.insert("widget_theme".to_string(), json!(widget_theme));
     }
 
-    if let Err(e) = config_service.update_configs(updates).await {
+    if let Err(e) =
+        crate::services::config_service::ConfigService::update_configs_on(&txn, updates).await
+    {
         tracing::error!("Failed to update dashboard config: {e}");
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "success": false,
-                "error": "Failed to update dashboard config",
-                "code": "config_save_failed",
-                "message": "Failed to update dashboard config"
-            })),
-        );
+        let _ = txn.rollback().await;
+        return dashboard_config_failed();
+    }
+    if let Err(error) = txn.commit().await {
+        tracing::error!(%error, "failed to commit dashboard config");
+        return dashboard_config_failed();
     }
 
     (
@@ -96,15 +112,16 @@ pub async fn update_dashboard_config(
     )
 }
 
-async fn bind_and_publish_stickers(
-    db: &DatabaseConnection,
-    layout: &str,
-) -> Result<(), crate::services::media::MediaError> {
-    let txn = db.begin().await?;
-    crate::services::media::bind_stickers(&txn, layout, &[]).await?;
-    crate::services::media::publish_cited_media(&txn, &[], None, layout).await?;
-    txn.commit().await?;
-    Ok(())
+fn dashboard_config_failed() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "success": false,
+            "error": "Failed to update dashboard config",
+            "code": "config_save_failed",
+            "message": "Failed to update dashboard config"
+        })),
+    )
 }
 
 #[derive(Debug, Deserialize)]

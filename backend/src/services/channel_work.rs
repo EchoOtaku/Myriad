@@ -588,16 +588,7 @@ async fn start_new_work(
     )
     .await
     {
-        Ok(run) => {
-            if let Some(data) = &custom_data {
-                if let Err(error) =
-                    crate::services::media::bind_channel_message(&db, run.run_id(), data, &[]).await
-                {
-                    warn!(%error, "failed to bind channel inbound media");
-                }
-            }
-            run
-        }
+        Ok(run) => run,
         Err(error) => {
             let body = error.0.to_json();
             let message = body

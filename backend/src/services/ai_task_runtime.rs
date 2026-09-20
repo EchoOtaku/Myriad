@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use once_cell::sync::Lazy;
+use sea_orm::TransactionTrait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{RwLock, watch};
@@ -116,7 +117,7 @@ pub async fn cleanup_local_tasks() {
     };
     for task_id in abandoned {
         // No detached cleanup jobs, and one stalled registry cannot stall the
-        // maintenance loop. Local terminal state is set before database I/O.
+        // maintenance loop. Terminal state becomes visible only after database I/O.
         let _ = tokio::time::timeout(std::time::Duration::from_secs(2), finish_task(
             &task_id, AiTaskStatus::Cancelled, None,
             Some(serde_json::json!({"code": "AI_TASK_CANCELLED", "message": "AI task executor stopped"})), None,
@@ -306,55 +307,75 @@ pub async fn finish_task(
     error: Option<Value>,
     usage: Option<AiUsageSnapshot>,
 ) {
+    // Keep the prior visible snapshot until its durable result and references commit.
     let mut tasks = AI_TASKS.write().await;
-    let persisted = if let Some(task) = tasks.get_mut(task_id) {
-        task.snapshot.status = status;
-        task.snapshot.result = result;
-        task.snapshot.error = error;
-        if let Some(usage) = usage {
-            task.snapshot.usage = usage;
-        }
-        task.snapshot.updated_at = Utc::now().to_rfc3339();
-        task.retain_until = Utc::now().timestamp() + TASK_RETENTION_SECONDS;
-        Some(task.to_persisted())
-    } else {
-        None
+    let Some(local) = tasks.get_mut(task_id) else {
+        return;
     };
-    drop(tasks);
-    if let (Some(task), Ok(db)) = (persisted, shared_registry::database()) {
-        if let Err(error) = persist_ai_task(&db, &task).await {
-            tracing::error!(%error, task_id = %task.snapshot.task_id, "[TAPP] Failed to persist terminal AI task state");
-        } else if let Some(result) = &task.snapshot.result {
-            let expires = chrono::DateTime::from_timestamp(task.retain_until, 0);
-            if let Err(error) = crate::services::media::bind_ai_task(
-                &db,
-                &task.snapshot.task_id,
-                result,
-                &[],
-                expires,
-            )
-            .await
-            {
-                tracing::error!(%error, task_id = %task.snapshot.task_id, "failed to bind AI task media");
+    let mut task = local.to_persisted();
+    task.snapshot.status = status;
+    task.snapshot.result = result;
+    task.snapshot.error = error;
+    if let Some(usage) = usage {
+        task.snapshot.usage = usage;
+    }
+    task.snapshot.updated_at = Utc::now().to_rfc3339();
+    task.retain_until = Utc::now().timestamp() + TASK_RETENTION_SECONDS;
+    if let Ok(db) = shared_registry::database() {
+        if let Err(error) = persist_terminal_task(&db, &task).await {
+            tracing::error!(%error, %task_id, "Failed to commit AI result and media references");
+            // Never expose the unprotected result. Persist a failure instead; if
+            // storage is unavailable cleanup can retry the nonterminal local task.
+            task.snapshot.status = AiTaskStatus::Failed;
+            task.snapshot.result = None;
+            task.snapshot.error = Some(serde_json::json!({
+                "code": "AI_RESULT_COMMIT_FAILED", "message": "Could not save AI result"
+            }));
+            if persist_terminal_task(&db, &task).await.is_err() {
+                return;
             }
         }
-        let kind = match task.snapshot.status {
-            AiTaskStatus::Completed => "result",
-            AiTaskStatus::Cancelled => "cancelled",
-            _ => "error",
-        };
-        let _ = shared_registry::enqueue(
-            &db,
-            AI_TASK_MAILBOX_CHANNEL,
-            task_id,
-            &TaskBroadcast {
-                kind: kind.to_string(),
-                payload: serde_json::to_value(&task.snapshot).unwrap_or(Value::Null),
-            },
-            task.retain_until,
-        )
-        .await;
+    } else if task.snapshot.result.is_some() {
+        return;
     }
+    local.snapshot = task.snapshot;
+    local.retain_until = task.retain_until;
+}
+
+pub(crate) async fn persist_terminal_task(
+    db: &sea_orm::DatabaseConnection,
+    task: &PersistedAiTask,
+) -> Result<(), sea_orm::DbErr> {
+    let txn = db.begin().await?;
+    let expires = chrono::DateTime::from_timestamp(task.retain_until, 0);
+    crate::services::media::bind_ai_task(
+        &txn,
+        &task.snapshot.task_id,
+        task.snapshot.result.as_ref().unwrap_or(&Value::Null),
+        &[],
+        expires,
+    )
+    .await
+    .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?;
+    persist_ai_task(&txn, task).await?;
+    let kind = match task.snapshot.status {
+        AiTaskStatus::Completed => "result",
+        AiTaskStatus::Cancelled => "cancelled",
+        _ => "error",
+    };
+    shared_registry::enqueue(
+        &txn,
+        AI_TASK_MAILBOX_CHANNEL,
+        &task.snapshot.task_id,
+        &TaskBroadcast {
+            kind: kind.into(),
+            payload: serde_json::to_value(&task.snapshot)
+                .map_err(|error| sea_orm::DbErr::Json(error.to_string()))?,
+        },
+        task.retain_until,
+    )
+    .await?;
+    txn.commit().await
 }
 
 /// Stable operation name for cost ledger rows.

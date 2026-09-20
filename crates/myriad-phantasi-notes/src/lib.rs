@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{Event, Options, Parser, html};
+use pulldown_cmark::{Event, Options, Parser, Tag, html};
 
 pub mod ai_edit;
 mod layout;
@@ -953,32 +953,67 @@ fn decode_entities(text: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// Collect image destinations from Markdown, including reference links and HTML `<img>`.
+pub fn markdown_media_urls(markdown: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    for event in Parser::new_ext(markdown, markdown_options()) {
+        match event {
+            Event::Start(Tag::Image { dest_url, .. } | Tag::Link { dest_url, .. }) => {
+                push_unique_url(&mut urls, &dest_url)
+            }
+            Event::Html(html) | Event::InlineHtml(html) => {
+                // HTML events contain source syntax; normalize attributes with the same
+                // HTML parser and sanitizer used by the renderer before extracting.
+                collect_img_srcs(&sanitize_rendered(&html, false), &mut urls);
+            }
+            _ => {}
+        }
+    }
+    urls
+}
+
+fn push_unique_url(urls: &mut Vec<String>, url: &str) {
+    if url.is_empty() {
+        return;
+    }
+    if !urls.iter().any(|existing| existing == url) {
+        urls.push(url.to_string());
+    }
+}
+
+fn collect_img_srcs(html: &str, urls: &mut Vec<String>) {
+    let mut i = 0;
+    while let Some(found) = html[i..].find("<img ") {
+        let tag_start = i + found;
+        let Some(rel_end) = html[tag_start..].find('>') else {
+            break;
+        };
+        let tag_end = tag_start + rel_end;
+        let tag = &html[tag_start..tag_end];
+        if let Some(src_at) = tag.find("src=\"") {
+            let value_start = src_at + 5;
+            if let Some(value_len) = tag[value_start..].find('"') {
+                push_unique_url(
+                    urls,
+                    &decode_entities(&tag[value_start..value_start + value_len]),
+                );
+            }
+        }
+        i = tag_end + 1;
+        if i >= html.len() {
+            break;
+        }
+    }
+}
+
 /// 取正文里第一张图的地址当封面。
 ///
 /// 在已消毒的 HTML 上扫 `<img src="...">`：消毒已经保证了协议合法、引号规整，
 /// 这里不需要再做一次 URL 校验。
 fn first_image(html: &str) -> Option<String> {
-    let bytes = html.as_bytes();
-    let mut i = 0;
-    while let Some(found) = html[i..].find("<img ") {
-        let tag_start = i + found;
-        let tag_end = html[tag_start..].find('>').map(|e| tag_start + e)?;
-        let tag = &html[tag_start..tag_end];
-        if let Some(src_at) = tag.find("src=\"") {
-            let value_start = src_at + 5;
-            if let Some(value_len) = tag[value_start..].find('"') {
-                let src = &tag[value_start..value_start + value_len];
-                if !src.is_empty() {
-                    return Some(src.to_string());
-                }
-            }
-        }
-        i = tag_end.min(bytes.len());
-        if i >= html.len() {
-            break;
-        }
-    }
-    None
+    let mut urls = Vec::new();
+    collect_img_srcs(html, &mut urls);
+    urls.into_iter().next()
 }
 
 /// 字数。CJK 按字算，拉丁按空白分词算 —— 中英混排不区分语言就没法给出
@@ -1784,5 +1819,36 @@ mod tests {
             preview,
             include_str!("../testdata/columns-widget.preview.html")
         );
+    }
+
+    #[test]
+    fn markdown_media_urls_normalize_html_attributes() {
+        for html in [
+            "<img src='/api/media/7/content'>",
+            "<IMG SRC = /api/media/7/content>",
+            "<img\nsrc = '/api/media/7/content'>",
+            "<img title='a > b' src='/api/media/7/content'>",
+        ] {
+            assert_eq!(
+                markdown_media_urls(html),
+                vec!["/api/media/7/content"],
+                "{html}"
+            );
+        }
+        assert!(markdown_media_urls("<img src='javascript:alert(1)'>").is_empty());
+    }
+
+    #[test]
+    fn markdown_media_urls_include_reference_images_and_html() {
+        let md = concat!(
+            "![cover](/media/assets/11111111-1111-1111-1111-111111111111/a.png)\n\n",
+            "![ref][pic]\n\n",
+            "[pic]: /api/media/7/content \"title\"\n\n",
+            "<img src=\"/media/federation/1/b.jpg\">\n",
+        );
+        let urls = markdown_media_urls(md);
+        assert!(urls.contains(&"/media/assets/11111111-1111-1111-1111-111111111111/a.png".into()));
+        assert!(urls.contains(&"/api/media/7/content".into()));
+        assert!(urls.contains(&"/media/federation/1/b.jpg".into()));
     }
 }

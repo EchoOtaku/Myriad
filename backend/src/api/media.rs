@@ -266,3 +266,49 @@ mod tests {
         assert!(!upload.contains("MediaExposure::Public"));
     }
 }
+
+/// GET /api/media/migration — persisted cursor and last redacted failure.
+pub async fn media_migration_status(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, HttpError> {
+    require_admin(&headers, &db).await?;
+    let progress = crate::services::media::upgrade::status(&db)
+        .await
+        .map_err(|error| HttpError(error.into()))?;
+    Ok(Json(json!({"success": true, "progress": progress})))
+}
+
+#[derive(serde::Deserialize)]
+pub struct MediaMigrationRequest {
+    #[serde(default)]
+    pub restart: bool,
+}
+
+/// POST /api/media/migration — one bounded batch; repeat until complete.
+pub async fn advance_media_migration(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+    Json(request): Json<MediaMigrationRequest>,
+) -> Result<Json<Value>, HttpError> {
+    require_admin(&headers, &db).await?;
+    let mut origins = vec![crate::oauth_url_builder::SiteConfig::get_base_url().await];
+    let config = crate::GLOBAL_CONFIG.read().await;
+    origins.extend(
+        config
+            .base_url
+            .iter()
+            .chain(config.frontend_url.iter())
+            .cloned(),
+    );
+    drop(config);
+    let store = MediaStore::new(paths().media.clone());
+    let legacy = crate::services::media::LegacyPaths::from_data_paths(paths());
+    let progress =
+        crate::services::media::upgrade::advance(&db, &store, &legacy, &origins, request.restart)
+            .await
+            .map_err(|error| HttpError(error.into()))?;
+    Ok(Json(
+        json!({"success": progress.error.is_none(), "progress": progress}),
+    ))
+}

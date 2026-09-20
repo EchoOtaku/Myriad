@@ -703,8 +703,22 @@ pub(crate) async fn cleanup_retained_runs() {
 }
 
 pub async fn create_run(user_id: i32, session_id: Option<String>) -> Arc<AgentRun> {
+    create_run_with_id(
+        format!("run_{}", uuid::Uuid::new_v4().simple()),
+        user_id,
+        session_id,
+    )
+    .await
+}
+
+/// The server may reserve an ID while committing input references, before
+/// publishing RunStarted or admitting execution. Never accepts a client ID.
+pub(crate) async fn create_run_with_id(
+    run_id: String,
+    user_id: i32,
+    session_id: Option<String>,
+) -> Arc<AgentRun> {
     cleanup_retained_runs().await;
-    let run_id = format!("run_{}", uuid::Uuid::new_v4().simple());
     let run = AgentRun::new(run_id.clone(), user_id, session_id.clone());
     AGENT_RUNS.write().await.insert(run_id.clone(), run.clone());
     run.publish(AgentProgressEvent::RunStarted { run_id, session_id })
@@ -801,9 +815,14 @@ mod tests {
         let publish = src
             .split("pub async fn publish(")
             .nth(1)
-            .and_then(|rest| rest.split("pub(crate) async fn cleanup_retained_runs").next())
+            .and_then(|rest| {
+                rest.split("pub(crate) async fn cleanup_retained_runs")
+                    .next()
+            })
             .expect("publish");
-        let persist_at = publish.find("persist_according_to_duty").expect("durable persist");
+        let persist_at = publish
+            .find("persist_according_to_duty")
+            .expect("durable persist");
         let send_at = publish.find("events_tx.send").expect("sse send");
         assert!(
             persist_at < send_at,

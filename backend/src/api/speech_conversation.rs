@@ -308,12 +308,7 @@ pub async fn conversation_events(
     let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&claims.sub) else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    let session = match crate::services::agora_convo::chat_session(
-        user_id,
-        &query.agent_id,
-    )
-    .await
-    {
+    let session = match crate::services::agora_convo::chat_session(user_id, &query.agent_id).await {
         Ok(session) if session.claims.tv == claims.tv => session,
         // No owned chat session or tv mismatch: 204. Active streams emit event("closed") on teardown.
         _ => return StatusCode::NO_CONTENT.into_response(),

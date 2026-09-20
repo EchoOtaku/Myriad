@@ -14,8 +14,11 @@ use super::urls::{cite_local_path, compatible_url, content_path, filename_for_mi
 
 pub fn extract_registered_paths(text: &str, origins: &[String]) -> Vec<String> {
     let mut found = Vec::new();
-    push_delimited(text, "](", ')', origins, &mut found);
-    push_src_attr(text, origins, &mut found);
+    for url in myriad_phantasi_notes::markdown_media_urls(text) {
+        if let Some(path) = cite_local_path(&url, origins) {
+            push_unique(&mut found, path);
+        }
+    }
     found
 }
 
@@ -25,45 +28,62 @@ fn push_unique(found: &mut Vec<String>, path: String) {
     }
 }
 
-fn push_delimited(
-    text: &str,
-    open: &str,
-    close: char,
-    origins: &[String],
-    found: &mut Vec<String>,
-) {
-    let mut rest = text;
-    while let Some(start) = rest.find(open) {
-        rest = &rest[start + open.len()..];
-        let Some(end) = rest.find(close) else {
-            break;
+const STICKER_LAYOUT_KEYS: [&str; 2] = ["standard", "free"];
+
+fn is_sticker_widget(item: &Value) -> bool {
+    item.get("type").and_then(Value::as_str) == Some("sticker")
+        || item.get("kind").and_then(Value::as_str) == Some("sticker")
+}
+
+fn sticker_image_url(item: &Value) -> Option<&str> {
+    item.get("config")
+        .and_then(Value::as_object)
+        .and_then(|config| config.get("imageUrl"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+}
+
+fn walk_sticker_widgets(layout: &Value, mut visit: impl FnMut(&Value)) {
+    for key in STICKER_LAYOUT_KEYS {
+        let Some(items) = layout.get(key).and_then(Value::as_array) else {
+            continue;
         };
-        if let Some(path) = cite_local_path(&rest[..end], origins) {
-            push_unique(found, path);
+        for item in items {
+            if is_sticker_widget(item) {
+                visit(item);
+            }
         }
-        rest = &rest[end + close.len_utf8()..];
     }
 }
 
-fn push_src_attr(text: &str, origins: &[String], found: &mut Vec<String>) {
-    let mut rest = text;
-    while let Some(start) = rest.find("src=") {
-        rest = &rest[start + 4..];
-        let mut chars = rest.chars();
-        let Some(quote) = chars.next() else {
-            break;
-        };
-        if quote != '"' && quote != '\'' {
+pub fn extract_sticker_image_urls(layout: &Value) -> Vec<String> {
+    let mut urls = Vec::new();
+    walk_sticker_widgets(layout, |item| {
+        if let Some(url) = sticker_image_url(item) {
+            push_unique(&mut urls, url.to_string());
+        }
+    });
+    urls
+}
+
+fn rewrite_sticker_image_urls(layout: &mut Value, rewrite: impl Fn(&str) -> String) {
+    for key in STICKER_LAYOUT_KEYS {
+        let Some(items) = layout.get_mut(key).and_then(Value::as_array_mut) else {
             continue;
-        }
-        let body = &rest[quote.len_utf8()..];
-        let Some(end) = body.find(quote) else {
-            break;
         };
-        if let Some(path) = cite_local_path(&body[..end], origins) {
-            push_unique(found, path);
+        for item in items {
+            if !is_sticker_widget(item) {
+                continue;
+            }
+            let Some(url) = sticker_image_url(item).map(str::to_string) else {
+                continue;
+            };
+            let Some(config) = item.get_mut("config").and_then(Value::as_object_mut) else {
+                continue;
+            };
+            config.insert("imageUrl".into(), Value::String(rewrite(&url)));
         }
-        rest = &body[end + quote.len_utf8()..];
     }
 }
 
@@ -160,7 +180,10 @@ async fn push_ref(
     requires_public: bool,
 ) -> Result<(), MediaError> {
     let Some(asset_id) = resolve_asset_id(db, path).await? else {
-        return Ok(());
+        // Recognized local URLs must not silently escape deletion protection.
+        // Legacy citations become writable after the explicit migration imports
+        // them; remote URLs never reach this branch.
+        return Err(MediaError::NotReady);
     };
     if refs
         .iter()
@@ -228,7 +251,7 @@ pub async fn bind_persona(
         origins,
         &portrait_urls,
         |i| format!("portrait:{i}"),
-        false,
+        true,
     )
     .await?;
     bind_consumer(txn, "persona_portrait", "persona", &portrait_refs).await?;
@@ -237,11 +260,11 @@ pub async fn bind_persona(
         collect_strings(profile, &mut outfit_urls);
     }
     let outfit_refs =
-        references_from_urls(txn, origins, &outfit_urls, |i| format!("outfit:{i}"), false).await?;
+        references_from_urls(txn, origins, &outfit_urls, |i| format!("outfit:{i}"), true).await?;
     bind_consumer(txn, "persona_outfit", "persona", &outfit_refs).await
 }
 
-fn collect_strings(value: &Value, out: &mut Vec<String>) {
+pub(super) fn collect_strings(value: &Value, out: &mut Vec<String>) {
     match value {
         Value::String(text) => out.push(text.clone()),
         Value::Array(items) => {
@@ -263,8 +286,61 @@ pub async fn bind_stickers(
     layout: &str,
     origins: &[String],
 ) -> Result<(), MediaError> {
-    let refs = references_from_fields(txn, origins, None, layout, false).await?;
+    let layout: Value = serde_json::from_str(layout).unwrap_or(Value::Null);
+    let urls = extract_sticker_image_urls(&layout);
+    let refs = references_from_urls(txn, origins, &urls, |i| format!("sticker:{i}"), true).await?;
     bind_consumer(txn, "sticker", "dashboard", &refs).await
+}
+
+/// Publish sticker images and rewrite `config.imageUrl` to public paths.
+pub async fn bind_and_publish_dashboard_layout(
+    txn: &impl ConnectionTrait,
+    layout_json: &str,
+    origins: &[String],
+) -> Result<String, MediaError> {
+    let rewritten = publish_dashboard_layout(txn, layout_json, origins).await?;
+    bind_stickers(txn, &rewritten, origins).await?;
+    Ok(rewritten)
+}
+
+async fn publish_dashboard_layout(
+    txn: &impl ConnectionTrait,
+    layout_json: &str,
+    origins: &[String],
+) -> Result<String, MediaError> {
+    let Ok(mut layout) = serde_json::from_str::<Value>(layout_json) else {
+        return Ok(layout_json.to_string());
+    };
+    let urls = extract_sticker_image_urls(&layout);
+    let mut ids = Vec::new();
+    let mut aliases = Vec::new();
+    for url in urls {
+        let Some(path) = cite_local_path(&url, origins) else {
+            continue;
+        };
+        if let Some(id) = resolve_asset_id(txn, &path).await? {
+            aliases.push((path, id));
+            ids.push(id);
+        }
+    }
+    let map = publish_asset_ids(txn, &ids).await?;
+    rewrite_sticker_image_urls(&mut layout, |raw| {
+        let Some(path) = cite_local_path(raw, origins) else {
+            return raw.to_string();
+        };
+        if let Some((_, id)) = aliases.iter().find(|(from, _)| from == &path) {
+            if let Some(to) = map.get(id) {
+                return to.clone();
+            }
+        }
+        if let Some(id) = parse_content_id(&path) {
+            if let Some(to) = map.get(&id) {
+                return to.clone();
+            }
+        }
+        raw.to_string()
+    });
+    Ok(layout.to_string())
 }
 
 pub async fn bind_ai_task(
@@ -385,6 +461,18 @@ pub async fn publish_cited_media(
     Ok((cover, body))
 }
 
+/// Publish one local URL and return the public path, or the original if it is already public.
+pub async fn publish_local_url(
+    txn: &impl ConnectionTrait,
+    url: &str,
+    origins: &[String],
+) -> Result<String, MediaError> {
+    let (cover, _) = publish_cited_media(txn, origins, Some(url), "").await?;
+    Ok(cover
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| url.to_string()))
+}
+
 pub async fn publish_asset_ids(
     txn: &impl ConnectionTrait,
     ids: &[i32],
@@ -427,5 +515,34 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn extract_reference_style_markdown_images() {
+        let md = "![cover][pic]\n\n[pic]: /api/media/9/content \"alt\"\n";
+        assert_eq!(
+            extract_registered_paths(md, &[]),
+            vec!["/api/media/9/content".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_sticker_urls_from_layout_json_not_markdown() {
+        let layout = serde_json::json!({
+            "standard": [{
+                "type": "clock",
+                "config": { "imageUrl": "/api/media/1/content" }
+            }],
+            "free": [{
+                "type": "sticker",
+                "kind": "sticker",
+                "config": { "imageUrl": "/api/media/4/content" }
+            }]
+        });
+        assert_eq!(
+            extract_sticker_image_urls(&layout),
+            vec!["/api/media/4/content".to_string()]
+        );
+        assert!(extract_registered_paths(&layout.to_string(), &[]).is_empty());
     }
 }

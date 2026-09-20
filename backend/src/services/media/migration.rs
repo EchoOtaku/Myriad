@@ -167,7 +167,7 @@ pub async fn migrate_catalog_batch(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Outcome {
+pub(super) enum Outcome {
     Copied { bytes: u64, aliases: u64 },
     Already { bytes: u64, aliases: u64 },
     Missing,
@@ -193,7 +193,7 @@ fn apply_outcome(stats: &mut MigrationStats, outcome: Outcome) {
     }
 }
 
-async fn migrate_one(
+pub(super) async fn migrate_one(
     store: &MediaStore,
     db: &impl ConnectionTrait,
     row: &media_assets::Model,
@@ -420,7 +420,7 @@ async fn ensure_alias(
     }
 }
 
-async fn record_job(
+pub(super) async fn record_job(
     db: &impl ConnectionTrait,
     source_kind: &str,
     source_key: &str,

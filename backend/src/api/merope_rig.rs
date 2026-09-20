@@ -1336,11 +1336,19 @@ pub async fn upload_portrait(
     // 一个事务。读路径的 manifest_matches_master 也拦得住，但那是每次请求重读
     // 一遍旧包再丢掉，而 `/active` 是公开路由，首页挂件每次加载都会走到。
     let transaction = db.begin().await.map_err(internal_error)?;
+    let public_url =
+        match crate::services::media::publish_local_url(&transaction, &stored.url, &[]).await {
+            Ok(url) => url,
+            Err(error) => {
+                let _ = transaction.rollback().await;
+                return Err(internal_error(error.to_string()));
+            }
+        };
     if let Err(error) = merope::upsert_persona_on(
         &transaction,
         name,
         personality,
-        merope::PortraitUpdate::Set(stored.url.clone()),
+        merope::PortraitUpdate::Set(public_url.clone()),
         merope::PersonaContractUpdate {
             portrait_generation: merope::JsonDocumentUpdate::Clear,
             ..Default::default()
@@ -1363,17 +1371,25 @@ pub async fn upload_portrait(
             return Err(internal_error(error));
         }
     };
-    crate::services::media::bind_persona(&transaction, Some(&stored.url), None, None, &[])
+    let saved_persona = merope::get_persona_on(&transaction)
         .await
-        .map_err(|error| internal_error(error.to_string()))?;
-    crate::services::media::publish_cited_media(&transaction, &[], Some(&stored.url), "")
-        .await
-        .map_err(|error| internal_error(error.to_string()))?;
+        .map_err(internal_error)?;
+    crate::services::media::bind_persona(
+        &transaction,
+        Some(&public_url),
+        None,
+        saved_persona
+            .as_ref()
+            .and_then(|p| p.visual_profile.as_ref()),
+        &[],
+    )
+    .await
+    .map_err(|error| internal_error(error.to_string()))?;
     transaction.commit().await.map_err(internal_error)?;
     merope_rig::mirror_active_asset(cleared_asset).await;
     Ok(Json(json!({
-        "portraitUrl": stored.url,
-        "portraitAssetId": stored.url,
+        "portraitUrl": public_url,
+        "portraitAssetId": public_url,
     })))
 }
 
@@ -1644,12 +1660,22 @@ pub async fn generate_portrait(
             return Err(internal_error(error));
         }
     };
+    let public_url = match crate::services::media::publish_local_url(&transaction, &url, &[]).await
+    {
+        Ok(url) => url,
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            release_portrait_generation_lease(&db, &generation_token).await;
+            cleanup_uncommitted_portrait(&db, &persisted).await;
+            return Err(internal_error(error.to_string()));
+        }
+    };
     let completed = match merope::complete_portrait_generation(
         &transaction,
         name,
         &visual_profile,
         &generation_token,
-        &url,
+        &public_url,
         &portrait_generation,
         user_id,
     )
@@ -1692,20 +1718,12 @@ pub async fn generate_portrait(
     };
     if let Err(error) = crate::services::media::bind_persona(
         &transaction,
-        Some(&url),
+        Some(&public_url),
         None,
         Some(&visual_profile),
         &[],
     )
     .await
-    {
-        let _ = transaction.rollback().await;
-        release_portrait_generation_lease(&db, &generation_token).await;
-        cleanup_uncommitted_portrait(&db, &persisted).await;
-        return Err(internal_error(error.to_string()));
-    }
-    if let Err(error) =
-        crate::services::media::publish_cited_media(&transaction, &[], Some(&url), "").await
     {
         let _ = transaction.rollback().await;
         release_portrait_generation_lease(&db, &generation_token).await;
@@ -1719,8 +1737,8 @@ pub async fn generate_portrait(
     }
     merope_rig::mirror_active_asset(cleared_asset).await;
     Ok(Json(json!({
-        "portraitUrl": url,
-        "portraitAssetId": url,
+        "portraitUrl": public_url,
+        "portraitAssetId": public_url,
         "characterAssetContractVersion": CHARACTER_ASSET_CONTRACT_VERSION,
         "generationFingerprint": contract_fingerprint,
     })))
@@ -1908,36 +1926,53 @@ pub async fn generate_sticker_avatar(
         "model": config.model,
         "sourcePortraitAssetId": portrait_asset_id,
     });
-    let completed = match merope::complete_avatar_generation(
-        &db,
-        &persona.name,
-        &stored_visual_profile,
-        &portrait_asset_id,
-        &generation_token,
-        &url,
-        &avatar_generation,
-        user_id,
-    )
-    .await
-    {
-        Ok(completed) => completed,
+    let commit = async {
+        let transaction = db.begin().await.map_err(internal_error)?;
+        let public_url = crate::services::media::publish_local_url(&transaction, &url, &[])
+            .await
+            .map_err(|error| internal_error(error.to_string()))?;
+        let completed = merope::complete_avatar_generation(
+            &transaction,
+            &persona.name,
+            &stored_visual_profile,
+            &portrait_asset_id,
+            &generation_token,
+            &public_url,
+            &avatar_generation,
+            user_id,
+        )
+        .await
+        .map_err(internal_error)?;
+        if !completed {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "The master portrait changed while the avatar was generating",
+                    "code": "character_visual_inputs_changed"
+                })),
+            ));
+        }
+        crate::services::media::bind_persona(
+            &transaction,
+            Some(&portrait_asset_id),
+            Some(&public_url),
+            Some(&stored_visual_profile),
+            &[],
+        )
+        .await
+        .map_err(|error| internal_error(error.to_string()))?;
+        transaction.commit().await.map_err(internal_error)?;
+        Ok(public_url)
+    }
+    .await;
+    let url = match commit {
+        Ok(url) => url,
         Err(error) => {
             release_avatar_generation_lease(&db, &generation_token).await;
             cleanup_uncommitted_avatar(&db, &persisted).await;
-            return Err(internal_error(error));
+            return Err(error);
         }
     };
-    if !completed {
-        release_avatar_generation_lease(&db, &generation_token).await;
-        cleanup_uncommitted_avatar(&db, &persisted).await;
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "The master portrait changed while the avatar was generating",
-                "code": "character_visual_inputs_changed"
-            })),
-        ));
-    }
     Ok(Json(json!({
         "avatarUrl": url,
         "avatarAssetId": url,

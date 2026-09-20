@@ -1184,7 +1184,8 @@ pub async fn provider_unlink(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| err_400("Invalid user id"))?;
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub)
+        .ok_or_else(|| err_400("Invalid user id"))?;
 
     if is_pairing_provider(&slug) {
         return Err(HttpError::from((
@@ -1306,7 +1307,8 @@ pub async fn list_my_identities(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| err_400("Invalid user id"))?;
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub)
+        .ok_or_else(|| err_400("Invalid user id"))?;
 
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -1371,7 +1373,8 @@ pub async fn set_primary_identity(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| err_400("Invalid user id"))?;
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub)
+        .ok_or_else(|| err_400("Invalid user id"))?;
 
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
@@ -1452,7 +1455,10 @@ mod oauth_user_insert_conflict_tests {
         let insert = src
             .split("let mut new_id = None;")
             .nth(1)
-            .and_then(|rest| rest.split("Failed to generate unique username after 100 tries").next())
+            .and_then(|rest| {
+                rest.split("Failed to generate unique username after 100 tries")
+                    .next()
+            })
             .expect("oauth insert retry loop");
         assert!(insert.contains("oauth_user_insert_conflict_kind"));
         assert!(insert.contains("OAuthUserInsertConflict::Username"));

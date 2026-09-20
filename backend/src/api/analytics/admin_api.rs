@@ -238,8 +238,8 @@ ORDER BY day ASC
     };
 
     let page_view_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT path,
        COALESCE(SUM(views), 0)::bigint AS views,
        COALESCE(SUM(engagement_ms), 0)::bigint AS engagement_ms,
@@ -250,27 +250,27 @@ GROUP BY path
 ORDER BY views DESC, path ASC
 LIMIT 50
 "#,
-            [
-                SeaValue::from(from),
-                SeaValue::from(today),
-                SeaValue::from(SITE_PATH.to_string()),
-            ],
-        )));
+        [
+            SeaValue::from(from),
+            SeaValue::from(today),
+            SeaValue::from(SITE_PATH.to_string()),
+        ],
+    )));
 
     let page_uv_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT path, COUNT(DISTINCT visitor_hash)::bigint AS unique_visitors
 FROM analytics_visitor_seen
 WHERE day >= $1 AND day <= $2 AND path <> $3
 GROUP BY path
 "#,
-            [
-                SeaValue::from(from),
-                SeaValue::from(today),
-                SeaValue::from(SITE_PATH.to_string()),
-            ],
-        )));
+        [
+            SeaValue::from(from),
+            SeaValue::from(today),
+            SeaValue::from(SITE_PATH.to_string()),
+        ],
+    )));
 
     let mut uv_by_path: HashMap<String, i64> = HashMap::new();
     for row in &page_uv_rows {
@@ -298,8 +298,8 @@ GROUP BY path
 
     // Events (aggregate name across paths; optional target breakdown)
     let event_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT event_name,
        COALESCE(SUM(count), 0)::bigint AS count
 FROM analytics_event_daily
@@ -308,27 +308,27 @@ GROUP BY event_name
 ORDER BY count DESC, event_name ASC
 LIMIT 30
 "#,
-            [
-                SeaValue::from(from),
-                SeaValue::from(today),
-                SeaValue::from(ENGAGE_MARKER.to_string()),
-            ],
-        )));
+        [
+            SeaValue::from(from),
+            SeaValue::from(today),
+            SeaValue::from(ENGAGE_MARKER.to_string()),
+        ],
+    )));
 
     let event_uv_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT event_name, COUNT(DISTINCT visitor_hash)::bigint AS unique_visitors
 FROM analytics_event_visitor
 WHERE day >= $1 AND day <= $2 AND event_name <> $3
 GROUP BY event_name
 "#,
-            [
-                SeaValue::from(from),
-                SeaValue::from(today),
-                SeaValue::from(ENGAGE_MARKER.to_string()),
-            ],
-        )));
+        [
+            SeaValue::from(from),
+            SeaValue::from(today),
+            SeaValue::from(ENGAGE_MARKER.to_string()),
+        ],
+    )));
     let mut event_uv: HashMap<String, i64> = HashMap::new();
     for row in &event_uv_rows {
         let n: String = row.try_get("", "event_name").unwrap_or_default();
@@ -338,8 +338,8 @@ GROUP BY event_name
 
     // Per (event_name, target) counts — only non-empty targets for UI drill-down.
     let event_target_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT event_name,
        target,
        COALESCE(SUM(count), 0)::bigint AS count
@@ -350,15 +350,15 @@ WHERE day >= $1 AND day <= $2
 GROUP BY event_name, target
 ORDER BY event_name ASC, count DESC, target ASC
 "#,
-            [
-                SeaValue::from(from),
-                SeaValue::from(today),
-                SeaValue::from(ENGAGE_MARKER.to_string()),
-            ],
-        )));
+        [
+            SeaValue::from(from),
+            SeaValue::from(today),
+            SeaValue::from(ENGAGE_MARKER.to_string()),
+        ],
+    )));
     let event_target_uv_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT event_name,
        target,
        COUNT(DISTINCT visitor_hash)::bigint AS unique_visitors
@@ -368,12 +368,12 @@ WHERE day >= $1 AND day <= $2
   AND target <> ''
 GROUP BY event_name, target
 "#,
-            [
-                SeaValue::from(from),
-                SeaValue::from(today),
-                SeaValue::from(ENGAGE_MARKER.to_string()),
-            ],
-        )));
+        [
+            SeaValue::from(from),
+            SeaValue::from(today),
+            SeaValue::from(ENGAGE_MARKER.to_string()),
+        ],
+    )));
     let mut event_target_uv: HashMap<(String, String), i64> = HashMap::new();
     for row in &event_target_uv_rows {
         let n: String = row.try_get("", "event_name").unwrap_or_default();
@@ -419,8 +419,8 @@ GROUP BY event_name, target
         .collect();
 
     let referrer_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT host, COALESCE(SUM(count), 0)::bigint AS count
 FROM analytics_referrer_daily
 WHERE day >= $1 AND day <= $2
@@ -428,8 +428,8 @@ GROUP BY host
 ORDER BY count DESC, host ASC
 LIMIT 20
 "#,
-            [SeaValue::from(from), SeaValue::from(today)],
-        )));
+        [SeaValue::from(from), SeaValue::from(today)],
+    )));
     let referrers: Vec<Value> = referrer_rows
         .iter()
         .map(|row| {
@@ -442,8 +442,8 @@ LIMIT 20
 
     // Top countries by unique visitors in range (fallback views)
     let country_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT country_code,
        MAX(country_name) AS country_name,
        COALESCE(SUM(views), 0)::bigint AS views,
@@ -454,19 +454,19 @@ GROUP BY country_code
 ORDER BY unique_visitors DESC, views DESC, country_code ASC
 LIMIT 12
 "#,
-            [SeaValue::from(from), SeaValue::from(today)],
-        )));
+        [SeaValue::from(from), SeaValue::from(today)],
+    )));
     // Prefer true distinct UV over sum-of-daily when multi-day window.
     let country_uv_rows = analytics_rows!(db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+        DatabaseBackend::Postgres,
+        r#"
 SELECT country_code, COUNT(DISTINCT visitor_hash)::bigint AS unique_visitors
 FROM analytics_country_visitor
 WHERE day >= $1 AND day <= $2
 GROUP BY country_code
 "#,
-            [SeaValue::from(from), SeaValue::from(today)],
-        )));
+        [SeaValue::from(from), SeaValue::from(today)],
+    )));
     let mut country_uv: HashMap<String, i64> = HashMap::new();
     for row in &country_uv_rows {
         let code: String = row.try_get("", "country_code").unwrap_or_default();

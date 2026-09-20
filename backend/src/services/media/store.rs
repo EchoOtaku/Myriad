@@ -46,22 +46,31 @@ impl MediaStore {
         write_token: Uuid,
         bytes: &[u8],
     ) -> Result<(), MediaError> {
+        self.stage_bytes(write_token, bytes).await?;
+        self.publish_staged(storage_key, write_token).await
+    }
+
+    pub async fn stage_bytes(&self, write_token: Uuid, bytes: &[u8]) -> Result<(), MediaError> {
+        tokio::fs::create_dir_all(self.tmp_dir()).await?;
+        write_exclusive(&self.temp_path(write_token), bytes).await
+    }
+
+    /// Caller must hold the staging row lock and verify the current writer token.
+    pub async fn publish_staged(
+        &self,
+        storage_key: &str,
+        write_token: Uuid,
+    ) -> Result<(), MediaError> {
         let final_path = self.final_path(storage_key)?;
-        let tmp = self.temp_path(write_token);
-        if let Some(parent) = tmp.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
         if let Some(parent) = final_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        write_exclusive(&tmp, bytes).await?;
-        match tokio::fs::rename(&tmp, &final_path).await {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                let _ = tokio::fs::remove_file(&tmp).await;
-                Err(error.into())
-            }
+        tokio::fs::rename(self.temp_path(write_token), &final_path).await?;
+        // Persist directory metadata before the database makes the file ready.
+        if let Some(parent) = final_path.parent() {
+            tokio::fs::File::open(parent).await?.sync_all().await?;
         }
+        Ok(())
     }
 
     pub async fn remove_owned_temp(&self, write_token: Uuid) -> Result<(), MediaError> {

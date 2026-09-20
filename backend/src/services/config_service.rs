@@ -1338,6 +1338,23 @@ impl ConfigService {
         tracing::info!("✅ Updated {count} configurations");
         Ok(())
     }
+
+    /// Same UPSERT as [`Self::update_configs`], on a caller-owned transaction.
+    pub async fn update_configs_on(
+        txn: &impl ConnectionTrait,
+        updates: HashMap<String, JsonValue>,
+    ) -> Result<()> {
+        let count = updates.len();
+        if count == 0 {
+            return Ok(());
+        }
+        let sealed = seal_config_updates(updates)?;
+        for (key, value) in sealed {
+            upsert_configuration(txn, &key, value).await?;
+        }
+        tracing::info!("✅ Updated {count} configurations");
+        Ok(())
+    }
 }
 
 fn seal_config_updates(updates: HashMap<String, JsonValue>) -> Result<Vec<(String, JsonValue)>> {

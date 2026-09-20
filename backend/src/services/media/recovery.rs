@@ -156,27 +156,10 @@ mod tests {
 
     #[tokio::test]
     async fn postgres_skips_live_lease_and_finishes_expired() {
-        let Ok(url) = std::env::var("MYRIAD_MEDIA_TEST_DATABASE_URL") else {
-            eprintln!(
-                "skipping: set MYRIAD_MEDIA_TEST_DATABASE_URL to run media recovery DB tests"
-            );
+        let Some(fixture) = super::super::test_support::Fixture::new().await else {
             return;
         };
-        let db = sea_orm::Database::connect(&url)
-            .await
-            .expect("connect media test database");
-        if let Err(error) = sea_orm::ConnectionTrait::execute_unprepared(
-            &db,
-            include_str!("../../../migrations/media_asset_model.sql"),
-        )
-        .await
-        {
-            let text = error.to_string();
-            assert!(
-                text.contains("already exists"),
-                "apply media asset model: {error}"
-            );
-        }
+        let db = fixture.db.clone();
 
         let png = {
             use base64::Engine;
@@ -264,5 +247,6 @@ mod tests {
         assert_eq!(ready.state.as_deref(), Some("ready"));
         assert!(!cache.exists(), "recovery must not create a cache volume");
         let _ = tokio::fs::remove_dir_all(root).await;
+        fixture.close().await;
     }
 }

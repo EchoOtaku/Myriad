@@ -110,8 +110,7 @@ pub async fn get_current_user(
         }
     };
 
-    let Some(user_id) =
-        crate::services::tapp_ownership::positive_user_id(&token_data.claims.sub)
+    let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&token_data.claims.sub)
     else {
         return Ok(unauthenticated_me_response(clear_invalid_cookie).await);
     };

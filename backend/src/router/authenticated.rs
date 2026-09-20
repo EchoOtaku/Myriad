@@ -37,6 +37,15 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::admin_middleware,
             )),
         )
+        .route(
+            "/api/media/migration",
+            get(api::media::media_migration_status)
+                .post(api::media::advance_media_migration)
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
+        )
         // Home free-layout stickers — admin AI generation + local upload
         .route(
             "/api/home/stickers/generate",

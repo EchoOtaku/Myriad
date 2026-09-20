@@ -265,13 +265,15 @@ fn install_conflict_error(manifest: &TappManifest, existing: &tapps::Model) -> H
         .cloned()
         .collect();
     HttpError::from(
-        myriad_error::AppError::conflict("Tapp already installed").with_details(serde_json::json!({
-            "tappId": manifest.id.clone(),
-            "name": manifest.name.clone(),
-            "installedVersion": existing.version.clone(),
-            "incomingVersion": manifest.version.clone(),
-            "newPermissions": new_permissions,
-        })),
+        myriad_error::AppError::conflict("Tapp already installed").with_details(
+            serde_json::json!({
+                "tappId": manifest.id.clone(),
+                "name": manifest.name.clone(),
+                "installedVersion": existing.version.clone(),
+                "incomingVersion": manifest.version.clone(),
+                "newPermissions": new_permissions,
+            }),
+        ),
     )
 }
 
@@ -639,8 +641,12 @@ async fn install_prepared_package(
     }
     activated.commit().await;
     // Runtime grants and declared-API cache are keyed by tapp_id, not owner.
-    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(db, installation_owner_id, &manifest.id)
-        .await;
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(
+        db,
+        installation_owner_id,
+        &manifest.id,
+    )
+    .await;
     crate::api::tapp_runtime::invalidate_tapp_apis_cache(&manifest.id).await;
 
     // List projection: services::tapp_catalog (install contract forces status=installed).

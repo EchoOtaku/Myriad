@@ -1,118 +1,10 @@
-//! Bounded reference backfill. Not hooked from schema startup.
-
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement, TransactionTrait,
-};
-use std::collections::HashMap;
-
-use crate::models::entities::{
-    agent_persona, media_references, phantasi_items, phantasi_note_docs,
-};
-
-use super::cite::{bind_note_draft, bind_note_published, extract_registered_paths};
+//! Catalog reference labels. Resumable consumer backfill lives in `upgrade`.
+#[cfg(test)]
+use super::cite::extract_registered_paths;
 use super::error::MediaError;
-use super::types::MediaState;
-
-const SCAN_BATCH: u64 = 50;
-
-pub struct ReferenceScanStats {
-    pub notes: u32,
-    pub published: u32,
-    pub persona: u32,
-    pub marked_complete: u32,
-}
-
-pub async fn backfill_known_consumers(
-    db: &DatabaseConnection,
-    origins: &[String],
-) -> Result<ReferenceScanStats, MediaError> {
-    let notes = scan_note_docs(db, origins).await?;
-    let published = scan_published_items(db, origins).await?;
-    let persona = scan_persona(db, origins).await?;
-    let marked_complete = mark_ready_complete(db).await?;
-    Ok(ReferenceScanStats {
-        notes,
-        published,
-        persona,
-        marked_complete,
-    })
-}
-
-async fn scan_note_docs(db: &DatabaseConnection, origins: &[String]) -> Result<u32, MediaError> {
-    let rows = phantasi_note_docs::Entity::find()
-        .order_by_asc(phantasi_note_docs::Column::Id)
-        .all(db)
-        .await?;
-    let mut count = 0;
-    for doc in rows {
-        let txn = db.begin().await?;
-        bind_note_draft(&txn, doc.id, doc.image.as_deref(), &doc.content_md, origins).await?;
-        txn.commit().await?;
-        count += 1;
-        if count >= SCAN_BATCH as u32 * 20 {
-            break;
-        }
-    }
-    Ok(count)
-}
-
-async fn scan_published_items(
-    db: &DatabaseConnection,
-    origins: &[String],
-) -> Result<u32, MediaError> {
-    let rows = phantasi_items::Entity::find()
-        .filter(phantasi_items::Column::ContentMd.is_not_null())
-        .order_by_asc(phantasi_items::Column::Id)
-        .limit(SCAN_BATCH * 20)
-        .all(db)
-        .await?;
-    let mut count = 0;
-    for item in rows {
-        let txn = db.begin().await?;
-        bind_note_published(
-            &txn,
-            item.id,
-            item.image.as_deref(),
-            item.content_md.as_deref().unwrap_or(""),
-            origins,
-        )
-        .await?;
-        txn.commit().await?;
-        count += 1;
-    }
-    Ok(count)
-}
-
-async fn scan_persona(db: &DatabaseConnection, origins: &[String]) -> Result<u32, MediaError> {
-    let Some(persona) = agent_persona::Entity::find().one(db).await? else {
-        return Ok(0);
-    };
-    let txn = db.begin().await?;
-    super::cite::bind_persona(
-        &txn,
-        persona.portrait_asset_id.as_deref(),
-        persona.avatar_asset_id.as_deref(),
-        persona.visual_profile.as_ref(),
-        origins,
-    )
-    .await?;
-    txn.commit().await?;
-    Ok(1)
-}
-
-async fn mark_ready_complete(db: &DatabaseConnection) -> Result<u32, MediaError> {
-    let result = db
-        .execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"UPDATE media_assets
-               SET references_complete = true
-               WHERE state = $1 AND references_complete = false"#,
-            [MediaState::Ready.as_str().into()],
-        ))
-        .await?;
-    Ok(result.rows_affected() as u32)
-}
+use crate::models::entities::media_references;
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use std::collections::HashMap;
 
 /// Map live consumer types onto the catalog UI's notes/articles/site labels.
 pub fn catalog_reference_labels(consumer_types: &[String]) -> Vec<String> {
@@ -179,5 +71,12 @@ mod tests {
     #[test]
     fn extract_helper_is_available_to_scan() {
         assert!(extract_registered_paths("no media", &[]).is_empty());
+    }
+
+    #[test]
+    fn bounded_scan_does_not_stamp_every_ready_asset_complete() {
+        let src = include_str!("scan.rs");
+        let needle = format!("UPDATE {} SET references_complete", "media_assets");
+        assert!(!src.contains(&needle));
     }
 }
