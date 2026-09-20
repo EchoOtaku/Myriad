@@ -15,7 +15,7 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://myriad.test' })
   const globals = {
     window: dom.window, document: dom.window.document,
-    localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true,
+    localStorage: dom.window.localStorage, CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true,
   }
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
   for (const [key, value] of Object.entries(globals)) {
@@ -28,7 +28,9 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
   let networkError = false
   let pendingResolve: ((value: Response) => void) | undefined
   let defer = false
-  const fetchMe = async () => {
+  let lastSignal: AbortSignal | undefined
+  const fetchMe = async (_url: string, init?: RequestInit) => {
+    lastSignal = init?.signal ?? undefined
     requests++
     if (defer) return new Promise<Response>(resolve => { pendingResolve = resolve })
     if (networkError) throw new TypeError('network unavailable')
@@ -94,12 +96,40 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
     networkError = true
     await act(async () => { await auth.checkAuth() })
     assert.equal(timers.size, 1, 'a confirmed result resets the retry budget')
+    // A login cleanup resolving after logout cannot re-probe or announce a stale subject.
+    const readyEvents: boolean[] = []
+    window.addEventListener('tapp-subject-ready', event => {
+      readyEvents.push((event as CustomEvent).detail.isAuthenticated)
+    })
+    const beforeTransition = requests
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('auth-state-changed', { detail: { isAuthenticated: true } }))
+      window.dispatchEvent(new CustomEvent('auth-state-changed', { detail: { isAuthenticated: false } }))
+    })
+    assert.deepEqual(readyEvents, [false], 'superseded login must not publish readiness')
+    assert.equal(requests, beforeTransition, 'superseded login must not start another probe')
+    assert.equal(auth.isAuthenticated, false)
+
+    localStorage.setItem('myriad_session_hint', 'true')
     defer = true
+    let stale!: Promise<boolean>
+    await act(async () => { stale = auth.checkAuth() })
+    const staleSignal = lastSignal
+    await act(async () => { auth.logout() })
+    assert.equal(staleSignal?.aborted, true, 'logout aborts the outstanding identity request')
+    await act(async () => {
+      pendingResolve!(new Response(JSON.stringify({ authenticated: true, id: 1, username: 'owner', is_admin: true })))
+      await stale
+    })
+    assert.equal(auth.isAdmin, false, 'even an abort-ignoring transport cannot resurrect the old identity')
+
+    localStorage.setItem('myriad_session_hint', 'true')
     let pending!: Promise<boolean>
     await act(async () => { pending = auth.checkAuth() })
     const queued = auth.checkAuth()
     await act(async () => root.unmount())
     assert.equal(timers.size, 0, 'unmount cancels scheduled retries')
+    assert.equal(lastSignal?.aborted, true, 'unmount aborts the outstanding identity request')
     const before = requests
     pendingResolve!(new Response('', { status: 503 }))
     defer = false

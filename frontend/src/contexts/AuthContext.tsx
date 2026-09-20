@@ -88,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAuthInflight = useRef<Promise<boolean> | null>(null)
   /** Monotonic generation so a stale probe cannot clear a fresher login hint. */
   const checkAuthGeneration = useRef(0)
+  const authTransition = useRef(0)
+  const probeController = useRef<AbortController | null>(null)
   const checkAuthRef = useRef<(() => void) | null>(null)
   const authRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const authRetryAttempt = useRef(0)
@@ -116,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted.current = false
       checkAuthGeneration.current++
+      authTransition.current++
+      probeController.current?.abort()
       clearAuthRetry()
     }
   }, [clearAuthRetry])
@@ -143,13 +147,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const generation = ++checkAuthGeneration.current
+    const controller = new AbortController()
+    probeController.current = controller
     setIsLoading(true)
     const inflight = { current: null as Promise<boolean> | null }
     inflight.current = (async (): Promise<boolean> => {
       try {
         const response = await fetch(`${API_URL}/api/auth/me`, {
           credentials: 'include',
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
         })
 
         if (generation !== checkAuthGeneration.current) return false
@@ -243,6 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsLoading(false)
           setHasChecked(true)
         }
+        if (probeController.current === controller) probeController.current = null
         if (checkAuthInflight.current === inflight.current) {
           checkAuthInflight.current = null
         }
@@ -254,12 +261,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   checkAuthRef.current = checkAuth
 
   const logout = useCallback(() => {
+    authTransition.current++
     checkAuthGeneration.current++
+    probeController.current?.abort()
     authSubject.change('guest', true)
     phantasiSubject.change('guest', true, true)
     setIsLoading(false)
     // Logout need not await; this reset and a later login share the import cache.
-    void resetTappSubjectState()
+    void resetTappSubjectState().catch((error) => {
+      console.warn('[AuthContext] tapp runtime reset failed:', error)
+    })
     setUser(null)
     setIsAuthenticated(false)
     setIsAdmin(false)
@@ -313,6 +324,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleAuthChange = (e: Event) => {
       const isAuth = (e as CustomEvent).detail?.isAuthenticated ?? false
       if (isAuth) {
+        const transition = ++authTransition.current
+        checkAuthGeneration.current++
+        probeController.current?.abort()
+        clearAuthRetry()
+        const isCurrent = () => mounted.current && transition === authTransition.current
         authSubject.change('changing', true)
         phantasiSubject.change('changing', false, true)
         // Remount sandboxes only after destroyAll and a known user, or Aro keeps a dead grant.
@@ -322,15 +338,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch (error) {
             console.warn('[AuthContext] tapp runtime reset failed:', error)
           }
-          try {
-            await checkAuth()
-          } finally {
-            window.dispatchEvent(
-              new CustomEvent('tapp-subject-ready', {
-                detail: { isAuthenticated: true },
-              }),
-            )
-          }
+          if (!isCurrent()) return
+          const authenticated = await checkAuth()
+          if (!isCurrent()) return
+          window.dispatchEvent(
+            new CustomEvent('tapp-subject-ready', {
+              detail: { isAuthenticated: authenticated },
+            }),
+          )
         })()
       } else {
         logout()
@@ -344,7 +359,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener('auth-state-changed', handleAuthChange)
     return () =>
       window.removeEventListener('auth-state-changed', handleAuthChange)
-  }, [checkAuth, logout, resetTappSubjectState])
+  }, [checkAuth, clearAuthRetry, logout, resetTappSubjectState])
 
   const value = useMemo(
     () => ({
