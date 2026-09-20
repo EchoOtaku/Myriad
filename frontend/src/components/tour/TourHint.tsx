@@ -50,8 +50,9 @@ import {
   subscribeLibraryCanvasTourSurface,
   waitForTourAnchor,
 } from './tourLogic'
+import { prepareTourOverlay } from './TourOverlayHost'
 import { pickRegisteredTour } from './tourRegistry'
-import '../settings/settings-motion.css'
+import '../../styles/motion-tokens.css'
 import './TourHint.css'
 
 function skipTourHintMotion(): boolean {
@@ -234,7 +235,10 @@ export function TourHint() {
           <button
             type="button"
             className="tour-hint__go"
+            onPointerEnter={prepareTourOverlay}
+            onFocus={prepareTourOverlay}
             onClick={() => {
+              prepareTourOverlay()
               if (def.route === '/library') {
                 window.dispatchEvent(
                   new CustomEvent('nav-expand-secondary', {

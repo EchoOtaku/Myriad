@@ -98,3 +98,109 @@ test('production home downloads and retained resources stay bounded', async ({ p
     .map((task: { duration: number }) => task.duration)
   expect(Math.max(0, ...duringNav)).toBeLessThan(400)
 })
+
+test('scrolling does not cancel an in-progress component transition', async ({ page }) => {
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname
+    let data: unknown = { success: true, data: [], items: [], sources: [], installations: [] }
+    if (path === '/api/setup/status') data = { is_setup_required: false }
+    if (path === '/api/auth/me') data = { authenticated: false }
+    if (path === '/api/config/ui') data = { dashboard_layout_mode: 'standard' }
+    return route.fulfill({ json: data })
+  })
+  await page.goto('/')
+  await expect(page.locator('.widget-grid-item h2').first()).toBeVisible({ timeout: 20000 })
+  await page.evaluate(async () => {
+    const probe = document.createElement('div')
+    probe.id = 'scroll-transition-probe'
+    probe.className = 'transition-opacity'
+    probe.style.cssText = 'position:fixed;top:0;left:0;width:10px;height:10px;opacity:0;transition:opacity 2s linear'
+    document.body.append(probe)
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    probe.style.opacity = '1'
+  })
+  const probe = page.locator('#scroll-transition-probe')
+  await expect.poll(async () => Number(await probe.evaluate(node => getComputedStyle(node).opacity))).toBeGreaterThan(0)
+  await page.evaluate(() => window.dispatchEvent(new Event('scroll')))
+  // The old scroll listener zeroed transition duration until its 150 ms idle timer.
+  await page.waitForTimeout(60)
+  await expect(probe).toHaveCSS('transition-duration', '2s')
+  const opacity = Number(await probe.evaluate(node => getComputedStyle(node).opacity))
+  expect(opacity).toBeGreaterThan(0)
+  expect(opacity).toBeLessThan(1)
+  await expect(page.locator('body')).not.toHaveClass(/is-scrolling/)
+
+  await probe.evaluate(node => {
+    const element = node as HTMLElement
+    element.style.animation = 'fade-in 2s linear infinite'
+    element.style.scrollBehavior = 'smooth'
+  })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(probe).toHaveCSS('transition-duration', '1e-05s')
+  await expect(probe).toHaveCSS('animation-duration', '1e-05s')
+  await expect(probe).toHaveCSS('animation-iteration-count', '1')
+  await expect(probe).toHaveCSS('scroll-behavior', 'auto')
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await expect(probe).toHaveCSS('transition-duration', '2s')
+  await expect(probe).toHaveCSS('animation-duration', '2s')
+  await expect(probe).toHaveCSS('scroll-behavior', 'smooth')
+})
+
+for (const width of [390, 1440]) {
+  test(`enabled music reserves its final shell while its UI loads at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const held = Promise.withResolvers<void>()
+    let loads = 0
+    await page.route('**/assets/MusicPlayer-*.js', async route => {
+      loads++
+      await held.promise
+      await route.continue()
+    })
+    await page.route('**/api/**', route => {
+      const path = new URL(route.request().url()).pathname
+      let data: unknown = { success: true, data: [], items: [], sources: [], installations: [] }
+      if (path === '/api/setup/status') data = { is_setup_required: false }
+      if (path === '/api/auth/me') data = { authenticated: false }
+      if (path === '/api/config/ui') data = { music_enabled: 'true', dashboard_layout_mode: 'standard' }
+      return route.fulfill({ json: data })
+    })
+    try {
+      await page.goto('/')
+      await expect(page.locator('.widget-grid-item h2').first()).toBeVisible({ timeout: 20000 })
+      await expect.poll(() => loads).toBe(1)
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('open-control-panel')))
+      const loading = page.locator('[data-music-loading]')
+      await expect(loading).toBeVisible()
+      await expect(page.locator('.control-bar-trigger')).not.toHaveClass(/gcp-animating/)
+      await expect(loading).toHaveCSS('height', width === 390 ? '156px' : '160px')
+      const before = await loading.boundingBox()
+      held.resolve()
+      await expect(loading).toHaveCount(0)
+      await expect(page.locator('.music-no-song')).toBeVisible()
+      const after = await page.locator('.music-player-container').boundingBox()
+      expect(after!.height).toBeCloseTo(before!.height, 1)
+      expect(after!.width).toBeCloseTo(before!.width, 1)
+      await expect(page.locator('.music-view-info')).toHaveCSS('animation-duration', '0.4s')
+    } finally { held.resolve() }
+  })
+}
+
+test('disabled music does not load the player UI when opening the control panel', async ({ page }) => {
+  let loads = 0
+  page.on('request', request => { if (/\/MusicPlayer-[^/]+\.js/.test(request.url())) loads++ })
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname
+    let data: unknown = { success: true, data: [], items: [], sources: [], installations: [] }
+    if (path === '/api/setup/status') data = { is_setup_required: false }
+    if (path === '/api/auth/me') data = { authenticated: false }
+    if (path === '/api/config/ui') data = { music_enabled: 'false', dashboard_layout_mode: 'standard' }
+    return route.fulfill({ json: data })
+  })
+  await page.goto('/')
+  await expect(page.locator('.widget-grid-item h2').first()).toBeVisible({ timeout: 20000 })
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('open-control-panel')))
+  await expect(page.locator('.control-bar-trigger')).toHaveClass(/expanded/)
+  await expect(page.locator('.control-bar-trigger')).not.toHaveClass(/gcp-animating/)
+  await expect(page.locator('.music-player-container')).toHaveCount(0)
+  expect(loads).toBe(0)
+})

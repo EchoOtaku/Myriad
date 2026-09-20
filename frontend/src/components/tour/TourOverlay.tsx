@@ -14,7 +14,6 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
 import { dispatchAgentPanelClose } from '../agent-panel/agentPanelEvents'
 import { subscribeAgentPanelVisible } from '../agent-panel/agentPanelVisible'
@@ -90,7 +89,6 @@ export function TourOverlay() {
     getTourSnapshot,
   )
   const { t, format } = useI18n()
-  const location = useLocation()
   const titleId = useId()
   const activeRef = useRef(false)
   activeRef.current = state.active
@@ -227,11 +225,6 @@ export function TourOverlay() {
     })
   }, [measureNow])
 
-  useEffect(() => {
-    if (!activeRef.current) return
-    stopTour('abort')
-  }, [location.pathname])
-
   useLayoutEffect(() => {
     if (!state.active) {
       commitView({
@@ -311,14 +304,6 @@ export function TourOverlay() {
       ? isPredictedTourAnchor(state.step.anchor, state.step.id) ||
         isHomeAgentActionStep(state.step)
       : false
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopPropagation()
-        stopTour()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
     window.addEventListener('resize', scheduleMeasure)
     if (!predicted && tourMeasureWatchesScroll()) {
       window.addEventListener('scroll', scheduleMeasure, true)
@@ -331,7 +316,6 @@ export function TourOverlay() {
       )
     }
     return () => {
-      window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('resize', scheduleMeasure)
       window.removeEventListener('scroll', scheduleMeasure, true)
       window.removeEventListener('gcp-animation-end', scheduleMeasure)

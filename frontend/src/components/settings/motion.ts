@@ -1,4 +1,4 @@
-/* keep numeric values in sync with settings-motion.css */
+/* keep numeric values in sync with ../../styles/motion-tokens.css */
 
 export const SETTINGS_DURATION = {
   instant: 0.09,

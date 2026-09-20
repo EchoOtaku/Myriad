@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { NoteTopBar } from '../../../src/components/phantasi/notes/NoteEditorChrome'
 import { NoteEditorSettings } from '../../../src/components/phantasi/notes/NoteEditorSettings'
 import { useNoteEditorPreference } from '../../../src/components/phantasi/notes/useNoteEditorPreference'
-import { I18nProvider } from '../../../src/contexts/I18nContext'
+import { I18nNamespace, I18nProvider } from '../../../src/contexts/I18nContext'
 import { restoreNoteHistory } from '../../../src/services/phantasiApi'
 import '../../../src/styles/tailwind.css'
 import '../../../src/styles/theme.css'
@@ -53,4 +53,4 @@ function Harness() {
     </div>
   </div>
 }
-createRoot(document.getElementById('root')!).render(<I18nProvider><Harness /></I18nProvider>)
+createRoot(document.getElementById('root')!).render(<I18nProvider><I18nNamespace names={['phantasi']}><Harness /></I18nNamespace></I18nProvider>)

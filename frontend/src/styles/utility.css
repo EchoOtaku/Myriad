@@ -34,39 +34,10 @@
   display: none;
 }
 
-.anim-prepare {
-  will-change: opacity, transform;
-  backface-visibility: hidden;
-  perspective: 1000px;
-}
-
-.anim-active {
-  will-change: opacity, transform;
-  transform: translateZ(0);
-}
-
-.anim-done {
-  will-change: auto;
-  backface-visibility: visible;
-  perspective: none;
-  transform: none;
-}
-
-.anim-waiting {
-  opacity: 0;
-  visibility: hidden;
-
-  /* no will-change */
-}
-
 .gpu-accelerated {
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
   perspective: 1000px;
-}
-
-.is-scrolling [class*='transition-'] {
-  transition-duration: 0s !important;
 }
 
 @media (width <= 767px) {
@@ -92,16 +63,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
 
 /* Tapp icons: material shell, consistent inset highlight. Glyph from app icon / iconSvg. */
 .tapp-icon-badge--standalone {

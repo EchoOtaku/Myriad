@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { expect, test } from '@playwright/test'
 
 for (const width of [390, 1440]) {
@@ -35,33 +36,33 @@ for (const width of [390, 1440]) {
 }
 
 for (const authenticated of [false, true]) {
- test(`user modal commits its entry on actual home (auth=${authenticated})`, async ({page}) => {
-  await page.addInitScript(auth => {localStorage.setItem('animation-preference','standard'); if(auth) localStorage.setItem('myriad_session_hint','true')}, authenticated)
+ test(`user modal commits its entry on actual home (auth=${authenticated})`, async ({ page }) => {
+  await page.addInitScript(auth => { localStorage.setItem('animation-preference', 'standard'); if (auth) localStorage.setItem('myriad_session_hint', 'true') }, authenticated)
   const held = Promise.withResolvers<void>()
-  let loginLoads=0
-  if (!authenticated) await page.route('**/assets/LoginForm-*.js', async route => {loginLoads++; await held.promise; await route.continue()})
+  let loginLoads = 0
+  if (!authenticated) await page.route('**/assets/LoginForm-*.js', async route => { loginLoads++; await held.promise; await route.continue() })
   await page.route('**/api/**', route => {
    const path = new URL(route.request().url()).pathname
-   let data: unknown = {success:true,data:[],items:[],sources:[],installations:[],notifications:[],unread_count:0,total:0}
-   if(path==='/api/setup/status') data={is_setup_required:false}
-   if(path==='/api/auth/me') data=authenticated ? {authenticated:true,id:1,username:'fixture',is_admin:true,is_owner:true} : {authenticated:false}
-   if(path==='/api/config/ui') data={dashboard_layout_mode:'standard'}
-   return route.fulfill({json:data})
+   let data: unknown = { success: true, data: [], items: [], sources: [], installations: [], notifications: [], unread_count: 0, total: 0 }
+   if (path === '/api/setup/status') data = { is_setup_required: false }
+   if (path === '/api/auth/me') data = authenticated ? { authenticated: true, id: 1, username: 'fixture', is_admin: true, is_owner: true } : { authenticated: false }
+   if (path === '/api/config/ui') data = { dashboard_layout_mode: 'standard' }
+   return route.fulfill({ json: data })
   })
-  const errors:string[]=[]
-  page.on('pageerror',error=>errors.push(error.message))
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
   await page.goto('/')
-  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('open-control-panel', {detail:{tab:'control'}})))
-  await expect(page.locator('.user-info-button')).toBeAttached({timeout:20000})
-  if(authenticated) await expect(page.locator('.user-info-button')).toContainText('fixture')
-  await page.evaluate(()=>window.dispatchEvent(new Event('open-user-modal')))
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('open-control-panel', { detail: { tab: 'control' } })))
+  await expect(page.locator('.user-info-button')).toBeAttached({ timeout: 20000 })
+  if (authenticated) await expect(page.locator('.user-info-button')).toContainText('fixture')
+  await page.evaluate(() => window.dispatchEvent(new Event('open-user-modal')))
   if (!authenticated) {
-    await expect.poll(()=>loginLoads).toBe(1)
+    await expect.poll(() => loginLoads).toBe(1)
     await page.waitForTimeout(100)
     await expect(page.locator('.user-modal-login-only')).toHaveCount(0)
     held.resolve()
   }
-  const modal=page.locator(authenticated?'.user-modal':'.user-modal-login-only')
+  const modal = page.locator(authenticated ? '.user-modal' : '.user-modal-login-only')
   await expect(modal).toHaveClass(/animate-in/)
   await expect(modal).toBeVisible()
   await modal.locator('.user-modal-close-float').click()
@@ -91,7 +92,7 @@ test('home layout import loads its editing code on demand and saves the selected
   await expect(edit).toBeVisible({ timeout: 20000 })
   await edit.click()
   const chooserPending = page.waitForEvent('filechooser')
-  await page.getByRole('button', {name: 'Import', exact: true}).click()
+  await page.getByRole('button', { name: 'Import', exact: true }).click()
   const input = await chooserPending
   const welcome = { id: 'imported-welcome', type: 'welcome', size: '4x2', position: { x: 0, y: 0 } }
   await input.setFiles({ name: 'layout.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ kind: 'myriad.home-layout', v: 2, mode: 'standard', layouts: { standard: [welcome], free: [] }, assets: {} })) })
@@ -100,7 +101,8 @@ test('home layout import loads its editing code on demand and saves the selected
 })
 
 test('notification action loads on click and dispatches the room acceptance', async ({ page }) => {
-  const { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_NOTIFICATION_CATALOG } = await import('../../src/services/notificationPreferencesApi')
+  const DEFAULT_NOTIFICATION_PREFERENCES = { enabled: true, sources: { federation: true }, events: { 'federation.room_invite': true }, delivery: { island: true, toast: false, browser: false }, locations: { federation: { panel: true, island: true, toast: false, browser: false } } }
+  const DEFAULT_NOTIFICATION_CATALOG = { sources: ['federation'], events: [{ key: 'federation.room_invite', source: 'federation' }] }
   await page.addInitScript(() => localStorage.setItem('myriad_session_hint', 'true'))
   const writes: string[] = []
   let actionLoads = 0
@@ -127,3 +129,44 @@ test('notification action loads on click and dispatches the room acceptance', as
   await expect.poll(() => writes).toContain('/api/federation/rooms/fixture-room/accept')
   expect(actionLoads).toBe(1)
 })
+
+for (const delayed of [false, true, 'navigate']) {
+ test(`tour overlay is lazy and remains cancellable (delayed=${delayed})`, async ({ page }) => {
+  const held = Promise.withResolvers<void>()
+  let loads = 0
+  await page.route('**/assets/TourOverlay-*.js', async route => { loads++; if (delayed) await held.promise; await route.continue() })
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname
+    let data: unknown = { success: true, data: [], items: [], sources: [], installations: [] }
+    if (path === '/api/setup/status') data = { is_setup_required: false }
+    if (path === '/api/auth/me') data = { authenticated: false }
+    if (path === '/api/config/ui') data = { dashboard_layout_mode: 'standard' }
+    return route.fulfill({ json: data })
+  })
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/')
+  await expect(page.locator('.tour-hint__go')).toBeVisible({ timeout: 20000 })
+  expect(loads).toBe(0)
+  await page.locator('.tour-hint__go').click()
+  await expect(page.locator('html')).toHaveAttribute('data-tour-active', '1')
+  await expect.poll(() => loads).toBe(1)
+  if (delayed) {
+    await expect(page.locator('.tour-overlay')).toHaveCount(0)
+    if (delayed === 'navigate') await page.evaluate(() => { history.pushState({}, '', '/login'); window.dispatchEvent(new PopStateEvent('popstate')) })
+    else await page.keyboard.press('Escape')
+    await expect(page.locator('html')).not.toHaveAttribute('data-tour-active')
+    held.resolve()
+    await page.waitForTimeout(150)
+    await expect(page.locator('.tour-overlay')).toHaveCount(0)
+  } else {
+    await expect(page.locator('.tour-card')).toBeVisible()
+    const title = await page.locator('.tour-card__title').textContent() ?? ''
+    await page.locator('.tour-card__btn--entry-go').click()
+    await expect(page.locator('.tour-card__title')).not.toHaveText(title)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.tour-overlay')).toHaveCount(0)
+  }
+  expect(errors).toEqual([])
+ })
+}

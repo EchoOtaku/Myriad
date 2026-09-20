@@ -45,7 +45,7 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     let lastScrollY = readScrollY()
     let rafId = 0
-    let hoverSyncRaf = 0
+    let layoutSettleRaf = 0
     let inactivityTimeoutId = 0
     let isHovering = false
     let isNavVisible = true
@@ -77,19 +77,6 @@ export function useNavAutoHide(selector = '.nav-container') {
       navContainer.style.opacity = visible ? '1' : '0'
       navContainer.style.transform = transform
       navContainer.style.pointerEvents = visible ? 'auto' : 'none'
-    }
-
-    /** 布局变形后立刻 snap transform，不要播旧轴→新轴。 */
-    const snapVisibilityForLayout = (visible: boolean) => {
-      if (isChromeSwitching(navContainer)) return
-      navContainer.style.transition = TRANSITION_OPACITY_ONLY
-      applyVisibility(visible)
-
-      requestAnimationFrame(() => {
-        if (!isChromeSwitching(navContainer)) {
-          navContainer.style.transition = TRANSITION_VISIBILITY
-        }
-      })
     }
 
     const showNav = () => {
@@ -246,12 +233,21 @@ export function useNavAutoHide(selector = '.nav-container') {
       navContainer.style.removeProperty('transform')
       navContainer.style.removeProperty('pointer-events')
       navContainer.removeAttribute('data-nav-idle')
-      snapVisibilityForLayout(true)
+      if (!isChromeSwitching(navContainer)) {
+        // Snap to the new axis; a tour owns its immediate visible pose.
+        navContainer.style.transition = isTourDomActive()
+          ? 'none'
+          : TRANSITION_OPACITY_ONLY
+        applyVisibility(true)
+      }
 
-      if (hoverSyncRaf) cancelAnimationFrame(hoverSyncRaf)
+      if (layoutSettleRaf) cancelAnimationFrame(layoutSettleRaf)
       // pointer-events 刚恢复；:hover / pointerenter 可能晚一帧。
-      hoverSyncRaf = requestAnimationFrame(() => {
-        hoverSyncRaf = 0
+      layoutSettleRaf = requestAnimationFrame(() => {
+        layoutSettleRaf = 0
+        if (!isChromeSwitching(navContainer) && !isTourDomActive()) {
+          navContainer.style.transition = TRANSITION_VISIBILITY
+        }
         syncHoverFromDom()
         if (!isHovering) startInactivityTimer()
       })
@@ -318,7 +314,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       unsubscribeLayout()
       if (rafId) cancelAnimationFrame(rafId)
       if (mouseRafId) cancelAnimationFrame(mouseRafId)
-      if (hoverSyncRaf) cancelAnimationFrame(hoverSyncRaf)
+      if (layoutSettleRaf) cancelAnimationFrame(layoutSettleRaf)
       clearInactivityTimer()
     }
   }, [selector])

@@ -315,3 +315,7 @@ backend/data/.bootstrap-claimed
 !frontend/tests/browser/widgetTheme.spec.ts
 !frontend/tests/browser/fixture/widgetTheme.html
 !frontend/tests/browser/fixture/widgetTheme.tsx
+!frontend/tests/browser/musicPlaylist.spec.ts
+!frontend/tests/browser/fixture/musicPlaylist.tsx
+
+!frontend/tests/browser/musicLyrics.spec.ts

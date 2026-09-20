@@ -37,6 +37,7 @@ import { stickerSizesSharingAspect } from '../utils/homeStickerSize'
 import { widgetSizeSpan } from '../utils/widgetSizeScale'
 import { RenderErrorBoundary } from './RenderErrorBoundary'
 import { widgetEntranceMotion } from './widgetEntranceMotion'
+import { WidgetGridItemBody } from './WidgetGridItemBody'
 import { widgetDisplayLabel } from './widgetLibraryModel'
 import { shouldSkipWidgetEntrance } from './widgetPlacementPreview'
 import {
@@ -75,42 +76,6 @@ export const STICKER_WIDGET_TYPE: WidgetType = {
   defaultSize: '2x2',
   component: StickerWidget,
 }
-
-const WidgetGridItemBody = React.memo(
-  ({
-    widget,
-    widgetType,
-    isEditMode,
-    isPreview,
-    onConfigChange,
-  }: {
-    widget: WidgetConfig
-    widgetType: WidgetType
-    isEditMode: boolean
-    isPreview?: boolean
-    onConfigChange?: (newConfig: any) => void
-  }) => {
-    const WidgetComponent = widgetType.component
-    return (
-      <Suspense fallback={null}>
-        <WidgetComponent
-          config={widget}
-          isEditMode={isEditMode}
-          isPreview={isPreview}
-          onConfigChange={onConfigChange}
-        />
-      </Suspense>
-    )
-  },
-  (prev, next) =>
-    prev.widget.id === next.widget.id &&
-    prev.widget.type === next.widget.type &&
-    prev.widget.size === next.widget.size &&
-    prev.widget.config === next.widget.config &&
-    prev.isEditMode === next.isEditMode &&
-    prev.isPreview === next.isPreview &&
-    prev.widgetType === next.widgetType,
-)
 
 export const WidgetGridItem = React.memo(
   ({

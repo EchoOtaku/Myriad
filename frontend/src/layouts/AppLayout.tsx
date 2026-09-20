@@ -14,7 +14,8 @@ import NavigationIsland from '../components/NavigationIsland'
 import { SiteFooter } from '../components/SiteFooter'
 import { SurfaceThemeApplier } from '../components/SurfaceThemeApplier'
 import { ToastContainer } from '../components/ToastContainer'
-import { TourHint, TourOverlay } from '../components/tour'
+import { TourHint } from '../components/tour/TourHint'
+import { TourOverlayHost } from '../components/tour/TourOverlayHost'
 
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
@@ -30,7 +31,6 @@ import { useAuthUrlFeedback } from '../hooks/useAuthUrlFeedback'
 import { useEvocativeWallpaper } from '../hooks/useEvocativeWallpaper'
 import { useNavAutoHide } from '../hooks/useNavAutoHide'
 import { usePageViewTracker } from '../hooks/usePageViewTracker'
-import { useScrollOptimization } from '../hooks/useScrollOptimization'
 import { useSystemSetupCheck } from '../hooks/useSystemSetupCheck'
 import {
   invalidateWallpaperLoadCache,
@@ -94,12 +94,6 @@ function DeferredWidgetSettingsModals() {
 
 interface AppLayoutProps {
   children: React.ReactNode
-}
-
-/** Scroll start/stop state belongs here; the layout only needs its DOM effects. */
-function PageScrollEffects() {
-  useScrollOptimization({ enabled: true })
-  return null
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -335,7 +329,6 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <>
-      <PageScrollEffects />
       <SurfaceThemeApplier />
 
       {/* relative z-9999：GCP 整棵子树抬到 host chrome 顶层 stacking context，
@@ -401,7 +394,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       <ToastContainer />
-      <TourOverlay />
+      <TourOverlayHost />
 
       <main className="relative z-10">{children}</main>
 

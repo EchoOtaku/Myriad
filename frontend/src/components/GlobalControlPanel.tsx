@@ -44,7 +44,7 @@ import { showToast } from '../utils/toastManager'
 import { ControlPanelWidgets } from './ControlPanel/ControlPanelWidgets'
 import { ControlQuickActions } from './ControlPanel/ControlQuickActions'
 import { islandPanelTabForClick } from './ControlPanel/islandClick'
-import { MusicPlayer } from './ControlPanel/MusicPlayer'
+import { MusicPlayerHost } from './ControlPanel/MusicPlayerHost'
 import { trackPanelHeight } from './ControlPanel/panelHeight'
 import {
   initialPanelState,
@@ -59,6 +59,7 @@ import {
   showsPanelContent,
   showsProgressUi,
 } from './ControlPanel/panelTransition'
+import { watchPanelTransition } from './ControlPanel/panelTransitionCompletion'
 import { useBuiltinIslandContents } from './ControlPanel/useBuiltinIslandContents'
 import { useControlPanelNotifications } from './ControlPanel/useControlPanelNotifications'
 import { useIslandCarousel } from './ControlPanel/useIslandCarousel'
@@ -254,35 +255,10 @@ const GlobalControlPanel: React.FC = () => {
     const generation = panel.generation
     const activeMotion = motionRef.current
 
-    // 子组件仍按 gcp-animation-start/end 冻结引擎。
-    window.dispatchEvent(new CustomEvent('gcp-animation-start'))
-
-    let settled = false
-    const finish = () => {
-      if (settled) return
-      settled = true
+    return watchPanelTransition(el, activeMotion.spatial, settleTimeoutMs(activeMotion), () => {
       window.dispatchEvent(new CustomEvent('gcp-animation-end'))
       dispatchPanel({ type: 'settle', generation })
-    }
-
-    // 结束信号用 width（双向都变）；打断时走 transitioncancel。
-    const handleTransitionEnd = (e: TransitionEvent) => {
-      if (e.target === el && e.propertyName === 'width') finish()
-    }
-    if (activeMotion.spatial && el) {
-      el.addEventListener('transitionend', handleTransitionEnd)
-    }
-    // 兜底定时器：非空间档、后台节流、!important 盖住过渡。
-    const fallback = window.setTimeout(finish, settleTimeoutMs(activeMotion))
-
-    return () => {
-      window.clearTimeout(fallback)
-      el?.removeEventListener('transitionend', handleTransitionEnd)
-      // 被抢占时补发 end，避免子组件停在冻结态。
-      if (!settled) {
-        window.dispatchEvent(new CustomEvent('gcp-animation-end'))
-      }
-    }
+    })
   }, [panel.phase, panel.generation])
 
   // html.gcp-panel-open：移动端全屏 TApp 会抢 hit-test，用它关 TApp pointer-events。
@@ -752,7 +728,7 @@ const GlobalControlPanel: React.FC = () => {
                     />
                   )}
 
-                  <MusicPlayer
+                  <MusicPlayerHost
                     player={musicPlayer}
                     panelVisible={progressUiVisible}
                   />

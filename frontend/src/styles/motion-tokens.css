@@ -1,0 +1,68 @@
+/* Shared motion tokens; keep values in sync with components/settings/motion.ts. */
+
+:root {
+  --sm-dur-fast: 140ms;
+  --sm-dur-base: 220ms;
+  --sm-dur-slow: 320ms;
+  --sm-ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --sm-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --sm-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --sm-ease-emphasis: cubic-bezier(0.22, 1, 0.36, 1);
+  --sm-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --sm-shift-xs: 2px;
+  --sm-shift-sm: 6px;
+  --sm-shift-md: 12px;
+  --sm-shift-lg: 1rem;
+  --sm-scale-press: 0.97;
+  --sm-scale-pop: 1.07;
+  --sm-lift: -1px;
+  --sm-lift-strong: -4px;
+  --sm-stagger: 26ms;
+  --sm-t-fill:
+    background-color var(--sm-dur-fast) var(--sm-ease-standard),
+    border-color var(--sm-dur-fast) var(--sm-ease-standard),
+    color var(--sm-dur-fast) var(--sm-ease-standard);
+  --sm-t-elevate:
+    box-shadow var(--sm-dur-base) var(--sm-ease-standard),
+    transform var(--sm-dur-base) var(--sm-ease-standard),
+    border-color var(--sm-dur-base) var(--sm-ease-standard);
+  --sm-t-transform: transform var(--sm-dur-fast) var(--sm-ease-spring);
+  --sm-t-fade: opacity var(--sm-dur-base) var(--sm-ease-standard);
+  --sm-t-control:
+    background-color var(--sm-dur-base) var(--sm-ease-standard),
+    border-color var(--sm-dur-base) var(--sm-ease-standard),
+    color var(--sm-dur-base) var(--sm-ease-standard),
+    box-shadow var(--sm-dur-base) var(--sm-ease-standard),
+    transform var(--sm-dur-base) var(--sm-ease-spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sm-dur-fast: 1ms;
+    --sm-dur-base: 1ms;
+    --sm-dur-slow: 1ms;
+    --sm-shift-xs: 0px;
+    --sm-shift-sm: 0px;
+    --sm-shift-md: 0px;
+    --sm-shift-lg: 0px;
+    --sm-scale-press: 1;
+    --sm-scale-pop: 1;
+    --sm-lift: 0px;
+    --sm-lift-strong: 0px;
+    --sm-stagger: 0ms;
+  }
+}
+
+/* exlight: keep change, drop shift/spring */
+html[data-perf-mode='exlight'] {
+  --sm-dur-slow: var(--sm-dur-base);
+  --sm-shift-sm: 0px;
+  --sm-shift-md: 0px;
+  --sm-shift-lg: 0px;
+  --sm-scale-press: 1;
+  --sm-scale-pop: 1;
+  --sm-lift: 0px;
+  --sm-lift-strong: 0px;
+  --sm-stagger: 0ms;
+  --sm-ease-spring: var(--sm-ease-standard);
+}

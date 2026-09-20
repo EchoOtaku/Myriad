@@ -1,9 +1,8 @@
 /** 远端曲名进 innerHTML：无搜索词也必须转义。 */
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
-import { fileURLToPath } from 'node:url'
 
 import { escapeHtmlText, highlightText } from './musicPlayer.ts'
 
@@ -64,15 +63,15 @@ describe('highlightText', () => {
  * 调用方绕过了它。这个不变量（"每个 __html 都必须是 highlightText 的返回值"）
  * 类型系统表达不了：dangerouslySetInnerHTML 接受任意字符串。
  *
- * 项目没有 DOM/React 测试环境（test:unit 是 `tsx --test`，无 jsdom），所以这里
- * 直接对源码断言。粗糙，但它精确地锁住了会复发的那一行。
+ * 检查播放器全部视图，避免拆分组件后漏掉 HTML 写入点。
  */
 describe('MusicPlayer innerHTML call sites', () => {
   it('only ever feeds highlightText output into dangerouslySetInnerHTML', () => {
-    const componentPath = fileURLToPath(
-      new URL('../components/ControlPanel/MusicPlayer.tsx', import.meta.url),
-    )
-    const source = readFileSync(componentPath, 'utf8')
+    const directory = new URL('../components/ControlPanel/', import.meta.url)
+    const source = readdirSync(directory)
+      .filter(name => /^Music.*\.tsx$/.test(name))
+      .map(name => readFileSync(new URL(name, directory), 'utf8'))
+      .join('\n')
 
     // 取每个 `__html:` 到其后第一个行尾逗号之间的表达式。
     // 用字符串切分而不是正则，省得为了跨行匹配写出会回溯爆炸的模式。

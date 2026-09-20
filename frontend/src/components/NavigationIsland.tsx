@@ -31,11 +31,8 @@ import {
 
   subscribeNavLayout,
 } from '../utils/navLayout'
+import { createNavLayoutTransition } from './navLayoutTransition'
 import { navigateAfterStageLeave } from './stageLeaveGate'
-
-// 底栏↔侧轨交叉淡入时长；只在 opacity≈0 时换位置。
-const NAV_CHROME_OUT_MS = 200
-const NAV_CHROME_IN_MS = 280
 
 interface ModeMetrics {
   height?: number
@@ -361,7 +358,6 @@ export function NavigationIsland() {
   const chromeLayoutRef = useRef<NavLayout>(chromeLayout)
   chromeLayoutRef.current = chromeLayout
   const chromeSwitchingRef = useRef(false)
-  const chromeTimersRef = useRef<{ out?: number; in?: number }>({})
   // 给 morph 定时器最新 helpers，避免 effect 重入取消。
   const chromeHelpersRef = useRef<{
     getCachedPadding: (island: HTMLElement) => number
@@ -800,17 +796,6 @@ export function NavigationIsland() {
 
   // 底栏↔侧轨交叉淡入唯一入口：不可见时才换 data-nav-layout；勿插值 translateX(-50%)↔translateY(-50%)。中途 desire 变化等 settle 再检。
   useEffect(() => {
-    const clearTimers = () => {
-      if (chromeTimersRef.current.out) {
-        clearTimeout(chromeTimersRef.current.out)
-        chromeTimersRef.current.out = undefined
-      }
-      if (chromeTimersRef.current.in) {
-        clearTimeout(chromeTimersRef.current.in)
-        chromeTimersRef.current.in = undefined
-      }
-    }
-
     const remeasureFor = (target: NavLayout) => {
       const content = navContentRef.current
       const island = content?.closest('.dynamic-island') as HTMLElement | null
@@ -830,51 +815,38 @@ export function NavigationIsland() {
       }
     }
 
-    const tryMorph = () => {
-      const desired = getNavLayoutSnapshot()
-      if (desired === chromeLayoutRef.current) return
-      if (chromeSwitchingRef.current) return
-
-      const nav = navContainerRef.current
-      chromeSwitchingRef.current = true
-      setChromeSwitch('out')
-
-      if (nav) {
-        // 这段 opacity/transform 交给 CSS data-nav-switch。
+    const transition = createNavLayoutTransition({
+      current: () => chromeLayoutRef.current,
+      desired: getNavLayoutSnapshot,
+      phase: (phase) => {
+        chromeSwitchingRef.current = phase !== null
+        setChromeSwitch(phase)
+        if (phase !== 'out') return
+        const nav = navContainerRef.current
+        if (!nav) return
+        // During the crossfade, CSS owns opacity and transform.
         nav.style.removeProperty('opacity')
         nav.style.removeProperty('transform')
         nav.style.removeProperty('pointer-events')
         nav.style.removeProperty('transition')
-      }
-
-      clearTimers()
-      chromeTimersRef.current.out = window.setTimeout(() => {
-        const target = getNavLayoutSnapshot()
+      },
+      commit: (target) => {
         chromeLayoutRef.current = target
         setChromeLayout(target)
         lastNavLayoutRef.current = target
         applyNavLayoutToDocument(target)
         remeasureFor(target)
-
-        setChromeSwitch('in')
-        chromeTimersRef.current.in = window.setTimeout(() => {
-          setChromeSwitch(null)
-          chromeSwitchingRef.current = false
-          if (nav) {
-            nav.dispatchEvent(new Event(NAV_CHROME_SETTLED_EVENT))
-          }
-          // morph 中 desire 变了，settle 后再跟一次。
-          requestAnimationFrame(() => tryMorph())
-        }, NAV_CHROME_IN_MS)
-      }, NAV_CHROME_OUT_MS)
-    }
-
-    tryMorph()
-    const unsub = subscribeNavLayout(tryMorph)
+      },
+      settled: () => {
+        navContainerRef.current?.dispatchEvent(new Event(NAV_CHROME_SETTLED_EVENT))
+      },
+    })
+    transition.request()
+    const unsub = subscribeNavLayout(transition.request)
 
     return () => {
       unsub()
-      clearTimers()
+      transition.dispose()
       chromeSwitchingRef.current = false
     }
   }, [])

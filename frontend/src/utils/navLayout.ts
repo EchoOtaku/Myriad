@@ -66,10 +66,8 @@ export function applyNavLayoutToDocument(
 type Listener = () => void
 
 const listeners = new Set<Listener>()
-let subscribed = false
+let stopObserving: (() => void) | null = null
 let cachedLayout: NavLayout | null = null
-let mqWidth: MediaQueryList | null = null
-let mqPointer: MediaQueryList | null = null
 
 /** Debounce resize across 768/1024. */
 const LAYOUT_RESIZE_DEBOUNCE_MS = 48
@@ -82,10 +80,12 @@ function recomputeAndNotify(): void {
 }
 
 function ensureSubscribed(): void {
-  if (subscribed || typeof window === 'undefined') return
-  subscribed = true
+  if (stopObserving || typeof window === 'undefined') return
+  const win = window
   cachedLayout = getNavLayout()
-  applyNavLayoutToDocument(cachedLayout)
+  let mqWidth: MediaQueryList | null = null
+  let mqPointer: MediaQueryList | null = null
+  let orientationFrame: number | null = null
 
   let resizeTimer: ReturnType<typeof setTimeout> | null = null
   const onResize = () => {
@@ -99,11 +99,15 @@ function ensureSubscribed(): void {
   const onOrientation = () => {
     if (resizeTimer) clearTimeout(resizeTimer)
     resizeTimer = null
-    requestAnimationFrame(() => recomputeAndNotify())
+    if (orientationFrame !== null) cancelAnimationFrame(orientationFrame)
+    orientationFrame = requestAnimationFrame(() => {
+      orientationFrame = null
+      recomputeAndNotify()
+    })
   }
 
-  window.addEventListener('resize', onResize, { passive: true })
-  window.addEventListener('orientationchange', onOrientation, { passive: true })
+  win.addEventListener('resize', onResize, { passive: true })
+  win.addEventListener('orientationchange', onOrientation, { passive: true })
 
   try {
     // Apply on band crossing; do not wait for debounce.
@@ -120,6 +124,16 @@ function ensureSubscribed(): void {
   } catch {
     mqPointer = null
   }
+  stopObserving = () => {
+    win.removeEventListener('resize', onResize)
+    win.removeEventListener('orientationchange', onOrientation)
+    mqWidth?.removeEventListener('change', onResize)
+    mqPointer?.removeEventListener('change', onResize)
+    if (resizeTimer !== null) clearTimeout(resizeTimer)
+    if (orientationFrame !== null) cancelAnimationFrame(orientationFrame)
+    cachedLayout = null
+    stopObserving = null
+  }
 }
 
 export const NAV_CHROME_SETTLED_EVENT = 'navChromeSettled'
@@ -130,13 +144,14 @@ export function subscribeNavLayout(listener: Listener): () => void {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
+    if (listeners.size === 0) stopObserving?.()
   }
 }
 
 export function getNavLayoutSnapshot(): NavLayout {
   if (typeof window === 'undefined') return 'desktop'
-  ensureSubscribed()
-  return cachedLayout ?? getNavLayout()
+  // Reading during render must not install listeners or mutate document styles.
+  return stopObserving ? cachedLayout ?? getNavLayout() : getNavLayout()
 }
 
 export function getServerNavLayoutSnapshot(): NavLayout {
