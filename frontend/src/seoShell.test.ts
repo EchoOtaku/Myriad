@@ -10,7 +10,7 @@ import {
   SEO_SHELL_EXACT,
   SEO_SHELL_PREFIXES,
   wantsSeoHtmlShell,
-} from '../scripts/astro/seoShell.mjs'
+} from '../scripts/vite/seoShell.mjs'
 
 function rustSeoCrawlerMarkers(source: string): string[] {
   const start = source.indexOf('const MARKERS: &[&str] = &[')
@@ -25,7 +25,7 @@ const proxySource = readFileSync(
   'utf8',
 )
 const destProxySource = readFileSync(
-  new URL('../scripts/astro/backendDevProxy.mjs', import.meta.url),
+  new URL('../scripts/vite/backendDevProxy.mjs', import.meta.url),
   'utf8',
 )
 const spaServerSource = readFileSync(
@@ -65,7 +65,7 @@ describe('seoShell', () => {
   })
 
   it('lets prod spa-server share Permissions-Policy with dest', () => {
-    assert.match(spaServerSource, /from ['"]\.\/astro\/constants\.mjs['"]/)
+    assert.match(spaServerSource, /from ['"]\.\/vite\/constants\.mjs['"]/)
     assert.doesNotMatch(
       spaServerSource,
       /const DOCUMENT_PERMISSIONS_POLICY/,

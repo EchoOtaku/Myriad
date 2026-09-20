@@ -12,12 +12,10 @@ confirmModulesPurge: false
 # Force current majors so transitive deps never land on:
 #   - semver@6.x  (@babel/* still declares ^6; 6.3.1 false-positives no-downgrade
 #                 because 7.x published provenance first)
-#   - chokidar@4  (@astrojs/check still declares ^4; 4.0.3 false-positives because
-#                 paulmillr stopped attaching provenance after 4.0.1)
 # ua-parser-js is excluded from no-downgrade on purpose: Agora still declares
 # ^0.7 (MIT). 0.7.41 has no provenance, and 2.x (which does) is AGPL-3.0-or-later.
 # Pin the last 0.7 MIT release; do not float — 0.7.29–0.7.33 had protestware.
-# Agora's optional ESM tree stays off the Vite prebundle (astro.config
+# Agora's optional ESM tree stays off the Vite prebundle (vite.config
 # optimizeDeps.exclude) so install policy cannot freeze the crawler.
 trustPolicyExclude:
   - ua-parser-js

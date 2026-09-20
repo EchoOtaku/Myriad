@@ -8,8 +8,6 @@ export default defineConfig({
   packageMode: {
     typescript: 'major',
     eslint: 'ignore',
-    astro: 'minor',
-    '@astrojs/': 'minor',
     tailwindcss: 'minor',
     react: 'minor',
     'react-dom': 'minor',

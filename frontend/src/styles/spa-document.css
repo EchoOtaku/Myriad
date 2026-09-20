@@ -1,6 +1,6 @@
 /*
  * First-paint tokens for the human SPA document.
- * theme.css arrives with the React island and owns the full token set.
+ * theme.css arrives with the React entry and owns the full token set.
  */
 :root {
   --color-primary: #94a3b8;

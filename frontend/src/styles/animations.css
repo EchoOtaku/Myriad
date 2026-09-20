@@ -101,7 +101,7 @@
   }
 }
 
-/* App-wide spin (App.tsx imports this file). PageLoader.astro has a copy for the pre-hydration boot ring. */
+/* App-wide spin (App.tsx imports this file). page-loader.css has a copy for the pre-mount boot ring. */
 @keyframes spin {
   from {
     transform: rotate(0deg) translateZ(0);

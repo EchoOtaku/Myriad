@@ -81,15 +81,15 @@ test('import persona uses the long onboarding timeout, including the dev proxy',
 })
 
 test('dev proxy long-timeouts cover model3d downloads, agent process, and SSE', () => {
-  const astro = readFileSync(
-    new URL('../../../scripts/astro/backendDevProxy.mjs', import.meta.url),
+  const vite = readFileSync(
+    new URL('../../../scripts/vite/backendDevProxy.mjs', import.meta.url),
     'utf8',
   )
-  assert.match(astro, /aiRequestTimeoutMs/)
-  assert.match(astro, /AGENT_PROCESS_PROXY_TIMEOUT_MS/)
-  const timeoutPick = astro.slice(
-    astro.indexOf('const aiTimeoutMs = aiRequestTimeoutMs'),
-    astro.indexOf('const streamResponse'),
+  assert.match(vite, /aiRequestTimeoutMs/)
+  assert.match(vite, /AGENT_PROCESS_PROXY_TIMEOUT_MS/)
+  const timeoutPick = vite.slice(
+    vite.indexOf('const aiTimeoutMs = aiRequestTimeoutMs'),
+    vite.indexOf('const streamResponse'),
   )
   assert.ok(timeoutPick.length > 0, 'timeout picker not found')
   assert.match(timeoutPick, /isAgentSsePath/)

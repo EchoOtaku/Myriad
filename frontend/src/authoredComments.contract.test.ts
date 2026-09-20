@@ -16,7 +16,7 @@ const EXTS = new Set([
   '.mjs',
   '.cjs',
   '.css',
-  '.astro',
+  '.html',
 ])
 
 const HISTORY_PHRASES = [
@@ -69,8 +69,9 @@ function inScope(rel: string): boolean {
   if (rel.startsWith('tests/')) return true
   if (rel.startsWith('scripts/')) return true
   return (
-    rel === 'eslint.config.js'
-    || rel === 'astro.config.mjs'
+    rel === 'index.html'
+    || rel === 'eslint.config.js'
+    || rel === 'vite.config.mjs'
     || rel === 'tailwind.config.mjs'
     || rel === 'playwright.config.ts'
     || rel === 'taze.config.js'
@@ -378,7 +379,7 @@ function extractHtmlComments(
 
 function extractFile(path: string, text: string): { line: number; raw: string }[] {
   if (path.endsWith('.css')) return extractCssComments(text)
-  if (path.endsWith('.astro')) {
+  if (path.endsWith('.html')) {
     const seen = new Set<string>()
     const merged: { line: number; raw: string }[] = []
     for (const c of [...extractJsComments(text), ...extractHtmlComments(text)]) {

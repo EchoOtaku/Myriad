@@ -1,78 +1,67 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
+import { renderDocument } from '../../scripts/vite/documentPlugin'
 
-const documentSource = readFileSync(
-  new URL('./SpaDocument.astro', import.meta.url),
-  'utf8',
-)
-const jsonLdSource = readFileSync(
-  new URL('../components/MachineReadableMetadata.astro', import.meta.url),
-  'utf8',
-)
-const catchAllSource = readFileSync(
-  new URL('../pages/[...path].astro', import.meta.url),
-  'utf8',
-)
-const spaPathsSource = readFileSync(
-  new URL('../spaPaths.mjs', import.meta.url),
+const template = readFileSync(
+  new URL('../../index.html', import.meta.url),
   'utf8',
 )
 
-const BRAND_SLOTS = [
-  'description',
-  'favicon',
-  'apple-touch',
-  'app-title',
-  'og-title',
-  'og-description',
-  'og-image',
-  'title',
-  'json',
-] as const
-
-describe('SpaDocument SEO slots', () => {
-  it('keeps every first-byte brand slot the stamper paints', () => {
-    const slots = new Set(
-      [...documentSource.matchAll(/data-myriad-brand="([^"]+)"/g)].map(
-        (match) => match[1],
-      ),
+describe('SPA document contract', () => {
+  it('renders all branding slots and release metadata before React', () => {
+    const html = renderDocument(template, {
+      PUBLIC_MYRIAD_VERSION: 'v1.2.3',
+      PUBLIC_MYRIAD_COMMIT_SHA: 'abcdef1234567',
+    })
+    const slots = [...html.matchAll(/data-myriad-brand="([^"]+)"/g)]
+      .map((match) => match[1])
+      .sort()
+    assert.deepEqual(
+      slots,
+      [
+        'description',
+        'favicon',
+        'apple-touch',
+        'app-title',
+        'og-title',
+        'og-description',
+        'og-image',
+        'title',
+        'json',
+        'json-ld',
+      ].sort(),
     )
-    assert.deepEqual([...slots].toSorted(), [...BRAND_SLOTS].toSorted())
-    assert.match(documentSource, /id="meta-description"/)
-    assert.match(documentSource, /id="myriad-site-brand"/)
-    assert.match(documentSource, /property="og:image"/)
-    assert.match(documentSource, /MachineReadableMetadata/)
-    assert.match(jsonLdSource, /data-myriad-brand="json-ld"/)
-    assert.match(jsonLdSource, /application\/ld\+json/)
-    assert.match(jsonLdSource, /WebApplication/)
-  })
-
-  it('keeps locale, noscript, and crawler SPA-query stripping on the document', () => {
-    assert.match(documentSource, /<LocaleLang/)
-    assert.match(documentSource, /<StripSpaQuery/)
-    assert.match(documentSource, /<NoScriptFallback/)
-    assert.match(documentSource, /name="referrer"/)
-    assert.match(documentSource, /<ThemeBoot/)
-    assert.match(documentSource, /<DocumentRuntimeBoot/)
-    assert.match(documentSource, /spa-document\.css/)
-    assert.match(documentSource, /SITE_FONTS/)
-    assert.doesNotMatch(documentSource, /is:global/)
-    assert.doesNotMatch(documentSource, /pet-walker|platform-link|nav-container/)
-  })
-
-  it('still lists the human SPA paths that backend SEO shells share', () => {
-    assert.match(catchAllSource, /export function getStaticPaths/)
-    assert.match(catchAllSource, /spaPrerenderPaths/)
-    for (const route of [
-      'library',
-      'reports',
-      'tapp',
-      'tapp/store',
-      'tapp/run',
-      'journal',
+    assert.match(html, /name="myriad-version" content="v1.2.3"/)
+    assert.match(html, /name="myriad-commit" content="abcdef1234567"/)
+    assert.match(html, /"softwareVersion":"1.2.3"/)
+    assert.doesNotMatch(html, /%DOCUMENT_|<!-- (?:boot|document):|astro-island/)
+    assert.match(html, /application\/ld\+json/)
+    assert.match(html, /WebApplication/)
+    assert.match(html, /<noscript>/)
+    assert.match(html, /id="myriad-site-brand"/)
+    assert.match(html, /id="meta-description"/)
+    assert.match(html, /name="referrer"/)
+    const main = html.indexOf('src="/src/main.tsx"')
+    for (const token of [
+      '@font-face',
+      '--font-inter',
+      '--font-qwitcher-grypen',
+      "localStorage.getItem('theme')",
+      "u.searchParams.delete('_spa')",
     ]) {
-      assert.match(spaPathsSource, new RegExp(`'${route}'`))
+      assert.ok(html.includes(token) && html.indexOf(token) < main, token)
     }
+    assert.doesNotMatch(html, /fonts\.googleapis|fonts\.gstatic/)
+  })
+
+  it('escapes release values and defaults to a development document', () => {
+    const html = renderDocument(template, {
+      PUBLIC_MYRIAD_VERSION: '</script><script>alert(1)</script>"',
+    })
+    assert.doesNotMatch(html, /<script>alert/)
+    const dev = renderDocument(template)
+    assert.match(dev, /name="myriad-version" content="dev"/)
+    assert.doesNotMatch(dev, /softwareVersion/)
   })
 })

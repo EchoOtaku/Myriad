@@ -419,7 +419,7 @@ tui_short_cmd() {
         *cargo\ run*)       echo "cargo run" ;;
         *myriad-backend*)   echo "myriad-backend" ;;
         *pnpm\ run\ dev*)   echo "pnpm run dev" ;;
-        *astro\ dev*|*astro*) echo "astro" ;;
+        *vite*) echo "vite" ;;
         *postgres*)         echo "postgres" ;;
         *)
             set -- $cmd

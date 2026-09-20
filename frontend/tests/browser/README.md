@@ -14,7 +14,7 @@ pnpm test:browser
 
 The test-only Vite entrypoint imports the production recorder hook, utterance
 capture, ASR queue, speech pipeline, WebAudio player and speech motion source.
-It never becomes an Astro production page and has no backend proxy. All speech
+It never becomes an production page and has no backend proxy. All speech
 service requests are mocked. The microphone is a synthetic MediaStream, not a
 hardware device; no credentials, paid models, or recorded personal speech are
 used. Failures retain a local Playwright trace in the ignored `test-results`.

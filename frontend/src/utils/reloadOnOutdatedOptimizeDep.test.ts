@@ -5,7 +5,7 @@ import {
   isOptimizedDepRequest,
   rewriteOptimizedDepCacheControl,
   shouldReloadForOutdatedOptimizeDep,
-} from '../../scripts/astro/reloadOnOutdatedOptimizeDep.mjs'
+} from '../../scripts/vite/reloadOnOutdatedOptimizeDep.mjs'
 
 test('only Vite optimized-dep URLs are treated as prebundle requests', () => {
   assert.equal(
@@ -14,7 +14,7 @@ test('only Vite optimized-dep URLs are treated as prebundle requests', () => {
   )
   assert.equal(
     isOptimizedDepRequest(
-      '/node_modules/.pnpm/@astrojs+react@6.0.5/node_modules/@astrojs/react/dist/client.js',
+      '/src/main.tsx',
     ),
     false,
   )

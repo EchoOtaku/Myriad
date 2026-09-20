@@ -11,6 +11,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   use: {
+    channel: process.env.MYRIAD_BROWSER_CHANNEL || undefined,
     baseURL: `http://127.0.0.1:${port}`,
     trace: 'retain-on-failure',
     launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },

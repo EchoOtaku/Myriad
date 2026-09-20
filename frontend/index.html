@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en-US" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- boot:locale -->
+    <!-- boot:spa-query -->
+    <meta
+      name="description"
+      content="%DOCUMENT_DESCRIPTION%"
+      id="meta-description"
+      data-myriad-brand="description"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="theme-color"
+      content="#f5f5f5"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#0a0a0a"
+      media="(prefers-color-scheme: dark)"
+    />
+    <link
+      rel="icon"
+      type="image/webp"
+      href="/favicon.webp"
+      id="favicon-link"
+      data-myriad-brand="favicon"
+    />
+    <!-- utils/pwa applies manifest/install meta when pwa_enabled. -->
+    <link rel="manifest" href="/manifest.webmanifest" id="pwa-manifest-link" />
+    <link
+      rel="apple-touch-icon"
+      href="/icons/pwa/icon-192.png"
+      data-myriad-brand="apple-touch"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-title"
+      content="Myriad"
+      data-myriad-brand="app-title"
+    />
+    <meta
+      property="og:title"
+      content="%DOCUMENT_TITLE%"
+      data-myriad-brand="og-title"
+    />
+    <meta
+      property="og:description"
+      content="%DOCUMENT_DESCRIPTION%"
+      data-myriad-brand="og-description"
+    />
+    <meta property="og:image" content="" data-myriad-brand="og-image" />
+    <title data-myriad-brand="title">%DOCUMENT_TITLE%</title>
+    <script
+      type="application/json"
+      id="myriad-site-brand"
+      data-myriad-brand="json"
+    >
+      {}
+    </script>
+    <!-- boot:brand -->
+    <!-- boot:theme -->
+
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <!-- Build-time version stamp for the updater health probe (stale-cache detect). -->
+    <meta name="myriad-version" content="%DOCUMENT_VERSION%" />
+    <meta name="myriad-commit" content="%DOCUMENT_COMMIT%" />
+    <!-- document:json-ld -->
+
+    <!-- document:fonts -->
+    <!-- document:styles -->
+
+    <link rel="dns-prefetch" href="https://api.fuukei.org" />
+    <link rel="dns-prefetch" href="https://api.open-meteo.com" />
+    <link rel="dns-prefetch" href="https://avatars.githubusercontent.com" />
+    <link rel="preconnect" href="https://api.fuukei.org" crossorigin />
+    <link
+      rel="preconnect"
+      href="https://avatars.githubusercontent.com"
+      crossorigin
+    />
+
+    <script type="module" src="/src/main.tsx"></script>
+  </head>
+  <body class="antialiased">
+    <div
+      id="page-loader"
+      class="page-loader"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span class="spinner page-loader-spinner" aria-hidden="true"></span>
+      <h1 class="loader-brand">Myriad</h1>
+    </div>
+    <noscript>
+      <style>
+        #page-loader {
+          display: none !important;
+        }
+        #app-root {
+          opacity: 1 !important;
+        }
+      </style>
+      <main
+        style="
+          max-width: 42rem;
+          margin: 4rem auto;
+          padding: 0 1.5rem;
+          font-family: system-ui, sans-serif;
+          line-height: 1.7;
+        "
+      >
+        <h1>Myriad</h1>
+        <p>%DOCUMENT_DESCRIPTION%</p>
+        <p id="noscript-enable-js">%DOCUMENT_NOSCRIPT%</p>
+      </main>
+    </noscript>
+
+    <div id="app-root"></div>
+  </body>
+</html>

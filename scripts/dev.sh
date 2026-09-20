@@ -293,7 +293,7 @@ list_backend_pids() {
     printf '%s\n' "${found[@]}" | normalize_pids
 }
 
-# Match frontend via `pnpm run dev` / astro / vite in this tree, plus FRONTEND_PORT.
+# Match frontend via `pnpm run dev` / vite in this tree, plus FRONTEND_PORT.
 list_frontend_pids() {
     local -a found=()
     local pid cmd ps_out listen_out
@@ -306,9 +306,8 @@ list_frontend_pids() {
         [[ "$pid" =~ ^[0-9]+$ ]] || continue
 
         local match=0
-        # Dev server only — not eslint / tsc / `astro check` / `vite build`.
+        # Dev server only — not eslint / `tsc --noEmit` / `vite build`.
         if [[ "$cmd" == *"pnpm run dev"* || "$cmd" == *"pnpm dev"* || \
-              ( "$cmd" == *astro* && "$cmd" == *dev* ) || \
               ( "$cmd" == *vite* && "$cmd" != *build* && "$cmd" != *preview* ) ]]; then
             in_project_tree "$pid" "$cmd" && match=1
         fi
@@ -1036,7 +1035,7 @@ backend_health_ok() {
 }
 
 frontend_health_ok() {
-    # Astro often binds IPv6 *:port. Probe both stacks; ignore HTTP status.
+    # Vite can bind IPv6 *:port. Probe both stacks; ignore HTTP status.
     local url
     for url in \
         "http://127.0.0.1:${FRONTEND_PORT}/" \
@@ -1264,7 +1263,7 @@ show_status_dashboard() {
             fe_health="${YELLOW}starting${NC}"
         fi
     fi
-    draw_box_line "${ICON_NODE} Frontend (Astro/React)   $(get_status_text $frontend_status)  ${fe_health}" $width "$BRIGHT_CYAN"
+    draw_box_line "${ICON_NODE} Frontend (Vite/React)   $(get_status_text $frontend_status)  ${fe_health}" $width "$BRIGHT_CYAN"
     if $frontend_status; then
         local fe_pid
         fe_pid="$(list_frontend_pids | head -n 1)"
@@ -1583,7 +1582,7 @@ ensure_frontend_deps() {
 }
 
 start_frontend() {
-    print_step "Starting Astro frontend..."
+    print_step "Starting Vite frontend..."
     have pnpm || { print_error "pnpm not found — run 'corepack enable'"; return 1; }
 
     if frontend_port_in_use || [[ -n "$(list_frontend_pids)" ]]; then
@@ -1993,7 +1992,7 @@ END \$\$;" > /dev/null 2>&1 || true
     sleep 0.3
     
     ((current++)); progress_bar $current $total 40 "Cleaning"
-    rm -rf "$PROJECT_ROOT/frontend/dist" "$PROJECT_ROOT/frontend/.astro" \
+    rm -rf "$PROJECT_ROOT/frontend/dist" \
         "$PROJECT_ROOT/frontend/node_modules/.vite" \
         "$PROJECT_ROOT/frontend/node_modules/.vite-temp" 2>/dev/null || true
     sleep 0.3

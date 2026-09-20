@@ -68,13 +68,13 @@ describe('home first-paint budget', () => {
     assert.match(tappWidget, /lazy\(\(\) =>/)
   })
 
-  it('counts Astro hydration entries and skips dynamic speech', async () => {
+  it('counts SPA module entries and skips dynamic speech', async () => {
     const { measureHomeBudget } = await import('../../scripts/home-budget.mjs')
     const root = mkdtempSync(join(tmpdir(), 'home-budget-'))
     mkdirSync(join(root, 'assets'))
     writeFileSync(
       join(root, 'index.html'),
-      '<astro-island component-url="/assets/App-test.js" renderer-url="/assets/client-test.js"></astro-island>',
+      '<script type="module" src="/assets/App-test.js"></script><script type="module" src="/assets/client-test.js"></script>',
     )
     writeFileSync(
       join(root, 'assets/App-test.js'),
@@ -119,7 +119,7 @@ describe('home first-paint budget', () => {
     mkdirSync(join(root, 'assets'))
     writeFileSync(
       join(root, 'index.html'),
-      '<astro-island component-url="/assets/App-test.js" renderer-url="/assets/client-test.js"></astro-island>',
+      '<script type="module" src="/assets/App-test.js"></script><script type="module" src="/assets/client-test.js"></script>',
     )
     writeFileSync(
       join(root, 'assets/App-test.js'),
@@ -144,8 +144,8 @@ describe('home first-paint budget', () => {
     assert.equal(measured.loadsAgora, false)
     assert.equal(measured.loadsConfigRoute, false)
     assert.ok(
-      measured.files.some((file) => /(?:^|\/)App-[^/]+\.js$/.test(file.file)),
-      `App hydration entry missing from first-paint: ${measured.files.map((f) => f.file).join(', ')}`,
+      measured.files.some((file) => /(?:^|\/)index-[^/]+\.js$/.test(file.file)),
+      `SPA module entry missing from first-paint: ${measured.files.map((f) => f.file).join(', ')}`,
     )
     assert.ok(
       measured.jsGzipBytes <= Math.ceil(baseline.jsGzipBytes * 1.15),

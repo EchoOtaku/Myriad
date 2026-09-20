@@ -57,12 +57,12 @@ function bootTheme(options: {
 }
 
 describe('themeBootInlineScript', () => {
-  it('is wired into the shared SPA document as ThemeBoot', () => {
+  it('is wired into the shared SPA document before React', () => {
     const source = readFileSync(
-      new URL('../layouts/SpaDocument.astro', import.meta.url),
+      new URL('../../index.html', import.meta.url),
       'utf8',
     )
-    assert.match(source, /<ThemeBoot/)
+    assert.match(source, /<!-- boot:theme -->/)
     assert.doesNotMatch(source, /function initializeTheme/)
   })
 

@@ -30,6 +30,7 @@
     },
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
+    "allowJs": true,
     "strict": true,
     "noEmit": true,
     "forceConsistentCasingInFileNames": true,
@@ -37,7 +38,6 @@
     "skipLibCheck": true
   },
   "include": [
-    ".astro/types.d.ts",
     "src/**/*",
     "../shared/**/*.json"
   ],

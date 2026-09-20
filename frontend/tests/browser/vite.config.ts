@@ -2,13 +2,13 @@ import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 
-// Test-only entrypoints cannot become Astro production pages. No backend proxy:
+// Test-only entrypoints cannot become production pages. No backend proxy:
 // every service request in this harness must be explicitly mocked by the test.
 export default defineConfig({
   plugins: [tailwindcss()],
   root: fileURLToPath(new URL('./fixture', import.meta.url)),
   publicDir: fileURLToPath(new URL('../../public', import.meta.url)),
-  // A concurrent Astro dev server must not replace this runner's optimized
+  // A concurrent Vite dev server must not replace this runner's optimized
   // React modules mid-test (two dispatcher instances cause invalid hook calls).
   cacheDir: fileURLToPath(new URL('../../node_modules/.vite/browser-tests', import.meta.url)),
   optimizeDeps: {

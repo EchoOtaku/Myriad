@@ -115,7 +115,7 @@ function Get-ProjectFrontendProcesses {
     $frontendPath = Join-Path $projectRoot "frontend"
     Get-WmiObject Win32_Process -ErrorAction SilentlyContinue | Where-Object {
         (Test-CommandLinePath $_.CommandLine $frontendPath) -and
-        ($_.CommandLine -match "pnpm|astro|vite|node")
+        ($_.CommandLine -match "pnpm|vite|node")
     }
 }
 
@@ -580,7 +580,7 @@ function Clear-Project {
     Write-Host "WARNING: This will delete:" -ForegroundColor Yellow
     Write-Host "  - Database tables (myriad-postgres-dev)" -ForegroundColor Yellow
     Write-Host "  - Workspace + backend build (target/)" -ForegroundColor Yellow
-    Write-Host "  - Frontend build (frontend/dist, frontend/.astro)" -ForegroundColor Yellow
+    Write-Host "  - Frontend build (frontend/dist, frontend/node_modules/.vite)" -ForegroundColor Yellow
     Write-Host "  - Cache files (backend/cache/*.json)" -ForegroundColor Yellow
     Write-Host "  - Log files (backend.log, frontend.log)" -ForegroundColor Yellow
     Write-Host "  (Does NOT delete backend/.env — same as dev.sh)" -ForegroundColor Gray
@@ -626,7 +626,7 @@ END `$`$;
 
     # 3. Delete frontend build files
     Write-Info "[3/5] Deleting frontend build files..."
-    foreach ($rel in @("frontend\dist", "frontend\.astro")) {
+    foreach ($rel in @("frontend\dist", "frontend\node_modules\.vite")) {
         $p = Join-Path $projectRoot $rel
         if (Test-Path $p) {
             Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue

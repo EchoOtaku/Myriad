@@ -207,7 +207,7 @@ describe('手帐审计契约', () => {
     assert.match(notes, /phantasi:write/)
     assert.doesNotMatch(notes, /仍然有效的 `ui:theme`、`media:control`、`brew:write`/)
     assert.doesNotMatch(notes, /Redirect 301/)
-    const spa = readRoot('frontend/src/spaPaths.mjs')
+    const spa = readRoot('frontend/scripts/vite/spaFallback.mjs')
     assert.doesNotMatch(spa, /status:\s*301/)
     assert.doesNotMatch(spa, /\/brew/)
     const routes = readRoot('backend/src/api/phantasi/routes.rs')

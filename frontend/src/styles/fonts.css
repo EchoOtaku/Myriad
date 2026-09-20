@@ -1,6 +1,6 @@
 /*
  * Title fonts load on demand via useTitleFont — no CSS @import (Lighthouse
- * render-blocking). @font-face is emitted by Astro Fonts API at build time;
+ * render-blocking). @font-face is emitted by the document plugin from siteFonts.mjs;
  * no runtime Google CDN. Weights must match siteFonts.mjs / FontOption.weight.
  */
 .qwitcher-grypen {

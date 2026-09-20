@@ -10,13 +10,13 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-import { DOCUMENT_PERMISSIONS_POLICY } from './astro/constants.mjs'
 import { isClientAbortError } from './devServerResponse.mjs'
 import {
   createBrandLoader,
   stampDocumentHtml,
   stampWebManifest,
 } from './siteBrandingStamp.mjs'
+import { STATIC_ASSET_PATTERN as ASSET_EXT, DOCUMENT_PERMISSIONS_POLICY } from './vite/constants.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.resolve(process.env.DIST_DIR || path.join(HERE, '..', 'dist'))
@@ -24,9 +24,6 @@ const PORT = Number(process.env.PORT || 1102)
 const HOST = process.env.HOST || '0.0.0.0'
 const INDEX = path.join(DIST, 'index.html')
 const MANIFEST_NAME = 'manifest.webmanifest'
-
-const ASSET_EXT =
-  /\.(?:js|mjs|cjs|css|map|png|webp|jpe?g|gif|svg|ico|woff2?|ttf|otf|json|webmanifest|txt|wasm|webm|mp3|mp4)$/i
 
 const MIME = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -128,7 +125,7 @@ function lookup(urlPath) {
 function cacheControl(urlPath) {
   if (
     urlPath.startsWith('/assets/') ||
-    (urlPath.startsWith('/_astro/') && ASSET_EXT.test(urlPath))
+    /^\/fonts\/site\/[^/]+-[a-f0-9]{16}\.woff2$/.test(urlPath)
   ) {
     return 'public, max-age=31536000, immutable'
   }

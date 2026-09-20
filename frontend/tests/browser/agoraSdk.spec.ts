@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 import { createServer } from 'vite'
-import astroConfig from '../../astro.config.mjs'
+import siteConfig from '../../vite.config.mjs'
 
 // The speech harness aliases transports. This check loads the installed SDKs
 // with the site's actual optimizeDeps, without credentials or contacting Agora.
@@ -14,7 +14,7 @@ test('real Agora SDKs expose RTC, audio PTS and RTM in the browser', async ({
     configFile: false,
     root: fileURLToPath(new URL('../..', import.meta.url)),
     cacheDir: testInfo.outputPath('vite-cache'),
-    optimizeDeps: { ...astroConfig.vite.optimizeDeps, noDiscovery: true },
+    optimizeDeps: { ...siteConfig({ command: 'serve', mode: 'test' }).optimizeDeps, noDiscovery: true },
     server: { host: '127.0.0.1', port: 0 },
     plugins: [
       {

@@ -68,13 +68,13 @@ function applyFirstPaint(options: {
 
 describe('localeLangInlineScript', () => {
   it('is generated from the shared parser, not a second copy', () => {
-    const astro = readFileSync(
-      new URL('../components/LocaleLang.astro', import.meta.url),
+    const plugin = readFileSync(
+      new URL('../../scripts/vite/documentPlugin.ts', import.meta.url),
       'utf8',
     )
-    assert.match(astro, /localeLangInlineScript/)
-    assert.match(astro, /parseLocale\.shared\.js\?raw/)
-    assert.equal(astro.includes('function mapTag'), false)
+    assert.match(plugin, /localeLangInlineScript/)
+    assert.match(plugin, /parseLocale\.shared\.js/)
+    assert.equal(plugin.includes('function mapTag'), false)
     const script = localeLangInlineScript(sharedSource)
     assert.equal(script.includes('export '), false)
     assert.match(script, /function parseLocale/)

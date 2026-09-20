@@ -1,4 +1,4 @@
-/// <reference path="../.astro/types.d.ts" />
+/// <reference types="vite/client" />
 
 /** Vite define */
 declare const __APP_VERSION__: string

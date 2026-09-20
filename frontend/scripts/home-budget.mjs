@@ -30,7 +30,7 @@ function findIndexHtml(root = distDir) {
 
 function collectReferencedAssets(html, htmlDir) {
   const assets = new Set()
-  const pattern = /(?:src|href|component-url|renderer-url)=["']([^"']+\.(?:js|css))["']/g
+  const pattern = /(?:src|href)=["']([^"']+\.(?:js|css))["']/g
   for (const match of html.matchAll(pattern)) {
     const href = match[1]
     if (href.startsWith('http') || href.startsWith('data:')) continue

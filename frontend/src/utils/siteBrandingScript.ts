@@ -1,7 +1,7 @@
 import {
   SITE_BRAND_ELEMENT_ID,
   SITE_METADATA_CACHE_KEY,
-} from './siteMetadataKeys'
+} from './siteMetadataKeys.ts'
 
 /** Inline first-paint boot. Must stay import-free in the emitted IIFE. */
 export function siteBrandingInlineScript(): string {

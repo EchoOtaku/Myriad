@@ -1,7 +1,7 @@
 import {
   SITE_BRAND_ELEMENT_ID,
   SITE_METADATA_CACHE_KEY,
-} from '../utils/siteMetadataKeys'
+} from '../utils/siteMetadataKeys.ts'
 import de from './de-DE.json' with { type: 'json' }
 import en from './en-US.json' with { type: 'json' }
 import fr from './fr-FR.json' with { type: 'json' }

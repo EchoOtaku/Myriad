@@ -69,15 +69,15 @@ describe('aiRequestTimeoutMs', () => {
 
 describe('dev proxy uses the shared AI timeout table', () => {
   it('imports aiRequestTimeoutMs', () => {
-    const astro = readFileSync(
-      new URL('../../scripts/astro/backendDevProxy.mjs', import.meta.url),
+    const vite = readFileSync(
+      new URL('../../scripts/vite/backendDevProxy.mjs', import.meta.url),
       'utf8',
     )
-    assert.match(astro, /from '\.\.\/\.\.\/src\/utils\/aiRequestTimeout\.mjs'/)
-    assert.match(astro, /aiRequestTimeoutMs/)
-    const timeoutPick = astro.slice(
-      astro.indexOf('const aiTimeoutMs = aiRequestTimeoutMs'),
-      astro.indexOf('const streamResponse'),
+    assert.match(vite, /from '\.\.\/\.\.\/src\/utils\/aiRequestTimeout\.mjs'/)
+    assert.match(vite, /aiRequestTimeoutMs/)
+    const timeoutPick = vite.slice(
+      vite.indexOf('const aiTimeoutMs = aiRequestTimeoutMs'),
+      vite.indexOf('const streamResponse'),
     )
     assert.ok(timeoutPick.length > 0, 'timeout picker not found')
     assert.match(timeoutPick, /aiTimeoutMs \?\? 30000/)

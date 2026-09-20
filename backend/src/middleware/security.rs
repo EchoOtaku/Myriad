@@ -98,7 +98,7 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     );
 
     // Permissions-Policy: 本站可定位（天气）和用麦克风（听/说）；摄像头仍禁用。
-    // 文档级策略由 proxy（补齐）+ Astro dev middleware 共同保证；此处覆盖 API 响应。
+    // 文档级策略由 proxy（补齐）+ Vite dev middleware 共同保证；此处覆盖 API 响应。
     // 字符串须与 proxy PERMISSIONS_POLICY / frontend DOCUMENT_PERMISSIONS_POLICY 保持一致。
     headers.insert(
         "Permissions-Policy".parse::<header::HeaderName>().unwrap(),

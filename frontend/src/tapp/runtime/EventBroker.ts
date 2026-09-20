@@ -103,11 +103,9 @@ export function registerEventHandlers(
       })
     }
     const unsubSpa = onSpaNavigation(onNavigation)
-    document.addEventListener('astro:page-load', onNavigation)
     onNavigation()
     cleanupSystemProducers.push(() => {
       unsubSpa()
-      document.removeEventListener('astro:page-load', onNavigation)
     })
   }
 

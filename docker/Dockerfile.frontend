@@ -51,7 +51,7 @@ ARG MYRIAD_COMMIT_SHA=unknown
 ENV PUBLIC_MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 
 # Build the application
-RUN pnpm run build
+RUN --network=none pnpm run build
 
 # Canonical /dist layout. CI may replace this stage with a prebuilt context:
 #   docker buildx build --build-context assets=./frontend-export ...

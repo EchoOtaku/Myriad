@@ -1,0 +1,43 @@
+import { statSync } from 'node:fs'
+import path from 'node:path'
+import { DOCUMENT_PERMISSIONS_POLICY, STATIC_ASSET_PATTERN } from './constants.mjs'
+
+/** Document policy and missing-asset guard; Vite owns history fallback. */
+export function spaFallbackPlugin() {
+  function attach(server, roots) {
+    server.middlewares.use((req, res, next) => {
+      if (!res.getHeader('Permissions-Policy')) {
+        res.setHeader('Permissions-Policy', DOCUMENT_PERMISSIONS_POLICY)
+      }
+      let pathname
+      try { pathname = decodeURIComponent((req.url || '').split('?')[0]) } catch { next(); return }
+      // Transformed modules belong to Vite, including imports outside the root.
+      if (/^\/(?:@|src\/|node_modules\/)/.test(pathname) || !STATIC_ASSET_PATTERN.test(pathname)) {
+        next()
+        return
+      }
+      const exists = roots.some(root => {
+        const file = path.resolve(root, `.${pathname}`)
+        const relative = path.relative(root, file)
+        if (relative.startsWith('..') || path.isAbsolute(relative)) return false
+        try { return statSync(file).isFile() } catch { return false }
+      })
+      if (!exists) {
+        res.statusCode = 404
+        res.setHeader('Cache-Control', 'no-cache')
+        res.end()
+        return
+      }
+      next()
+    })
+  }
+  return {
+    name: 'spa-document-policy',
+    configureServer(server) {
+      attach(server, [server.config.root, server.config.publicDir].filter(Boolean))
+    },
+    configurePreviewServer(server) {
+      attach(server, [path.resolve(server.config.root, server.config.build.outDir)])
+    },
+  }
+}

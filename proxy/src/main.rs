@@ -39,7 +39,7 @@ use tracing::{info, warn};
 const MAINT_CACHE_TTL: Duration = Duration::from_millis(250);
 
 /// Document-level Permissions-Policy. Must match backend `security.rs` and
-/// frontend Astro `DOCUMENT_PERMISSIONS_POLICY`: first-party geolocation (weather)
+/// frontend Vite `DOCUMENT_PERMISSIONS_POLICY`: first-party geolocation (weather)
 /// and microphone (listen/speak); camera stays off.
 /// Applied on proxy responses when upstream omitted it (static frontend often does).
 const PERMISSIONS_POLICY: &str = "geolocation=(self), microphone=(self), camera=()";
@@ -724,7 +724,7 @@ fn wants_seo_html_shell(user_agent: &str) -> bool {
 ///
 /// Keep in sync with:
 /// - `backend` public federation routes in `main.rs` (non-`/api` ActivityPub + media)
-/// - frontend `isBackendDevProxyPath` in `scripts/astro/backendDevProxy.mjs`
+/// - frontend `isBackendDevProxyPath` in `scripts/vite/backendDevProxy.mjs`
 /// - docs/deployment/PORTS.md
 ///
 /// Missing an entry silently serves the SPA HTML for that URL (broken media, broken
