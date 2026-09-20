@@ -254,24 +254,30 @@ pub async fn generate_home_sticker(
     let png = crate::services::sticker_cutout::prepare_sticker_png(bytes)
         .await
         .map_err(|error| map_sticker_processing_error(error, true))?;
-    let stored = crate::services::image_cache::ImageCacheService::new()
-        .store_bytes_with_status(&png, "image/png")
-        .await
-        .map_err(|error| HttpError(AppError::internal(error).with_code("STICKER_STORE_FAILED")))?;
-    let _ = crate::services::media_catalog::register(
-        &db,
-        crate::services::media_catalog::RegisterMedia {
-            kind: crate::services::media_catalog::MediaKind::Generated,
-            url: stored.url.clone(),
-            mime: "image/png".into(),
-            name: "sticker.png".into(),
-            size: png.len() as i64,
-        },
-    )
-    .await;
+    let (asset, _) =
+        crate::services::media::MediaService::from_data_paths(crate::services::data_paths::paths())
+            .persist_ready_bytes(
+                &db,
+                crate::services::media::MediaContext::site(
+                    crate::services::media::MediaActor::site_operator(None, true),
+                    crate::services::media::MediaSource::Generated,
+                ),
+                crate::services::media::NewMediaBytes {
+                    bytes: png,
+                    claimed_mime: "image/png".into(),
+                    filename: "sticker.png".into(),
+                    max_bytes: MAX_STICKER_UPLOAD_BYTES,
+                    derived_from_id: None,
+                    exposure: crate::services::media::MediaExposure::Public,
+                },
+            )
+            .await
+            .map_err(|error| {
+                HttpError(AppError::internal(error.to_string()).with_code("STICKER_STORE_FAILED"))
+            })?;
 
     Ok(Json(GenerateHomeStickerResponse {
-        image_url: stored.url,
+        image_url: asset.catalog_url(),
         width: generated.width,
         height: generated.height,
     }))
@@ -286,23 +292,29 @@ pub async fn upload_home_sticker(
     let (bytes, (width, height)) = crate::services::sticker_cutout::inspect_sticker_upload(bytes)
         .await
         .map_err(|error| map_sticker_processing_error(error, false))?;
-    let stored = crate::services::image_cache::ImageCacheService::new()
-        .store_bytes_with_status(&bytes, media_type)
-        .await
-        .map_err(|error| HttpError(AppError::internal(error).with_code("STICKER_STORE_FAILED")))?;
-    let _ = crate::services::media_catalog::register(
-        &db,
-        crate::services::media_catalog::RegisterMedia {
-            kind: crate::services::media_catalog::MediaKind::Upload,
-            url: stored.url.clone(),
-            mime: media_type.to_string(),
-            name: "sticker".into(),
-            size: bytes.len() as i64,
-        },
-    )
-    .await;
+    let (asset, _) =
+        crate::services::media::MediaService::from_data_paths(crate::services::data_paths::paths())
+            .persist_ready_bytes(
+                &db,
+                crate::services::media::MediaContext::site(
+                    crate::services::media::MediaActor::site_operator(None, true),
+                    crate::services::media::MediaSource::Upload,
+                ),
+                crate::services::media::NewMediaBytes {
+                    bytes,
+                    claimed_mime: media_type.to_string(),
+                    filename: "sticker".into(),
+                    max_bytes: MAX_STICKER_UPLOAD_BYTES,
+                    derived_from_id: None,
+                    exposure: crate::services::media::MediaExposure::Public,
+                },
+            )
+            .await
+            .map_err(|error| {
+                HttpError(AppError::internal(error.to_string()).with_code("STICKER_STORE_FAILED"))
+            })?;
     Ok(Json(GenerateHomeStickerResponse {
-        image_url: stored.url,
+        image_url: asset.catalog_url(),
         width,
         height,
     }))
@@ -411,5 +423,14 @@ mod tests {
         let decoded = image::load_from_memory(&encoded).unwrap();
         assert_eq!(decoded.width(), 2);
         assert_eq!(decoded.height(), 2);
+    }
+
+    #[test]
+    fn generated_and_uploaded_stickers_persist_as_assets() {
+        let src = include_str!("home_stickers.rs");
+        let prod = src.split("mod tests").next().expect("prod");
+        assert!(prod.contains("persist_ready_bytes"));
+        assert!(!prod.contains("media_catalog::register"));
+        assert!(!prod.contains("store_bytes_with_status"));
     }
 }

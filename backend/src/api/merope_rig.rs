@@ -211,12 +211,13 @@ async fn require_merope_enabled() -> ApiResult<()> {
 
 async fn require_owner(claims: &Claims, db: &DatabaseConnection) -> ApiResult<i32> {
     let owner = site_owner_user_id(db).await.map_err(internal_error)?;
-    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(AppError::public_json("Invalid user")),
-        )
-    })?;
+    let user_id =
+        crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(AppError::public_json("Invalid user")),
+            )
+        })?;
     if user_id != owner {
         return Err((
             StatusCode::FORBIDDEN,
@@ -1295,20 +1296,31 @@ pub async fn upload_portrait(
         }
     }
     let reference = image_bytes.ok_or_else(|| bad_request("Portrait upload is missing image"))?;
-    let stored = crate::services::image_cache::ImageCacheService::new()
-        .store_bytes_with_status(&reference.bytes, &reference.media_type)
-        .await
-        .map_err(internal_error)?;
-    crate::services::media_catalog::register_if_created(
-        &db,
-        crate::services::media_catalog::MediaKind::Upload,
-        stored.url.clone(),
-        reference.media_type.clone(),
-        "portrait",
-        reference.bytes.len() as i64,
-        stored.created,
-    )
-    .await;
+    let actor = crate::services::media::MediaActor::admin(user_id)
+        .map_err(|error| internal_error(error.to_string()))?;
+    let (asset, _) =
+        crate::services::media::MediaService::from_data_paths(crate::services::data_paths::paths())
+            .persist_ready_bytes(
+                &db,
+                crate::services::media::MediaContext::site(
+                    actor,
+                    crate::services::media::MediaSource::Upload,
+                ),
+                crate::services::media::NewMediaBytes {
+                    bytes: reference.bytes.clone(),
+                    claimed_mime: reference.media_type.clone(),
+                    filename: "portrait".into(),
+                    max_bytes: 10 * 1024 * 1024,
+                    derived_from_id: None,
+                    exposure: crate::services::media::MediaExposure::Public,
+                },
+            )
+            .await
+            .map_err(|error| internal_error(error.to_string()))?;
+    let stored = crate::services::image_cache::StoredImage {
+        url: asset.catalog_url(),
+        created: true,
+    };
     let persona = merope::get_persona(&db).await.map_err(internal_error)?;
     let name = persona
         .as_ref()
@@ -1381,7 +1393,7 @@ async fn cleanup_uncommitted_portrait(
     if is_current {
         return;
     }
-    if let Err(error) = image_generation::remove_persisted_generated(persisted).await {
+    if let Err(error) = image_generation::remove_persisted_generated(db, persisted).await {
         tracing::warn!(%error, url = %persisted.url, "failed to remove uncommitted portrait asset");
     }
 }
@@ -1585,23 +1597,31 @@ pub async fn generate_portrait(
             return Err(portrait_generation_provider_error(error));
         }
     };
-    let persisted = match image_generation::persist_generated_with_status(&generated).await {
+    let actor = match crate::services::media::MediaActor::admin(user_id) {
+        Ok(actor) => actor,
+        Err(error) => {
+            release_portrait_generation_lease(&db, &generation_token).await;
+            return Err(internal_error(error.to_string()));
+        }
+    };
+    let persisted = match image_generation::persist_generated_with_status(
+        &db,
+        crate::services::media::MediaContext::site(
+            actor,
+            crate::services::media::MediaSource::Generated,
+        )
+        .with_producer_key(generation_token.clone()),
+        &generated,
+        "portrait",
+    )
+    .await
+    {
         Ok(persisted) => persisted,
         Err(error) => {
             release_portrait_generation_lease(&db, &generation_token).await;
             return Err(bad_request(&error.to_string()));
         }
     };
-    crate::services::media_catalog::register_if_created(
-        &db,
-        crate::services::media_catalog::MediaKind::Generated,
-        persisted.url.clone(),
-        persisted.mime.clone(),
-        "portrait",
-        persisted.size,
-        persisted.created,
-    )
-    .await;
     let url = persisted.url.clone();
     let portrait_generation = json!({
         "fingerprint": contract_fingerprint,
@@ -1709,7 +1729,7 @@ async fn cleanup_uncommitted_avatar(
     if is_current {
         return;
     }
-    if let Err(error) = image_generation::remove_persisted_generated(persisted).await {
+    if let Err(error) = image_generation::remove_persisted_generated(db, persisted).await {
         tracing::warn!(%error, url = %persisted.url, "failed to remove uncommitted sticker avatar");
     }
 }
@@ -1827,23 +1847,31 @@ pub async fn generate_sticker_avatar(
             return Err(sticker_avatar_provider_error(error));
         }
     };
-    let persisted = match image_generation::persist_generated_with_status(&generated).await {
+    let actor = match crate::services::media::MediaActor::admin(user_id) {
+        Ok(actor) => actor,
+        Err(error) => {
+            release_avatar_generation_lease(&db, &generation_token).await;
+            return Err(internal_error(error.to_string()));
+        }
+    };
+    let persisted = match image_generation::persist_generated_with_status(
+        &db,
+        crate::services::media::MediaContext::site(
+            actor,
+            crate::services::media::MediaSource::Generated,
+        )
+        .with_producer_key(generation_token.clone()),
+        &generated,
+        "avatar",
+    )
+    .await
+    {
         Ok(persisted) => persisted,
         Err(error) => {
             release_avatar_generation_lease(&db, &generation_token).await;
             return Err(bad_request(&error.to_string()));
         }
     };
-    crate::services::media_catalog::register_if_created(
-        &db,
-        crate::services::media_catalog::MediaKind::Generated,
-        persisted.url.clone(),
-        persisted.mime.clone(),
-        "avatar",
-        persisted.size,
-        persisted.created,
-    )
-    .await;
     let url = persisted.url.clone();
     let avatar_generation = json!({
         "fingerprint": contract_fingerprint,

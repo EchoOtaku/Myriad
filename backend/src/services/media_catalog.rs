@@ -85,6 +85,7 @@ pub fn should_register_store_bytes(created: bool) -> bool {
     created
 }
 
+#[allow(dead_code)]
 pub async fn register_if_created(
     db: &DatabaseConnection,
     kind: MediaKind,

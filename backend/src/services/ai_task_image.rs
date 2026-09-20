@@ -96,18 +96,22 @@ pub fn validate_task_input(
         let source = reference.as_str().ok_or_else(|| {
             invalid_reference("Each reference image must be a data URL or local image-cache path")
         })?;
-        if !source.starts_with("data:")
-            && !(source.starts_with("/api/phantasi/image-cache/")
-                && ImageCacheService::new()
-                    .local_path_for_public_url(source)
-                    .is_some())
-        {
+        if !source.starts_with("data:") && !is_local_media_reference(source) {
             return Err(invalid_reference(
-                "Reference images must use base64 data URLs or local /api/phantasi/image-cache paths",
+                "Reference images must use base64 data URLs or local media paths",
             ));
         }
     }
     Ok(())
+}
+
+fn is_local_media_reference(source: &str) -> bool {
+    source.starts_with("/media/assets/")
+        || source.starts_with("/media/federation/")
+        || (source.starts_with("/api/phantasi/image-cache/")
+            && ImageCacheService::new()
+                .local_path_for_public_url(source)
+                .is_some())
 }
 
 fn decode_reference(source: &str) -> Result<ImageReference, AiTaskLogicError> {
@@ -280,5 +284,24 @@ mod tests {
                 .code,
             "AI_TASK_INPUT_LIMIT"
         );
+    }
+
+    #[test]
+    fn accepts_local_asset_reference_paths() {
+        assert!(
+            validate_task_input(
+                TappAiOperation::Image,
+                &json!({
+                    "referenceImages": [
+                        "/media/assets/11111111-1111-1111-1111-111111111111/shot.png"
+                    ]
+                })
+            )
+            .is_ok()
+        );
+        assert!(is_local_media_reference(
+            "/media/assets/11111111-1111-1111-1111-111111111111/shot.png"
+        ));
+        assert!(!is_local_media_reference("https://example.com/a.png"));
     }
 }

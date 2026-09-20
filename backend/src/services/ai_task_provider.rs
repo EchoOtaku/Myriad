@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use crate::services::ai_config::{AiConfig, AiImageConfig};
 use crate::services::analyzer::AiAnalyzer;
+use crate::services::media::MediaContext;
 
 /// Stable provider error (code + message) shared with the AI Task API surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +90,7 @@ where
 /// Result value shape: `{ format: "image", value: { url, width, height }, contextProvenance: [] }`.
 pub async fn run_image_provider<F>(
     db: &DatabaseConnection,
+    media: MediaContext,
     config: AiImageConfig,
     prompt: &str,
     width: u32,
@@ -114,19 +116,14 @@ where
     )
     .await
     .map_err(image_provider_error)?;
-    let persisted = crate::services::image_generation::persist_generated_with_status(&generated)
-        .await
-        .map_err(image_provider_error)?;
-    crate::services::media_catalog::register_if_created(
+    let persisted = crate::services::image_generation::persist_generated_with_status(
         db,
-        crate::services::media_catalog::MediaKind::Generated,
-        persisted.url.clone(),
-        persisted.mime.clone(),
+        media,
+        &generated,
         "generated",
-        persisted.size,
-        persisted.created,
     )
-    .await;
+    .await
+    .map_err(image_provider_error)?;
     let url = persisted.url;
     Ok(json!({
         "format": "image",
@@ -195,5 +192,14 @@ mod tests {
         let (code, message) = err.into_pair();
         assert_eq!(code, "AI_PROVIDER_ERROR");
         assert_eq!(message, "boom");
+    }
+
+    #[test]
+    fn image_provider_persists_through_media_context() {
+        let src = include_str!("ai_task_provider.rs");
+        let prod = src.split("mod tests").next().expect("prod");
+        assert!(prod.contains("persist_generated_with_status"));
+        assert!(prod.contains("media: MediaContext"));
+        assert!(!prod.contains("register_if_created"));
     }
 }

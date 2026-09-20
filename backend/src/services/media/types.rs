@@ -223,6 +223,18 @@ impl MediaContext {
     }
 }
 
+/// Owner for AI/task results. Never uses a worker identity.
+pub fn task_media_context(subject_id: i32, owner_id: i32) -> MediaContext {
+    if let Ok(actor) = MediaActor::user(subject_id) {
+        if let Ok(ctx) = MediaContext::user(actor, MediaSource::Generated) {
+            return ctx;
+        }
+    }
+    let actor =
+        MediaActor::admin(owner_id).unwrap_or_else(|_| MediaActor::site_operator(None, true));
+    MediaContext::site(actor, MediaSource::Generated)
+}
+
 #[derive(Clone, Debug)]
 pub struct NewMediaBytes {
     pub bytes: Vec<u8>,

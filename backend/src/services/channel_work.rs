@@ -556,7 +556,7 @@ async fn start_new_work(
     session_key: &str,
 ) {
     sink.send_typing().await;
-    let custom_data = match cache_inbound_images(&db, &sink.transport, images).await {
+    let custom_data = match cache_inbound_images(&db, user_id, &sink.transport, images).await {
         Ok(data) => data,
         Err(message) => {
             let _ = sink.send_text(&message).await;

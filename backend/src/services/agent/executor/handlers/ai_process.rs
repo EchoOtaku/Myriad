@@ -1029,19 +1029,19 @@ async fn execute_ai_image(
         crate::services::image_generation::generate_image(&config, &prompt, width, height, None)
             .await
             .map_err(|error| error.to_string())?;
-    let persisted = crate::services::image_generation::persist_generated_with_status(&generated)
-        .await
-        .map_err(|error| error.to_string())?;
-    crate::services::media_catalog::register_if_created(
+    let persisted = crate::services::image_generation::persist_generated_with_status(
         ctx.db,
-        crate::services::media_catalog::MediaKind::Generated,
-        persisted.url.clone(),
-        persisted.mime.clone(),
+        crate::services::media::task_media_context(ctx.user_id, ctx.user_id).with_producer_key(
+            ctx.task_id
+                .as_deref()
+                .map(|id| format!("agent:{id}:image"))
+                .unwrap_or_default(),
+        ),
+        &generated,
         "generated",
-        persisted.size,
-        persisted.created,
     )
-    .await;
+    .await
+    .map_err(|error| error.to_string())?;
 
     Ok(task_image_envelope(
         &persisted.url,

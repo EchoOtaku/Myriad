@@ -278,6 +278,7 @@ struct ChannelImageBytes {
 
 pub(super) async fn cache_inbound_images(
     db: &sea_orm::DatabaseConnection,
+    user_id: i32,
     sink: &ChannelTransport,
     images: &[ChannelImageRef],
 ) -> Result<Option<Value>, String> {
@@ -287,7 +288,7 @@ pub(super) async fn cache_inbound_images(
     let cache = crate::services::image_cache::ImageCacheService::new();
     let mut attachments = Vec::new();
     for image in images.iter().take(CHANNEL_IMAGE_LIMIT) {
-        match resolve_inbound_image(db, sink, image, &cache).await {
+        match resolve_inbound_image(db, user_id, sink, image, &cache).await {
             Ok((url, mime, size, name)) => attachments.push(serde_json::json!({
                 "name": name,
                 "mime": mime,
@@ -305,6 +306,7 @@ pub(super) async fn cache_inbound_images(
 
 async fn resolve_inbound_image(
     db: &sea_orm::DatabaseConnection,
+    user_id: i32,
     sink: &ChannelTransport,
     image: &ChannelImageRef,
     cache: &crate::services::image_cache::ImageCacheService,
@@ -313,27 +315,28 @@ async fn resolve_inbound_image(
         let (bytes, mime) = cache.read_local_public_url(&image.url).await?;
         return Ok((image.url.clone(), mime, bytes.len(), image.name.clone()));
     }
+    if image.url.starts_with("/media/assets/") {
+        return Ok((image.url.clone(), image.mime.clone(), 0, image.name.clone()));
+    }
     if let ChannelTransport::Telegram { token, .. } = sink {
         if let Some(file_id) = image.url.strip_prefix("tg:") {
             let (bytes, mime) =
                 crate::services::telegram_bot::download_file_bytes(token, file_id).await?;
-            let stored = cache.store_bytes_with_status(&bytes, &mime).await?;
             let stored_mime = if image.mime.starts_with("image/") {
                 image.mime.clone()
             } else {
                 mime
             };
-            crate::services::media_catalog::register_if_created(
+            return persist_channel_asset(
                 db,
-                crate::services::media_catalog::MediaKind::Upload,
-                stored.url.clone(),
-                stored_mime.clone(),
-                image.name.clone(),
-                bytes.len() as i64,
-                stored.created,
+                user_id,
+                sink.platform(),
+                file_id,
+                bytes,
+                stored_mime,
+                image,
             )
             .await;
-            return Ok((stored.url, stored_mime, bytes.len(), image.name.clone()));
         }
     }
     if let ChannelTransport::Feishu { .. } = sink {
@@ -344,27 +347,62 @@ async fn resolve_inbound_image(
             let (bytes, mime) =
                 crate::services::feishu_bot_api::download_image_bytes(message_id, image_key)
                     .await?;
-            let stored = cache.store_bytes_with_status(&bytes, &mime).await?;
             let stored_mime = if image.mime.starts_with("image/") {
                 image.mime.clone()
             } else {
                 mime
             };
-            crate::services::media_catalog::register_if_created(
+            return persist_channel_asset(
                 db,
-                crate::services::media_catalog::MediaKind::Upload,
-                stored.url.clone(),
-                stored_mime.clone(),
-                image.name.clone(),
-                bytes.len() as i64,
-                stored.created,
+                user_id,
+                sink.platform(),
+                resource,
+                bytes,
+                stored_mime,
+                image,
             )
             .await;
-            return Ok((stored.url, stored_mime, bytes.len(), image.name.clone()));
         }
     }
     let cached = cache.cache_image(&image.url).await?;
     finish_cached(cache, image, cached).await
+}
+
+async fn persist_channel_asset(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    platform: &str,
+    producer: &str,
+    bytes: Vec<u8>,
+    mime: String,
+    image: &ChannelImageRef,
+) -> Result<(String, String, usize, String), String> {
+    let actor =
+        crate::services::media::MediaActor::user(user_id).map_err(|error| error.to_string())?;
+    let ctx = crate::services::media::MediaContext::user(
+        actor,
+        crate::services::media::MediaSource::Channel,
+    )
+    .map_err(|error| error.to_string())?
+    .with_producer_key(format!("channel:{platform}:{producer}"));
+    let size = bytes.len();
+    let (asset, _) =
+        crate::services::media::MediaService::from_data_paths(crate::services::data_paths::paths())
+            .persist_ready_bytes(
+                db,
+                ctx,
+                crate::services::media::NewMediaBytes {
+                    bytes,
+                    claimed_mime: mime.clone(),
+                    filename: image.name.clone(),
+                    max_bytes: crate::services::memory_profile::note_image_limit(),
+                    derived_from_id: None,
+                    exposure: crate::services::media::MediaExposure::Public,
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+    Ok((asset.catalog_url(), mime, size, image.name.clone()))
 }
 
 async fn finish_cached(
@@ -441,5 +479,18 @@ impl ChannelAddress {
                 chat_id: chat_id.clone(),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn inbound_platform_files_persist_as_user_channel_assets() {
+        let src = include_str!("transport.rs");
+        let prod = src.split("mod tests").next().expect("prod");
+        assert!(prod.contains("MediaSource::Channel"));
+        assert!(prod.contains("persist_channel_asset"));
+        assert!(prod.contains("MediaContext::user"));
+        assert!(!prod.contains("register_if_created"));
     }
 }

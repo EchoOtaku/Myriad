@@ -841,6 +841,8 @@ pub async fn execute_task(execution: AiTaskExecution) {
                 let event_sender = event_sink.clone();
                 run_image_provider(
                     &db,
+                    crate::services::media::task_media_context(subject_id, owner_id)
+                        .with_producer_key(format!("ai-task:{task_id}:image")),
                     config,
                     &prepared.prompt,
                     width,

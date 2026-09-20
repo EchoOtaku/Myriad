@@ -32,7 +32,7 @@ pub use serve::{FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, reso
 pub use store::MediaStore;
 pub use types::{
     DeleteOutcome, MediaActor, MediaAsset, MediaContext, MediaExposure, MediaScope, MediaSource,
-    MediaState, NewMediaBytes, RecoveryReport,
+    MediaState, NewMediaBytes, RecoveryReport, task_media_context,
 };
 pub use urls::{content_path, public_path, registered_local_path, storage_key};
 pub use validate::{ValidatedPayload, allowed_media_mimes, validate_bytes};
@@ -118,6 +118,23 @@ impl MediaService {
             .await?
             .ok_or(MediaError::Missing)?;
         assets::to_domain(saved, 0)
+    }
+
+    /// Persist bytes as a ready asset. `created` is false when `producer_key` hits.
+    pub async fn persist_ready_bytes(
+        &self,
+        db: &DatabaseConnection,
+        ctx: MediaContext,
+        input: NewMediaBytes,
+    ) -> Result<(MediaAsset, bool), MediaError> {
+        if let Some(existing) = assets::find_by_producer(db, &ctx).await? {
+            if MediaState::parse(existing.state.as_deref().unwrap_or("")).ok()
+                == Some(MediaState::Ready)
+            {
+                return Ok((assets::to_domain(existing, 0)?, false));
+            }
+        }
+        Ok((self.create_from_bytes(db, ctx, input).await?, true))
     }
 
     pub async fn renew_write_lease(
@@ -296,6 +313,19 @@ mod tests {
             is_admin: false,
         };
         assert!(MediaContext::user(actor, MediaSource::Upload).is_err());
+    }
+
+    #[test]
+    fn task_media_context_uses_subject_not_worker() {
+        let ctx = task_media_context(7, 1);
+        assert_eq!(ctx.scope, MediaScope::User);
+        assert_eq!(ctx.actor.user_id, Some(7));
+        assert!(!ctx.actor.is_admin);
+        assert_eq!(ctx.source, MediaSource::Generated);
+        let site = task_media_context(0, 3);
+        assert_eq!(site.scope, MediaScope::Site);
+        assert_eq!(site.actor.user_id, Some(3));
+        assert!(site.actor.is_admin);
     }
 
     #[tokio::test]
