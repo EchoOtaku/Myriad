@@ -213,7 +213,7 @@ pub use tapp_ownership::tapp_owner_priority;
 
 /// 从 Claims 解析 user_id
 pub fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
-    claims.sub.parse().map_err(|_| {
+    crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(AppError::public_json("Invalid user ID")),
@@ -225,14 +225,12 @@ pub fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
 pub async fn current_tapp_user_role(db: &DatabaseConnection, claims: &Claims) -> UserRole {
     if claims.is_admin && ensure_current_admin_on(claims, db).await.is_ok() {
         UserRole::Admin
-    } else if let Ok(user_id) = claims.sub.parse::<i32>() {
-        if user_id < 0 {
-            UserRole::Guest
-        } else {
-            UserRole::User
-        }
     } else {
-        UserRole::Guest
+        match claims.sub.parse::<i32>() {
+            Ok(user_id) if user_id < 0 => UserRole::Guest,
+            Ok(user_id) if user_id > 0 => UserRole::User,
+            _ => UserRole::Guest,
+        }
     }
 }
 
@@ -246,6 +244,42 @@ pub use myriad_prompt_security::validate_prompt_security;
 #[cfg(test)]
 mod tests {
     use super::tapp_owner_priority;
+
+    #[test]
+    fn parse_user_id_requires_positive_subject() {
+        let src = include_str!("common.rs");
+        let parse = src
+            .split("pub fn parse_user_id")
+            .nth(1)
+            .expect("parse_user_id");
+        assert!(parse.contains("positive_user_id"));
+        let role = src
+            .split("pub async fn current_tapp_user_role")
+            .nth(1)
+            .and_then(|rest| rest.split("pub use myriad_prompt_security").next())
+            .expect("current_tapp_user_role");
+        assert!(role.contains("user_id > 0"));
+    }
+
+    #[test]
+    fn tapp_handlers_use_shared_parse_user_id() {
+        for path in ["context.rs", "reports.rs", "metrics.rs", "components.rs"] {
+            let src = match path {
+                "context.rs" => include_str!("context.rs"),
+                "reports.rs" => include_str!("reports.rs"),
+                "metrics.rs" => include_str!("metrics.rs"),
+                _ => include_str!("components.rs"),
+            };
+            assert!(
+                src.contains("parse_user_id("),
+                "{path} should use parse_user_id"
+            );
+            assert!(
+                !src.contains("claims.sub.parse"),
+                "{path} should not parse claims.sub locally"
+            );
+        }
+    }
 
     #[test]
     fn private_install_precedes_same_id_admin_tapp() {

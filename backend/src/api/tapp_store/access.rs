@@ -105,7 +105,7 @@ pub(crate) use crate::services::tapp_storage::{
 /// (negative `sub`). Differs from [`optional_authenticated_user_id`], which
 /// drops guests for install-namespace lookups that only apply to durable users.
 fn actor_subject_id(claims: &Claims) -> Option<i32> {
-    claims.sub.parse::<i32>().ok()
+    claims.sub.parse::<i32>().ok().filter(|id| *id != 0)
 }
 
 /// HTTP adapter: resolve [`TappStorageAccess`] from a Runtime Grant + Claims.
@@ -211,4 +211,17 @@ pub(super) async fn filter_install_permissions(
     })?;
     drop(config);
     Ok(granted)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn storage_subject_rejects_zero() {
+        let src = include_str!("access.rs");
+        let actor = src
+            .split("fn actor_subject_id")
+            .nth(1)
+            .expect("actor_subject_id");
+        assert!(actor.contains("id != 0"));
+    }
 }

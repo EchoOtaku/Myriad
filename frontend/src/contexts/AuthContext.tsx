@@ -11,9 +11,8 @@ import {
 } from 'react'
 import { API_URL } from '../config'
 import { isLocale } from '../i18n'
-import { shouldFetchLoginOnly } from '../utils/authGate'
 import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
-import { isKnownGuest, setKnownAuthState } from '../utils/authState'
+import { setKnownAuthState } from '../utils/authState'
 import { authSubject, authSubjectKey } from '../utils/authSubject'
 import { clearCSRFToken } from '../utils/csrf'
 import { HOST_SESSION_RECHECK_EVENT } from '../utils/hostSessionFailure'
@@ -171,17 +170,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted.current) return false
     }
 
-    if (
-      !shouldFetchLoginOnly({
-        isKnownGuest: isKnownGuest(),
-        hasSessionHint: hasSessionHint(),
-      })
-    ) {
-      setIsLoading(false)
-      setHasChecked(true)
-      return false
-    }
-
     const generation = ++checkAuthGeneration.current
     const controller = new AbortController()
     probeController.current = controller
@@ -323,44 +311,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuthRetry()
   }, [clearAuthRetry, beginSubjectChange, finishSubject])
 
-  // Probe on OAuth callback or session hint; skip for a hintless guest.
+  // Cookie is the session. localStorage is only a retry hint, not identity.
   // /api/auth/me is 200 + authenticated:false for guests (never 401).
   // link=* is cleaned by useAuthUrlFeedback after toasts.
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const authSuccess = urlParams.get('auth') === 'success'
-    const linkSuccess = urlParams.get('link') === 'success'
 
-    if (authSuccess || linkSuccess) {
-      void checkAuth()
+    void checkAuth()
 
-      // Strip only auth=success; leave link=* for the feedback toast hook.
-      if (authSuccess) {
-        void import('../utils/analyticsEvents').then(
-          ({ trackProductEvent, AnalyticsEvents }) => {
-            trackProductEvent(AnalyticsEvents.LOGIN_OAUTH_SUCCESS, {
-              flush: true,
-            })
-          },
-        )
-        urlParams.delete('auth')
-        const next = urlParams.toString()
-        const path = window.location.pathname
-        window.history.replaceState({}, '', next ? `${path}?${next}` : path)
-      }
-    } else if (hasSessionHint()) {
-      // Probe is safe (200 guest body) even if the hint is stale.
-      console.debug('[AuthContext] Session hint present, checking auth...')
-      void checkAuth()
-    } else {
-      console.debug('[AuthContext] No session hint — guest, skip auth probe')
-      setUser(null)
-      setIsAuthenticated(false)
-      setIsAdmin(false)
-      setIsLoading(false)
-      setHasChecked(true)
-      // Host already rendered as guest; sandbox must match. A later checkAuth can flip this.
-      setKnownAuthState(false)
+    // Strip only auth=success; leave link=* for the feedback toast hook.
+    if (authSuccess) {
+      void import('../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.LOGIN_OAUTH_SUCCESS, {
+            flush: true,
+          })
+        },
+      )
+      urlParams.delete('auth')
+      const next = urlParams.toString()
+      const path = window.location.pathname
+      window.history.replaceState({}, '', next ? `${path}?${next}` : path)
     }
   }, [])
 

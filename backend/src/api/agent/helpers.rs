@@ -93,7 +93,7 @@ pub(crate) fn convert_data_display_hint(
 
 /// 解析 user_id，返回标准化错误
 pub(crate) fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
-    claims.sub.parse::<i32>().map_err(|_| {
+    crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(AppError::public_json("Invalid user")),
@@ -103,14 +103,12 @@ pub(crate) fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
 
 /// Existing pairings must remain revocable after Agent access is withdrawn.
 pub(crate) fn parse_pairing_user_id(claims: &Claims) -> Result<i32, HttpError> {
-    let id = parse_user_id(claims)?;
-    if id <= 0 {
-        return Err(HttpError::from((
+    crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
+        HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(AppError::public_json("Login required")),
-        )));
-    }
-    Ok(id)
+        ))
+    })
 }
 
 /// 解析 user_id 并校验 Agent 可见性/使用权限
@@ -166,6 +164,21 @@ pub(crate) fn validate_input(input: &str) -> Result<(), HttpError> {
 
 #[cfg(test)]
 mod agent_entry_gate_tests {
+    #[test]
+    fn parse_user_id_requires_positive_subject() {
+        let src = include_str!("helpers.rs");
+        let parse = src
+            .split("pub(crate) fn parse_user_id(")
+            .nth(1)
+            .expect("parse_user_id");
+        assert!(parse.contains("positive_user_id"));
+        let pairing = src
+            .split("pub(crate) fn parse_pairing_user_id(")
+            .nth(1)
+            .expect("parse_pairing_user_id");
+        assert!(pairing.contains("positive_user_id"));
+    }
+
     /// 取 `fn <name>(` 之后的一段源码，够覆盖签名和开头几行。
     fn head_of(source: &str, name: &str) -> String {
         let at = source

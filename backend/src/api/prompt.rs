@@ -1,6 +1,7 @@
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;
-use axum::{Extension, Json};
+use axum::{Extension, Json, http::StatusCode};
+use myriad_error::AppError;
 use serde::{Deserialize, Serialize};
 
 use crate::services::ai::create_ai_analyzer;
@@ -49,7 +50,12 @@ Requirements:
 
     // 尝试使用 AI 生成高质量提示词
     if let Some(analyzer) = create_ai_analyzer().await {
-        let user_id = claims.sub.parse().unwrap_or(0);
+        let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&claims.sub) else {
+            return Err(HttpError::from((
+                StatusCode::FORBIDDEN,
+                Json(AppError::public_json("A durable user account is required")),
+            )));
+        };
         match crate::services::ai_cost_ledger::with_site_ai_ledger(
             user_id,
             "prompt",

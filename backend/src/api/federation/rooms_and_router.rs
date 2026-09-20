@@ -22,9 +22,13 @@ async fn federation_list_transfers(
     extract::Db(db): extract::Db,
     axum::extract::Path(channel_id): axum::extract::Path<String>,
 ) -> Response {
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::file_transfer::list_transfers(
         &channel_id,
-        claims.sub.parse().unwrap_or(0),
+        user_id,
         &db,
     )
     .await
@@ -46,7 +50,10 @@ async fn federation_initiate_room_transfer(
     axum::extract::Path(room_id): axum::extract::Path<String>,
     Json(transfer_req): Json<federation::file_transfer::InitTransferRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::file_transfer::initiate_room_transfer(
         user_id,
         &claims.username,
@@ -67,9 +74,13 @@ async fn federation_list_room_transfers(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::file_transfer::list_room_transfers(
         &room_id,
-        claims.sub.parse().unwrap_or(0),
+        user_id,
         &claims.username,
         &db,
     )
@@ -91,7 +102,10 @@ async fn federation_list_room_files(
     axum::extract::Path(room_id): axum::extract::Path<String>,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::list_room_files(
         user_id,
         &claims.username,
@@ -115,9 +129,13 @@ async fn federation_get_transfer(
     extract::Db(db): extract::Db,
     axum::extract::Path(transfer_id): axum::extract::Path<String>,
 ) -> Response {
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::file_transfer::get_transfer(
         &transfer_id,
-        claims.sub.parse().unwrap_or(0),
+        user_id,
         &claims.username,
         &db,
     )
@@ -139,9 +157,13 @@ async fn federation_download_transfer(
     use tokio::io::AsyncReadExt;
     use tokio_stream::wrappers::ReceiverStream;
 
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     let file = match federation::file_transfer::open_transfer_file(
         &transfer_id,
-        claims.sub.parse().unwrap_or(0),
+        user_id,
         &claims.username,
         &db,
     )
@@ -245,7 +267,10 @@ async fn federation_upload_chunk(
         }
     };
 
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::file_transfer::upload_chunk(
         user_id,
         &claims.username,
@@ -266,7 +291,10 @@ async fn federation_cancel_transfer(
     extract::Db(db): extract::Db,
     axum::extract::Path(transfer_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::file_transfer::cancel_transfer(user_id, &claims.username, &transfer_id, &db)
         .await
     {
@@ -687,5 +715,13 @@ mod query_parse_tests {
             .limit_or(100),
             100
         );
+    }
+
+    #[test]
+    fn file_transfer_handlers_do_not_parse_subject_to_zero() {
+        let src = include_str!("rooms_and_router.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("require_user_id"));
+        assert!(!production.contains("claims.sub.parse().unwrap_or(0)"));
     }
 }

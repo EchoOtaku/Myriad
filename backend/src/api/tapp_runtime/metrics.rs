@@ -72,12 +72,7 @@ pub async fn get_rate_limit_status(
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<Value>, HttpError> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(AppError::public_json("Invalid user")),
-        )
-    })?;
+    let user_id = super::common::parse_user_id(&claims)?;
 
     let operations = ["ai.task", "platform.write", "storage.set"];
     let mut limits = Vec::new();

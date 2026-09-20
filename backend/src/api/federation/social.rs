@@ -36,6 +36,22 @@ impl LimitQuery {
     }
 }
 
+pub(crate) fn require_user_id(
+    claims: &crate::middleware::auth::Claims,
+) -> Result<i32, Response> {
+    crate::services::tapp_ownership::positive_user_id(&claims.sub)
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({
+                    "error": "A durable user account is required",
+                    "code": "invalid_subject",
+                })),
+            )
+                .into_response()
+        })
+}
+
 fn federation_user_error(context: &'static str, error: impl std::fmt::Display) -> String {
     let detail = error.to_string();
     tracing::error!(error = %detail, context, "federation request failed");
@@ -185,7 +201,10 @@ pub(crate) async fn federation_keys_rotate(
     extract::Db(db): extract::Db,
     body_bytes: axum::body::Bytes,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap_or(json!({}));
     if !federation::actor::rotation_confirm_accepted(&body) {
         return (
@@ -212,7 +231,10 @@ pub(crate) async fn federation_follow(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::follow::FollowRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::follow::follow_remote(user_id, &claims.username, &db, &payload.target).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -227,7 +249,10 @@ pub(crate) async fn federation_unfollow(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::follow::FollowRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::follow::unfollow_remote(user_id, &claims.username, &db, &payload.target).await
     {
         Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
@@ -241,7 +266,10 @@ pub(crate) async fn federation_following_list(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match get_follow_list(&db, user_id, "outgoing").await {
         Ok(list) => (StatusCode::OK, Json(list)).into_response(),
         Err(e) => federation_store_response("list following", e),
@@ -254,7 +282,10 @@ pub(crate) async fn federation_followers_list(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match get_follow_list(&db, user_id, "incoming").await {
         Ok(list) => (StatusCode::OK, Json(list)).into_response(),
         Err(e) => federation_store_response("list followers", e),
@@ -267,7 +298,10 @@ pub(crate) async fn federation_timeline(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match get_federation_timeline(&db, user_id).await {
         Ok(timeline) => (StatusCode::OK, Json(timeline)).into_response(),
         Err(e) => federation_store_response("load timeline", e),
@@ -284,7 +318,10 @@ pub(crate) async fn federation_publish(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::content::PublishRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::content::publish_content(user_id, &claims.username, &db, &payload).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -297,7 +334,10 @@ pub(crate) async fn federation_like(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::interactions::ObjectIdRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::interactions::like_object(user_id, &claims.username, &db, &payload.object_id)
         .await
     {
@@ -312,7 +352,10 @@ pub(crate) async fn federation_unlike(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::interactions::ObjectIdRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::interactions::unlike_object(
         user_id,
         &claims.username,
@@ -332,7 +375,10 @@ pub(crate) async fn federation_bookmark(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::interactions::ObjectIdRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::interactions::bookmark_object(user_id, &db, &payload.object_id).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -345,7 +391,10 @@ pub(crate) async fn federation_unbookmark(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::interactions::ObjectIdRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::interactions::unbookmark_object(user_id, &db, &payload.object_id).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -357,7 +406,10 @@ pub(crate) async fn federation_bookmarks_list(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::interactions::list_bookmarks(user_id, &db).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -370,7 +422,10 @@ pub(crate) async fn federation_announce(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::interactions::AnnounceRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     let content = payload.content.as_deref().unwrap_or("");
     match federation::interactions::announce_object(
         user_id,
@@ -392,7 +447,10 @@ pub(crate) async fn federation_unannounce(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::interactions::ObjectIdRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::interactions::unannounce_object(
         user_id,
         &claims.username,
@@ -413,7 +471,10 @@ pub(crate) async fn federation_get_object(
     extract::Db(db): extract::Db,
     axum::extract::Query(q): axum::extract::Query<federation::interactions::GetObjectQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::interactions::get_object(user_id, &db, &q.id).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -427,7 +488,10 @@ pub(crate) async fn federation_create_note(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::content::CreateNoteRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::content::create_note(user_id, &claims.username, &db, &payload).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -441,7 +505,10 @@ pub(crate) async fn federation_media_upload(
     extract::Db(db): extract::Db,
     mut multipart: axum::extract::Multipart,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut filename = "upload.bin".to_string();
@@ -518,7 +585,10 @@ pub(crate) async fn federation_unpublish(
         )
             .into_response();
     }
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::content::unpublish_content(
         user_id,
         &claims.username,
@@ -552,7 +622,10 @@ pub(crate) async fn federation_published_list(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::content::list_published(user_id, &db).await {
         Ok(items) => (
             StatusCode::OK,
@@ -571,7 +644,10 @@ pub(crate) async fn federation_create_channel(
     extract::Db(db): extract::Db,
     Json(payload): Json<federation::channel::CreateChannelRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::create_channel(user_id, &claims.username, &db, &payload).await {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -584,7 +660,10 @@ pub(crate) async fn federation_list_channels(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::list_channels(user_id, &claims.username, &db).await {
         Ok(channels) => (
             StatusCode::OK,
@@ -602,7 +681,10 @@ pub(crate) async fn federation_get_channel(
     extract::Db(db): extract::Db,
     axum::extract::Path(channel_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::get_channel(user_id, &channel_id, &db).await {
         Ok(detail) => (StatusCode::OK, Json(serde_json::to_value(detail).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -616,7 +698,10 @@ pub(crate) async fn federation_close_channel(
     extract::Db(db): extract::Db,
     axum::extract::Path(channel_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::close_channel(user_id, &claims.username, &channel_id, &db).await {
         Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -630,7 +715,10 @@ pub(crate) async fn federation_delete_channel(
     extract::Db(db): extract::Db,
     axum::extract::Path(channel_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::delete_channel(user_id, &channel_id, &db).await {
         Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -644,7 +732,10 @@ pub(crate) async fn federation_accept_channel(
     extract::Db(db): extract::Db,
     axum::extract::Path(channel_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::accept_channel(user_id, &claims.username, &channel_id, &db).await {
         Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -658,7 +749,10 @@ pub(crate) async fn federation_e2e_key_exchange(
     extract::Db(db): extract::Db,
     axum::extract::Path(channel_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::initiate_e2e_key_exchange(
         user_id,
         &claims.username,
@@ -694,7 +788,10 @@ pub(crate) async fn federation_send_message(
         }
     };
 
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::send_message(user_id, &claims.username, &channel_id, &db, &parsed)
         .await
     {
@@ -710,7 +807,10 @@ pub(crate) async fn federation_get_messages(
     axum::extract::Path(channel_id): axum::extract::Path<String>,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::channel::get_messages(user_id, &channel_id, &db, q.before(), q.limit()).await
     {
         Ok(messages) => (
@@ -731,7 +831,10 @@ pub(crate) async fn federation_create_room(
     extract::Db(db): extract::Db,
     Json(parsed): Json<federation::room::CreateRoomRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::create_room(user_id, &claims.username, &db, &parsed).await {
         Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -743,7 +846,10 @@ pub(crate) async fn federation_list_rooms(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::list_rooms(user_id, &claims.username, &db).await {
         Ok(rooms) => (
             StatusCode::OK,
@@ -761,7 +867,10 @@ pub(crate) async fn federation_get_room(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::get_room(user_id, &claims.username, &room_id, &db).await {
         Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -776,7 +885,10 @@ pub(crate) async fn federation_update_room(
     axum::extract::Path(room_id): axum::extract::Path<String>,
     Json(parsed): Json<federation::room::UpdateRoomRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::update_room(user_id, &claims.username, &room_id, &db, &parsed).await {
         Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -790,7 +902,10 @@ pub(crate) async fn federation_delete_room(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::delete_room(user_id, &claims.username, &room_id, &db).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -803,7 +918,10 @@ pub(crate) async fn federation_get_room_members(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::get_members(user_id, &claims.username, &room_id, &db).await {
         Ok(members) => (
             StatusCode::OK,
@@ -822,7 +940,10 @@ pub(crate) async fn federation_invite_room_member(
     axum::extract::Path(room_id): axum::extract::Path<String>,
     Json(parsed): Json<federation::room::InviteMemberRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::invite_member(user_id, &claims.username, &room_id, &db, &parsed).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -836,7 +957,10 @@ pub(crate) async fn federation_remove_room_member(
     extract::Db(db): extract::Db,
     axum::extract::Path((room_id, target_actor)): axum::extract::Path<(String, String)>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::remove_member(user_id, &claims.username, &room_id, &target_actor, &db)
         .await
     {
@@ -851,7 +975,10 @@ pub(crate) async fn federation_leave_room(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::leave_room(user_id, &claims.username, &room_id, &db).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -865,7 +992,10 @@ pub(crate) async fn federation_accept_room_invite(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::accept_room_invite(user_id, &claims.username, &room_id, &db).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -879,7 +1009,10 @@ pub(crate) async fn federation_reject_room_invite(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::reject_room_invite(user_id, &claims.username, &room_id, &db).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -901,7 +1034,10 @@ pub(crate) async fn federation_transfer_room_ownership(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::transfer_room_ownership(
         user_id,
         &claims.username,
@@ -923,7 +1059,10 @@ pub(crate) async fn federation_room_e2e_key_exchange(
     extract::Db(db): extract::Db,
     axum::extract::Path(room_id): axum::extract::Path<String>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::initiate_e2e_key_exchange(user_id, &claims.username, &room_id, &db)
         .await
     {
@@ -939,7 +1078,10 @@ pub(crate) async fn federation_set_room_member_role(
     axum::extract::Path((room_id, actor)): axum::extract::Path<(String, String)>,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     let role = body
         .get("role")
         .and_then(|v| v.as_str())
@@ -963,7 +1105,10 @@ pub(crate) async fn federation_add_room_sticker(
     axum::extract::Path(room_id): axum::extract::Path<String>,
     Json(req): Json<federation::room::AddRoomStickerRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::add_room_sticker(user_id, &claims.username, &room_id, req, &db).await {
         Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -976,7 +1121,10 @@ pub(crate) async fn federation_remove_room_sticker(
     extract::Db(db): extract::Db,
     axum::extract::Path((room_id, sticker_id)): axum::extract::Path<(String, String)>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::remove_room_sticker(
         user_id,
         &claims.username,
@@ -1021,7 +1169,10 @@ pub(crate) async fn federation_send_room_message(
         }
     };
 
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::send_room_message(user_id, &claims.username, &room_id, &db, &parsed)
         .await
     {
@@ -1037,7 +1188,10 @@ pub(crate) async fn federation_get_room_messages(
     axum::extract::Path(room_id): axum::extract::Path<String>,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::get_room_messages(
         user_id,
         &claims.username,
@@ -1066,7 +1220,10 @@ pub(crate) async fn federation_pin_room_message(
     axum::extract::Path((room_id, message_id)): axum::extract::Path<(String, String)>,
     Json(parsed): Json<federation::room::PinRoomMessageRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::pin_room_message(
         user_id,
         &claims.username,
@@ -1091,7 +1248,10 @@ pub(crate) async fn federation_create_ring(
     extract::Db(db): extract::Db,
     Json(create_req): Json<federation::ring::CreateRingRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::ring::create_ring(user_id, &db, &create_req).await {
         Ok(ring) => (StatusCode::CREATED, Json(json!(ring))).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
@@ -1194,7 +1354,10 @@ pub(crate) async fn federation_delivery_stats(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::delivery::delivery_stats_for_user(&db, user_id).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err(e) => federation_store_response("load delivery stats", e),
@@ -1208,7 +1371,10 @@ pub(crate) async fn federation_retry_delivery(
     extract::Db(db): extract::Db,
     axum::extract::Path(queue_id): axum::extract::Path<i32>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::delivery::retry_delivery_item(&db, user_id, queue_id).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, v)) => status_json_to_http((status, Json(v))).into_response(),
@@ -1222,7 +1388,10 @@ pub(crate) async fn federation_cancel_delivery(
     extract::Db(db): extract::Db,
     axum::extract::Path(queue_id): axum::extract::Path<i32>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::delivery::cancel_delivery_item(&db, user_id, queue_id).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, v)) => status_json_to_http((status, Json(v))).into_response(),
@@ -1235,7 +1404,10 @@ pub(crate) async fn federation_retry_all_dead_delivery(
     extract::Db(db): extract::Db,
     axum::extract::Query(q): axum::extract::Query<LimitQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::delivery::retry_all_dead_for_user(&db, user_id, q.or(50)).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, v)) => status_json_to_http((status, Json(v))).into_response(),
@@ -1248,7 +1420,10 @@ pub(crate) async fn federation_cancel_all_pending_delivery(
     extract::Db(db): extract::Db,
     axum::extract::Query(q): axum::extract::Query<LimitQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::delivery::cancel_all_pending_for_user(&db, user_id, q.or(100)).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, v)) => status_json_to_http((status, Json(v))).into_response(),
@@ -1262,7 +1437,10 @@ pub(crate) async fn federation_dismiss_delivery(
     extract::Db(db): extract::Db,
     axum::extract::Path(queue_id): axum::extract::Path<i32>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     {
         match federation::delivery::dismiss_delivery_item(&db, user_id, queue_id).await {
             Ok(v) => (StatusCode::OK, Json(v)).into_response(),
@@ -1277,7 +1455,10 @@ pub(crate) async fn federation_purge_dead_delivery(
     extract::Db(db): extract::Db,
     axum::extract::Query(q): axum::extract::Query<PurgeDeadQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::delivery::purge_dead_for_user(
         &db,
         user_id,
@@ -1307,7 +1488,10 @@ pub(crate) async fn federation_join_room(
     body: Option<Json<federation::room::JoinRoomRequest>>,
 ) -> Response {
     let join_req = body.map(|Json(v)| v).unwrap_or_default();
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::room::join_room(user_id, &claims.username, &room_id, &db, Some(&join_req))
         .await
     {
@@ -1334,7 +1518,10 @@ pub(crate) async fn federation_list_delivery(
     extract::Db(db): extract::Db,
     axum::extract::Query(q): axum::extract::Query<LimitQuery>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::delivery::list_delivery_for_user_filtered(
         &db,
         user_id,
@@ -1546,7 +1733,10 @@ pub(crate) async fn federation_initiate_transfer(
     axum::extract::Path(channel_id): axum::extract::Path<String>,
     Json(transfer_req): Json<federation::file_transfer::InitTransferRequest>,
 ) -> Response {
-    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
     match federation::file_transfer::initiate_transfer(
         user_id,
         &claims.username,
@@ -1824,5 +2014,17 @@ mod tests {
         );
         assert!(confirm.contains("confirm"));
         assert_ne!(confirm, rotate);
+    }
+
+    #[test]
+    fn federation_handlers_reject_non_positive_subject() {
+        let src = include_str!("social.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("fn require_user_id"));
+        assert!(!production.contains("claims.sub.parse().unwrap_or(0)"));
+        let guest = crate::middleware::auth::mint_session_claims(0, "guest", false, false, 0);
+        assert!(super::require_user_id(&guest).is_err());
+        let user = crate::middleware::auth::mint_session_claims(7, "alice", false, false, 0);
+        assert_eq!(super::require_user_id(&user).unwrap(), 7);
     }
 }

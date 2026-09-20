@@ -21,6 +21,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
 
+fn require_speech_user_id(claims: &Claims) -> Option<i32> {
+    crate::services::tapp_ownership::positive_user_id(&claims.sub)
+}
+
 use crate::services::tencent_speech_service::{
     AsrRequest, TencentSpeechError, TencentSpeechService, TtsRequest,
 };
@@ -420,7 +424,18 @@ pub async fn text_to_speech(
     Extension(claims): Extension<Claims>,
     Json(request): Json<TtsApiRequest>,
 ) -> impl IntoResponse {
-    let user_id = claims.sub.parse().unwrap_or(0);
+    let Some(user_id) = require_speech_user_id(&claims) else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(TtsApiResponse {
+                success: false,
+                audio: None,
+                session_id: None,
+                cached: None,
+                error: Some("A durable user account is required".into()),
+            }),
+        );
+    };
     match crate::services::ai_cost_ledger::with_site_ai_ledger(
         user_id,
         "speech",
@@ -461,7 +476,20 @@ pub async fn batch_text_to_speech(
     Extension(claims): Extension<Claims>,
     Json(request): Json<BatchTtsApiRequest>,
 ) -> impl IntoResponse {
-    let user_id = claims.sub.parse().unwrap_or(0);
+    let Some(user_id) = require_speech_user_id(&claims) else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(BatchTtsApiResponse {
+                success: false,
+                audios: None,
+                cache_hits: 0,
+                generated: 0,
+                errors: None,
+                error: Some("A durable user account is required".into()),
+            }),
+        )
+            .into_response();
+    };
     crate::services::ai_cost_ledger::with_site_ai_ledger(
         user_id,
         "speech",
@@ -469,6 +497,7 @@ pub async fn batch_text_to_speech(
         batch_text_to_speech_inner(request),
     )
     .await
+    .into_response()
 }
 
 async fn batch_text_to_speech_inner(request: BatchTtsApiRequest) -> impl IntoResponse {
@@ -704,7 +733,18 @@ pub async fn speech_to_text(
     Extension(claims): Extension<Claims>,
     Json(request): Json<AsrApiRequest>,
 ) -> (StatusCode, Json<AsrApiResponse>) {
-    let user_id = claims.sub.parse().unwrap_or(0);
+    let Some(user_id) = require_speech_user_id(&claims) else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AsrApiResponse {
+                success: false,
+                text: None,
+                duration: None,
+                words: None,
+                error: Some("A durable user account is required".into()),
+            }),
+        );
+    };
     crate::services::ai_cost_ledger::with_site_ai_ledger(
         user_id,
         "speech",
@@ -961,11 +1001,16 @@ pub async fn start_convo_session(
 ) -> impl IntoResponse {
     let language = request.language.unwrap_or_else(|| "en-US".to_string());
     let language = crate::services::agora_convo::conversation_language(&language);
-    let user_id = claims.sub.parse().unwrap_or(0);
-    if user_id <= 0
-        || crate::services::agent::ensure_agent_usage_allowed(&db, user_id)
-            .await
-            .is_err()
+    let Some(user_id) = require_speech_user_id(&claims) else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AppError::fail_json("Agent is unavailable")),
+        )
+            .into_response();
+    };
+    if crate::services::agent::ensure_agent_usage_allowed(&db, user_id)
+        .await
+        .is_err()
     {
         return (
             StatusCode::FORBIDDEN,
@@ -1045,7 +1090,13 @@ pub async fn stop_convo_session(
     Extension(claims): Extension<Claims>,
     Json(request): Json<ConvoAgentRequest>,
 ) -> impl IntoResponse {
-    let user_id = claims.sub.parse().unwrap_or(0);
+    let Some(user_id) = require_speech_user_id(&claims) else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AppError::fail_json("A durable user account is required")),
+        )
+            .into_response();
+    };
     match crate::services::agora_convo::stop_session(user_id, &request.agent_id).await {
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
         Err(error) => convo_error(error).into_response(),
@@ -1056,7 +1107,13 @@ pub async fn interrupt_convo_session(
     Extension(claims): Extension<Claims>,
     Json(request): Json<ConvoAgentRequest>,
 ) -> impl IntoResponse {
-    let user_id = claims.sub.parse().unwrap_or(0);
+    let Some(user_id) = require_speech_user_id(&claims) else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AppError::fail_json("A durable user account is required")),
+        )
+            .into_response();
+    };
     match crate::services::agora_convo::interrupt_session(user_id, &request.agent_id).await {
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
         Err(error) => convo_error(error).into_response(),
@@ -1120,6 +1177,14 @@ mod realtime_error_tests {
     use axum::body::to_bytes;
 
     #[test]
+    fn speech_handlers_do_not_parse_subject_to_zero() {
+        let src = include_str!("speech.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("require_speech_user_id"));
+        assert!(!production.contains("claims.sub.parse().unwrap_or(0)"));
+    }
+
+    #[test]
     fn realtime_session_response_includes_both_transport_identities() {
         let response = json_ok_session(crate::services::agora_convo::ConvoSession {
             app_id: "app".into(),
@@ -1157,7 +1222,13 @@ mod realtime_error_tests {
 
 /// POST /api/speech/test
 pub async fn test_speech_service(Extension(claims): Extension<Claims>) -> impl IntoResponse {
-    let user_id = claims.sub.parse().unwrap_or(0);
+    let Some(user_id) = require_speech_user_id(&claims) else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AppError::fail_json("A durable user account is required")),
+        )
+            .into_response();
+    };
     Json(
         crate::services::ai_cost_ledger::with_site_ai_ledger(
             user_id,
@@ -1167,6 +1238,7 @@ pub async fn test_speech_service(Extension(claims): Extension<Claims>) -> impl I
         )
         .await,
     )
+    .into_response()
 }
 
 /// 获取可用音色列表

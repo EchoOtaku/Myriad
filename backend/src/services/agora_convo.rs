@@ -344,10 +344,9 @@ pub async fn start_session(
     language: &str,
     llm: &LlmEndpoint,
 ) -> Result<ConvoSession, AgoraConvoError> {
-    let user_id = chat.claims.sub.parse().unwrap_or(0);
-    if user_id <= 0 {
+    let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&chat.claims.sub) else {
         return Err(AgoraConvoError::SessionUnavailable);
-    }
+    };
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let agora = Arc::new(resolve_agora_endpoint(&config)?);
     let tts = resolve_minimax_tts(&config)?;

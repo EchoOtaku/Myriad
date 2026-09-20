@@ -32,6 +32,20 @@ fn auth_store_app(context: &'static str, error: impl std::fmt::Display) -> HttpE
     HttpError(AppError::internal(format!("Failed to {context}")))
 }
 
+fn require_positive_user_id(id: i32) -> Result<i32, HttpError> {
+    if id > 0 {
+        return Ok(id);
+    }
+    tracing::error!(id, "user row is missing a positive id");
+    Err(HttpError::from((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "error": "Failed to read user data",
+            "code": "database_error"
+        })),
+    )))
+}
+
 /// Modest global cap on concurrent Argon2 hash/verify work.
 ///
 /// Argon2 is intentionally CPU- and memory-heavy. Unbounded `spawn_blocking`
@@ -286,8 +300,8 @@ pub async fn create_admin(
     };
 
     let user_id: i32 = match user_result.and_then(|row| row.try_get("", "id").ok()) {
-        Some(id) => id,
-        None => {
+        Some(id) if id > 0 => id,
+        _ => {
             tracing::error!("Failed to get user ID after create-admin insert");
             let _ = txn.rollback().await;
             return Err(HttpError(AppError::internal(
@@ -383,12 +397,12 @@ pub async fn local_login(
     };
 
     // Extract user data
-    let user_id: i32 = user_row.try_get("", "id").map_err(|_| {
+    let user_id: i32 = require_positive_user_id(user_row.try_get("", "id").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read user data", "code": "database_error"})),
         ))
-    })?;
+    })?)?;
 
     let username: String = user_row.try_get("", "username").map_err(|_| {
         HttpError::from((
@@ -495,7 +509,7 @@ pub async fn change_password(
             )
         })?;
 
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(AppError::public_json("Invalid user ID")),
@@ -913,12 +927,12 @@ pub async fn register(
             ))
         })?;
 
-    let user_id: i32 = insert.try_get("", "id").map_err(|_| {
+    let user_id: i32 = require_positive_user_id(insert.try_get("", "id").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read new user id", "code": "account_create_failed"})),
         ))
-    })?;
+    })?)?;
 
     tracing::info!("✅ Public registration: {} (id={})", req.username, user_id);
 
@@ -949,7 +963,7 @@ pub async fn set_password(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(AppError::public_json("Invalid user id")),
@@ -1068,7 +1082,7 @@ pub async fn toggle_local_login(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(AppError::public_json("Invalid user id")),
@@ -1225,7 +1239,14 @@ pub async fn admin_create_user(
         })?;
     ensure_current_admin_on(&claims, &db).await?;
 
-    let actor_id: i32 = claims.sub.parse().unwrap_or(0);
+    let actor_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(
+        || {
+            HttpError::from((
+                StatusCode::FORBIDDEN,
+                Json(AppError::public_json("A durable user account is required")),
+            ))
+        },
+    )?;
     // 仅站点 owner 可创建带 is_admin=true 的账号。
     let actor_is_owner = crate::api::admin_users::actor_is_owner(&db, actor_id).await?;
     if let Some(msg) =
@@ -1297,12 +1318,12 @@ pub async fn admin_create_user(
             ))
         })?;
 
-    let user_id: i32 = insert.try_get("", "id").map_err(|_| {
+    let user_id: i32 = require_positive_user_id(insert.try_get("", "id").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read new id", "code": "account_create_failed"})),
         ))
-    })?;
+    })?)?;
 
     tracing::info!(
         "✅ Admin {} created account: {} (id={}, is_admin={})",
@@ -1340,6 +1361,24 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration as StdDuration;
     use tokio::sync::Semaphore;
+
+    #[test]
+    fn password_paths_require_positive_subject() {
+        let src = include_str!("auth_local.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("positive_user_id"));
+        assert!(!production.contains("claims.sub.parse::<i32>().map_err"));
+        assert!(!production.contains("claims.sub.parse().map_err"));
+    }
+
+    #[test]
+    fn created_user_ids_must_be_positive() {
+        let src = include_str!("auth_local.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("fn require_positive_user_id"));
+        assert!(production.contains("Some(id) if id > 0"));
+        assert_eq!(production.matches("require_positive_user_id(").count(), 4);
+    }
 
     #[tokio::test]
     async fn password_validation_reports_stable_codes() {

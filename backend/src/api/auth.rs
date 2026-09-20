@@ -110,11 +110,10 @@ pub async fn get_current_user(
         }
     };
 
-    let user_id: i32 = match token_data.claims.sub.parse() {
-        Ok(id) => id,
-        Err(_) => {
-            return Ok(unauthenticated_me_response(clear_invalid_cookie).await);
-        }
+    let Some(user_id) =
+        crate::services::tapp_ownership::positive_user_id(&token_data.claims.sub)
+    else {
+        return Ok(unauthenticated_me_response(clear_invalid_cookie).await);
     };
 
     use sea_orm::Value as SeaValue;
@@ -199,8 +198,26 @@ pub async fn get_current_user(
         })
         .collect();
 
-    let id: i32 = user_row.try_get("", "id").unwrap_or(0);
-    let username: String = user_row.try_get("", "username").unwrap_or_default();
+    let id: i32 = match user_row.try_get::<i32>("", "id") {
+        Ok(id) if id > 0 => id,
+        Ok(_) | Err(_) => {
+            tracing::error!("current user row is missing a positive id");
+            return Err(HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AppError::public_json("Failed to load current user")),
+            )));
+        }
+    };
+    let username: String = match user_row.try_get::<String>("", "username") {
+        Ok(username) if !username.is_empty() => username,
+        Ok(_) | Err(_) => {
+            tracing::error!("current user row is missing a username");
+            return Err(HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AppError::public_json("Failed to load current user")),
+            )));
+        }
+    };
     let auth_provider: String = user_row
         .try_get("", "auth_provider")
         .unwrap_or_else(|_| "local".to_string());
@@ -380,6 +397,28 @@ pub async fn logout(
 mod auth_me_probe_tests {
     use super::*;
     use axum::http::HeaderValue;
+
+    #[test]
+    fn current_user_probe_rejects_non_positive_subject() {
+        let src = include_str!("auth.rs");
+        let probe = src
+            .split("let Some(user_id)")
+            .nth(1)
+            .expect("positive_user_id probe");
+        assert!(probe.contains("positive_user_id"));
+    }
+
+    #[test]
+    fn current_user_probe_does_not_decode_id_to_zero() {
+        let src = include_str!("auth.rs");
+        let body = src
+            .split("let id: i32 = match user_row.try_get")
+            .nth(1)
+            .and_then(|rest| rest.split("let username:").next())
+            .expect("current user id decode");
+        assert!(body.contains("id > 0"));
+        assert!(!body.contains("unwrap_or(0)"));
+    }
 
     #[test]
     fn unauthenticated_me_body_contract() {

@@ -70,7 +70,7 @@ pub(crate) async fn get_user_and_admin_status(
 ) -> (Option<i32>, bool) {
     match authenticate_request(headers, db).await {
         Ok(claims) => {
-            let user_id = claims.sub.parse::<i32>().ok();
+            let user_id = claims.sub.parse::<i32>().ok().filter(|id| *id != 0);
             let is_admin = ensure_current_admin_on(&claims, db).await.is_ok();
             (user_id, is_admin)
         }

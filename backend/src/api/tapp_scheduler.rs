@@ -241,7 +241,7 @@ fn task_scope_name(value: &TaskScope) -> &'static str {
 }
 
 fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
-    claims.sub.parse().map_err(|_| {
+    crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(AppError::public_json("Invalid user ID")),
@@ -605,7 +605,10 @@ pub async fn scheduler_websocket(
     {
         return err.into_response();
     }
-    let user_id: i32 = claims.sub.parse().unwrap_or(-1);
+    let user_id = match parse_user_id(&claims) {
+        Ok(id) => id,
+        Err(error) => return error.into_response(),
+    };
     ws.on_upgrade(move |socket| handle_scheduler_socket(socket, user_id, db))
         .into_response()
 }
@@ -757,6 +760,15 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32, db: DatabaseCo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scheduler_ws_does_not_register_subject_minus_one() {
+        let src = include_str!("tapp_scheduler.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("positive_user_id"));
+        assert!(!production.contains("unwrap_or(-1)"));
+        assert!(production.contains("parse_user_id(&claims)"));
+    }
 
     #[test]
     fn normalizes_sdk_backend_action_tag() {

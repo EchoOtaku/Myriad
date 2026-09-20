@@ -102,6 +102,9 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
     assert.deepEqual(resets.slice(beforeGuest), ['scheduler', 'grants', 'runtime'])
     assert.equal(localStorage.getItem('myriad_session_hint'), null)
     assert.equal(timers.size, 0)
+    const afterGuest = requests
+    await act(async () => { await auth.checkAuth() })
+    assert.ok(requests > afterGuest, 'cookie is the session; confirmed guest still probes /api/auth/me')
     localStorage.setItem('myriad_session_hint', 'true')
     networkError = true
     await act(async () => { await auth.checkAuth() })
@@ -146,6 +149,58 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
     await Promise.all([pending, queued])
     assert.equal(timers.size, 0, 'an in-flight response after unmount cannot schedule more work')
     assert.equal(requests, before)
+  } finally {
+    await act(async () => root.unmount())
+    dom.window.close()
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+      else Reflect.deleteProperty(globalThis, key)
+    }
+  }
+})
+
+test('a cookie session is probed even without a localStorage hint', async () => {
+  const { JSDOM } = require(require.resolve('jsdom', {
+    paths: [require.resolve('isomorphic-dompurify')],
+  }))
+  const { build } = createRequire(import.meta.resolve('tsx/package.json'))('esbuild')
+  const dom = new JSDOM('<div id="root"></div>', { url: 'https://myriad.test' })
+  const globals = {
+    window: dom.window, document: dom.window.document,
+    localStorage: dom.window.localStorage, sessionStorage: dom.window.sessionStorage, CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true,
+  }
+  const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, value })
+  }
+  let requests = 0
+  const fetchMe = async () => {
+    requests++
+    return new Response(JSON.stringify({ authenticated: true, id: 1, username: 'owner', is_admin: true }))
+  }
+  const bundle = await build({
+    entryPoints: [new URL('./AuthContext.tsx', import.meta.url).pathname],
+    bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external',
+    define: { 'import.meta.env': '{}' },
+    plugins: [{ name: 'runtime-boundary', setup(builder) {
+      builder.onResolve({ filter: /tapp\/runtime\/Tapp(Scheduler|RuntimeGrant|Runtime)$/ }, ({ path }) => ({ path, namespace: 'test' }))
+      builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export const TappScheduler = {reset(){}}; export const TappRuntimeGrant = {destroyAll(){}}; export const TappRuntime = {reset(){}}', loader: 'js' }))
+    } }],
+  })
+  type Auth = ReturnType<typeof import('./AuthContext').useAuth>
+  const module = { exports: {} as typeof import('./AuthContext') }
+  compileFunction(bundle.outputFiles[0].text, ['require', 'module', 'exports', 'fetch', 'setTimeout', 'clearTimeout', 'runtimeReset'])(
+    require, module, module.exports, fetchMe, () => 0, () => {}, () => {},
+  )
+  let auth!: Auth
+  function Consumer() { auth = module.exports.useAuth(); return createElement('span') }
+  const root = createRoot(dom.window.document.getElementById('root'))
+  try {
+    localStorage.clear()
+    await act(async () => root.render(createElement(module.exports.AuthProvider, null, createElement(Consumer))))
+    assert.equal(requests, 1, 'unknown identity must probe /api/auth/me')
+    assert.equal(auth.isAdmin, true)
+    assert.equal(auth.isAuthenticated, true)
   } finally {
     await act(async () => root.unmount())
     dom.window.close()

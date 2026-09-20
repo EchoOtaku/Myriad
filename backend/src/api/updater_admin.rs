@@ -23,14 +23,14 @@ use myriad_error::AppError;
 fn authenticated_user_id(headers: &HeaderMap) -> Option<i32> {
     crate::middleware::auth::verify_jwt_token(headers)
         .ok()
-        .and_then(|claims| claims.sub.parse::<i32>().ok())
+        .and_then(|claims| crate::services::tapp_ownership::positive_user_id(&claims.sub))
 }
 
 /// Build `admin:<id>:<username>` for updater audit (`X-Update-Actor`).
 /// Only derived from verified JWT on the backend; never trusted from the browser as a substitute for UPDATE_TOKEN.
 fn actor_from_headers(headers: &HeaderMap) -> Option<String> {
     let claims = crate::middleware::auth::verify_jwt_token(headers).ok()?;
-    let id = claims.sub.parse::<i32>().ok()?;
+    let id = crate::services::tapp_ownership::positive_user_id(&claims.sub)?;
     let user = claims
         .username
         .chars()

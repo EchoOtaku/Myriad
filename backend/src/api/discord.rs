@@ -327,7 +327,7 @@ pub async fn oauth_start(
     >,
 ) -> Result<Response, HttpError> {
     let claims = verify_current_admin_from_headers(&headers, &db).await?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             Json(AppError::public_json("Invalid user id")),

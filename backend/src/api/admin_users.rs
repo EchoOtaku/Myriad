@@ -373,7 +373,14 @@ pub async fn update_user(
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let claims = require_admin(&headers, &db).await?;
-    let self_id: i32 = claims.sub.parse().unwrap_or(0);
+    let self_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(
+        || {
+            (
+                StatusCode::FORBIDDEN,
+                Json(AppError::public_json("A durable user account is required")),
+            )
+        },
+    )?;
     let actor_is_owner = load_is_owner(&db, self_id).await?;
 
     let target = db
@@ -720,7 +727,14 @@ pub async fn delete_user(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     let claims = require_admin(&headers, &db).await?;
-    let self_id: i32 = claims.sub.parse().unwrap_or(0);
+    let self_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(
+        || {
+            (
+                StatusCode::FORBIDDEN,
+                Json(AppError::public_json("A durable user account is required")),
+            )
+        },
+    )?;
     let actor_is_owner = load_is_owner(&db, self_id).await?;
 
     if user_id == self_id {
@@ -816,6 +830,14 @@ mod tests {
         last_admin_mutation_blocked, non_owner_delete_error, non_owner_grant_admin_on_create_error,
         non_owner_is_admin_change_error,
     };
+
+    #[test]
+    fn admin_actor_id_is_not_decoded_to_zero() {
+        let src = include_str!("admin_users.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("positive_user_id"));
+        assert!(!production.contains("claims.sub.parse().unwrap_or(0)"));
+    }
 
     /// 与 handler 中安全规则保持一致的纯函数，便于无 DB 单测。
     fn reject_self_delete(actor_id: i32, target_id: i32) -> bool {

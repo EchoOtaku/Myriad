@@ -63,7 +63,9 @@ impl ChatSession {
         claims: Claims,
         session_id: String,
     ) -> Result<(Arc<Self>, String), String> {
-        if claims.sub.parse::<i32>().unwrap_or(0) <= 0 || session_id.is_empty() {
+        if crate::services::tapp_ownership::positive_user_id(&claims.sub).is_none()
+            || session_id.is_empty()
+        {
             return Err("Realtime session is unavailable".into());
         }
         let key = format!(
@@ -176,12 +178,16 @@ impl ChatSession {
         let mut state = self.state.lock().await;
         if state.closed || Instant::now() >= self.expires_at {
             drop(state);
-            super::agent::turn::cancel_chat_run(
-                self.claims.sub.parse().unwrap_or(0),
-                run.session_id().unwrap_or(&self.session_id),
-                run.run_id(),
-            )
-            .await;
+            if let Some(user_id) =
+                crate::services::tapp_ownership::positive_user_id(&self.claims.sub)
+            {
+                super::agent::turn::cancel_chat_run(
+                    user_id,
+                    run.session_id().unwrap_or(&self.session_id),
+                    run.run_id(),
+                )
+                .await;
+            }
             return Err("Realtime session is unavailable".into());
         }
         state.newest = Some(provider_id);
@@ -213,12 +219,11 @@ impl ChatSession {
             .back()
             .map(|turn| (turn.notice.session_id.clone(), turn.run.run_id().to_owned()));
         if let Some((session_id, run_id)) = latest {
-            super::agent::turn::cancel_chat_run(
-                self.claims.sub.parse().unwrap_or(0),
-                &session_id,
-                &run_id,
-            )
-            .await;
+            if let Some(user_id) =
+                crate::services::tapp_ownership::positive_user_id(&self.claims.sub)
+            {
+                super::agent::turn::cancel_chat_run(user_id, &session_id, &run_id).await;
+            }
         }
     }
 
@@ -242,12 +247,11 @@ impl ChatSession {
             latest
         };
         if let Some((session_id, run_id)) = latest {
-            super::agent::turn::cancel_chat_run(
-                self.claims.sub.parse().unwrap_or(0),
-                &session_id,
-                &run_id,
-            )
-            .await;
+            if let Some(user_id) =
+                crate::services::tapp_ownership::positive_user_id(&self.claims.sub)
+            {
+                super::agent::turn::cancel_chat_run(user_id, &session_id, &run_id).await;
+            }
         }
     }
 }

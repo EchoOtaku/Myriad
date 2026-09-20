@@ -44,14 +44,10 @@ pub async fn get_permissions(
         Some(c) if c.is_admin => UserRole::Admin,
         Some(c) => {
             // 检查是否为游客（负数 ID）
-            if let Ok(user_id) = c.sub.parse::<i32>() {
-                if user_id < 0 {
-                    UserRole::Guest
-                } else {
-                    UserRole::User
-                }
-            } else {
-                UserRole::Guest
+            match c.sub.parse::<i32>() {
+                Ok(user_id) if user_id < 0 => UserRole::Guest,
+                Ok(user_id) if user_id > 0 => UserRole::User,
+                _ => UserRole::Guest,
             }
         }
         None => UserRole::Guest,
@@ -124,6 +120,18 @@ pub struct UpdatePermissionsPayload {
 #[cfg(test)]
 mod tapp_permission_payload_tests {
     use super::UpdatePermissionsPayload;
+
+    #[test]
+    fn permission_role_does_not_treat_subject_zero_as_user() {
+        let src = include_str!("permissions_oauth.rs");
+        let body = src
+            .split("pub async fn get_permissions")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("get_permissions");
+        assert!(body.contains("user_id > 0"));
+        assert!(body.contains("UserRole::Guest"));
+    }
 
     #[test]
     fn accepts_permission_delegation_fields() {

@@ -510,7 +510,7 @@ pub async fn ensure_current_admin_on(
         return Err(admin_forbidden());
     }
 
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
             Json(json!({
@@ -750,7 +750,9 @@ pub(crate) async fn revalidate_bound_claims(
     claims: &Claims,
     db: &DatabaseConnection,
 ) -> Result<Claims, Box<Response>> {
-    if claims.exp <= chrono::Utc::now().timestamp() || claims.sub.parse::<i32>().unwrap_or(0) <= 0 {
+    if claims.exp <= chrono::Utc::now().timestamp()
+        || crate::services::tapp_ownership::positive_user_id(&claims.sub).is_none()
+    {
         return Err(unauthorized_session_response());
     }
     let snapshot = validated_auth_snapshot(claims, db)
@@ -1082,6 +1084,16 @@ async fn clear_invalid_cookie_response(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn admin_recheck_requires_positive_subject() {
+        let src = include_str!("auth.rs");
+        let body = src
+            .split("pub async fn ensure_current_admin_on")
+            .nth(1)
+            .expect("ensure_current_admin_on");
+        assert!(body.contains("positive_user_id"));
+    }
+
     use super::{
         AUTH_CACHE_CAPACITY, AUTH_CACHE_TTL, AUTH_COOKIE_MAX_AGE_SECS, AuthLoadSlot, AuthSnapshot,
         JWT_TTL_DAYS, apply_current_roles, auth_cache_generation, auth_cache_get, auth_cache_put,

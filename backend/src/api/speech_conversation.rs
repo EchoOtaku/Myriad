@@ -85,7 +85,9 @@ pub async fn chat_completion(
     };
     // The browser established this session. The cloud cannot choose a user,
     // session, model, Work mode, system message, or replacement history.
-    let user_id = claims.sub.parse().unwrap_or(0);
+    let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&claims.sub) else {
+        return failure(StatusCode::FORBIDDEN, "A durable user account is required");
+    };
     let owned = crate::models::entities::agent_sessions::Entity::find_by_id(&session.session_id)
         .filter(crate::models::entities::agent_sessions::Column::UserId.eq(user_id))
         .one(&db)
@@ -303,8 +305,11 @@ pub async fn conversation_events(
     Extension(claims): Extension<Claims>,
     Query(query): Query<EventsQuery>,
 ) -> Response {
+    let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&claims.sub) else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
     let session = match crate::services::agora_convo::chat_session(
-        claims.sub.parse().unwrap_or(0),
+        user_id,
         &query.agent_id,
     )
     .await

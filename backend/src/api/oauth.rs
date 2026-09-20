@@ -279,10 +279,11 @@ pub async fn provider_link(
             ))
         })?;
 
-    let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
-    if user_id <= 0 {
-        return Err(err_400("Guest sessions cannot link OAuth providers"));
-    }
+    let user_id = match claims.sub.parse::<i32>() {
+        Ok(id) if id > 0 => id,
+        Ok(_) => return Err(err_400("Guest sessions cannot link OAuth providers")),
+        Err(_) => return Err(err_400("Invalid user id")),
+    };
     if is_pairing_provider(&slug) {
         return Err(err_400("Channel pairing is not an OAuth provider"));
     }
@@ -954,6 +955,9 @@ async fn find_or_create_user(
                 let id: i32 = insert
                     .try_get("", "id")
                     .map_err(|_| err_500("Failed to read new user id"))?;
+                if id <= 0 {
+                    return Err(err_500("Failed to read new user id"));
+                }
                 new_id = Some(id);
                 break;
             }
@@ -1180,7 +1184,7 @@ pub async fn provider_unlink(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| err_400("Invalid user id"))?;
 
     if is_pairing_provider(&slug) {
         return Err(HttpError::from((
@@ -1302,7 +1306,7 @@ pub async fn list_my_identities(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| err_400("Invalid user id"))?;
 
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -1367,7 +1371,7 @@ pub async fn set_primary_identity(
                 Json(AppError::public_json("Unauthorized")),
             ))
         })?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
+    let user_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| err_400("Invalid user id"))?;
 
     let row = db
         .query_one_raw(Statement::from_sql_and_values(

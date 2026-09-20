@@ -7,12 +7,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { useConfigI18n as useI18n } from '../contexts/I18nContext'
 import { usePageSeo } from '../hooks/usePageSeo'
 import { buildPrivatePageSeo } from '../utils/modulePageSeo'
-import { hasSessionHint } from '../utils/sessionDetection'
 
 export default function AgentSettings() {
   const navigate = useNavigate()
   const { t } = useI18n()
-  const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth()
+  const { isAdmin: authIsAdmin, isAuthenticated, hasChecked } = useAuth()
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -29,21 +28,18 @@ export default function AgentSettings() {
   )
 
   useEffect(() => {
+    if (!hasChecked) return
     if (!isAuthenticated) {
-      if (hasSessionHint()) {
-        checkAuth()
-      } else {
-        navigate('/login', { replace: true })
-      }
-    } else {
-      if (!authIsAdmin) {
-        navigate('/', { replace: true })
-        return
-      }
-      setIsAdmin(true)
-      setLoading(false)
+      navigate('/login', { replace: true })
+      return
     }
-  }, [authIsAdmin, isAuthenticated, checkAuth, navigate])
+    if (!authIsAdmin) {
+      navigate('/', { replace: true })
+      return
+    }
+    setIsAdmin(true)
+    setLoading(false)
+  }, [hasChecked, authIsAdmin, isAuthenticated, navigate])
 
   if (loading || !isAdmin) {
     return null

@@ -204,12 +204,7 @@ pub async fn list_all_components_by_type(
         component_type
     );
 
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(AppError::public_json("Invalid user")),
-        )
-    })?;
+    let user_id = super::common::parse_user_id(&claims)?;
 
     let components =
         tapp_components::list_components_by_type_for_subject(&db, user_id, &component_type)

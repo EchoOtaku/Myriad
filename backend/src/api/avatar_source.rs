@@ -75,7 +75,7 @@ async fn current_user_id(
     let claims = authenticate_request(headers, db)
         .await
         .map_err(|_| unauthorized())?;
-    claims.sub.parse::<i32>().map_err(|_| unauthorized())
+    crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(unauthorized)
 }
 
 /// 未知 kind 一律拒绝，而不是静默当 auto —— 前端写错字段名时要立刻可见。

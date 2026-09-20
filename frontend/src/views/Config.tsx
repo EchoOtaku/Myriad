@@ -8,13 +8,12 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { usePageSeo } from '../hooks/usePageSeo'
 import { buildPrivatePageSeo } from '../utils/modulePageSeo'
-import { hasSessionHint } from '../utils/sessionDetection'
 
 export default function Config() {
   const navigate = useNavigate()
   const location = useLocation()
   const { t } = useI18n()
-  const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth()
+  const { isAdmin: authIsAdmin, isAuthenticated, hasChecked } = useAuth()
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const agentHome = agentSettingsRedirectFromSearch(location.search)
@@ -31,21 +30,18 @@ export default function Config() {
   )
 
   useEffect(() => {
+    if (!hasChecked) return
     if (!isAuthenticated) {
-      if (hasSessionHint()) {
-        checkAuth()
-      } else {
-        navigate('/login', { replace: true })
-      }
-    } else {
-      if (!authIsAdmin) {
-        navigate('/', { replace: true })
-        return
-      }
-      setIsAdmin(true)
-      setLoading(false)
+      navigate('/login', { replace: true })
+      return
     }
-  }, [authIsAdmin, isAuthenticated, checkAuth, navigate])
+    if (!authIsAdmin) {
+      navigate('/', { replace: true })
+      return
+    }
+    setIsAdmin(true)
+    setLoading(false)
+  }, [hasChecked, authIsAdmin, isAuthenticated, navigate])
 
   if (agentHome) {
     return <Navigate to={agentHome} replace />

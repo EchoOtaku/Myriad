@@ -71,7 +71,7 @@ async fn current_user_id(
     let claims = authenticate_request(headers, db)
         .await
         .map_err(|_| unauthorized())?;
-    claims.sub.parse::<i32>().map_err(|_| unauthorized())
+    crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(unauthorized)
 }
 
 fn parse_kind(raw: &str) -> Result<ProfileTextSourceKind, ApiError> {

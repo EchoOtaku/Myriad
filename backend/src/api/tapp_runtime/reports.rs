@@ -39,12 +39,7 @@ pub async fn list_reports(
 ) -> Result<Json<Value>, HttpError> {
     tracing::info!("[TAPP] list_reports - User: {}", claims.username);
 
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(AppError::public_json("Invalid user")),
-        )
-    })?;
+    let user_id = parse_user_id(&claims)?;
 
     let reports = tapp_reports::list_user_platform_reports(&db, user_id)
         .await

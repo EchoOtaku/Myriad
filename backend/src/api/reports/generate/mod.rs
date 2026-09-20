@@ -77,10 +77,12 @@ pub async fn generate_platform_reports(
     tracing::info!("   Platforms: {:?}", req.platforms);
     tracing::info!("   User: {} (ID: {})", claims.username, claims.sub);
 
-    let actor_id = claims.sub.parse::<i32>().map_err(|e| {
-        tracing::error!("❌ Failed to parse user_id: {}", e);
-        HttpError(AppError::unauthorized("Unauthorized"))
-    })?;
+    let actor_id = crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(
+        || {
+            tracing::error!("Failed to parse user_id from subject");
+            HttpError(AppError::unauthorized("Unauthorized"))
+        },
+    )?;
     let user_id = report_storage_user_id(&db, actor_id).await;
 
     let locale = match super::locale::locale_from_headers(&headers) {
