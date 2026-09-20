@@ -605,7 +605,7 @@ async fn persist_federation_upload(
                     filename: filename.to_string(),
                     max_bytes: max,
                     derived_from_id: None,
-                    exposure: crate::services::media::MediaExposure::Public,
+                    exposure: crate::services::media::MediaExposure::Private,
                 },
             )
             .await

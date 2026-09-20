@@ -149,6 +149,33 @@ pub async fn publish_content(
         Err(error) => return Err(db_err(error)),
     }
 
+    let attachment_urls = ap_attachment_urls(&ap_object);
+    let origins = vec![base_url.trim_end_matches('/').to_string()];
+    let mut asset_ids = Vec::new();
+    for url in &attachment_urls {
+        let Some(path) = crate::services::media::cite_local_path(url, &origins) else {
+            continue;
+        };
+        if let Some(id) = crate::services::media::resolve_asset_id(&txn, &path)
+            .await
+            .map_err(media_ref_err)?
+        {
+            asset_ids.push(id);
+        }
+    }
+    let published_paths = crate::services::media::publish_asset_ids(&txn, &asset_ids)
+        .await
+        .map_err(media_ref_err)?;
+    let mut activity_json = activity_json;
+    rewrite_activity_attachment_urls(
+        &mut activity_json,
+        base_url.trim_end_matches('/'),
+        &origins,
+        &published_paths,
+        &txn,
+    )
+    .await
+    .map_err(media_ref_err)?;
     let act_db_id = insert_local_activity(
         &txn,
         user_id,
@@ -159,7 +186,6 @@ pub async fn publish_content(
     )
     .await
     .map_err(db_err)?;
-
     insert_author_timeline(
         &txn,
         user_id,
@@ -169,8 +195,6 @@ pub async fn publish_content(
         &activity_json,
     )
     .await?;
-    let attachment_urls = ap_attachment_urls(&ap_object);
-    let origins = vec![base_url.trim_end_matches('/').to_string()];
     let refs = crate::services::media::references_from_urls(
         &txn,
         &origins,
@@ -567,6 +591,36 @@ pub async fn list_published(
         .collect();
 
     Ok(items)
+}
+
+async fn rewrite_activity_attachment_urls(
+    activity: &mut serde_json::Value,
+    base: &str,
+    origins: &[String],
+    published: &std::collections::HashMap<i32, String>,
+    txn: &impl sea_orm::ConnectionTrait,
+) -> Result<(), crate::services::media::MediaError> {
+    let Some(attachments) = activity
+        .get_mut("object")
+        .and_then(|object| object.get_mut("attachment"))
+        .and_then(|value| value.as_array_mut())
+    else {
+        return Ok(());
+    };
+    for attachment in attachments {
+        let Some(url) = attachment.get("url").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        let path = crate::services::media::cite_local_path(url, origins)
+            .unwrap_or_else(|| url.to_string());
+        let Some(id) = crate::services::media::resolve_asset_id(txn, &path).await? else {
+            continue;
+        };
+        if let Some(public) = published.get(&id) {
+            attachment["url"] = json!(format!("{base}{public}"));
+        }
+    }
+    Ok(())
 }
 
 fn ap_attachment_urls(object: &serde_json::Value) -> Vec<String> {

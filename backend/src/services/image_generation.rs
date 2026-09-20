@@ -462,7 +462,7 @@ pub async fn persist_generated_with_status(
                 claimed_mime: media_type.clone(),
                 filename: filename.to_string(),
                 derived_from_id: None,
-                exposure: MediaExposure::Public,
+                exposure: MediaExposure::Private,
                 bytes,
             },
         )

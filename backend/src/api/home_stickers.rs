@@ -268,7 +268,7 @@ pub async fn generate_home_sticker(
                     filename: "sticker.png".into(),
                     max_bytes: MAX_STICKER_UPLOAD_BYTES,
                     derived_from_id: None,
-                    exposure: crate::services::media::MediaExposure::Public,
+                    exposure: crate::services::media::MediaExposure::Private,
                 },
             )
             .await
@@ -306,7 +306,7 @@ pub async fn upload_home_sticker(
                     filename: "sticker".into(),
                     max_bytes: MAX_STICKER_UPLOAD_BYTES,
                     derived_from_id: None,
-                    exposure: crate::services::media::MediaExposure::Public,
+                    exposure: crate::services::media::MediaExposure::Private,
                 },
             )
             .await

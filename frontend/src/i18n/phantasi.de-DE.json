@@ -112,6 +112,8 @@
   "workbenchMediaAll": "Alle",
   "workbenchMediaKindEmpty": "Keine passenden Medien",
   "workbenchMediaRefSite": "Seite",
+  "workbenchMediaPrivate": "Privat",
+  "workbenchMediaPublic": "Öffentlich",
   "workbenchUnscheduleFailed": "Zeitplan konnte nicht aufgehoben werden.",
   "workbenchLoadFailed": "Werkbank konnte nicht geladen werden.",
   "workbenchOverview": "Überblick",

@@ -25,8 +25,8 @@ mod validate;
 pub use access::{can_manage, can_read};
 pub use cite::{
     bind_ai_task, bind_channel_message, bind_consumer, bind_note_draft, bind_note_published,
-    bind_persona, bind_stickers, clear_note_doc, extract_registered_paths, references_from_fields,
-    references_from_urls,
+    bind_persona, bind_stickers, clear_note_doc, extract_registered_paths, publish_asset_ids,
+    publish_cited_media, references_from_fields, references_from_urls, resolve_asset_id,
 };
 pub use error::MediaError;
 pub use legacy::{LegacyClass, LegacyPaths};
@@ -36,13 +36,16 @@ pub use migration::{
 pub use recovery::{RecoverPlan, plan_recovery};
 pub use references::{NewReference, active_count, parse_consumer_type, replace_for_consumer};
 pub use scan::{backfill_known_consumers, catalog_labels_for_assets};
-pub use serve::{FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, resolve_public_asset};
+pub use serve::{
+    FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, resolve_authenticated_content,
+    resolve_public_asset,
+};
 pub use store::MediaStore;
 pub use types::{
     DeleteOutcome, MediaActor, MediaAsset, MediaContext, MediaExposure, MediaScope, MediaSource,
     MediaState, NewMediaBytes, RecoveryReport, task_media_context,
 };
-pub use urls::{content_path, public_path, registered_local_path, storage_key};
+pub use urls::{cite_local_path, content_path, public_path, registered_local_path, storage_key};
 pub use validate::{ValidatedPayload, allowed_media_mimes, validate_bytes};
 
 use sea_orm::{DatabaseConnection, TransactionTrait};
@@ -51,7 +54,7 @@ use uuid::Uuid;
 use crate::models::entities::media_assets;
 use crate::services::data_paths::DataPaths;
 
-use self::urls::filename_for_mime;
+use self::urls::{compatible_url, filename_for_mime};
 
 pub const WRITE_LEASE_SECS: i64 = 600;
 
@@ -118,7 +121,11 @@ impl MediaService {
             return Err(error);
         }
         let filename = filename_for_mime(&row.name, &payload.mime, public_id)?;
-        if !assets::commit_ready(db, row.id, write_token, public_id, &filename).await? {
+        let catalog_url = match input.exposure {
+            MediaExposure::Public => compatible_url(public_id, &filename),
+            MediaExposure::Private => content_path(row.id),
+        };
+        if !assets::commit_ready(db, row.id, write_token, &catalog_url).await? {
             let _ = self.store.remove_owned_temp(write_token).await;
             return Err(MediaError::NotReady);
         }
@@ -230,11 +237,69 @@ impl MediaService {
             }
         }
     }
+
+    pub async fn publish(
+        &self,
+        db: &DatabaseConnection,
+        id: i32,
+    ) -> Result<MediaAsset, MediaError> {
+        db.transaction(|txn| Box::pin(async move { publish_locked(txn, id).await }))
+            .await
+            .map_err(txn_error)
+    }
+
+    pub async fn unpublish(
+        &self,
+        db: &DatabaseConnection,
+        id: i32,
+    ) -> Result<MediaAsset, MediaError> {
+        db.transaction(|txn| {
+            Box::pin(async move {
+                let Some(row) = assets::lock_by_id(txn, id).await? else {
+                    return Err(MediaError::Missing);
+                };
+                if MediaState::parse(row.state.as_deref().unwrap_or("")).ok()
+                    != Some(MediaState::Ready)
+                {
+                    return Err(MediaError::NotReady);
+                }
+                if references::public_count(txn, id).await? > 0 {
+                    return Err(MediaError::PublicInUse);
+                }
+                assets::mark_private(txn, id, &content_path(id)).await?;
+                let saved = assets::find_by_id(txn, id)
+                    .await?
+                    .ok_or(MediaError::Missing)?;
+                assets::to_domain(saved, references::active_count(txn, id).await?)
+            })
+        })
+        .await
+        .map_err(txn_error)
+    }
 }
 
 enum DeletePlan {
     AlreadyGone,
     Unlink(Option<String>),
+}
+
+async fn publish_locked(
+    txn: &impl sea_orm::ConnectionTrait,
+    id: i32,
+) -> Result<MediaAsset, MediaError> {
+    let Some(row) = assets::lock_by_id(txn, id).await? else {
+        return Err(MediaError::Missing);
+    };
+    if MediaState::parse(row.state.as_deref().unwrap_or("")).ok() != Some(MediaState::Ready) {
+        return Err(MediaError::NotReady);
+    }
+    let public_id = row.public_id.ok_or(MediaError::NotReady)?;
+    let filename = filename_for_mime(&row.name, &row.mime, public_id)?;
+    assets::mark_public(txn, id, &compatible_url(public_id, &filename)).await?;
+    let saved = assets::find_by_id(txn, id)
+        .await?
+        .ok_or(MediaError::Missing)?;
+    assets::to_domain(saved, references::active_count(txn, id).await?)
 }
 
 fn existing_producer_result(row: media_assets::Model) -> Result<MediaAsset, MediaError> {

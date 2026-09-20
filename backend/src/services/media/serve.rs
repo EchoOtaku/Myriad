@@ -8,11 +8,12 @@ use uuid::Uuid;
 
 use crate::models::entities::{media_assets, media_url_aliases};
 
+use super::access::can_read;
 use super::assets;
 use super::error::MediaError;
 use super::legacy::{LegacyPaths, legacy_disk_path};
 use super::store::MediaStore;
-use super::types::{MediaExposure, MediaState};
+use super::types::{MediaActor, MediaExposure, MediaState};
 use super::urls::{filename_for_mime, registered_local_path};
 use super::validate::extension_for_mime;
 
@@ -58,6 +59,25 @@ pub fn alias_forbids_legacy_fallback(state: Option<&str>, exposure: Option<&str>
         }
         Err(_) => true,
     }
+}
+
+pub async fn resolve_authenticated_content(
+    db: &impl ConnectionTrait,
+    store: &MediaStore,
+    id: i32,
+    actor: &MediaActor,
+) -> Result<ServeOutcome, MediaError> {
+    let Some(row) = assets::find_by_id(db, id).await? else {
+        return Ok(ServeOutcome::NotFound { no_store: true });
+    };
+    let asset = match assets::to_domain(row.clone(), 0) {
+        Ok(asset) => asset,
+        Err(_) => return Ok(ServeOutcome::NotFound { no_store: true }),
+    };
+    if !can_read(actor, &asset) {
+        return Ok(ServeOutcome::NotFound { no_store: true });
+    }
+    file_from_row(store, &row, NO_STORE)
 }
 
 pub async fn resolve_public_asset(

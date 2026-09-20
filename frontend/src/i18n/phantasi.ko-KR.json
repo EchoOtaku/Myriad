@@ -112,6 +112,8 @@
   "workbenchMediaAll": "전체",
   "workbenchMediaKindEmpty": "해당하는 미디어가 없습니다",
   "workbenchMediaRefSite": "사이트",
+  "workbenchMediaPrivate": "비공개",
+  "workbenchMediaPublic": "공개",
   "workbenchUnscheduleFailed": "예약을 취소하지 못했습니다.",
   "workbenchLoadFailed": "작업대를 불러오지 못했습니다.",
   "workbenchOverview": "개요",

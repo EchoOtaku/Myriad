@@ -1,6 +1,6 @@
 //! Dashboard, control panel, Tapp window schemes, hitokoto, and report settings.
 use axum::{Json, http::StatusCode};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -21,7 +21,7 @@ pub async fn update_dashboard_config(
     Json(payload): Json<DashboardConfigPayload>,
 ) -> (StatusCode, Json<Value>) {
     if let Some(layout) = payload.layout.as_deref() {
-        if let Err(error) = crate::services::media::bind_stickers(&db, layout, &[]).await {
+        if let Err(error) = bind_and_publish_stickers(&db, layout).await {
             tracing::error!(%error, "failed to bind dashboard sticker references");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -94,6 +94,17 @@ pub async fn update_dashboard_config(
             "message": "ok"
         })),
     )
+}
+
+async fn bind_and_publish_stickers(
+    db: &DatabaseConnection,
+    layout: &str,
+) -> Result<(), crate::services::media::MediaError> {
+    let txn = db.begin().await?;
+    crate::services::media::bind_stickers(&txn, layout, &[]).await?;
+    crate::services::media::publish_cited_media(&txn, &[], None, layout).await?;
+    txn.commit().await?;
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]

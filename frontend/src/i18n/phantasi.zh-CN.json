@@ -112,6 +112,8 @@
   "workbenchMediaAll": "全部",
   "workbenchMediaKindEmpty": "没有符合的媒体",
   "workbenchMediaRefSite": "站点",
+  "workbenchMediaPrivate": "私有",
+  "workbenchMediaPublic": "公开",
   "workbenchUnscheduleFailed": "没能取消定时。",
   "workbenchLoadFailed": "工作台没能加载。",
   "workbenchOverview": "概览",

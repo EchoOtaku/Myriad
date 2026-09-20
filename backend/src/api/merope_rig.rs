@@ -1312,7 +1312,7 @@ pub async fn upload_portrait(
                     filename: "portrait".into(),
                     max_bytes: 10 * 1024 * 1024,
                     derived_from_id: None,
-                    exposure: crate::services::media::MediaExposure::Public,
+                    exposure: crate::services::media::MediaExposure::Private,
                 },
             )
             .await
@@ -1364,6 +1364,9 @@ pub async fn upload_portrait(
         }
     };
     crate::services::media::bind_persona(&transaction, Some(&stored.url), None, None, &[])
+        .await
+        .map_err(|error| internal_error(error.to_string()))?;
+    crate::services::media::publish_cited_media(&transaction, &[], Some(&stored.url), "")
         .await
         .map_err(|error| internal_error(error.to_string()))?;
     transaction.commit().await.map_err(internal_error)?;
@@ -1695,6 +1698,14 @@ pub async fn generate_portrait(
         &[],
     )
     .await
+    {
+        let _ = transaction.rollback().await;
+        release_portrait_generation_lease(&db, &generation_token).await;
+        cleanup_uncommitted_portrait(&db, &persisted).await;
+        return Err(internal_error(error.to_string()));
+    }
+    if let Err(error) =
+        crate::services::media::publish_cited_media(&transaction, &[], Some(&url), "").await
     {
         let _ = transaction.rollback().await;
         release_portrait_generation_lease(&db, &generation_token).await;

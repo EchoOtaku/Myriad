@@ -85,6 +85,24 @@ pub(super) fn build_authenticated_router(
                 )),
         )
         .route(
+            "/api/media/{id}/content",
+            get(api::media::serve_media_content)
+                .head(api::media::serve_media_content)
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::auth_middleware,
+                )),
+        )
+        .route(
+            "/api/media/{id}/publication",
+            post(api::media::publish_media)
+                .delete(api::media::unpublish_media)
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
+        )
+        .route(
             "/api/media/{id}",
             axum::routing::delete(api::media::delete_media).route_layer(from_fn_with_state(
                 app_state.clone(),
@@ -1361,6 +1379,14 @@ mod security_route_wiring_tests {
         assert!(
             route_has_middleware(src, "/api/media/{id}", "admin_middleware"),
             "media delete must be admin only"
+        );
+        assert!(
+            route_has_middleware(src, "/api/media/{id}/content", "auth_middleware"),
+            "private media content must be authenticated"
+        );
+        assert!(
+            route_has_middleware(src, "/api/media/{id}/publication", "admin_middleware"),
+            "media publication must be admin only"
         );
     }
 

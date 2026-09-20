@@ -148,9 +148,15 @@ async fn write_published_item<C: ConnectionTrait>(
     published_at_ms: Option<i64>,
     author: Option<String>,
 ) -> Result<PublishedNote, HttpError> {
-    validate_note(title, content_md).map_err(validation_err)?;
+    let (rewritten_cover, rewritten_body) =
+        crate::services::media::publish_cited_media(db, &[], image.as_deref(), content_md)
+            .await
+            .map_err(media_bind_http)?;
+    let content_md = rewritten_body;
+    let image = rewritten_cover.or(image);
+    validate_note(title, &content_md).map_err(validation_err)?;
     let source = ensure_note_source(db, user_id).await?;
-    let rendered = render_note(title, content_md);
+    let rendered = render_note(title, &content_md);
     let now = Utc::now();
     let topic = topic.filter(|value| !value.trim().is_empty());
     let cover = image

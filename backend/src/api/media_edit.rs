@@ -301,7 +301,7 @@ pub async fn save_edit(
                 filename: name,
                 max_bytes: MAX_EDIT_BYTES,
                 derived_from_id: Some(source.id),
-                exposure: MediaExposure::Public,
+                exposure: MediaExposure::Private,
             },
         )
         .await

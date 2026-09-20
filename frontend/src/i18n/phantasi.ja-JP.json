@@ -112,6 +112,8 @@
   "workbenchMediaAll": "すべて",
   "workbenchMediaKindEmpty": "該当するメディアはありません",
   "workbenchMediaRefSite": "サイト",
+  "workbenchMediaPrivate": "非公開",
+  "workbenchMediaPublic": "公開",
   "workbenchUnscheduleFailed": "予約を取り消せませんでした。",
   "workbenchLoadFailed": "ワークベンチを読み込めませんでした。",
   "workbenchOverview": "概要",

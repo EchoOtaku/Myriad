@@ -14,7 +14,12 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { ApiError } from '../../../services/api'
-import { previewMediaEdit, saveMediaEdit } from '../../../services/mediaApi'
+import {
+  fetchMediaObjectUrl,
+  isPrivateMediaPath,
+  previewMediaEdit,
+  saveMediaEdit,
+} from '../../../services/mediaApi'
 import {
   InputItem,
   NumberItem,
@@ -146,7 +151,10 @@ export function MediaEditorDialog({
   const [zoom, setZoom] = useState(1)
   const video = item.mime.startsWith('video/')
   const editable = ['image/png', 'image/jpeg', 'image/webp'].includes(item.mime)
-  const src = displayImageUrl(item.url)
+  const catalogSrc = item.exposure === 'public' && item.public_path
+    ? item.public_path
+    : item.content_path || item.url
+  const [src, setSrc] = useState(() => displayImageUrl(catalogSrc))
   useEffect(() => {
     alive.current = true
     const opener = document.activeElement
@@ -163,6 +171,26 @@ export function MediaEditorDialog({
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
   }, [])
+  useEffect(() => {
+    if (!isPrivateMediaPath(catalogSrc)) {
+      setSrc(displayImageUrl(catalogSrc))
+      return
+    }
+    const ac = new AbortController()
+    let objectUrl: string | undefined
+    fetchMediaObjectUrl(catalogSrc, ac.signal)
+      .then((url) => {
+        objectUrl = url
+        setSrc(url)
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setSrc('')
+      })
+    return () => {
+      ac.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [catalogSrc])
   const finishClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
     onClose()

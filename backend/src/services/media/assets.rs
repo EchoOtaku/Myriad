@@ -83,10 +83,8 @@ pub async fn commit_ready(
     db: &impl ConnectionTrait,
     id: i32,
     write_token: Uuid,
-    public_id: Uuid,
-    filename: &str,
+    catalog_url: &str,
 ) -> Result<bool, MediaError> {
-    let url = compatible_url(public_id, filename);
     let result = db
         .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -102,7 +100,53 @@ WHERE id = $2
   AND write_token = $3
   AND state = 'staging'
 "#,
-            [url.into(), id.into(), write_token.into()],
+            [catalog_url.into(), id.into(), write_token.into()],
+        ))
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn mark_public(
+    txn: &impl ConnectionTrait,
+    id: i32,
+    catalog_url: &str,
+) -> Result<bool, MediaError> {
+    let result = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE media_assets
+SET exposure = 'public',
+    url = $1,
+    first_published_at = COALESCE(first_published_at, NOW()),
+    updated_at = NOW()
+WHERE id = $2
+  AND state = 'ready'
+"#,
+            [catalog_url.into(), id.into()],
+        ))
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn mark_private(
+    txn: &impl ConnectionTrait,
+    id: i32,
+    catalog_url: &str,
+) -> Result<bool, MediaError> {
+    let result = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE media_assets
+SET exposure = 'private',
+    url = $1,
+    updated_at = NOW()
+WHERE id = $2
+  AND state = 'ready'
+  AND exposure = 'public'
+"#,
+            [catalog_url.into(), id.into()],
         ))
         .await?;
     Ok(result.rows_affected() == 1)

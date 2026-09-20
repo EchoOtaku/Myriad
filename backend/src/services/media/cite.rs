@@ -9,7 +9,8 @@ use crate::models::entities::{media_assets, media_url_aliases};
 use super::assets;
 use super::error::MediaError;
 use super::references::{NewReference, replace_for_consumer};
-use super::urls::cite_local_path;
+use super::types::MediaState;
+use super::urls::{cite_local_path, compatible_url, content_path, filename_for_mime};
 
 pub fn extract_registered_paths(text: &str, origins: &[String]) -> Vec<String> {
     let mut found = Vec::new();
@@ -343,6 +344,64 @@ async fn clear_history_prefix(txn: &impl ConnectionTrait, doc_id: i32) -> Result
     ))
     .await?;
     Ok(())
+}
+
+/// Mark cited assets public and rewrite private content paths to public paths.
+pub async fn publish_cited_media(
+    txn: &impl ConnectionTrait,
+    origins: &[String],
+    cover: Option<&str>,
+    body: &str,
+) -> Result<(Option<String>, String), MediaError> {
+    let mut paths = extract_registered_paths(body, origins);
+    if let Some(cover) = cover {
+        if let Some(path) = cite_local_path(cover, origins) {
+            paths.push(path);
+        }
+    }
+    let mut ids = Vec::new();
+    let mut aliases = Vec::new();
+    for path in paths {
+        if let Some(id) = resolve_asset_id(txn, &path).await? {
+            aliases.push((path, id));
+            ids.push(id);
+        }
+    }
+    let map = publish_asset_ids(txn, &ids).await?;
+    let rewrite = |raw: &str| -> String {
+        let mut out = raw.to_string();
+        for (from, id) in &aliases {
+            if let Some(to) = map.get(id) {
+                out = out.replace(from, to);
+            }
+        }
+        for (id, to) in &map {
+            out = out.replace(&content_path(*id), to);
+        }
+        out
+    };
+    let body = rewrite(body);
+    let cover = cover.map(rewrite).filter(|value| !value.trim().is_empty());
+    Ok((cover, body))
+}
+
+pub async fn publish_asset_ids(
+    txn: &impl ConnectionTrait,
+    ids: &[i32],
+) -> Result<std::collections::HashMap<i32, String>, MediaError> {
+    let locked = assets::lock_by_ids_sorted(txn, ids.to_vec()).await?;
+    let mut map = std::collections::HashMap::new();
+    for row in locked {
+        if MediaState::parse(row.state.as_deref().unwrap_or("")).ok() != Some(MediaState::Ready) {
+            return Err(MediaError::NotReady);
+        }
+        let public_id = row.public_id.ok_or(MediaError::NotReady)?;
+        let filename = filename_for_mime(&row.name, &row.mime, public_id)?;
+        let public = compatible_url(public_id, &filename);
+        assets::mark_public(txn, row.id, &public).await?;
+        map.insert(row.id, public);
+    }
+    Ok(map)
 }
 
 #[cfg(test)]

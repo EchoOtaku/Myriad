@@ -393,6 +393,18 @@ pub async fn put_persona(
     )
     .await
     .map_err(|error| HttpError(error.into()))?;
+    crate::services::media::publish_cited_media(
+        &transaction,
+        &[],
+        saved.portrait_asset_id.as_deref(),
+        &saved
+            .visual_profile
+            .clone()
+            .unwrap_or(json!({}))
+            .to_string(),
+    )
+    .await
+    .map_err(|error| HttpError(error.into()))?;
     transaction
         .commit()
         .await

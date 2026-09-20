@@ -181,10 +181,19 @@ pub(super) fn attachment_url_rejection_reason(
         }
         return None;
     }
-    let asset_path = url
+    let relative = url
         .strip_prefix(base)
-        .or_else(|| url.starts_with('/').then_some(url));
-    let Some(path) = asset_path.and_then(|path| path.strip_prefix("/media/assets/")) else {
+        .or_else(|| url.starts_with('/').then_some(url))
+        .unwrap_or(url);
+    if let Some(rest) = relative.strip_prefix("/api/media/") {
+        let id = rest.strip_suffix("/content").unwrap_or(rest);
+        return if id.parse::<i32>().ok().is_some_and(|value| value > 0) {
+            None
+        } else {
+            Some("Invalid attachment URL")
+        };
+    }
+    let Some(path) = relative.strip_prefix("/media/assets/") else {
         return Some("Invalid attachment URL");
     };
     let (id, file) = match path.split_once('/') {

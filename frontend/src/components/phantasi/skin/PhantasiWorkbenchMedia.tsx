@@ -24,11 +24,11 @@ import {
   workbenchMediaRefLabel,
 } from '../logic/workbench'
 import { noteScheduleLabel } from '../notes/noteBoard'
-import { displayImageUrl } from '../notes/noteImageUrl'
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
+import { AuthenticatedMedia } from './AuthenticatedMedia'
 import { MediaEditorDialog } from './MediaEditorDialog'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
-import { Thumb } from './PhantasiWorkbenchHome'
+import { draftMediaSrc } from '../../../services/mediaApi'
 import './WorkbenchMediaCards.css'
 
 export function WorkbenchMediaPane({
@@ -95,7 +95,7 @@ export function WorkbenchMediaPane({
   const mediaItems = useMemo<ManagedListItem[]>(
     () =>
       visibleMedia.map((item) => {
-        const src = displayImageUrl(item.url) || undefined
+        const src = draftMediaSrc(item) || undefined
         const inUse = item.references.length > 0
         const refs = workbenchMediaRefLabel(item.references, {
           notes: phantasi.workbenchNotes,
@@ -127,9 +127,17 @@ export function WorkbenchMediaPane({
               label: kind,
               tone: item.kind === 'generated' ? 'active' : 'muted',
             },
+            {
+              label: item.exposure === 'public'
+                ? phantasi.workbenchMediaPublic
+                : phantasi.workbenchMediaPrivate,
+              tone: item.exposure === 'public' ? 'active' : 'muted',
+            },
           ],
           className: 'phantasi-workbench__hover-actions phantasi-workbench__media',
-          leading: <Thumb src={src} video={video} />,
+          leading: (
+            <AuthenticatedMedia src={src} video={video} className="phantasi-workbench__thumb" />
+          ),
           renderHit: ({ leading, main }) => <button type="button" className="managed-list-row-hit" aria-label={item.name} onClick={() => setSelectedId(item.id)}>{leading}{main}</button>,
           actions: [
             {

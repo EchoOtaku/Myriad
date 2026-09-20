@@ -5,7 +5,7 @@ import { afterEach, it, mock } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { displayImageUrl } from '../components/phantasi/notes/noteImageUrl'
 import { apiService } from './api'
-import { listMedia, saveMediaEdit, uploadMedia } from './mediaApi'
+import { draftMediaSrc, isPrivateMediaPath, listMedia, saveMediaEdit, uploadMedia } from './mediaApi'
 
 const asset = {
   id: 7, kind: 'upload' as const, url: '/media/federation/1/photo.png',
@@ -52,6 +52,29 @@ it('upload retains the response asset and sends file contents in multipart', asy
     return { ok: true, json: async () => ({ success: true, item: asset }) } as Response
   })
   assert.equal(await uploadMedia(file), asset)
+})
+
+it('drafts prefer the authenticated content path until publication', () => {
+  assert.equal(
+    draftMediaSrc({
+      ...asset,
+      exposure: 'private',
+      content_path: '/api/media/7/content',
+      public_path: null,
+    }),
+    '/api/media/7/content',
+  )
+  assert.equal(
+    draftMediaSrc({
+      ...asset,
+      exposure: 'public',
+      content_path: '/api/media/7/content',
+      public_path: '/media/assets/11111111-1111-1111-1111-111111111111/photo.png',
+    }),
+    '/media/assets/11111111-1111-1111-1111-111111111111/photo.png',
+  )
+  assert.equal(isPrivateMediaPath('/api/media/7/content'), true)
+  assert.equal(isPrivateMediaPath('/media/assets/11111111-1111-1111-1111-111111111111/photo.png'), false)
 })
 
 it('journal editor uploads through mediaApi, not federationApi', () => {

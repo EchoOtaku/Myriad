@@ -112,6 +112,8 @@
   "workbenchMediaAll": "Tous",
   "workbenchMediaKindEmpty": "Aucun média ne correspond",
   "workbenchMediaRefSite": "Site",
+  "workbenchMediaPrivate": "Privé",
+  "workbenchMediaPublic": "Public",
   "workbenchUnscheduleFailed": "Impossible d'annuler la programmation.",
   "workbenchLoadFailed": "Impossible de charger l'atelier.",
   "workbenchOverview": "Aperçu",

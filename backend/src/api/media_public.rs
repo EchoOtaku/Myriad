@@ -106,6 +106,10 @@ async fn serve_alias(
     }
 }
 
+pub(crate) async fn send_media_outcome(req: Request, outcome: ServeOutcome) -> Response {
+    send(req, outcome).await
+}
+
 async fn send(req: Request, outcome: ServeOutcome) -> Response {
     match outcome {
         ServeOutcome::NotFound { no_store } => {
@@ -148,6 +152,10 @@ async fn send_file(req: Request, file: FileServe) -> Response {
 
 fn apply_headers(res: &mut Response, file: &FileServe) {
     let headers = res.headers_mut();
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
     if let Ok(value) = HeaderValue::from_str(file.cache_control) {
         headers.insert(header::CACHE_CONTROL, value);
     }

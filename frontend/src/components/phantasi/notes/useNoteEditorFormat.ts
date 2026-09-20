@@ -5,7 +5,7 @@ import type { InlineLink } from './noteDraft'
 import type { NoteInsertMenuState, TableAlign } from './NoteEditorChrome'
 import type { SelectionAnchor } from './noteSelection'
 import { useCallback, useEffect } from 'react'
-import { uploadMedia } from '../../../services/mediaApi'
+import { draftMediaSrc, uploadMedia } from '../../../services/mediaApi'
 import * as phantasiApi from '../../../services/phantasiApi'
 import { userFacingError } from '../../../utils/userFacingError'
 import { showNoteNotice } from '../phantasiNotice'
@@ -118,14 +118,15 @@ export function useNoteEditorFormat(host: {
       setUploading(true)
       try {
         const uploaded = await uploadMedia(file)
+        const src = draftMediaSrc(uploaded)
         if (as === 'cover') {
-          setCover(uploaded.url)
+          setCover(src)
         } else if (as === 'replace') {
           const root = visualRef.current
           const img = selectedImageRef.current
-          if (root && img) commitVisualMd(setImageSrc(root, img, uploaded.url))
+          if (root && img) commitVisualMd(setImageSrc(root, img, src))
         } else {
-          placeImage(uploaded.url, file.name)
+          placeImage(src, file.name)
         }
       } catch (err) {
         showNoteNotice(userFacingError(err, t.phantasi.errorSaveFailed))

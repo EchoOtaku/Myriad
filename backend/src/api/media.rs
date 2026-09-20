@@ -1,22 +1,23 @@
-//! 管理员媒体目录：列出 / 上传 / 删除。工作台上传走平台资产服务。
-//!
-//! 隐私阶段未完成：站点工作台新上传仍公开，避免编辑器只能消费公开 URL。
+//! 管理员媒体目录：列出 / 上传 / 删除 / 公开。工作台上传走平台资产服务。
+//! 新上传默认私有；公开阅读走 `/media/assets`，鉴权预览走 `/api/media/{id}/content`。
 
 use axum::{
     Json,
     body::Bytes,
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::{HeaderMap, StatusCode},
+    response::Response,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::extract::AuthedClaims;
-use crate::middleware::auth::verify_current_admin_from_headers;
+use crate::middleware::auth::{Claims, verify_current_admin_from_headers};
 use crate::services::data_paths::paths;
 use crate::services::media::{
-    MediaActor, MediaContext, MediaExposure, MediaService, MediaSource, NewMediaBytes,
+    MediaActor, MediaContext, MediaExposure, MediaService, MediaSource, MediaStore, NewMediaBytes,
+    resolve_authenticated_content,
 };
 use crate::services::media_catalog::{delete_asset, list_assets};
 use crate::services::memory_profile::{note_image_limit, note_video_limit};
@@ -99,7 +100,7 @@ pub async fn upload_media(
                 claimed_mime: mime,
                 filename,
                 derived_from_id: None,
-                exposure: MediaExposure::Public,
+                exposure: MediaExposure::Private,
             },
         )
         .await
@@ -134,6 +135,78 @@ pub async fn delete_media(
                 .with_code("MEDIA_IN_USE"),
         )),
     }
+}
+
+/// GET/HEAD /api/media/{id}/content
+pub async fn serve_media_content(
+    State(db): State<DatabaseConnection>,
+    AuthedClaims(claims): AuthedClaims,
+    Path(id): Path<i32>,
+    req: Request,
+) -> Response {
+    let Ok(actor) = actor_from_claims(&claims) else {
+        return crate::api::media_public::send_media_outcome(
+            req,
+            crate::services::media::ServeOutcome::NotFound { no_store: true },
+        )
+        .await;
+    };
+    let store = MediaStore::new(paths().media.clone());
+    match resolve_authenticated_content(&db, &store, id, &actor).await {
+        Ok(outcome) => crate::api::media_public::send_media_outcome(req, outcome).await,
+        Err(_) => {
+            crate::api::media_public::send_media_outcome(
+                req,
+                crate::services::media::ServeOutcome::NotFound { no_store: true },
+            )
+            .await
+        }
+    }
+}
+
+/// POST /api/media/{id}/publication
+pub async fn publish_media(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<Value>, HttpError> {
+    require_admin(&headers, &db).await?;
+    let asset = MediaService::from_data_paths(paths())
+        .publish(&db, id)
+        .await
+        .map_err(|err| HttpError(err.into()))?;
+    Ok(Json(
+        json!({ "success": true, "item": catalog_item(&asset) }),
+    ))
+}
+
+/// DELETE /api/media/{id}/publication
+pub async fn unpublish_media(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<Value>, HttpError> {
+    require_admin(&headers, &db).await?;
+    let asset = MediaService::from_data_paths(paths())
+        .unpublish(&db, id)
+        .await
+        .map_err(|err| HttpError(err.into()))?;
+    Ok(Json(
+        json!({ "success": true, "item": catalog_item(&asset) }),
+    ))
+}
+
+fn actor_from_claims(claims: &Claims) -> Result<MediaActor, HttpError> {
+    let user_id: i32 = claims
+        .sub
+        .parse()
+        .map_err(|_| media_http(StatusCode::UNAUTHORIZED, "Invalid user ID"))?;
+    if claims.is_admin {
+        MediaActor::admin(user_id).or_else(|_| Ok(MediaActor::site_operator(Some(user_id), true)))
+    } else {
+        MediaActor::user(user_id)
+    }
+    .map_err(|err| HttpError(err.into()))
 }
 
 async fn read_file_field(
@@ -179,5 +252,17 @@ mod tests {
         let src = include_str!("media.rs");
         assert!(!src.contains(concat!("store_federation", "_media")));
         assert!(src.contains("MediaService"));
+    }
+
+    #[test]
+    fn new_uploads_default_private() {
+        let src = include_str!("media.rs");
+        let upload = src
+            .split("pub async fn upload_media")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn delete_media").next())
+            .expect("upload_media");
+        assert!(upload.contains("MediaExposure::Private"));
+        assert!(!upload.contains("MediaExposure::Public"));
     }
 }

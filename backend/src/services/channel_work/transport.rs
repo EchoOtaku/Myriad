@@ -397,7 +397,7 @@ async fn persist_channel_asset(
                     filename: image.name.clone(),
                     max_bytes: crate::services::memory_profile::note_image_limit(),
                     derived_from_id: None,
-                    exposure: crate::services::media::MediaExposure::Public,
+                    exposure: crate::services::media::MediaExposure::Private,
                 },
             )
             .await

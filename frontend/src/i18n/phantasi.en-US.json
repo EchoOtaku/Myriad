@@ -112,6 +112,8 @@
   "workbenchMediaAll": "All",
   "workbenchMediaKindEmpty": "Nothing in this kind yet",
   "workbenchMediaRefSite": "Site",
+  "workbenchMediaPrivate": "Private",
+  "workbenchMediaPublic": "Public",
   "workbenchUnscheduleFailed": "Could not cancel the schedule.",
   "workbenchLoadFailed": "Could not load the workbench.",
   "workbenchOverview": "Overview",
