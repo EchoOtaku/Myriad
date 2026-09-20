@@ -136,6 +136,7 @@ pub async fn recover_expired(
 
 #[cfg(test)]
 mod tests {
+    use super::super::assets;
     use super::*;
 
     #[test]
@@ -151,5 +152,117 @@ mod tests {
         let src = include_str!("recovery.rs");
         assert!(src.contains("FOR UPDATE SKIP LOCKED"));
         assert!(!src.contains(concat!("fs::copy", "(")));
+    }
+
+    #[tokio::test]
+    async fn postgres_skips_live_lease_and_finishes_expired() {
+        let Ok(url) = std::env::var("MYRIAD_MEDIA_TEST_DATABASE_URL") else {
+            eprintln!(
+                "skipping: set MYRIAD_MEDIA_TEST_DATABASE_URL to run media recovery DB tests"
+            );
+            return;
+        };
+        let db = sea_orm::Database::connect(&url)
+            .await
+            .expect("connect media test database");
+        if let Err(error) = sea_orm::ConnectionTrait::execute_unprepared(
+            &db,
+            include_str!("../../../migrations/media_asset_model.sql"),
+        )
+        .await
+        {
+            let text = error.to_string();
+            assert!(
+                text.contains("already exists"),
+                "apply media asset model: {error}"
+            );
+        }
+
+        let png = {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD
+                .decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADklEQVQImWNw6fj/H4QBFnsFlbfmtiMAAAAASUVORK5CYII=")
+                .unwrap()
+        };
+        let payload =
+            crate::services::media::validate_bytes(&png, "image/png", 1024 * 1024).expect("png");
+        let ctx = crate::services::media::MediaContext::site(
+            crate::services::media::MediaActor::admin(1).unwrap(),
+            crate::services::media::MediaSource::Upload,
+        );
+        let root = std::env::temp_dir().join(format!("myriad-media-rec-{}", Uuid::new_v4()));
+        let store = MediaStore::new(root.clone());
+        let cache =
+            std::env::temp_dir().join(format!("myriad-media-cache-missing-{}", Uuid::new_v4()));
+        assert!(!cache.exists(), "T18: cache dir must stay absent");
+
+        let live_token = Uuid::new_v4();
+        let live = assets::insert_staging(
+            &db,
+            &ctx,
+            &payload,
+            "live.png",
+            None,
+            crate::services::media::MediaExposure::Private,
+            live_token,
+            600,
+        )
+        .await
+        .expect("live staging");
+        let live_key = live.storage_key.clone().expect("live key");
+        store
+            .publish_bytes(&live_key, live_token, &png)
+            .await
+            .expect("live bytes");
+        let skipped = recover_expired(&store, &db, 8, 600)
+            .await
+            .expect("skip live");
+        assert_eq!(skipped.claimed, 0);
+        let still = assets::find_by_id(&db, live.id)
+            .await
+            .expect("reload live")
+            .expect("live row");
+        assert_eq!(still.state.as_deref(), Some("staging"));
+        assert_eq!(still.write_token, Some(live_token));
+
+        let expired_token = Uuid::new_v4();
+        let expired = assets::insert_staging(
+            &db,
+            &ctx,
+            &payload,
+            "expired.png",
+            None,
+            crate::services::media::MediaExposure::Private,
+            expired_token,
+            600,
+        )
+        .await
+        .expect("expired staging");
+        let expired_key = expired.storage_key.clone().expect("expired key");
+        store
+            .publish_bytes(&expired_key, expired_token, &png)
+            .await
+            .expect("expired bytes");
+        sea_orm::ConnectionTrait::execute_unprepared(
+            &db,
+            &format!(
+                "UPDATE media_assets SET write_lease_until = NOW() - INTERVAL '1 second' WHERE id = {}",
+                expired.id
+            ),
+        )
+        .await
+        .expect("expire lease");
+        let recovered = recover_expired(&store, &db, 8, 600)
+            .await
+            .expect("recover expired");
+        assert_eq!(recovered.claimed, 1);
+        assert_eq!(recovered.completed, 1);
+        let ready = assets::find_by_id(&db, expired.id)
+            .await
+            .expect("reload expired")
+            .expect("expired row");
+        assert_eq!(ready.state.as_deref(), Some("ready"));
+        assert!(!cache.exists(), "recovery must not create a cache volume");
+        let _ = tokio::fs::remove_dir_all(root).await;
     }
 }

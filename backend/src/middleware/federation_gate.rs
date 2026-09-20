@@ -98,6 +98,16 @@ mod tests {
         assert!(!should_refuse("/api/config", false));
         assert!(!should_refuse("/library", false));
         assert!(!should_refuse("/", false));
+        assert!(!should_refuse(
+            "/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.png",
+            false
+        ));
+        assert!(!should_refuse("/media/federation/1/pic.png", false));
+        assert!(!should_refuse("/api/media/7/content", false));
+        assert!(!should_refuse(
+            "/api/phantasi/image-cache/aa/abcdef.png",
+            false
+        ));
     }
 
     #[test]
