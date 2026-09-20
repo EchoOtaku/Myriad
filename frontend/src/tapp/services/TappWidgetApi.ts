@@ -1,14 +1,15 @@
 import type { RegisteredWidget, WidgetRegistration } from '../types'
 import { apiRequest } from './TappHttpClient'
 
-export async function getAllWidgets(): Promise<RegisteredWidget[]> {
-  return apiRequest<RegisteredWidget[]>('/api/tapps/widgets')
+export async function getAllWidgets(signal?: AbortSignal): Promise<RegisteredWidget[]> {
+  return apiRequest<RegisteredWidget[]>('/api/tapps/widgets', { signal })
 }
 
 export async function registerTappWidget(
   tappId: string,
   config: WidgetRegistration,
   runtimeGrant: string,
+  signal?: AbortSignal,
 ): Promise<RegisteredWidget> {
   const requestBody = {
     id: config.id,
@@ -27,6 +28,7 @@ export async function registerTappWidget(
       method: 'POST',
       body: JSON.stringify(requestBody),
       runtimeGrant,
+      signal,
     },
   )
 }
@@ -35,9 +37,10 @@ export async function unregisterTappWidget(
   tappId: string,
   widgetId: string,
   runtimeGrant: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   return apiRequest(
     `/api/tapps/${encodeURIComponent(tappId)}/widgets/${encodeURIComponent(widgetId)}`,
-    { method: 'DELETE', runtimeGrant },
+    { method: 'DELETE', runtimeGrant, signal },
   )
 }

@@ -55,6 +55,7 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { useTappSubject } from '../../utils/tappSubject'
 import { showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { TappIconBadge } from '../components/TappIconBadge'
@@ -149,6 +150,7 @@ export function TappDetailPage() {
   )
   const [appVisibility, setAppVisibility] = useState<TappVisibility>('all')
   const [visibilitySaving, setVisibilitySaving] = useState(false)
+  useTappSubject()
   const runtime = getTappRuntime()
 
   usePageSeo(

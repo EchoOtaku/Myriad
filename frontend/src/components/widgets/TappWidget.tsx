@@ -16,8 +16,8 @@ import {
   useRef,
   useState,
 } from 'react'
-
 import { useNavigate } from 'react-router-dom'
+
 import { useI18n, withI18nNamespace } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -30,6 +30,7 @@ import { onTappWidgetInvalidate } from '../../tapp/runtime/WidgetRuntimeSignals'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { getTappIconStyle } from '../../tapp/utils/tappColors'
 import { tappDetailPath } from '../../tapp/utils/tappPaths'
+import { useTappSubject } from '../../utils/tappSubject'
 import { userFacingError } from '../../utils/userFacingError'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
@@ -1040,11 +1041,14 @@ function TappWidgetRuntime({
 
 export const TappWidgetComponent = memo(
   (props: TappWidgetProps) => {
+    const subject = useTappSubject()
     const anim = useAnimationLevel()
+    if (!subject.ready) return null
 
     if (props.isPreview) {
       return (
         <TappWidgetPreview
+          key={subject.epoch}
           tappWidgetId={props.tappWidgetId}
           config={props.config}
           animLevel={anim.level}
@@ -1052,7 +1056,7 @@ export const TappWidgetComponent = memo(
       )
     }
 
-    return <TappWidgetRuntime {...props} anim={anim} />
+    return <TappWidgetRuntime key={subject.epoch} {...props} anim={anim} />
   },
   (prevProps, nextProps) => {
     // 预览也必须比较具体 Tapp/尺寸/实例配置，不能复用另一应用的画面。

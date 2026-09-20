@@ -19,6 +19,7 @@ import {
 } from '../components/widgets/shared/WidgetSkeleton'
 import { currentCopy } from '../i18n/localeCopy'
 import { formatUserFacingError } from '../utils/formatUserFacingError'
+import { getTappSubjectSnapshot, useTappSubject } from '../utils/tappSubject'
 
 // Tapp runtime/沙箱按需加载：布局没有 Tapp 小组件时不进 Home 首屏。
 // lazy() 吃 default 导出（withI18nNamespace）。具名 TappWidgetComponent 没有语言包。
@@ -137,6 +138,7 @@ export function useTappWidgets(enabled = true): {
   error: string | null
   refreshWidgets: () => void
 } {
+  const subject = useTappSubject()
   const componentsRef = useRef(new Map<string, WidgetType['component']>())
   const mapWidgets = useCallback((widgets: RegisteredWidget[], runtime: Parameters<typeof createTappWidgetType>[1]) => {
     const types = widgets.map(widget => createTappWidgetType(widget, runtime, componentsRef.current.get(widget.id)))
@@ -159,14 +161,17 @@ export function useTappWidgets(enabled = true): {
 
   // 失败指数退避重试；waitForSync 会重抛缓存错误，重试必须 syncFromBackend(true)。
   const loadWidgetsAsync = useCallback(async () => {
+    if (!subject.ready) return
+    const isCurrent = () => isMounted() && getTappSubjectSnapshot() === subject
     const MAX_ATTEMPTS = 4
     const RETRY_DELAYS = [2000, 5000, 10000]
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      if (!isMounted()) return
+      if (!isCurrent()) return
       try {
         setIsLoading(true)
         const { getTappRuntime } = await loadTappRuntimeModule()
+        if (!isCurrent()) return
         const runtime = getTappRuntime()
 
         if (attempt === 0) {
@@ -177,6 +182,7 @@ export function useTappWidgets(enabled = true): {
           await runtime.syncFromBackend(true)
         }
 
+        if (!isCurrent()) return
         const registeredWidgets = runtime.getRegisteredWidgets()
         const widgetTypes = mapWidgets(registeredWidgets, runtime)
 
@@ -184,23 +190,20 @@ export function useTappWidgets(enabled = true): {
           // 有注册小组件时预热 chunk，避免渲染时才拉。
           void import('../components/widgets/TappWidget').catch(() => {})
         }
-        if (!isMounted()) return
+        if (!isCurrent()) return
         setTappWidgets(widgetTypes)
         setError(null)
         return
       } catch (err) {
+        if (!isCurrent()) return
         console.error(
           `[useTappWidgets] Failed to load widgets (attempt ${attempt + 1}/${MAX_ATTEMPTS}):`,
           err,
         )
         if (attempt === MAX_ATTEMPTS - 1) {
-          if (isMounted()) {
-            setError(
-              await formatUserFacingError(
-                err,
-                currentCopy().errors.widgetsLoadFailed,
-              ),
-            )
+          if (isCurrent()) {
+            const message = await formatUserFacingError(err, currentCopy().errors.widgetsLoadFailed)
+            if (isCurrent()) setError(message)
           }
           return
         }
@@ -209,30 +212,33 @@ export function useTappWidgets(enabled = true): {
           setTimeout(resolve, RETRY_DELAYS[attempt]),
         )
       } finally {
-        if (isMounted()) setIsLoading(false)
+        if (isCurrent()) setIsLoading(false)
       }
     }
-  }, [mapWidgets])
+  }, [mapWidgets, subject])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !subject.ready) {
+      componentsRef.current.clear()
+      setTappWidgets([])
       setIsLoading(false)
       return
     }
     loadWidgetsAsync()
-  }, [enabled, loadWidgetsAsync])
+  }, [enabled, loadWidgetsAsync, subject])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !subject.ready) return
     let disposed = false
     const unsubs: Array<() => void> = []
 
     loadTappRuntimeModule()
       .then(({ getTappRuntime }) => {
-        if (disposed) return
+        if (disposed || getTappSubjectSnapshot() !== subject) return
         const runtime = getTappRuntime()
 
         const reloadSync = () => {
+          if (disposed || getTappSubjectSnapshot() !== subject) return
           try {
             const registeredWidgets = runtime.getRegisteredWidgets()
             setTappWidgets(
@@ -244,7 +250,7 @@ export function useTappWidgets(enabled = true): {
             void formatUserFacingError(
               err,
               currentCopy().errors.widgetsLoadFailed,
-            ).then(setError)
+            ).then(message => { if (!disposed && getTappSubjectSnapshot() === subject) setError(message) })
           } finally {
             setIsLoading(false)
           }
@@ -262,7 +268,7 @@ export function useTappWidgets(enabled = true): {
       disposed = true
       unsubs.forEach((unsub) => unsub())
     }
-  }, [enabled, mapWidgets])
+  }, [enabled, mapWidgets, subject])
 
   return {
     tappWidgets,

@@ -87,6 +87,7 @@ export async function installTapp(
   code: TappPlaygroundCode,
   permissions?: string[],
   compiledCss?: CompiledCssPayload,
+  signal?: AbortSignal,
 ): Promise<TappListItem> {
   const requestBody = buildDirectTappRequest(
     manifest,
@@ -97,6 +98,7 @@ export async function installTapp(
 
   return apiRequest('/api/tapps/install', {
     method: 'POST',
+    signal,
     body: JSON.stringify(requestBody),
   })
 }
@@ -145,6 +147,7 @@ function buildDirectTappRequest(
 export async function installFromCode(
   manifest: TappManifest,
   code: TappPlaygroundCode,
+  signal?: AbortSignal,
 ): Promise<TappListItem> {
   const widgetSources = [
     code.widgetHtml || '',
@@ -165,7 +168,7 @@ export async function installFromCode(
   return installTapp(manifest, code, manifest.permissions, {
     widgetCss,
     pageCss,
-  })
+  }, signal)
 }
 
 export async function updateTappFromCode(
@@ -640,6 +643,7 @@ export interface UninstallOptions {
 export async function uninstallTapp(
   tappId: string,
   options?: UninstallOptions,
+  signal?: AbortSignal,
 ): Promise<void> {
   const params = new URLSearchParams()
   if (options?.keepData) {
@@ -650,6 +654,7 @@ export async function uninstallTapp(
 
   return apiRequest(url, {
     method: 'DELETE',
+    signal,
   })
 }
 

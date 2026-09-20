@@ -1,14 +1,15 @@
 import type { TappCodeStructure, TappInstance } from '../types'
 import type { AnimationConfigRef, SafeInsets } from './sandbox'
 import type { TappBridge } from './TappBridge'
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import {
   buildTappMediaState,
   mergeMusicPlayerEventDetail,
 } from '../../utils/musicPlayerState'
+import { useTappSubject } from '../../utils/tappSubject'
 import { getIsDarkMode } from '../../utils/themeSubscriber'
 import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
@@ -344,16 +345,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   const bridgeRef = useRef<TappBridge | null>(null)
   const [isReady, setIsReady] = useState(false)
   /** Bumps when host identity settles after login/logout so iframe remounts. */
-  const [subjectEpoch, setSubjectEpoch] = useState(0)
+  const subject = useTappSubject()
+  const subjectEpoch = subject.epoch
   const previewStorageRef = useRef(new Map<string, unknown>())
   const previewSettingsRef = useRef(new Map<string, unknown>())
-
-  useEffect(() => {
-    if (previewMode) return
-    const onSubjectReady = () => setSubjectEpoch((n) => n + 1)
-    window.addEventListener('tapp-subject-ready', onSubjectReady)
-    return () => window.removeEventListener('tapp-subject-ready', onSubjectReady)
-  }, [previewMode])
 
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale, t } = useI18n()
@@ -529,6 +524,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   // Safari：imperative iframe。已挂载的 sandboxed iframe 不会因 srcdoc 变更重绘。
   useEffect(() => {
+    if (!previewMode && !subject.ready) return
     const container = containerRef.current
     if (!container) return
 
@@ -821,6 +817,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     previewMode,
     previewStores,
     subjectEpoch,
+    subject.ready,
     cannotLoadApp,
   ])
 

@@ -7,6 +7,7 @@ import axios from 'axios'
 import { getSiteFace, getWardrobeFace } from '../features/merope/api'
 import { ensureSessionStoragePolyfill } from '../test/sessionStoragePolyfill'
 import { clearCSRFToken } from '../utils/csrf'
+import { HOST_SESSION_RECHECK_EVENT } from '../utils/hostSessionFailure'
 import { RateLimitError } from '../utils/rateLimiter'
 import TokenManager from '../utils/tokenManager'
 import api, { updateConfig } from './api'
@@ -85,18 +86,16 @@ describe('shared HTTP failures', () => {
     })
   }
 
-  it('clears authentication and CSRF on 401 before rejecting', async () => {
+  it('requests authoritative session validation on 401 before discarding identity', async () => {
     const remove = mock.method(TokenManager, 'removeToken', () => {})
-    let authEvent: unknown
-    window.addEventListener('auth-state-changed', (event) => {
-      authEvent = (event as CustomEvent).detail
-    })
+    let checks = 0
+    window.addEventListener(HOST_SESSION_RECHECK_EVENT, () => { checks++ })
     sessionStorage.setItem('csrf_token', token)
     replies.push({ status: 401, body: { error: 'Session expired' } })
     await assert.rejects(api.get('/private'), /Session expired/)
-    assert.equal(remove.mock.callCount(), 1)
-    assert.equal(sessionStorage.getItem('csrf_token'), null)
-    assert.deepEqual(authEvent, { isAuthenticated: false })
+    assert.equal(remove.mock.callCount(), 0)
+    assert.equal(sessionStorage.getItem('csrf_token'), token)
+    assert.equal(checks, 1)
   })
 
   it('refreshes CSRF and retries a rejected mutation once', async () => {

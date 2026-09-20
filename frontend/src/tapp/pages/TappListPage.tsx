@@ -36,6 +36,7 @@ import {
 } from '../../utils/moduleVisibility'
 import { isWebKit } from '../../utils/platformDetect'
 import { hasSessionHint } from '../../utils/sessionDetection'
+import { useTappSubject } from '../../utils/tappSubject'
 import { showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { InstallTappDialog } from '../components/InstallTappDialog'
@@ -126,6 +127,7 @@ export function TappListPage() {
   const [uninstallAnchor, setUninstallAnchor] = useState<HTMLElement | null>(
     null,
   )
+  useTappSubject()
   const runtime = getTappRuntime()
 
   usePageSeo(

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react'
 import { preloadCriticalRoutes } from '../utils/codeSplitting'
 import { isDocumentReady, subscribeDocumentReady } from '../utils/pageLoader'
+import { useTappSubject } from '../utils/tappSubject'
 
 const TappBackgroundRunner = lazy(() => import('../tapp/components/TappBackgroundRunner'))
 
@@ -10,6 +11,7 @@ function useDocumentReady() {
 
 /** Own the one-time background startup without re-rendering the application shell. */
 export function BackgroundTappHost() {
+  const subject = useTappSubject()
   const documentReady = useDocumentReady()
   const [ready, setReady] = useState(false)
   useEffect(() => {
@@ -29,7 +31,7 @@ export function BackgroundTappHost() {
     }
   }, [documentReady])
 
-  return ready ? <Suspense fallback={null}><TappBackgroundRunner /></Suspense> : null
+  return ready && subject.ready ? <Suspense fallback={null}><TappBackgroundRunner key={subject.epoch} /></Suspense> : null
 }
 
 /** Optional warming owns both the delay and the cancel handle for its queued imports. */

@@ -87,6 +87,13 @@ export class TappRuntime {
   private eventListeners: Map<RuntimeEvent, Set<RuntimeEventCallback>> =
     new Map()
 
+  private readonly controller = new AbortController()
+  private disposed = false
+
+  private assertActive(): void {
+    if (this.disposed) throw new DOMException('TAPP subject was replaced', 'AbortError')
+  }
+
   private synced: boolean = false
 
   private syncError: Error | null = null
@@ -107,6 +114,7 @@ export class TappRuntime {
 
   private constructor() {
     this.initialSyncPromise = this.syncFromBackend().catch((err) => {
+      if (this.disposed) return
       console.error('[TappRuntime] Initial sync failed:', err)
       this.syncError = err instanceof Error ? err : new Error(String(err))
       this.synced = true
@@ -127,6 +135,8 @@ export class TappRuntime {
   }
 
   private dispose(): void {
+    this.disposed = true
+    this.controller.abort()
     this.installedTapps.clear()
     this.runningTapps.clear()
     this.sessionRunningTapps.clear()
@@ -143,6 +153,7 @@ export class TappRuntime {
   }
 
   async syncFromBackend(force: boolean = false): Promise<void> {
+    this.assertActive()
     if (
       !force &&
       this.synced &&
@@ -154,9 +165,10 @@ export class TappRuntime {
     return this.deduplicator.dedupe('sync', async () => {
       try {
         const [details, backendWidgets] = await Promise.all([
-          listTappDetails(),
-          getAllWidgets(),
+          listTappDetails(undefined, this.controller.signal),
+          getAllWidgets(this.controller.signal),
         ])
+        this.assertActive()
         const previousTapps = this.installedTapps
         const permissionChanges: TappInstance[] = []
         this.installedTapps = new Map()
@@ -270,6 +282,7 @@ export class TappRuntime {
           widgets: this.registeredWidgets.size,
         })
       } catch (error) {
+        if (this.disposed) throw error
         console.error('[TappRuntime] Failed to sync from backend:', error)
         this.syncError =
           error instanceof Error ? error : new Error(String(error))
@@ -279,6 +292,7 @@ export class TappRuntime {
   }
 
   async waitForSync(): Promise<void> {
+    this.assertActive()
     if (!this.synced) {
       let timeout: ReturnType<typeof setTimeout> | undefined
       try {
@@ -296,6 +310,7 @@ export class TappRuntime {
       }
     }
 
+    this.assertActive()
     if (this.syncError) throw this.syncError
   }
 
@@ -314,8 +329,11 @@ export class TappRuntime {
       throw new Error(`Tapp ${manifest.id} is already installed`)
     }
 
-    const result = await installFromCode(manifest, code)
-    const detail = await getTapp(result.id)
+    this.assertActive()
+    const result = await installFromCode(manifest, code, this.controller.signal)
+    this.assertActive()
+    const detail = await getTapp(result.id, this.controller.signal)
+    this.assertActive()
 
     const userRole = (detail.user_role as 'guest' | 'user' | 'admin') || 'guest'
 
@@ -341,6 +359,7 @@ export class TappRuntime {
     getResourceLoader().clearCache(manifest.id)
 
     await this.syncFromBackend(true)
+    this.assertActive()
     const synchronized = this.installedTapps.get(manifest.id) ?? instance
     this.emit('tapp:installed', { id: manifest.id, instance: synchronized })
 
@@ -362,8 +381,10 @@ export class TappRuntime {
 
     try {
       await this.stopTapp(tappId)
+      this.assertActive()
 
-      await uninstallTapp(tappId, options)
+      await uninstallTapp(tappId, options, this.controller.signal)
+      this.assertActive()
 
       for (const [widgetId, widget] of this.registeredWidgets) {
         if (widget.tappId === tappId) {
@@ -418,7 +439,8 @@ export class TappRuntime {
 
       const persistsLifecycle = this.persistsLifecycle(instance)
       if (persistsLifecycle) {
-        await startTapp(tappId)
+        await startTapp(tappId, this.controller.signal)
+        this.assertActive()
         instance.installationStatus = 'running'
       } else {
         this.sessionRunningTapps.add(tappId)
@@ -438,7 +460,7 @@ export class TappRuntime {
     const previous = this.lifecycleTransitions.get(tappId) ?? Promise.resolve()
     const transition: Promise<void> = previous
       .catch(() => undefined)
-      .then(operation)
+      .then(() => { this.assertActive(); return operation() })
       .finally(() => {
         if (this.lifecycleTransitions.get(tappId) === transition) {
           this.lifecycleTransitions.delete(tappId)
@@ -508,7 +530,8 @@ export class TappRuntime {
       }
 
       if (this.persistsLifecycle(instance)) {
-        await stopTapp(tappId)
+        await stopTapp(tappId, this.controller.signal)
+        this.assertActive()
         instance.installationStatus = 'installed'
       } else {
         this.sessionRunningTapps.delete(tappId)
@@ -535,6 +558,7 @@ export class TappRuntime {
   async refreshTapp(tappId: string): Promise<void> {
     this.clearCodeCache(tappId)
     await this.syncFromBackend(true)
+    this.assertActive()
     const instance = this.installedTapps.get(tappId)
     if (instance) {
       this.emit('tapp:updated', { id: tappId, instance })
@@ -543,6 +567,7 @@ export class TappRuntime {
 
   async refreshPermissionGrants(): Promise<void> {
     await this.syncFromBackend(true)
+    this.assertActive()
   }
 
   isRunning(tappId: string): boolean {
@@ -574,8 +599,10 @@ export class TappRuntime {
       tappId,
       config as WidgetRegistration,
       runtimeGrant,
+      this.controller.signal,
     )
 
+    this.assertActive()
     const widget: RegisteredWidget = {
       id: fullId,
       tappId,
@@ -611,7 +638,8 @@ export class TappRuntime {
       )
     }
 
-    await unregisterTappWidget(tappId, widgetId, runtimeGrant)
+    await unregisterTappWidget(tappId, widgetId, runtimeGrant, this.controller.signal)
+    this.assertActive()
 
     this.registeredWidgets.delete(fullId)
 
@@ -667,6 +695,7 @@ export class TappRuntime {
   }
 
   private emit(event: RuntimeEvent, data: unknown): void {
+    if (this.disposed) return
     const listeners = this.eventListeners.get(event)
     if (listeners) {
       listeners.forEach((callback) => {

@@ -75,8 +75,9 @@ export async function listTapps(
 
 export async function listTappDetails(
   scope?: TappCatalogScope,
+  signal?: AbortSignal,
 ): Promise<TappDetail[]> {
-  return apiRequest(`/api/tapps/details${catalogScopeQuery(scope)}`)
+  return apiRequest(`/api/tapps/details${catalogScopeQuery(scope)}`, { signal })
 }
 
 export async function getRecentTapps(
@@ -85,19 +86,21 @@ export async function getRecentTapps(
   return apiRequest(`/api/tapps/recent?limit=${limit}`)
 }
 
-export async function getTapp(tappId: string): Promise<TappDetail> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}`)
+export async function getTapp(tappId: string, signal?: AbortSignal): Promise<TappDetail> {
+  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}`, { signal })
 }
 
-export async function startTapp(tappId: string): Promise<void> {
+export async function startTapp(tappId: string, signal?: AbortSignal): Promise<void> {
   return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/start`, {
     method: 'POST',
+    signal,
   })
 }
 
-export async function stopTapp(tappId: string): Promise<void> {
+export async function stopTapp(tappId: string, signal?: AbortSignal): Promise<void> {
   return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/stop`, {
     method: 'POST',
+    signal,
   })
 }
 

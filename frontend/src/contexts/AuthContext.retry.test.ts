@@ -15,7 +15,7 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://myriad.test' })
   const globals = {
     window: dom.window, document: dom.window.document,
-    localStorage: dom.window.localStorage, CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true,
+    localStorage: dom.window.localStorage, sessionStorage: dom.window.sessionStorage, CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true,
   }
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
   for (const [key, value] of Object.entries(globals)) {
@@ -24,6 +24,7 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
   const timers = new Map<number, { callback: () => void; delay: number }>()
   let timerId = 0
   let requests = 0
+  const resets: string[] = []
   let response = new Response(JSON.stringify({ authenticated: true, id: 1, username: 'owner', is_admin: true }))
   let networkError = false
   let pendingResolve: ((value: Response) => void) | undefined
@@ -42,15 +43,16 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
     define: { 'import.meta.env': '{}' },
     plugins: [{ name: 'runtime-boundary', setup(builder) {
       builder.onResolve({ filter: /tapp\/runtime\/Tapp(Scheduler|RuntimeGrant|Runtime)$/ }, ({ path }) => ({ path, namespace: 'test' }))
-      builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export const TappScheduler = {reset(){}}; export const TappRuntimeGrant = {destroyAll(){}}; export const TappRuntime = {reset(){}}', loader: 'js' }))
+      builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export const TappScheduler = {reset(){runtimeReset("scheduler")}}; export const TappRuntimeGrant = {destroyAll(){runtimeReset("grants")}}; export const TappRuntime = {reset(){runtimeReset("runtime")}}', loader: 'js' }))
     } }],
   })
   type Auth = ReturnType<typeof import('./AuthContext').useAuth>
   const module = { exports: {} as typeof import('./AuthContext') }
-  compileFunction(bundle.outputFiles[0].text, ['require', 'module', 'exports', 'fetch', 'setTimeout', 'clearTimeout'])(
+  compileFunction(bundle.outputFiles[0].text, ['require', 'module', 'exports', 'fetch', 'setTimeout', 'clearTimeout', 'runtimeReset'])(
     require, module, module.exports, fetchMe,
     (callback: () => void, delay: number) => { timers.set(++timerId, { callback, delay }); return timerId },
     (id: number) => timers.delete(id),
+    (kind: string) => resets.push(kind),
   )
   let auth!: Auth
   function Consumer() { auth = module.exports.useAuth(); return createElement('span', null, auth.isAdmin ? 'admin' : 'guest') }
@@ -65,6 +67,10 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
     localStorage.setItem('myriad_session_hint', 'true')
     await act(async () => root.render(createElement(module.exports.AuthProvider, null, createElement(Consumer))))
     assert.equal(auth.isAdmin, true)
+    const initialResets = resets.length
+    await act(async () => { window.dispatchEvent(new CustomEvent('host-session-recheck')) })
+    assert.equal(auth.isAdmin, true, 'an unrelated resource 401 does not log out a valid host session')
+    assert.equal(resets.length, initialResets, 'valid session rechecks preserve live TAPP resources')
     networkError = true
     await act(async () => { await auth.checkAuth() })
     assert.equal(auth.isAdmin, true, 'a network error must retain the verified administrator')
@@ -77,9 +83,11 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
     await act(async () => { await auth.checkAuth() })
     assert.equal(auth.isAdmin, true, '503 must retain the verified administrator')
     for (const status of [401, 403]) {
+      const beforeReset = resets.length
       response = new Response('', { status })
       await act(async () => { await auth.checkAuth() })
       assert.equal(auth.isAdmin, false, `${status} must revoke the confirmed identity`)
+      assert.deepEqual(resets.slice(beforeReset), ['scheduler', 'grants', 'runtime'], 'expiry uses the same cleanup as explicit logout')
       assert.equal(localStorage.getItem('myriad_session_hint'), null)
       assert.equal(timers.size, 0)
       localStorage.setItem('myriad_session_hint', 'true')
@@ -87,9 +95,11 @@ test('auth probes preserve confirmed identity, retry finitely, and stop on unmou
       await act(async () => { await auth.checkAuth() })
       assert.equal(auth.isAdmin, true, 'a later successful login restores administrator controls')
     }
+    const beforeGuest = resets.length
     response = new Response(JSON.stringify({ authenticated: false }))
-    await act(async () => { await auth.checkAuth() })
+    await act(async () => { window.dispatchEvent(new CustomEvent('host-session-recheck')) })
     assert.equal(auth.isAdmin, false)
+    assert.deepEqual(resets.slice(beforeGuest), ['scheduler', 'grants', 'runtime'])
     assert.equal(localStorage.getItem('myriad_session_hint'), null)
     assert.equal(timers.size, 0)
     localStorage.setItem('myriad_session_hint', 'true')

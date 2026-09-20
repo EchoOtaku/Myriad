@@ -10,11 +10,11 @@ import {
   LuSearch,
   LuX,
 } from '@lib/icons'
-
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Spinner } from '../../components/Spinner'
 import { API_URL as CONFIG_API_URL } from '../../config'
@@ -24,6 +24,7 @@ import { isPageVisible, startPage } from '../../hooks/animation'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { getCSRFToken } from '../../utils/csrf'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
+import { useTappSubject } from '../../utils/tappSubject'
 import { showError } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import {
@@ -652,6 +653,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   const { isAuthenticated } = useAuth()
   const animConfig = useAnimationLevel()
   const noAnimation = isExlight(animConfig)
+  useTappSubject()
   const runtime = getTappRuntime()
 
   const containerRef = useRef<HTMLDivElement>(null)

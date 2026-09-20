@@ -3,6 +3,7 @@ import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import TappWidgetComponent from '../../../src/components/widgets/TappWidget'
+import { AuthProvider } from '../../../src/contexts/AuthContext'
 import { I18nProvider } from '../../../src/contexts/I18nContext'
 import { getResourceLoader } from '../../../src/tapp/runtime/sandbox/resourceLoader'
 import { TappBridge } from '../../../src/tapp/runtime/TappBridge'
@@ -18,10 +19,10 @@ const instance = {
 TappRuntime.prototype.syncFromBackend = async () => {}
 const runtime = getTappRuntime()
 runtime.waitForSync = async () => {}
-runtime.getRegisteredWidgets = () => [{ id: 'fixture.lifecycle.card', tappId: instance.id, instanceCount: 0, registeredAt: '', config: { id: 'card', name: 'Card', defaultSize: '2x2', sizes: ['2x2'] } }]
-runtime.getTapp = () => instance
-runtime.isRunning = () => true
-runtime.canControlLifecycle = () => false
+TappRuntime.prototype.getRegisteredWidgets = () => [{ id: 'fixture.lifecycle.card', tappId: instance.id, instanceCount: 0, registeredAt: '', config: { id: 'card', name: 'Card', defaultSize: '2x2', sizes: ['2x2'] } }]
+TappRuntime.prototype.getTapp = () => instance
+TappRuntime.prototype.isRunning = () => true
+TappRuntime.prototype.canControlLifecycle = () => false
 getResourceLoader().loadWidgetResources = async () => ({
   modules: { 'card.js': `
     const probe = { boot: crypto.randomUUID(), pauses: 0, resumes: 0 };
@@ -66,4 +67,9 @@ export function snapshot() {
 export function mount() {
   localStorage.setItem('locale', 'en-US')
   createRoot(document.getElementById('root')!).render(<I18nProvider><BrowserRouter><Fixture /></BrowserRouter></I18nProvider>)
+}
+
+export function mountWithAuth() {
+  localStorage.setItem('locale', 'en-US')
+  createRoot(document.getElementById('root')!).render(<I18nProvider><BrowserRouter><AuthProvider><Fixture /></AuthProvider></BrowserRouter></I18nProvider>)
 }

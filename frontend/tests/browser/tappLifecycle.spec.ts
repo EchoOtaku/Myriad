@@ -53,3 +53,45 @@ test('real widget keeps its iframe and SDK state offscreen, resumes, and destroy
   await writeFile(evidence, JSON.stringify({ cycles: 3, issued, revoked, final: await snapshot(), errors }, null, 2))
   await testInfo.attach('lifecycle-evidence', { path: evidence, contentType: 'application/json' })
 })
+
+test('confirmed session expiry destroys the old widget before issuing a replacement grant', async ({ page }) => {
+  const fixture = `/@fs${fileURLToPath(new URL('./fixture/tappLifecycle.tsx', import.meta.url))}`
+  let authenticated = true
+  let issued = 0
+  let revoked = 0
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route('**/tapp-subject-probe', route => route.fulfill({ contentType: 'text/html', body: '<div id="root"></div>' }))
+  await page.route('**/api/**', route => {
+    const request = route.request()
+    if (request.url().endsWith('/auth/me')) return route.fulfill({ json: authenticated ? { authenticated: true, id: 1, username: 'owner', is_admin: true } : { authenticated: false } })
+    if (request.url().includes('runtime-grants') && request.method() === 'DELETE') {
+      revoked++
+      return route.fulfill({ json: {} })
+    }
+    if (request.url().endsWith('/runtime-grants')) {
+      issued++
+      const { instanceId, kind } = request.postDataJSON()
+      return route.fulfill({ json: { version: 2, token: `fixture-token-${issued}`, runtimeId: `fixture-runtime-${issued}`, tappId: 'fixture.lifecycle', ownerId: 1, subjectId: authenticated ? 1 : 0, instanceId, kind, permissions: [], expiresAt: new Date(Date.now() + 3600000).toISOString() } })
+    }
+    return route.fulfill({ json: request.url().includes('csrf-token') ? { csrf_token: null } : {} })
+  })
+  await page.goto('/tapp-subject-probe')
+  await page.evaluate(async fixture => {
+    localStorage.setItem('myriad_session_hint', 'true')
+    ;(await import(fixture)).mountWithAuth()
+  }, fixture)
+  const frame = page.frameLocator('iframe.tapp-widget-iframe')
+  await expect(frame.locator('#widget-root')).toHaveText('Lifecycle ready')
+  const original = await page.locator('iframe').elementHandle()
+  const beforeIssued = issued
+  const beforeRevoked = revoked
+  authenticated = false
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('host-session-recheck')))
+  await expect.poll(async () => original!.evaluate(node => node.isConnected)).toBe(false)
+  await expect.poll(() => revoked).toBeGreaterThan(beforeRevoked)
+  await expect(frame.locator('#widget-root')).toHaveText('Lifecycle ready')
+  await expect.poll(() => issued).toBe(beforeIssued + 1)
+  expect(await page.evaluate(() => localStorage.getItem('myriad_session_hint'))).toBeNull()
+  expect(errors).toEqual([])
+})

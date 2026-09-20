@@ -40,6 +40,7 @@ import { useI18n } from '../../contexts/I18nContext'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { ensureMotionReady, isMotionReady } from '../../lib/lazyMotion'
 import { hasSessionHint } from '../../utils/sessionDetection'
+import { useTappSubject } from '../../utils/tappSubject'
 import { showError, showInfo, showSuccess } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { EXAMPLE_TAPPS } from '../examples'
@@ -143,6 +144,7 @@ export function TappStore({
   >([])
   const [sources, setSources] = useState<RemoteStoreSource[]>([])
 
+  useTappSubject()
   const runtime = getTappRuntime()
   const notifyInstalled = useCallback(() => {
     onInstalled?.()

@@ -11,6 +11,7 @@ import {
   buildTappMediaState,
   mergeMusicPlayerEventDetail,
 } from '../../utils/musicPlayerState'
+import { useTappSubject } from '../../utils/tappSubject'
 import {
   calculateWidgetDimensions,
   sendResizeMessage,
@@ -270,16 +271,10 @@ export const TappWidgetSandbox = memo(
     const previewSettingsRef = useRef(new Map<string, unknown>())
     const [isReady, setIsReady] = useState(false)
     const [readyStalled, setReadyStalled] = useState(false)
-    const [subjectEpoch, setSubjectEpoch] = useState(0)
+    const subject = useTappSubject()
+  const subjectEpoch = subject.epoch
     const animationConfig = useAnimationLevel()
     const animationConfigRef = useRef<AnimationConfigRef>(animationConfig)
-
-    useEffect(() => {
-      const onSubjectReady = () => setSubjectEpoch((n) => n + 1)
-      window.addEventListener('tapp-subject-ready', onSubjectReady)
-      return () =>
-        window.removeEventListener('tapp-subject-ready', onSubjectReady)
-    }, [])
 
     useEffect(() => {
       if (isReady) {
@@ -455,6 +450,7 @@ export const TappWidgetSandbox = memo(
     const runtimeFingerprint = getTappRuntimeFingerprint(tappInstance)
 
     useEffect(() => {
+      if (!previewMode && !subject.ready) return
       const container = containerRef.current
       if (!container) return
 
@@ -723,6 +719,7 @@ export const TappWidgetSandbox = memo(
       stableWidgetProps,
       previewStores,
       subjectEpoch,
+      subject.ready,
       previewMode,
       t.tapp.widgetNotFound,
       t.tapp.appCodeLoadFailed,

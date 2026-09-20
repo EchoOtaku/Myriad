@@ -15,12 +15,16 @@ import { shouldFetchLoginOnly } from '../utils/authGate'
 import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
 import { isKnownGuest, setKnownAuthState } from '../utils/authState'
 import { authSubject, authSubjectKey } from '../utils/authSubject'
+import { clearCSRFToken } from '../utils/csrf'
+import { HOST_SESSION_RECHECK_EVENT } from '../utils/hostSessionFailure'
 import { phantasiSubject, phantasiSubjectKey } from '../utils/phantasiSubject'
 import {
   clearSessionHint,
   hasSessionHint,
   setSessionHint,
 } from '../utils/sessionDetection'
+import { beginTappSubjectChange, finishTappSubjectChange } from '../utils/tappSubject'
+import TokenManager from '../utils/tokenManager'
 
 export interface AuthIdentity {
   id: number
@@ -124,6 +128,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [clearAuthRetry])
 
+  const confirmedSubject = useRef('guest')
+  const cleanupQueue = useRef<Promise<void>>(Promise.resolve())
+  const pendingSubject = useRef<{ epoch: number; cleanup: Promise<void> } | null>(null)
+  const beginSubjectChange = useCallback(() => {
+    authSubject.change('changing', true)
+    phantasiSubject.change('changing', false, true)
+    const epoch = beginTappSubjectChange()
+    const cleanup = cleanupQueue.current.catch(() => {}).then(resetTappSubjectState)
+    cleanupQueue.current = cleanup
+    pendingSubject.current = { epoch, cleanup }
+    return pendingSubject.current
+  }, [resetTappSubjectState])
+
+  const prepareSubject = useCallback(async (key: string, generation: number) => {
+    if (confirmedSubject.current === key && !pendingSubject.current) return true
+    const transition = pendingSubject.current ?? beginSubjectChange()
+    await transition.cleanup
+    if (!mounted.current || generation !== checkAuthGeneration.current || pendingSubject.current !== transition) return false
+    return true
+  }, [beginSubjectChange])
+
+  const finishSubject = useCallback((key: string, authenticated: boolean) => {
+    if (!authenticated) {
+      TokenManager.removeToken()
+      clearCSRFToken()
+    }
+    confirmedSubject.current = key
+    const transition = pendingSubject.current
+    pendingSubject.current = null
+    if (transition) finishTappSubjectChange(transition.epoch, authenticated)
+  }, [])
+
   const checkAuth = useCallback(async (): Promise<boolean> => {
     if (!mounted.current) return false
     while (checkAuthInflight.current) {
@@ -166,6 +202,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (generation !== checkAuthGeneration.current) return false
           if (parsed.authenticated) {
             const u = parsed.user
+            const key = authSubjectKey(u)
+            if (!await prepareSubject(key, generation) || generation !== checkAuthGeneration.current) return false
             authSubject.change(authSubjectKey(u))
             phantasiSubject.change(phantasiSubjectKey(u))
             setSessionHint()
@@ -210,8 +248,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setIsAdmin(u.is_admin || false)
             setKnownAuthState(true)
             clearAuthRetry()
+            finishSubject(key, true)
             return true
           }
+          if (!await prepareSubject('guest', generation) || generation !== checkAuthGeneration.current) return false
           // Drop the session hint only on a definitive guest body.
           clearSessionHint()
           authSubject.change('guest')
@@ -221,10 +261,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAdmin(false)
           setKnownAuthState(false)
           clearAuthRetry()
+          finishSubject('guest', false)
           return false
         }
 
         if (response.status === 401 || response.status === 403) {
+          if (!await prepareSubject('guest', generation) || generation !== checkAuthGeneration.current) return false
           authSubject.change('guest')
           phantasiSubject.change('guest')
           clearSessionHint()
@@ -233,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAdmin(false)
           setKnownAuthState(false)
           clearAuthRetry()
+          finishSubject('guest', false)
         } else {
           scheduleAuthRetry()
         }
@@ -257,27 +300,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
     checkAuthInflight.current = inflight.current
     return await inflight.current
-  }, [clearAuthRetry, scheduleAuthRetry])
+  }, [clearAuthRetry, scheduleAuthRetry, prepareSubject, finishSubject])
   checkAuthRef.current = checkAuth
 
   const logout = useCallback(() => {
     authTransition.current++
     checkAuthGeneration.current++
     probeController.current?.abort()
-    authSubject.change('guest', true)
-    phantasiSubject.change('guest', true, true)
+    const transition = beginSubjectChange()
     setIsLoading(false)
-    // Logout need not await; this reset and a later login share the import cache.
-    void resetTappSubjectState().catch((error) => {
-      console.warn('[AuthContext] tapp runtime reset failed:', error)
-    })
+    void transition.cleanup.then(() => {
+      if (!mounted.current || pendingSubject.current !== transition) return
+      authSubject.change('guest')
+      phantasiSubject.change('guest', true, true)
+      finishSubject('guest', false)
+    }).catch(error => console.warn('[AuthContext] tapp runtime reset failed:', error))
     setUser(null)
     setIsAuthenticated(false)
     setIsAdmin(false)
     setKnownAuthState(false)
     clearSessionHint()
     clearAuthRetry()
-  }, [clearAuthRetry, resetTappSubjectState])
+  }, [clearAuthRetry, beginSubjectChange, finishSubject])
 
   // Probe on OAuth callback or session hint; skip for a hintless guest.
   // /api/auth/me is 200 + authenticated:false for guests (never 401).
@@ -329,37 +373,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         probeController.current?.abort()
         clearAuthRetry()
         const isCurrent = () => mounted.current && transition === authTransition.current
-        authSubject.change('changing', true)
-        phantasiSubject.change('changing', false, true)
-        // Remount sandboxes only after destroyAll and a known user, or Aro keeps a dead grant.
-        void (async () => {
-          try {
-            await resetTappSubjectState()
-          } catch (error) {
-            console.warn('[AuthContext] tapp runtime reset failed:', error)
-          }
+        const subject = beginSubjectChange()
+        void subject.cleanup.then(async () => {
           if (!isCurrent()) return
-          const authenticated = await checkAuth()
-          if (!isCurrent()) return
-          window.dispatchEvent(
-            new CustomEvent('tapp-subject-ready', {
-              detail: { isAuthenticated: authenticated },
-            }),
-          )
-        })()
+          await checkAuth()
+        }).catch(error => console.warn('[AuthContext] tapp runtime reset failed:', error))
       } else {
         logout()
-        window.dispatchEvent(
-          new CustomEvent('tapp-subject-ready', {
-            detail: { isAuthenticated: false },
-          }),
-        )
       }
     }
     window.addEventListener('auth-state-changed', handleAuthChange)
     return () =>
       window.removeEventListener('auth-state-changed', handleAuthChange)
-  }, [checkAuth, clearAuthRetry, logout, resetTappSubjectState])
+  }, [checkAuth, clearAuthRetry, logout, beginSubjectChange])
+
+  useEffect(() => {
+    let pending = false
+    const recheck = () => {
+      if (pending || pendingSubject.current) return
+      pending = true
+      void checkAuth().finally(() => { pending = false })
+    }
+    window.addEventListener(HOST_SESSION_RECHECK_EVENT, recheck)
+    return () => window.removeEventListener(HOST_SESSION_RECHECK_EVENT, recheck)
+  }, [checkAuth])
 
   const value = useMemo(
     () => ({

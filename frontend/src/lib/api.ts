@@ -1,19 +1,20 @@
 import type { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
 import axios from 'axios'
-
 import { API_URL } from '../config'
+
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { currentCopy } from '../i18n/localeCopy'
 import { parseApiErrorBody } from '../services/api'
 import { checkAiConfiguration } from '../utils/aiConfiguration'
 import { aiRequestTimeoutMs } from '../utils/aiRequestTimeout.mjs'
+import { authSubject } from '../utils/authSubject'
 import { clearCSRFToken, getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
+import { notifyHostSessionFailure } from '../utils/hostSessionFailure'
 import {
   formatRateLimitMessage,
   retryAfterSecondsFromBody,
 } from '../utils/httpRateLimitToast'
 import { checkRateLimit, RateLimitError } from '../utils/rateLimiter'
-import TokenManager from '../utils/tokenManager'
 import { isUselessErrorText, userFacingError } from '../utils/userFacingError'
 
 const API_BASE_URL =
@@ -39,6 +40,7 @@ if (!isValidUrl(API_BASE_URL)) {
 /** CSRF retry once. */
 type CsrfRetryableConfig = InternalAxiosRequestConfig & {
   __csrfRetried?: boolean
+  __authSubject?: AbortSignal
 }
 
 const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete'])
@@ -91,6 +93,7 @@ const api = axios.create({
 
 api.interceptors.request.use(
   async (config) => {
+    (config as CsrfRetryableConfig).__authSubject ??= authSubject.signal
     const blocked = await checkAiConfiguration(config.url || '', {
       method: config.method,
       body: typeof config.data === 'string' ? config.data : JSON.stringify(config.data),
@@ -237,14 +240,8 @@ api.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401) {
-      TokenManager.removeToken()
-      clearCSRFToken()
-      window.dispatchEvent(
-        new CustomEvent('auth-state-changed', {
-          detail: { isAuthenticated: false },
-        }),
-      )
+    if (response && config?.__authSubject) {
+      notifyHostSessionFailure(response.status, response.data, config.__authSubject)
     }
 
     if (error.response?.status === 429) {

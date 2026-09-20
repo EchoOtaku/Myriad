@@ -3,8 +3,10 @@ import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { currentCopy } from '../i18n/localeCopy'
 import { fetchWithAiConfiguration } from '../utils/aiConfiguration'
 import { aiRequestTimeoutMs } from '../utils/aiRequestTimeout.mjs'
+import { authSubject } from '../utils/authSubject'
 import { awaitAbortable } from '../utils/awaitAbortable'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
+import { notifyHostSessionFailure } from '../utils/hostSessionFailure'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { httpStatusMessage } from '../utils/httpStatus'
 
@@ -98,6 +100,7 @@ async function request<T>(
   options: ApiRequestOptions = {},
   retryOnCSRFError: boolean = true,
 ): Promise<T> {
+  const requestSubject = authSubject.signal
   options.signal?.throwIfAborted()
   const {
     requireAuth: _requireAuth = false,
@@ -160,6 +163,8 @@ async function request<T>(
         controller.signal.throwIfAborted()
         options.signal?.throwIfAborted()
       }
+
+      notifyHostSessionFailure(response.status, errorBody, requestSubject)
 
       // CSRF: force-refresh and retry once.
       if (

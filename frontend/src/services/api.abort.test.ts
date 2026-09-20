@@ -12,6 +12,8 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
   const dependencies: Record<string, unknown> = {
+    '../utils/authSubject': { authSubject: { signal: new AbortController().signal } },
+    '../utils/hostSessionFailure': { notifyHostSessionFailure() {} },
     '../config': { API_URL: 'https://example.test' },
     '../i18n/hostLocaleHeaders': { hostLocaleHeaders: () => ({}) },
     '../i18n/localeCopy': { currentCopy: () => ({ errors: { timeout: 'timeout', networkError: 'network' } }) },

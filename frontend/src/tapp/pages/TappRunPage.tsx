@@ -1,8 +1,8 @@
+import type { CSSProperties } from 'react'
 /** 内容挂在槽内；全屏只切 fixed，iframe 不卸载。 */
 
-import type { CSSProperties } from 'react'
-
 import type { TappCodeStructure, TappInstance } from '../types'
+
 import {
   FaCog,
   FaComments,
@@ -28,6 +28,7 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { useTappSubject } from '../../utils/tappSubject'
 import { userFacingError } from '../../utils/userFacingError'
 import { TappAppShell } from '../components/TappAppShell'
 import { TappIconBadge } from '../components/TappIconBadge'
@@ -145,6 +146,7 @@ function TappRunPageStandard({
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [retryGeneration, setRetryGeneration] = useState(0)
+  useTappSubject()
   const runtime = getTappRuntime()
 
   usePageSeo(

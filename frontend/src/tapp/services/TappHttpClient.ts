@@ -2,7 +2,10 @@ import { API_URL } from '../../config'
 import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
 import { currentCopy } from '../../i18n/localeCopy'
 import { parseApiErrorBody } from '../../services/api'
+import { authSubject } from '../../utils/authSubject'
+import { awaitAbortable } from '../../utils/awaitAbortable'
 import { getCSRFToken } from '../../utils/csrf'
+import { notifyHostSessionFailure } from '../../utils/hostSessionFailure'
 import {
   notifyHttpRateLimit,
   parseRetryAfterSeconds,
@@ -41,11 +44,15 @@ export async function apiRequest<T>(
   retryOnCsrf: boolean = true,
   retryOnRuntimeGrant: boolean = true,
 ): Promise<T> {
+  options.signal?.throwIfAborted()
+  const requestSubject = authSubject.signal
   const { runtimeGrant, ...fetchOptions } = options
   const method = (options.method || 'GET').toUpperCase()
   const needsCsrf =
     method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
-  const csrfToken = needsCsrf ? (await getCSRFToken()) || '' : ''
+  const csrfRequest = needsCsrf ? getCSRFToken() : Promise.resolve(null)
+  const csrfToken = (await (options.signal ? awaitAbortable(csrfRequest, options.signal) : csrfRequest)) || ''
+  options.signal?.throwIfAborted()
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -62,6 +69,7 @@ export async function apiRequest<T>(
     credentials: 'include',
   })
 
+  options.signal?.throwIfAborted()
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
     if (response.status === 429) {
@@ -95,6 +103,7 @@ export async function apiRequest<T>(
       }
     }
 
+    notifyHostSessionFailure(response.status, errorData, requestSubject)
     const parsed = parseApiErrorBody(errorData, response.status)
     const retryAfter =
       response.status === 429
@@ -135,6 +144,7 @@ export async function streamRuntimeEvents(
   signal?: AbortSignal,
   retryOnRuntimeGrant: boolean = true,
 ): Promise<void> {
+  const requestSubject = authSubject.signal
   const response = await fetch(`${API_URL}${endpoint}`, {
     headers: {
       Accept: 'text/event-stream',
@@ -164,6 +174,7 @@ export async function streamRuntimeEvents(
         )
       }
     }
+    notifyHostSessionFailure(response.status, error, requestSubject)
     const parsed = parseApiErrorBody(error, response.status)
     throw new TappHttpError(
       userFacingError(
