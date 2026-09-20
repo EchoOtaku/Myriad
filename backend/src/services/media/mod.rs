@@ -9,11 +9,13 @@
 
 mod access;
 mod assets;
+mod cite;
 mod error;
 pub(crate) mod legacy;
 mod migration;
 mod recovery;
 mod references;
+mod scan;
 pub(crate) mod serve;
 mod store;
 mod types;
@@ -21,6 +23,11 @@ mod urls;
 mod validate;
 
 pub use access::{can_manage, can_read};
+pub use cite::{
+    bind_ai_task, bind_channel_message, bind_consumer, bind_note_draft, bind_note_published,
+    bind_persona, bind_stickers, clear_note_doc, extract_registered_paths, references_from_fields,
+    references_from_urls,
+};
 pub use error::MediaError;
 pub use legacy::{LegacyClass, LegacyPaths};
 pub use migration::{
@@ -28,6 +35,7 @@ pub use migration::{
 };
 pub use recovery::{RecoverPlan, plan_recovery};
 pub use references::{NewReference, active_count, parse_consumer_type, replace_for_consumer};
+pub use scan::{backfill_known_consumers, catalog_labels_for_assets};
 pub use serve::{FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, resolve_public_asset};
 pub use store::MediaStore;
 pub use types::{
@@ -375,8 +383,43 @@ mod tests {
         assert!(created.references_complete);
         assert!(created.checksum_sha256.is_some());
 
+        let asset_id = created.id;
+        db.transaction(|txn| {
+            Box::pin(async move {
+                replace_for_consumer(
+                    txn,
+                    "note_draft",
+                    "1",
+                    &[NewReference {
+                        asset_id,
+                        slot: "cover".into(),
+                        requires_public: false,
+                        expires_at: None,
+                    }],
+                )
+                .await
+            })
+        })
+        .await
+        .expect("bind reference");
+        let blocked = service.delete(&db, created.id).await.expect_err("in use");
+        assert_eq!(blocked, MediaError::InUse);
+        db.transaction(|txn| {
+            Box::pin(async move { replace_for_consumer(txn, "note_draft", "1", &[]).await })
+        })
+        .await
+        .expect("clear reference");
         let outcome = service.delete(&db, created.id).await.expect("delete");
         assert_eq!(outcome, DeleteOutcome::Deleted);
         let _ = tokio::fs::remove_dir_all(root).await;
+    }
+
+    #[test]
+    fn federation_upload_no_longer_best_effort_registers() {
+        let src = include_str!("../../api/federation/social.rs");
+        let prod = src.split("mod tests").next().unwrap_or(src);
+        assert!(prod.contains("persist_federation_upload"));
+        assert!(!prod.contains("media_catalog::register"));
+        assert!(prod.contains("MediaService"));
     }
 }

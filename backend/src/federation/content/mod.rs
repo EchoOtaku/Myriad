@@ -8,7 +8,7 @@ mod publish;
 mod timeline;
 mod types;
 
-pub use media::{federation_media_root, store_federation_media};
+pub use media::{classify_media_mime, federation_media_root, store_federation_media};
 pub use publish::{create_note, list_published, publish_content, unpublish_content};
 pub use types::{
     CreateNoteRequest, MediaUploadResponse, NoteAttachmentInput, PublishRequest, PublishResponse,

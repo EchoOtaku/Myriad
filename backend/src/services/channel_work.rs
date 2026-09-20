@@ -579,7 +579,7 @@ async fn start_new_work(
                 current_route: None,
                 active_platforms: None,
                 conversation_history: None,
-                custom_data,
+                custom_data: custom_data.clone(),
                 intention_id: None,
                 autonomy_permission_cap: None,
                 rig_state: None,
@@ -588,7 +588,16 @@ async fn start_new_work(
     )
     .await
     {
-        Ok(run) => run,
+        Ok(run) => {
+            if let Some(data) = &custom_data {
+                if let Err(error) =
+                    crate::services::media::bind_channel_message(&db, run.run_id(), data, &[]).await
+                {
+                    warn!(%error, "failed to bind channel inbound media");
+                }
+            }
+            run
+        }
         Err(error) => {
             let body = error.0.to_json();
             let message = body

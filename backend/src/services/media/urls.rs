@@ -74,6 +74,20 @@ pub fn registered_local_path(raw: &str) -> Option<String> {
     Some(path.to_string())
 }
 
+/// Cite a local media path. Absolute URLs must match an allowlisted origin;
+/// path-only values still go through [`registered_local_path`].
+pub fn cite_local_path(raw: &str, allowed_origins: &[String]) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.contains("://") {
+        alias_local_path(trimmed, allowed_origins)
+    } else {
+        registered_local_path(trimmed)
+    }
+}
+
 /// Extract a local alias path only when `raw` is path-only or its origin is allowlisted.
 /// Foreign origins are rejected even if the pathname looks like a local media URL.
 pub fn alias_local_path(raw: &str, allowed_origins: &[String]) -> Option<String> {
@@ -208,6 +222,20 @@ mod tests {
         );
         assert!(alias_local_path("/media/federation/1/%2e%2e/secret", &[]).is_some());
         assert!(alias_local_path("/media/federation/../secret", &[]).is_none());
+        assert_eq!(
+            cite_local_path(
+                "/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.png",
+                &[]
+            ),
+            Some("/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.png".into())
+        );
+        assert!(
+            cite_local_path(
+                "https://other.site/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.png",
+                &allowed
+            )
+            .is_none()
+        );
     }
 
     #[test]

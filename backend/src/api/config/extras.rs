@@ -20,6 +20,20 @@ pub async fn update_dashboard_config(
     crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<DashboardConfigPayload>,
 ) -> (StatusCode, Json<Value>) {
+    if let Some(layout) = payload.layout.as_deref() {
+        if let Err(error) = crate::services::media::bind_stickers(&db, layout, &[]).await {
+            tracing::error!(%error, "failed to bind dashboard sticker references");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "error": "Failed to record media references",
+                    "code": error.code(),
+                    "message": "Failed to record media references"
+                })),
+            );
+        }
+    }
     let config_service = crate::services::config_service::ConfigService::new(db);
     let mut updates = std::collections::HashMap::new();
 

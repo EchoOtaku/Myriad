@@ -125,6 +125,10 @@ pub async fn delete_media(
         Err(refs) if refs == ["missing"] => {
             Err(media_http(StatusCode::NOT_FOUND, "Media not found"))
         }
+        Err(refs) if refs == ["pending"] => Err(HttpError(
+            AppError::from_status_u16(202, "Media deletion is retrying")
+                .with_code("MEDIA_NOT_READY"),
+        )),
         Err(_refs) => Err(HttpError(
             AppError::conflict("This file is still in use and cannot be deleted.")
                 .with_code("MEDIA_IN_USE"),

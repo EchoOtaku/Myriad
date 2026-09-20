@@ -543,23 +543,90 @@ pub(crate) async fn federation_media_upload(
             .into_response();
     };
 
-    match federation::content::store_federation_media(user_id, &filename, &mime, &bytes).await {
-        Ok(resp) => {
-            let _ = crate::services::media_catalog::register(
-                &db,
-                crate::services::media_catalog::RegisterMedia {
-                    kind: crate::services::media_catalog::MediaKind::Upload,
-                    url: resp.url.clone(),
-                    mime: resp.media_type.clone(),
-                    name: resp.name.clone(),
-                    size: resp.size as i64,
-                },
-            )
-            .await;
-            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-        }
+    match persist_federation_upload(&db, user_id, &filename, &mime, bytes).await {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
     }
+}
+
+async fn persist_federation_upload(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    filename: &str,
+    mime: &str,
+    bytes: Vec<u8>,
+) -> Result<crate::federation::content::MediaUploadResponse, (StatusCode, Json<serde_json::Value>)>
+{
+    let mime = mime
+        .split(';')
+        .next()
+        .unwrap_or(mime)
+        .trim()
+        .to_ascii_lowercase();
+    let attachment_type = crate::federation::content::classify_media_mime(&mime)
+        .ok_or_else(|| {
+            (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                Json(json!({
+                    "error": "Unsupported media type",
+                    "allowed": ["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/webm","video/quicktime"]
+                })),
+            )
+        })?;
+    let max = if attachment_type == "Image" {
+        crate::services::memory_profile::note_image_limit()
+    } else {
+        crate::services::memory_profile::note_video_limit()
+    };
+    let actor = crate::services::media::MediaActor::user(user_id).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": error.to_string(), "code": error.code() })),
+        )
+    })?;
+    let ctx = crate::services::media::MediaContext::user(
+        actor,
+        crate::services::media::MediaSource::Upload,
+    )
+    .map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": error.to_string(), "code": error.code() })),
+        )
+    })?;
+    let (asset, _) =
+        crate::services::media::MediaService::from_data_paths(crate::services::data_paths::paths())
+            .persist_ready_bytes(
+                db,
+                ctx,
+                crate::services::media::NewMediaBytes {
+                    bytes,
+                    claimed_mime: mime.clone(),
+                    filename: filename.to_string(),
+                    max_bytes: max,
+                    derived_from_id: None,
+                    exposure: crate::services::media::MediaExposure::Public,
+                },
+            )
+            .await
+            .map_err(|error| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": error.to_string(), "code": error.code() })),
+                )
+            })?;
+    let base = crate::federation::types::get_base_url()
+        .await
+        .trim_end_matches('/')
+        .to_string();
+    let path = asset.catalog_url();
+    Ok(crate::federation::content::MediaUploadResponse {
+        url: format!("{base}{path}"),
+        media_type: asset.mime,
+        name: asset.name,
+        size: asset.size as u64,
+        attachment_type: attachment_type.to_string(),
+    })
 }
 
 /// 路由已挂 auth_middleware；body 上限由 `live_authenticated_body_limit`（默认 24 MiB）决定。

@@ -258,6 +258,15 @@ async fn restore_version(
     let saved = rows.pop().ok_or_else(|| {
         phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere")
     })?;
+    crate::services::media::bind_note_draft(
+        &txn,
+        saved.id,
+        saved.image.as_deref(),
+        &saved.content_md,
+        &[],
+    )
+    .await
+    .map_err(|error| HttpError(error.into()))?;
     txn.commit()
         .await
         .map_err(|e| phantasi_store_http("commit note restore", e))?;

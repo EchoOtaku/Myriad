@@ -324,6 +324,19 @@ pub async fn finish_task(
     if let (Some(task), Ok(db)) = (persisted, shared_registry::database()) {
         if let Err(error) = persist_ai_task(&db, &task).await {
             tracing::error!(%error, task_id = %task.snapshot.task_id, "[TAPP] Failed to persist terminal AI task state");
+        } else if let Some(result) = &task.snapshot.result {
+            let expires = chrono::DateTime::from_timestamp(task.retain_until, 0);
+            if let Err(error) = crate::services::media::bind_ai_task(
+                &db,
+                &task.snapshot.task_id,
+                result,
+                &[],
+                expires,
+            )
+            .await
+            {
+                tracing::error!(%error, task_id = %task.snapshot.task_id, "failed to bind AI task media");
+            }
         }
         let kind = match task.snapshot.status {
             AiTaskStatus::Completed => "result",

@@ -13,7 +13,7 @@ use chrono::Utc;
 use myriad_phantasi_notes::{NoteDocStatus, schedule_at, validate_note};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -267,10 +267,26 @@ pub(crate) async fn create_note_doc(
         updated_at: Set(now.into()),
         ..Default::default()
     };
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| phantasi_store_http("begin note doc create", e))?;
     let doc = doc
-        .insert(&db)
+        .insert(&txn)
         .await
         .map_err(|e| phantasi_store_http("create note doc", e))?;
+    crate::services::media::bind_note_draft(
+        &txn,
+        doc.id,
+        doc.image.as_deref(),
+        &doc.content_md,
+        &[],
+    )
+    .await
+    .map_err(|error| HttpError(error.into()))?;
+    txn.commit()
+        .await
+        .map_err(|e| phantasi_store_http("commit note doc create", e))?;
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, doc, user_id).await?,
@@ -386,16 +402,32 @@ pub(crate) async fn update_note_doc(
     active.last_error = Set(None);
     // RETURNING binds the acknowledgement to this exact revision. A separate
     // SELECT could observe another author's later save and mislabel it as ours.
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| phantasi_store_http("begin note doc save", e))?;
     let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
         .filter(phantasi_note_docs::Column::Revision.eq(expected))
-        .exec_with_returning(&db)
+        .exec_with_returning(&txn)
         .await
         .map_err(|e| phantasi_store_http("save note doc", e))?;
     let saved = saved_rows.pop().ok_or_else(|| {
         phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere")
     })?;
+    crate::services::media::bind_note_draft(
+        &txn,
+        saved.id,
+        saved.image.as_deref(),
+        &saved.content_md,
+        &[],
+    )
+    .await
+    .map_err(|error| HttpError(error.into()))?;
+    txn.commit()
+        .await
+        .map_err(|e| phantasi_store_http("commit note doc save", e))?;
     broadcast_saved_doc(&saved, user_id, req.client_request_id);
     Ok(Json(json!({
         "success": true,
@@ -477,10 +509,20 @@ pub(crate) async fn delete_note_doc(
             "Published notes must be deleted from the article",
         ));
     }
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| phantasi_store_http("begin note doc delete", e))?;
+    crate::services::media::clear_note_doc(&txn, id, None)
+        .await
+        .map_err(|error| HttpError(error.into()))?;
     phantasi_note_docs::Entity::delete_by_id(id)
-        .exec(&db)
+        .exec(&txn)
         .await
         .map_err(|e| phantasi_store_http("delete note doc", e))?;
+    txn.commit()
+        .await
+        .map_err(|e| phantasi_store_http("commit note doc delete", e))?;
     Ok(Json(json!({ "success": true })))
 }
 
@@ -594,16 +636,32 @@ pub(crate) async fn schedule_note_doc(
     active.revision = Set(expected + 1);
     active.last_edited_by = Set(Some(user_id));
     active.last_error = Set(None);
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| phantasi_store_http("begin note schedule", e))?;
     let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
         .filter(phantasi_note_docs::Column::Revision.eq(expected))
-        .exec_with_returning(&db)
+        .exec_with_returning(&txn)
         .await
         .map_err(|e| phantasi_store_http("schedule note doc", e))?;
     let saved = saved_rows.pop().ok_or_else(|| {
         phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere")
     })?;
+    crate::services::media::bind_note_draft(
+        &txn,
+        saved.id,
+        saved.image.as_deref(),
+        &saved.content_md,
+        &[],
+    )
+    .await
+    .map_err(|error| HttpError(error.into()))?;
+    txn.commit()
+        .await
+        .map_err(|e| phantasi_store_http("commit note schedule", e))?;
     broadcast_saved_doc(&saved, user_id, req.client_request_id);
     Ok(Json(json!({
         "success": true,
@@ -661,16 +719,32 @@ pub(crate) async fn unschedule_note_doc(
     active.updated_at = Set(Utc::now().into());
     active.revision = Set(expected + 1);
     active.last_edited_by = Set(Some(user_id));
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| phantasi_store_http("begin note unschedule", e))?;
     let mut saved_rows = phantasi_note_docs::Entity::update_many()
         .set(active)
         .filter(phantasi_note_docs::Column::Id.eq(id))
         .filter(phantasi_note_docs::Column::Revision.eq(expected))
-        .exec_with_returning(&db)
+        .exec_with_returning(&txn)
         .await
         .map_err(|e| phantasi_store_http("unschedule note doc", e))?;
     let saved = saved_rows.pop().ok_or_else(|| {
         phantasi_http_err(StatusCode::CONFLICT, "Note draft was updated elsewhere")
     })?;
+    crate::services::media::bind_note_draft(
+        &txn,
+        saved.id,
+        saved.image.as_deref(),
+        &saved.content_md,
+        &[],
+    )
+    .await
+    .map_err(|error| HttpError(error.into()))?;
+    txn.commit()
+        .await
+        .map_err(|e| phantasi_store_http("commit note unschedule", e))?;
     broadcast_saved_doc(&saved, user_id, req.client_request_id);
     Ok(Json(json!({
         "success": true,
@@ -980,7 +1054,8 @@ mod tests {
         let update = &body[..end];
         assert!(update.contains("update_many()"));
         assert!(update.contains("Column::Revision.eq(expected)"));
-        assert!(update.contains("exec_with_returning(&db)"));
+        assert!(update.contains("exec_with_returning(&txn)"));
+        assert!(update.contains("bind_note_draft"));
         assert!(update.contains("saved_rows.pop().ok_or_else"));
     }
 

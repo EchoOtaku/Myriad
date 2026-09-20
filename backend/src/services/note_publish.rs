@@ -25,6 +25,10 @@ fn phantasi_http_err(status: StatusCode, error: impl Into<String>) -> HttpError 
     HttpError::from((status, Json(AppError::fail_json(error))))
 }
 
+fn media_bind_http(error: crate::services::media::MediaError) -> HttpError {
+    HttpError(error.into())
+}
+
 fn phantasi_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
     tracing::error!(%error, context, "phantasi store failed");
     phantasi_http_err(
@@ -292,6 +296,24 @@ pub async fn publish_doc(
         )
         .await?;
         let saved = mark_doc_published(&txn, doc, &item, published_at_ms).await?;
+        crate::services::media::bind_note_draft(
+            &txn,
+            saved.id,
+            saved.image.as_deref(),
+            &saved.content_md,
+            &[],
+        )
+        .await
+        .map_err(media_bind_http)?;
+        crate::services::media::bind_note_published(
+            &txn,
+            item.id,
+            saved.image.as_deref(),
+            &saved.content_md,
+            &[],
+        )
+        .await
+        .map_err(media_bind_http)?;
         Ok::<_, HttpError>((item, saved))
     }
     .await;
@@ -322,6 +344,19 @@ pub async fn delete_note_with_doc(
         .await
         .map_err(|e| phantasi_store_http("begin note delete", e))?;
     let outcome = async {
+        let docs = phantasi_note_docs::Entity::find()
+            .filter(phantasi_note_docs::Column::ItemId.eq(item_id))
+            .all(&txn)
+            .await
+            .map_err(|e| phantasi_store_http("find note docs for delete", e))?;
+        for doc in docs {
+            crate::services::media::clear_note_doc(&txn, doc.id, Some(item_id))
+                .await
+                .map_err(media_bind_http)?;
+        }
+        crate::services::media::bind_note_published(&txn, item_id, None, "", &[])
+            .await
+            .map_err(media_bind_http)?;
         // Match publication and metadata lock order: article, then document.
         phantasi_items::Entity::delete_by_id(item_id)
             .exec(&txn)
@@ -650,6 +685,24 @@ pub async fn write_note_with_doc(
             .await?;
         crate::services::note_authors::sync_published_author_line(&txn, Some(item.id), doc.id)
             .await?;
+        crate::services::media::bind_note_draft(
+            &txn,
+            doc.id,
+            doc.image.as_deref(),
+            &doc.content_md,
+            &[],
+        )
+        .await
+        .map_err(media_bind_http)?;
+        crate::services::media::bind_note_published(
+            &txn,
+            item.id,
+            doc.image.as_deref(),
+            &doc.content_md,
+            &[],
+        )
+        .await
+        .map_err(media_bind_http)?;
         Ok::<_, HttpError>(item)
     }
     .await;

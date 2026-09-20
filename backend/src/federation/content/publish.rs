@@ -169,6 +169,20 @@ pub async fn publish_content(
         &activity_json,
     )
     .await?;
+    let attachment_urls = ap_attachment_urls(&ap_object);
+    let origins = vec![base_url.trim_end_matches('/').to_string()];
+    let refs = crate::services::media::references_from_urls(
+        &txn,
+        &origins,
+        &attachment_urls,
+        |index| format!("attachment:{index}"),
+        true,
+    )
+    .await
+    .map_err(media_ref_err)?;
+    crate::services::media::bind_consumer(&txn, "federation_activity", &activity_id, &refs)
+        .await
+        .map_err(media_ref_err)?;
     txn.commit().await.map_err(db_err)?;
 
     // Direct 走 ExplicitRecipientsOnly —— 没有收件人就一个 inbox 都不投。
@@ -404,9 +418,8 @@ pub async fn unpublish_content(
         )
     })?;
 
-    let pub_id = crate::federation::types::row_positive_id(&row, "id").map_err(|error| {
-        db_err(sea_orm::DbErr::Custom(error))
-    })?;
+    let pub_id = crate::federation::types::row_positive_id(&row, "id")
+        .map_err(|error| db_err(sea_orm::DbErr::Custom(error)))?;
     let original_activity_id: String = row.try_get("", "activity_id").unwrap_or_default();
     let content_type: String = row
         .try_get::<String>("", "content_type")
@@ -556,6 +569,33 @@ pub async fn list_published(
     Ok(items)
 }
 
+fn ap_attachment_urls(object: &serde_json::Value) -> Vec<String> {
+    object
+        .get("attachment")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            item.get("url")
+                .and_then(|url| url.as_str())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+fn media_ref_err(
+    error: crate::services::media::MediaError,
+) -> (StatusCode, Json<serde_json::Value>) {
+    tracing::error!(%error, "failed to bind federation media references");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "error": "Failed to record media references",
+            "code": error.code(),
+        })),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -605,10 +645,12 @@ mod tests {
         assert!(publish.contains("is_unique_violation"));
         assert!(publish.contains("Content already published"));
         assert!(publish.contains("txn.commit()"));
+        assert!(publish.contains("bind_consumer"));
+        assert!(publish.contains("federation_activity"));
         assert!(publish.contains("delivery_enqueue_failed"));
-        assert!(!publish.contains(
-            "SELECT id FROM federation_published_content WHERE content_type"
-        ));
+        assert!(
+            !publish.contains("SELECT id FROM federation_published_content WHERE content_type")
+        );
     }
 
     #[test]

@@ -147,7 +147,7 @@ fn stored_media_kind(mime: &str) -> Option<StoredMediaKind> {
     })
 }
 
-pub(super) fn classify_media_mime(mime: &str) -> Option<&'static str> {
+pub fn classify_media_mime(mime: &str) -> Option<&'static str> {
     stored_media_kind(mime).map(|kind| kind.attachment_type)
 }
 
@@ -168,19 +168,36 @@ pub(super) fn attachment_url_rejection_reason(
     }
     let base = base_url.trim_end_matches('/');
     let prefix = format!("{}/media/federation/{}/", base, user_id);
-    if !url.starts_with(&prefix) {
-        return Some("Invalid attachment URL");
+    if url.starts_with(&prefix) {
+        let rest = &url[prefix.len()..];
+        if rest.is_empty() || rest.contains("..") || rest.contains('/') {
+            return Some("Invalid attachment URL");
+        }
+        if !rest
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+        {
+            return Some("Invalid attachment URL");
+        }
+        return None;
     }
-    let rest = &url[prefix.len()..];
-    if rest.is_empty() {
+    let asset_path = url
+        .strip_prefix(base)
+        .or_else(|| url.starts_with('/').then_some(url));
+    let Some(path) = asset_path.and_then(|path| path.strip_prefix("/media/assets/")) else {
         return Some("Invalid attachment URL");
-    }
-    if rest.contains("..") || rest.contains('/') {
-        return Some("Invalid attachment URL");
-    }
-    if !rest
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    };
+    let (id, file) = match path.split_once('/') {
+        Some(parts) => parts,
+        None => return Some("Invalid attachment URL"),
+    };
+    if uuid::Uuid::parse_str(id).is_err()
+        || file.is_empty()
+        || file.contains("..")
+        || file.contains('/')
+        || !file
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
     {
         return Some("Invalid attachment URL");
     }
@@ -257,6 +274,30 @@ mod tests {
                 "https://example.com/media/federation/1/abc.jpg"
             ),
             None
+        );
+        assert_eq!(
+            attachment_url_rejection_reason(
+                base,
+                1,
+                "https://example.com/media/assets/11111111-1111-1111-1111-111111111111/shot.png"
+            ),
+            None
+        );
+        assert_eq!(
+            attachment_url_rejection_reason(
+                base,
+                1,
+                "/media/assets/11111111-1111-1111-1111-111111111111/shot.png"
+            ),
+            None
+        );
+        assert_eq!(
+            attachment_url_rejection_reason(
+                base,
+                1,
+                "https://evil.com/media/assets/11111111-1111-1111-1111-111111111111/shot.png"
+            ),
+            Some("Invalid attachment URL")
         );
     }
 

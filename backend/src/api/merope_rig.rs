@@ -1363,6 +1363,9 @@ pub async fn upload_portrait(
             return Err(internal_error(error));
         }
     };
+    crate::services::media::bind_persona(&transaction, Some(&stored.url), None, None, &[])
+        .await
+        .map_err(|error| internal_error(error.to_string()))?;
     transaction.commit().await.map_err(internal_error)?;
     merope_rig::mirror_active_asset(cleared_asset).await;
     Ok(Json(json!({
@@ -1684,6 +1687,20 @@ pub async fn generate_portrait(
             return Err(internal_error(error));
         }
     };
+    if let Err(error) = crate::services::media::bind_persona(
+        &transaction,
+        Some(&url),
+        None,
+        Some(&visual_profile),
+        &[],
+    )
+    .await
+    {
+        let _ = transaction.rollback().await;
+        release_portrait_generation_lease(&db, &generation_token).await;
+        cleanup_uncommitted_portrait(&db, &persisted).await;
+        return Err(internal_error(error.to_string()));
+    }
     if let Err(error) = transaction.commit().await {
         release_portrait_generation_lease(&db, &generation_token).await;
         cleanup_uncommitted_portrait(&db, &persisted).await;

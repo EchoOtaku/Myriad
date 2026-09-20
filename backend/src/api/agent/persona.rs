@@ -384,6 +384,15 @@ pub async fn put_persona(
     let live_asset = merope_rig::persist_active_asset(&transaction, live_rig.as_deref())
         .await
         .map_err(|error| persona_store_http("update persona portrait", error))?;
+    crate::services::media::bind_persona(
+        &transaction,
+        saved.portrait_asset_id.as_deref(),
+        saved.avatar_asset_id.as_deref(),
+        saved.visual_profile.as_ref(),
+        &[],
+    )
+    .await
+    .map_err(|error| HttpError(error.into()))?;
     transaction
         .commit()
         .await
@@ -417,6 +426,9 @@ pub async fn delete_persona(
     let cleared_asset = merope_rig::persist_active_asset(&transaction, None)
         .await
         .map_err(|error| persona_store_http("clear persona portrait", error))?;
+    crate::services::media::bind_persona(&transaction, None, None, None, &[])
+        .await
+        .map_err(|error| HttpError(error.into()))?;
     transaction
         .commit()
         .await

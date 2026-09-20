@@ -156,12 +156,14 @@ pub async fn list_assets(db: &DatabaseConnection) -> Result<Vec<MediaAssetView>,
         .order_by_desc(media_assets::Column::CreatedAt)
         .all(db)
         .await?;
-    let urls: Vec<String> = rows.iter().map(|row| row.url.clone()).collect();
-    let references = media_references_batch(db, &urls).await?;
+    let ids: Vec<i32> = rows.iter().map(|row| row.id).collect();
+    let references = crate::services::media::catalog_labels_for_assets(db, &ids)
+        .await
+        .map_err(|error| DbErr::Custom(error.to_string()))?;
     Ok(rows
         .into_iter()
         .map(|row| {
-            let refs = references.get(&row.url).cloned().unwrap_or_default();
+            let refs = references.get(&row.id).cloned().unwrap_or_default();
             to_view(row, refs)
         })
         .collect())
@@ -175,6 +177,32 @@ pub async fn get_asset(
 }
 
 pub async fn delete_asset(
+    db: &DatabaseConnection,
+    id: i32,
+) -> Result<Result<(), Vec<String>>, DbErr> {
+    match crate::services::media::MediaService::from_data_paths(
+        crate::services::data_paths::paths(),
+    )
+    .delete(db, id)
+    .await
+    {
+        Ok(crate::services::media::DeleteOutcome::Deleted) => Ok(Ok(())),
+        Ok(crate::services::media::DeleteOutcome::PendingRetry) => {
+            Ok(Err(vec!["pending".into()]))
+        }
+        Err(crate::services::media::MediaError::Missing) => Ok(Err(vec!["missing".into()])),
+        Err(crate::services::media::MediaError::InUse)
+        | Err(crate::services::media::MediaError::PublicInUse) => {
+            Ok(Err(vec!["in_use".into()]))
+        }
+        Err(crate::services::media::MediaError::Invalid { .. }) => {
+            delete_unmigrated_asset(db, id).await
+        }
+        Err(error) => Err(DbErr::Custom(error.to_string())),
+    }
+}
+
+async fn delete_unmigrated_asset(
     db: &DatabaseConnection,
     id: i32,
 ) -> Result<Result<(), Vec<String>>, DbErr> {
@@ -233,9 +261,11 @@ pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
             )));
         }
     };
-    while let Some(user_ent) = users.next_entry().await.map_err(|error| {
-        DbErr::Custom(format!("cannot iterate federation media root: {error}"))
-    })? {
+    while let Some(user_ent) = users
+        .next_entry()
+        .await
+        .map_err(|error| DbErr::Custom(format!("cannot iterate federation media root: {error}")))?
+    {
         if !user_ent
             .file_type()
             .await
@@ -249,12 +279,14 @@ pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
         if !user.chars().all(|c| c.is_ascii_digit()) {
             continue;
         }
-        let mut files = tokio::fs::read_dir(user_ent.path()).await.map_err(|error| {
-            DbErr::Custom(format!(
-                "cannot read federation media dir {}: {error}",
-                user_ent.path().display()
-            ))
-        })?;
+        let mut files = tokio::fs::read_dir(user_ent.path())
+            .await
+            .map_err(|error| {
+                DbErr::Custom(format!(
+                    "cannot read federation media dir {}: {error}",
+                    user_ent.path().display()
+                ))
+            })?;
         while let Some(file_ent) = files.next_entry().await.map_err(|error| {
             DbErr::Custom(format!(
                 "cannot iterate federation media dir {}: {error}",
@@ -276,7 +308,10 @@ pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
             }
             let url = format!("/media/federation/{user}/{name}");
             let meta = file_ent.metadata().await.map_err(|error| {
-                DbErr::Custom(format!("cannot stat {}: {error}", file_ent.path().display()))
+                DbErr::Custom(format!(
+                    "cannot stat {}: {error}",
+                    file_ent.path().display()
+                ))
             })?;
             register(
                 db,
@@ -476,7 +511,7 @@ mod tests {
             !list.contains("backfill_federation"),
             "list must not mix catalog reads with disk backfill"
         );
-        assert!(list.contains("media_references_batch"));
+        assert!(list.contains("catalog_labels_for_assets"));
         let backfill = src
             .split("pub async fn backfill_federation")
             .nth(1)
