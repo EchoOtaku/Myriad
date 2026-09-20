@@ -4,7 +4,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import React, { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -14,6 +14,7 @@ import {
   useNavigate,
 } from 'react-router-dom'
 import { AgentSessionHost } from './components/agent-panel/AgentSessionHost'
+import { BackgroundTappHost, RouteWarmup } from './components/ApplicationStartup'
 import CustomScrollbar from './components/CustomScrollbar'
 import { DocumentReady } from './components/DocumentReady'
 import { RenderErrorBoundary } from './components/RenderErrorBoundary'
@@ -36,13 +37,11 @@ import { recordNavigation } from './router/navigationHistory'
 
 import { resolvePageRouteAnimation } from './tapp/routing/tappRouteMeta'
 import { TAPP_LIST_PATH, tappRunPath } from './tapp/utils/tappPaths'
-import { preloadCriticalRoutes } from './utils/codeSplitting'
 import {
   canAccessModuleVisibility,
   canUseAgent,
   useModuleVisibilityPreferences,
 } from './utils/moduleVisibility'
-import { isDocumentReady, subscribeDocumentReady } from './utils/pageLoader'
 import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
@@ -51,11 +50,6 @@ import './styles/navigation-island.css'
 import './styles/utility.css'
 import './styles/overrides.css'
 import './styles/performance.css'
-
-// 懒加载，避免其错误阻塞主应用
-const TappBackgroundRunner = lazy(
-  () => import('./tapp/components/TappBackgroundRunner'),
-)
 
 const Home = lazy(() => import('./views/Home.tsx'))
 const Library = lazy(() => import('./views/Library.tsx'))
@@ -677,42 +671,6 @@ function AppRoutes() {
 }
 
 export function App() {
-  const documentReady = useSyncExternalStore(subscribeDocumentReady, isDocumentReady, () => false)
-  // 后台 Tapp 宿主延后到首屏+入场之后：会拉起整套 runtime，不与首屏抢主线程。
-  const [backgroundTappsReady, setBackgroundTappsReady] = useState(false)
-  useEffect(() => {
-    if (!documentReady) return
-    let idleId: number | null = null
-    const start = () => setBackgroundTappsReady(true)
-    const timerId = window.setTimeout(() => {
-      if ('requestIdleCallback' in window) {
-        idleId = requestIdleCallback(start, { timeout: 4000 })
-      } else {
-        start()
-      }
-    }, 3000)
-    return () => {
-      window.clearTimeout(timerId)
-      if (idleId !== null && 'cancelIdleCallback' in window) {
-        cancelIdleCallback(idleId)
-      }
-    }
-  }, [documentReady])
-
-  // 只预取资料库 / Tapp，不预取 Config。8s：过早会与首屏抢主线程。
-  useEffect(() => {
-    if (!documentReady) return
-    let cancelPrefetch: (() => void) | undefined
-    const timer = setTimeout(() => {
-      cancelPrefetch = preloadCriticalRoutes()
-    }, 8000)
-
-    return () => {
-      clearTimeout(timer)
-      cancelPrefetch?.()
-    }
-  }, [documentReady])
-
   return (
     <BrowserRouter>
       <I18nProvider>
@@ -739,11 +697,8 @@ export function App() {
                     </AgentAccessGate>
                     <RouteLoader />
                     <CustomScrollbar />
-                    {backgroundTappsReady && (
-                      <Suspense fallback={null}>
-                        <TappBackgroundRunner />
-                      </Suspense>
-                    )}
+                    <BackgroundTappHost />
+                    <RouteWarmup />
                     <Suspense fallback={null}>
                       <TappDataExchangeConsentHost />
                     </Suspense>

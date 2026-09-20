@@ -63,6 +63,8 @@ wakes it immediately, and closing its panel does not unmount the session. Pendin
 timers and idle callbacks are cancelled on unmount; route
 warming shares imports and contains speculative failures. These scheduling rules
 do not alter the TAPP authorization or instance destruction rules.
+`ApplicationStartup` owns TAPP startup and route-warming state locally; these
+timers do not update the `App` component or recreate its provider tree.
 
 `AuthProvider` owns the initial session probe. Pages consume its result rather
 than queue another probe while it is pending. Profile changes and authenticated

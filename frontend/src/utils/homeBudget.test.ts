@@ -9,9 +9,10 @@ describe('home first-paint budget', () => {
   it('keeps Agora and Config off the home module graph', () => {
     const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8')
     const home = readFileSync(new URL('../views/Home.tsx', import.meta.url), 'utf8')
-    assert.match(app, /preloadCriticalRoutes\(\)/)
-    assert.match(app, /8000/)
-    assert.equal(app.includes(', 6000)'), false)
+    const startup = readFileSync(new URL('../components/ApplicationStartup.tsx', import.meta.url), 'utf8')
+    assert.match(startup, /preloadCriticalRoutes\(\)/)
+    assert.match(startup, /8000/)
+    assert.equal(startup.includes(', 6000)'), false)
     const routes = readFileSync(
       new URL('./codeSplitting.ts', import.meta.url),
       'utf8',
