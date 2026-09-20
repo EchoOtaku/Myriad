@@ -1548,7 +1548,12 @@ pub async fn domain_move_all_users(
     txn.commit().await.map_err(db_err)?;
 
     for (user_id, act_db_id, json) in pending_local {
-        let _ = fan_out_to_followers(db, user_id, act_db_id, &json).await;
+        fan_out_to_followers(db, user_id, act_db_id, &json)
+            .await
+            .map_err(|error| {
+                tracing::error!(user_id, act_db_id, %error, "domain-move follower fan-out failed");
+                federation_move_failed(error)
+            })?;
     }
 
     let total_users = results.len() as u32;

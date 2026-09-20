@@ -51,8 +51,7 @@ pub struct PublishResponse {
     pub content_type: String,
     pub content_id: String,
     pub visibility: String,
-    /// Best-effort fan-out count (followers + room peers on Public; includes local timeline delivery).
-    /// Fan-out never fails the publish; check logs if this is lower than expected.
+    /// Follower deliveries queued after persist; follower enqueue failure fails the request.
     #[serde(default)]
     pub delivered_queued: u32,
     /// Whether the Create was written to the author's local timeline.

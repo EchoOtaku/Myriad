@@ -1165,7 +1165,7 @@ async fn broadcast_person_key_update(
     .map_err(|e| format!("Failed to record Update activity: {e}"))?;
 
     let queued =
-        crate::federation::content::fan_out_to_followers(db, user_id, act_db_id, &update).await;
+        crate::federation::content::fan_out_to_followers(db, user_id, act_db_id, &update).await?;
     tracing::info!(
         user_id = user_id,
         username = %username,

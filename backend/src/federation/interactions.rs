@@ -465,7 +465,7 @@ pub async fn like_object(
     )
     .await
     .map_err(db_err)?;
-    deliver_like_or_announce(db, user_id, act_db_id, &like_json, &object_id).await;
+    deliver_like_or_announce(db, user_id, act_db_id, &like_json, &object_id).await?;
 
     let st = stats_for_one(db, user_id, &object_id).await?;
     Ok(InteractionResponse {
@@ -545,7 +545,9 @@ pub async fn unlike_object(
         )
         .await
         .map_err(db_err)?;
-        let _ = content::fan_out_to_followers(db, user_id, act_db_id, &undo_json).await;
+        content::fan_out_to_followers(db, user_id, act_db_id, &undo_json)
+            .await
+            .map_err(db_err)?;
         deliver_to_object_author(db, act_db_id, &undo_json, &object_id).await;
     }
 
@@ -1223,7 +1225,9 @@ pub async fn announce_object(
 
     if act_db_id > 0 {
         // Fan-out Create to followers + notify original author.
-        let _ = content::fan_out_to_followers(db, user_id, act_db_id, &create_json).await;
+        content::fan_out_to_followers(db, user_id, act_db_id, &create_json)
+            .await
+            .map_err(db_err)?;
         deliver_to_object_author(db, act_db_id, &create_json, &object_id).await;
     }
 
@@ -1363,7 +1367,9 @@ pub async fn unannounce_object(
         )
         .await
         .map_err(db_err)?;
-        let _ = content::fan_out_to_followers(db, user_id, act_db_id, &undo_json).await;
+        content::fan_out_to_followers(db, user_id, act_db_id, &undo_json)
+            .await
+            .map_err(db_err)?;
         deliver_to_object_author(db, act_db_id, &undo_json, &object_id).await;
     }
 
@@ -1391,15 +1397,17 @@ async fn deliver_like_or_announce(
     activity_db_id: i32,
     activity_json: &serde_json::Value,
     object_id: &str,
-) {
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
     let act_type = activity_json["type"].as_str().unwrap_or("");
     // Like: deliver to object author only (do not fan-out to followers' home feeds).
     // Announce: fan-out to followers + author (repost should appear on followers' timelines).
     if act_type == "Announce" {
-        let _ = content::fan_out_to_followers(db, user_id, activity_db_id, activity_json).await;
+        content::fan_out_to_followers(db, user_id, activity_db_id, activity_json)
+            .await
+            .map_err(db_err)?;
     }
-    let _ = user_id;
     deliver_to_object_author(db, activity_db_id, activity_json, object_id).await;
+    Ok(())
 }
 
 /// Best-effort: deliver activity to the object's attributedTo inbox.
@@ -1725,6 +1733,18 @@ pub async fn get_object(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn interaction_fanout_does_not_ignore_enqueue_failure() {
+        let src = include_str!("interactions.rs");
+        let swallowed = ["let _ = content::", "fan_out_to_followers"].concat();
+        assert!(
+            !src.contains(&swallowed),
+            "follower fan-out failure must fail the interaction write"
+        );
+        assert!(src.contains("content::fan_out_to_followers"));
+        assert!(src.contains("map_err(db_err)"));
+    }
 
     #[test]
     fn stats_for_one_no_longer_swallows_db_errors() {

@@ -171,12 +171,20 @@ pub async fn publish_content(
     .await?;
     txn.commit().await.map_err(db_err)?;
 
-    // Best-effort fan-out: enqueue deliveries; never fail the publish on queue errors.
     // Direct 走 ExplicitRecipientsOnly —— 没有收件人就一个 inbox 都不投。
     let mut delivered_queued = match crate::federation::audience::fan_out_scope(visibility_kind) {
-        FanOutScope::AllFollowers => {
-            fan_out_to_followers(db, user_id, act_db_id, &activity_json).await
-        }
+        FanOutScope::AllFollowers => fan_out_to_followers(db, user_id, act_db_id, &activity_json)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "publish follower fan-out failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "Failed to enqueue follower delivery",
+                        "code": "delivery_enqueue_failed",
+                    })),
+                )
+            })?,
         FanOutScope::ExplicitRecipientsOnly => {
             tracing::info!(
                 user_id,
@@ -451,8 +459,18 @@ pub async fn unpublish_content(
         ))
         .await;
 
-    // Best-effort fan-out of Delete to followers
-    let delivered_queued = fan_out_to_followers(db, user_id, del_db_id, &delete_json).await;
+    let delivered_queued = fan_out_to_followers(db, user_id, del_db_id, &delete_json)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "unpublish follower fan-out failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "Failed to enqueue delete delivery",
+                    "code": "delivery_enqueue_failed",
+                })),
+            )
+        })?;
 
     tracing::info!(
         "🗑️ Unpublished {} #{} (Delete: {}); delivered_queued={}",
@@ -587,6 +605,7 @@ mod tests {
         assert!(publish.contains("is_unique_violation"));
         assert!(publish.contains("Content already published"));
         assert!(publish.contains("txn.commit()"));
+        assert!(publish.contains("delivery_enqueue_failed"));
         assert!(!publish.contains(
             "SELECT id FROM federation_published_content WHERE content_type"
         ));

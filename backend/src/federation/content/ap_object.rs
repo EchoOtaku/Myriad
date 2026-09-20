@@ -1,6 +1,7 @@
 //! ActivityPub object construction, audience addressing, and delivery fan-out.
 
 use axum::{Json, http::StatusCode};
+use myriad_error::AppError;
 use myriad_phantasi::article_federation_path;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
@@ -405,11 +406,10 @@ pub(crate) async fn fan_out_to_followers(
     user_id: i32,
     activity_db_id: i32,
     activity_json: &serde_json::Value,
-) -> u32 {
+) -> Result<u32, String> {
     let base_url = get_base_url().await;
 
-    // 查询 accepted incoming followers 的 inbox（含同实例，随后走本地捷径）
-    let followers = match db
+    let followers = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT ra.inbox_url, ra.domain, ra.actor_url
@@ -419,41 +419,32 @@ pub(crate) async fn fan_out_to_followers(
             [user_id.into()],
         ))
         .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::error!(
-                "Fan-out follower query failed for user {} activity_db_id={}: {}",
-                user_id,
-                activity_db_id,
-                e
-            );
-            return 0;
-        }
-    };
+        .map_err(|e| {
+            format!(
+                "Fan-out follower query failed for user {user_id} activity_db_id={activity_db_id}: {e}"
+            )
+        })?;
 
     let mut queued = 0u32;
-    let mut failed = 0u32;
-    let mut skipped_empty = 0u32;
     let mut local_delivered = 0u32;
 
     for row in followers {
-        let inbox: String = row.try_get("", "inbox_url").unwrap_or_default();
-        let domain: String = row.try_get("", "domain").unwrap_or_default();
-        let follower_actor: String = row.try_get("", "actor_url").unwrap_or_default();
+        let inbox: String = row
+            .try_get("", "inbox_url")
+            .map_err(|e| format!("invalid follower inbox_url: {e}"))?;
+        let domain: String = row
+            .try_get("", "domain")
+            .map_err(|e| format!("invalid follower domain: {e}"))?;
+        let follower_actor: String = row
+            .try_get("", "actor_url")
+            .map_err(|e| format!("invalid follower actor_url: {e}"))?;
 
-        if inbox.is_empty() {
-            skipped_empty += 1;
-            tracing::warn!(
-                "Fan-out skip: empty inbox_url for follower domain={} activity_db_id={}",
-                domain,
-                activity_db_id
-            );
-            continue;
+        if inbox.trim().is_empty() {
+            return Err(format!(
+                "Fan-out refused: empty inbox_url for follower {follower_actor} domain={domain} activity_db_id={activity_db_id}"
+            ));
         }
 
-        // Same-instance follower → direct timeline insert (no HTTP / no SSRF block).
-        // Move must run inbox verification + follow re-point, not a Create timeline path.
         if let Some(local_username) =
             local_username_from_inbox_url(&base_url, &inbox).or_else(|| {
                 if follower_actor.is_empty() {
@@ -464,27 +455,19 @@ pub(crate) async fn fan_out_to_followers(
             })
         {
             if activity_json.get("type").and_then(|v| v.as_str()) == Some("Move") {
-                match crate::federation::inbox::deliver_activity_locally(
+                crate::federation::inbox::deliver_activity_locally(
                     db,
                     &local_username,
                     activity_json,
                 )
                 .await
-                {
-                    Ok(()) => {
-                        local_delivered += 1;
-                        queued += 1;
-                    }
-                    Err(e) => {
-                        failed += 1;
-                        tracing::error!(
-                            "Fan-out local Move failed username={} activity_db_id={}: {}",
-                            local_username,
-                            activity_db_id,
-                            e
-                        );
-                    }
-                }
+                .map_err(|e| {
+                    format!(
+                        "Fan-out local Move failed username={local_username} activity_db_id={activity_db_id}: {e}"
+                    )
+                })?;
+                local_delivered += 1;
+                queued += 1;
                 continue;
             }
             match deliver_create_to_local_follower(db, &local_username, activity_json).await {
@@ -493,82 +476,51 @@ pub(crate) async fn fan_out_to_followers(
                     queued += 1;
                 }
                 Ok(false) => {
-                    // User missing — fall through to queue is useless for local inbox.
-                    failed += 1;
-                    tracing::warn!(
-                        "Fan-out local: no user for username={} activity_db_id={}",
-                        local_username,
-                        activity_db_id
-                    );
+                    return Err(format!(
+                        "Fan-out local: no user for username={local_username} activity_db_id={activity_db_id}"
+                    ));
                 }
                 Err(e) => {
-                    failed += 1;
-                    tracing::error!(
-                        "Fan-out local timeline failed username={} activity_db_id={}: {}",
-                        local_username,
-                        activity_db_id,
-                        e
-                    );
+                    return Err(format!(
+                        "Fan-out local timeline failed username={local_username} activity_db_id={activity_db_id}: {e}"
+                    ));
                 }
             }
             continue;
         }
 
-        // 加入投递队列（远程）
-        match db
-            .execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_delivery_queue
-                       (activity_id, target_inbox, target_domain, status, created_at)
-                   VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                [
-                    activity_db_id.into(),
-                    inbox.clone().into(),
-                    domain.clone().into(),
-                ],
-            ))
-            .await
-        {
-            Ok(_) => queued += 1,
-            Err(e) => {
-                failed += 1;
-                tracing::error!(
-                    "Fan-out enqueue failed activity_db_id={} target_domain={} inbox={}: {}",
-                    activity_db_id,
-                    domain,
-                    inbox,
-                    e
-                );
-            }
-        }
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_delivery_queue
+                   (activity_id, target_inbox, target_domain, status, created_at)
+               VALUES ($1, $2, $3, 'pending', NOW())
+               ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
+            [
+                activity_db_id.into(),
+                inbox.clone().into(),
+                domain.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|e| {
+            format!(
+                "Fan-out enqueue failed activity_db_id={activity_db_id} target_domain={domain} inbox={inbox}: {e}"
+            )
+        })?;
+        queued += 1;
     }
 
-    if failed > 0 || skipped_empty > 0 {
-        tracing::warn!(
-            "Fan-out partial activity_db_id={}: queued={}, local={}, failed={}, skipped_empty_inbox={}",
-            activity_db_id,
-            queued,
-            local_delivered,
-            failed,
-            skipped_empty
-        );
-    } else if queued > 0 {
+    if queued > 0 {
         tracing::info!(
-            "Fan-out queued {} deliveries ({} local) for activity_db_id={}",
-            queued,
-            local_delivered,
-            activity_db_id
+            "Fan-out queued {queued} deliveries ({local_delivered} local) for activity_db_id={activity_db_id}"
         );
     } else {
         tracing::debug!(
-            "Fan-out: no accepted followers for user {} activity_db_id={}",
-            user_id,
-            activity_db_id
+            "Fan-out: no accepted followers for user {user_id} activity_db_id={activity_db_id}"
         );
     }
 
-    queued
+    Ok(queued)
 }
 
 /// 把一条公开活动投给群邻实例（见 `federation::room_peers`）。
@@ -1103,5 +1055,18 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn fan_out_to_followers_does_not_swallow_route_failures() {
+        let src = include_str!("ap_object.rs");
+        let fan = src
+            .split("pub(crate) async fn fan_out_to_followers")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(super) async fn fan_out_to_room_peers").next())
+            .expect("fan_out_to_followers");
+        assert!(fan.contains("Result<u32, String>"));
+        assert!(!fan.contains("unwrap_or_default()"));
+        assert!(!fan.contains("return 0;"));
+        assert!(fan.contains("Fan-out refused: empty inbox_url"));
+    }
 }
-use myriad_error::AppError;
