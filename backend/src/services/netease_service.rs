@@ -9,10 +9,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use super::music_player_view::{PlayerPlaylist, PlayerSong};
+
 use super::netease_utils::{
     convert_http_to_https, ensure_https_url, generate_device_id, get_random_china_ip,
     get_random_user_agent,
 };
+
+mod player;
 
 // 内存保护：限制单个歌单最大处理数量（避免 OOM）
 const MAX_TRACKS_LIMIT: usize = 5000;
@@ -22,8 +26,14 @@ const MAX_MUSIC_CACHE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_RATE_LIMIT_KEYS: usize = 1024;
 
 struct StoredMusicEntry {
-    entry: CacheEntry,
+    entry: MusicCacheData,
+    expires_at: Instant,
     size_bytes: usize,
+}
+
+enum MusicCacheData {
+    Json(CacheEntry),
+    Player(Arc<PlayerPlaylist>),
 }
 
 /// Every music provider shares these limits; callers cannot bypass eviction.
@@ -36,7 +46,7 @@ pub struct MusicCache {
 impl MusicCache {
     fn prune(&mut self, now: Instant) {
         self.entries.retain(|_, stored| {
-            if stored.entry.expires_at <= now {
+            if stored.expires_at <= now {
                 self.size_bytes -= stored.size_bytes;
                 false
             } else {
@@ -47,19 +57,70 @@ impl MusicCache {
 
     pub fn get(&mut self, key: &str) -> Option<&CacheEntry> {
         self.prune(Instant::now());
-        self.entries.get(key).map(|stored| &stored.entry)
+        match &self.entries.get(key)?.entry {
+            MusicCacheData::Json(entry) => Some(entry),
+            MusicCacheData::Player(_) => None,
+        }
     }
 
     pub fn insert(&mut self, key: String, entry: CacheEntry) {
+        let size_bytes = music_value_bytes(&entry.data);
+        let expires_at = entry.expires_at;
+        self.insert_data(key, MusicCacheData::Json(entry), expires_at, size_bytes);
+    }
+
+    pub fn get_player(&mut self, key: &str) -> Option<Arc<PlayerPlaylist>> {
+        self.prune(Instant::now());
+        match &self.entries.get(key)?.entry {
+            MusicCacheData::Player(playlist) => Some(Arc::clone(playlist)),
+            MusicCacheData::Json(_) => None,
+        }
+    }
+
+    pub fn insert_player(
+        &mut self,
+        key: String,
+        playlist: Arc<PlayerPlaylist>,
+        expires_at: Instant,
+    ) {
+        let size_bytes = std::mem::size_of::<PlayerPlaylist>()
+            + playlist.playlist_id.capacity()
+            + playlist.songs.capacity() * std::mem::size_of::<PlayerSong>()
+            + playlist
+                .songs
+                .iter()
+                .map(|song| {
+                    song.id.capacity()
+                        + song.name.capacity()
+                        + song.artist.capacity()
+                        + song.album.capacity()
+                        + song.cover.capacity()
+                })
+                .sum::<usize>();
+        self.insert_data(
+            key,
+            MusicCacheData::Player(playlist),
+            expires_at,
+            size_bytes,
+        );
+    }
+
+    fn insert_data(
+        &mut self,
+        key: String,
+        entry: MusicCacheData,
+        expires_at: Instant,
+        size_bytes: usize,
+    ) {
         let now = Instant::now();
         self.prune(now);
         if let Some(previous) = self.entries.remove(&key) {
             self.size_bytes -= previous.size_bytes;
         }
-        let size_bytes = music_value_bytes(&entry.data)
+        let size_bytes = size_bytes
             .saturating_add(key.capacity())
             .saturating_add(std::mem::size_of::<StoredMusicEntry>());
-        if entry.expires_at <= now || size_bytes > MAX_MUSIC_CACHE_BYTES {
+        if expires_at <= now || size_bytes > MAX_MUSIC_CACHE_BYTES {
             return;
         }
         while self.entries.len() >= MAX_CACHE_ENTRIES
@@ -68,7 +129,7 @@ impl MusicCache {
             let Some(oldest) = self
                 .entries
                 .iter()
-                .min_by_key(|(_, stored)| stored.entry.expires_at)
+                .min_by_key(|(_, stored)| stored.expires_at)
                 .map(|(key, _)| key.clone())
             else {
                 break;
@@ -78,8 +139,14 @@ impl MusicCache {
             }
         }
         self.size_bytes += size_bytes;
-        self.entries
-            .insert(key, StoredMusicEntry { entry, size_bytes });
+        self.entries.insert(
+            key,
+            StoredMusicEntry {
+                entry,
+                expires_at,
+                size_bytes,
+            },
+        );
     }
 }
 
@@ -184,6 +251,48 @@ impl NeteaseService {
         }
     }
 
+    async fn request_playlist_json(
+        &self,
+        url: &str,
+        timeout: Duration,
+    ) -> Result<reqwest::Response> {
+        // 生成随机设备ID和时间戳
+        let device_id = generate_device_id();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        // IP 伪装
+        let client_ip = get_random_china_ip();
+        let proxy_ip = get_random_china_ip();
+        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
+
+        self
+            .client
+            .get(url)
+            .header("User-Agent", get_random_user_agent())
+            .header("Referer", "https://music.163.com/")
+            .header("Origin", "https://music.163.com")
+            .header("Accept", "*/*")
+            .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+            .header("Connection", "keep-alive")
+            .header(
+                "Cookie",
+                format!(
+                    "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
+                    device_id,
+                    timestamp,
+                    rand::random::<u16>() % 10000
+                ),
+            )
+            .header("X-Forwarded-For", forwarded_for.clone())
+            .header("X-Real-IP", client_ip.clone())
+            .timeout(timeout)
+            .send()
+            .await.map_err(Into::into)
+    }
+
     /// 获取歌单详情（核心方法，带缓存、限流、防封）
     /// 支持大歌单（1000+首）、VIP检测、HTTP→HTTPS转换
     pub async fn fetch_playlist(&self, playlist_id: i64, use_cache: bool) -> Result<Value> {
@@ -208,47 +317,12 @@ impl NeteaseService {
             }
         }
 
-        // 生成随机设备ID和时间戳
-        let device_id = generate_device_id();
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-
-        let url = format!(
-            "https://music.163.com/api/v6/playlist/detail?id={}&n=1000&s=0&t=0",
-            playlist_id
-        );
-
-        // IP 伪装
-        let client_ip = get_random_china_ip();
-        let proxy_ip = get_random_china_ip();
-        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
-
+        let url =
+            format!("https://music.163.com/api/v6/playlist/detail?id={playlist_id}&n=1000&s=0&t=0");
         let response = self
-            .client
-            .get(&url)
-            .header("User-Agent", get_random_user_agent())
-            .header("Referer", "https://music.163.com/")
-            .header("Origin", "https://music.163.com")
-            .header("Accept", "*/*")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
-            .header("Connection", "keep-alive")
-            .header(
-                "Cookie",
-                format!(
-                    "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
-                    device_id,
-                    timestamp,
-                    rand::random::<u16>() % 10000
-                ),
-            )
-            .header("X-Forwarded-For", forwarded_for.clone())
-            .header("X-Real-IP", client_ip.clone())
-            .send()
+            .request_playlist_json(&url, Duration::from_secs(30))
             .await?;
-
-        let mut data: Value = response.json().await?;
+        let mut data: Value = player::read_playlist_json(response).await?;
 
         // 检查返回码
         if let Some(code) = data.get("code").and_then(|c| c.as_i64()) {
@@ -354,36 +428,26 @@ impl NeteaseService {
                                 );
 
                                 // 串行请求，减少并发内存压力
-                                match self.client
-                                    .get(&track_url)
-                                    .header("Referer", "https://music.163.com/")
-                                    .header("Origin", "https://music.163.com")
-                                    .header("Accept", "*/*")
-                                    .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
-                                    .header("Connection", "keep-alive")
-                                    .header(
-                                        "Cookie",
-                                        format!(
-                                            "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{:04}; __remember_me=true",
-                                            device_id,
-                                            timestamp,
-                                            rand::random::<u16>() % 10000
-                                        ),
-                                    )
-                                    .header("X-Forwarded-For", forwarded_for.clone())
-                                    .header("X-Real-IP", client_ip.clone())
-                                    .timeout(Duration::from_secs(15))
-                                    .send()
+                                match self
+                                    .request_playlist_json(&track_url, Duration::from_secs(15))
                                     .await
                                 {
                                     Ok(resp) => {
-                                        match resp.json::<Value>().await {
+                                        match player::read_playlist_json::<Value>(resp).await {
                                             Ok(batch_data) => {
-                                                if batch_data.get("code").and_then(|c| c.as_i64()) == Some(200) {
-                                                    if let Some(songs) = batch_data.get("songs").and_then(|s| s.as_array()) {
+                                                if batch_data.get("code").and_then(|c| c.as_i64())
+                                                    == Some(200)
+                                                {
+                                                    if let Some(songs) = batch_data
+                                                        .get("songs")
+                                                        .and_then(|s| s.as_array())
+                                                    {
                                                         for song in songs {
                                                             // `fee` → `isVip`；整首 `clone` 进列表
-                                                            let fee = song.get("fee").and_then(|f| f.as_i64()).unwrap_or(0);
+                                                            let fee = song
+                                                                .get("fee")
+                                                                .and_then(|f| f.as_i64())
+                                                                .unwrap_or(0);
                                                             let is_vip = fee == 1 || fee == 4;
                                                             if is_vip {
                                                                 vip_count += 1;
@@ -391,25 +455,41 @@ impl NeteaseService {
 
                                                             // 克隆并添加 isVip 标记
                                                             let mut song_data = song.clone();
-                                                            if let Some(obj) = song_data.as_object_mut() {
-                                                                obj.insert("isVip".to_string(), json!(is_vip));
+                                                            if let Some(obj) =
+                                                                song_data.as_object_mut()
+                                                            {
+                                                                obj.insert(
+                                                                    "isVip".to_string(),
+                                                                    json!(is_vip),
+                                                                );
                                                             }
                                                             new_tracks.push(song_data);
                                                         }
                                                     }
                                                 } else {
-                                                    tracing::warn!("⚠️ Batch {} returned error code", batch_num + 1);
+                                                    tracing::warn!(
+                                                        "⚠️ Batch {} returned error code",
+                                                        batch_num + 1
+                                                    );
                                                     failed_batches += 1;
                                                 }
                                             }
                                             Err(e) => {
-                                                tracing::warn!("⚠️ Failed to parse batch {}: {}", batch_num + 1, e);
+                                                tracing::warn!(
+                                                    "⚠️ Failed to parse batch {}: {}",
+                                                    batch_num + 1,
+                                                    e
+                                                );
                                                 failed_batches += 1;
                                             }
                                         }
                                     }
                                     Err(e) => {
-                                        tracing::warn!("⚠️ Failed to fetch batch {}: {}", batch_num + 1, e);
+                                        tracing::warn!(
+                                            "⚠️ Failed to fetch batch {}: {}",
+                                            batch_num + 1,
+                                            e
+                                        );
                                         failed_batches += 1;
                                     }
                                 }
@@ -918,6 +998,41 @@ mod memory_budget_tests {
         cache.insert("expired".into(), entry(json!("old"), Instant::now()));
         assert!(cache.get("expired").is_none());
         cache.prune(future + Duration::from_secs(1));
+        assert!(cache.entries.is_empty());
+        assert_eq!(cache.size_bytes, 0);
+    }
+
+    #[test]
+    fn player_snapshots_share_storage_and_the_existing_cache_budget() {
+        use super::super::music_player_view::PlayerMusicSource;
+        let mut cache = MusicCache::default();
+        let future = Instant::now() + Duration::from_secs(60);
+        let playlist = Arc::new(PlayerPlaylist {
+            code: 200,
+            source: PlayerMusicSource::Netease,
+            playlist_id: "42".into(),
+            songs: vec![],
+        });
+        cache.insert_player("player".into(), playlist.clone(), future);
+        assert!(Arc::ptr_eq(&playlist, &cache.get_player("player").unwrap()));
+        assert!(cache.get("player").is_none());
+        for i in 0..MAX_CACHE_ENTRIES {
+            cache.insert(
+                format!("lyrics:{i}"),
+                entry(json!(i), future + Duration::from_secs(1)),
+            );
+        }
+        assert!(cache.get_player("player").is_none());
+        assert_eq!(cache.entries.len(), MAX_CACHE_ENTRIES);
+        let mut oversized = (*playlist).clone();
+        oversized.playlist_id = "x".repeat(MAX_MUSIC_CACHE_BYTES);
+        cache.insert_player("oversized".into(), Arc::new(oversized), future);
+        assert!(cache.get_player("oversized").is_none());
+        assert!(cache.size_bytes <= MAX_MUSIC_CACHE_BYTES);
+        cache.insert_player("expired".into(), playlist.clone(), Instant::now());
+        assert!(cache.get_player("expired").is_none());
+        cache.insert_player("player".into(), playlist, future);
+        cache.prune(future + Duration::from_secs(2));
         assert!(cache.entries.is_empty());
         assert_eq!(cache.size_bytes, 0);
     }

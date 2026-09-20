@@ -23,11 +23,11 @@ use crate::services::music_player_view::{self, PlayerMusicSource, PlayerPlaylist
 use crate::services::netease_service::{CacheEntry, MUSIC_CACHE, NeteaseService, RATE_LIMITER};
 
 /// Music proxy 429 with Retry-After + JSON body for FE toast / axios interceptors.
-fn player_playlist_response(view: PlayerPlaylist) -> Response {
+fn player_playlist_response(view: std::sync::Arc<PlayerPlaylist>) -> Response {
     (
         StatusCode::OK,
         [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-        Json(view),
+        Json(view.as_ref()),
     )
         .into_response()
 }
@@ -654,12 +654,11 @@ mod image_proxy_tests {
     }
 }
 
-/// 代理网易云歌单。上游仍走 `NeteaseService::fetch_playlist`（平台喜欢的歌用胖 JSON）；
-/// 播放器出口只返回/缓存 `music_player_view` 瘦队列。
+/// 代理网易云歌单；并发 miss 共享一次加载，只缓存播放器瘦队列。
 pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response {
-    let playlist_id_i64 = match playlist_id.parse::<i64>() {
-        Ok(id) => id,
-        Err(_) => {
+    let playlist_id = match playlist_id.parse::<i64>() {
+        Ok(id) if id > 0 => id,
+        _ => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(AppError::public_json("Invalid playlist ID")),
@@ -667,51 +666,38 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
                 .into_response();
         }
     };
+    let id = playlist_id.to_string();
+    let result =
+        music_player_view::load_player_playlist(PlayerMusicSource::Netease, &id, || async {
+            let key = format!("playlist:{playlist_id}");
+            if !RATE_LIMITER.write().await.check_rate_limit(&key) {
+                return Err(music_player_view::PlayerPlaylistError::RateLimited);
+            }
+            NeteaseService::new()
+                .fetch_player_playlist(playlist_id)
+                .await
+                .map_err(|error| {
+                    tracing::error!(playlist_id, %error, "Failed to fetch Netease playlist");
+                    music_player_view::PlayerPlaylistError::FetchFailed
+                })
+        })
+        .await;
+    player_playlist_result(result)
+}
 
-    if let Some(view) =
-        music_player_view::get_cached_player_playlist(PlayerMusicSource::Netease, &playlist_id)
-            .await
-    {
-        return player_playlist_response(view);
-    }
-
-    let _load =
-        music_player_view::lock_player_playlist_load(PlayerMusicSource::Netease, &playlist_id)
-            .await;
-    if let Some(view) =
-        music_player_view::get_cached_player_playlist(PlayerMusicSource::Netease, &playlist_id)
-            .await
-    {
-        return player_playlist_response(view);
-    }
-
-    // Align with QQ playlist: surface 429 + Retry-After for FE toast
-    let cache_key = format!("netease_playlist:{}", playlist_id);
-    {
-        let mut limiter = RATE_LIMITER.write().await;
-        if !limiter.check_rate_limit(&cache_key) {
-            return music_rate_limited_response(&format!("Netease playlist: {}", playlist_id));
+fn player_playlist_result(
+    result: Result<std::sync::Arc<PlayerPlaylist>, music_player_view::PlayerPlaylistError>,
+) -> Response {
+    match result {
+        Ok(view) => player_playlist_response(view),
+        Err(music_player_view::PlayerPlaylistError::RateLimited) => {
+            music_rate_limited_response("playlist")
         }
-    }
-
-    let service = NeteaseService::new();
-    match service.fetch_playlist(playlist_id_i64, true).await {
-        Ok(data) => {
-            let view = music_player_view::project_netease_player_playlist(&playlist_id, &data);
-            music_player_view::set_cached_player_playlist(&view).await;
-            player_playlist_response(view)
-        }
-        Err(e) => {
-            tracing::error!("Failed to fetch Netease playlist {}: {}", playlist_id, e);
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(json!({
-                    "error": "Failed to fetch playlist",
-                    "code": "playlist_fetch_failed"
-                })),
-            )
-                .into_response()
-        }
+        Err(music_player_view::PlayerPlaylistError::FetchFailed) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": "Failed to fetch playlist", "code": "playlist_fetch_failed"})),
+        )
+            .into_response(),
     }
 }
 
@@ -1369,70 +1355,30 @@ pub async fn proxy_qq_audio(Path(song_mid): Path<String>) -> Response {
 
 /// 代理 QQ 歌单。只缓存播放器瘦视图；不再写只写不读的胖 `qq_playlist:` JSON。
 pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
-    if let Some(view) =
-        music_player_view::get_cached_player_playlist(PlayerMusicSource::Qq, &playlist_id).await
-    {
-        return player_playlist_response(view);
-    }
-
-    let _load =
-        music_player_view::lock_player_playlist_load(PlayerMusicSource::Qq, &playlist_id).await;
-    if let Some(view) =
-        music_player_view::get_cached_player_playlist(PlayerMusicSource::Qq, &playlist_id).await
-    {
-        return player_playlist_response(view);
-    }
-
-    let cache_key = format!("qq_playlist:{}", playlist_id);
-    {
-        let mut limiter = RATE_LIMITER.write().await;
-        if !limiter.check_rate_limit(&cache_key) {
-            return music_rate_limited_response(&format!("QQ playlist: {}", playlist_id));
+    let result = music_player_view::load_player_playlist(PlayerMusicSource::Qq, &playlist_id, || async {
+        let key = format!("qq_playlist:{playlist_id}");
+        if !RATE_LIMITER.write().await.check_rate_limit(&key) {
+            return Err(music_player_view::PlayerPlaylistError::RateLimited);
         }
-    }
-
-    let client = MEDIA_FETCH_CLIENT.clone();
-
-    let url = format!(
-        "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&disstid={}&g_tk=5381&loginUin=0&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0",
-        playlist_id
-    );
-
-    match client
-        .get(&url)
-        .header("Referer", "https://y.qq.com/")
-        .header("Origin", "https://y.qq.com")
-        .send()
-        .await
-    {
-        Ok(resp) => match read_limited_json(resp).await {
-            Ok(data) => match music_player_view::project_qq_player_playlist(&playlist_id, &data) {
-                Ok(view) => {
-                    music_player_view::set_cached_player_playlist(&view).await;
-                    player_playlist_response(view)
-                }
-                Err(music_player_view::QqPlaylistError::Invalid) => {
-                    tracing::error!("QQ playlist {} missing cdlist", playlist_id);
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(json!({
-                            "error": "Failed to fetch playlist",
-                            "code": "playlist_fetch_failed"
-                        })),
-                    )
-                        .into_response()
-                }
-            },
-            Err(e) => {
-                tracing::error!("Failed to parse QQ playlist: {}", e);
-                (StatusCode::BAD_GATEWAY, "Failed to parse response").into_response()
-            }
-        },
-        Err(e) => {
-            tracing::error!("Failed to fetch QQ playlist: {}", e);
-            (StatusCode::BAD_GATEWAY, "Failed to fetch playlist").into_response()
-        }
-    }
+        let url = format!(
+            "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&disstid={}&g_tk=5381&loginUin=0&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0",
+            playlist_id
+        );
+        let fetch = async {
+            let response = MEDIA_FETCH_CLIENT.get(&url)
+                .header("Referer", "https://y.qq.com/")
+                .header("Origin", "https://y.qq.com")
+                .send().await.map_err(|error| error.to_string())?;
+            let data = read_limited_json(response).await?;
+            music_player_view::project_qq_player_playlist(&playlist_id, &data)
+                .map_err(|_| "QQ playlist missing cdlist".to_string())
+        }.await;
+        fetch.map_err(|error| {
+            tracing::error!(%error, "Failed to fetch QQ playlist");
+            music_player_view::PlayerPlaylistError::FetchFailed
+        })
+    }).await;
+    player_playlist_result(result)
 }
 
 /// 获取客户端真实 IP 地理位置信息

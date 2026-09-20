@@ -9,13 +9,22 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
+use tokio::sync::{OnceCell, RwLock};
 
-use super::netease_service::{CacheEntry, MUSIC_CACHE};
+use super::netease_service::MUSIC_CACHE;
 use super::netease_utils::ensure_https_url;
 
-static PLAYER_PLAYLIST_LOADS: Lazy<RwLock<HashMap<String, Weak<Mutex<()>>>>> =
+type PlaylistResult = Result<Arc<PlayerPlaylist>, PlayerPlaylistError>;
+type PlaylistLoad = OnceCell<PlaylistResult>;
+
+static PLAYER_PLAYLIST_LOADS: Lazy<RwLock<HashMap<String, Weak<PlaylistLoad>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerPlaylistError {
+    RateLimited,
+    FetchFailed,
+}
 
 pub const PLAYER_PLAYLIST_CACHE_TTL: Duration = Duration::from_secs(604_800);
 pub const PLAYER_PLAYLIST_CACHE_VERSION: &str = "v1";
@@ -74,49 +83,63 @@ pub fn player_playlist_cache_key(source: PlayerMusicSource, playlist_id: &str) -
 pub async fn get_cached_player_playlist(
     source: PlayerMusicSource,
     playlist_id: &str,
-) -> Option<PlayerPlaylist> {
+) -> Option<Arc<PlayerPlaylist>> {
     let key = player_playlist_cache_key(source, playlist_id);
-    let mut cache = MUSIC_CACHE.write().await;
-    let entry = cache.get(&key)?;
-    serde_json::from_value(entry.data.clone()).ok()
+    MUSIC_CACHE.write().await.get_player(&key)
 }
 
-pub async fn set_cached_player_playlist(playlist: &PlayerPlaylist) {
-    let Ok(data) = serde_json::to_value(playlist) else {
-        return;
-    };
-    let key = player_playlist_cache_key(playlist.source, &playlist.playlist_id);
-    let mut cache = MUSIC_CACHE.write().await;
-    cache.insert(
-        key,
-        CacheEntry {
-            data,
-            expires_at: Instant::now() + PLAYER_PLAYLIST_CACHE_TTL,
-        },
-    );
-}
-
-/// Serialize upstream fetches for one player playlist. Callers must re-check
-/// the cache after acquiring this lock so a stampede shares one fat parse.
-pub async fn lock_player_playlist_load(
+/// Concurrent callers share the result, including errors and snapshots too big to cache.
+/// OnceCell lets a waiter resume loading if the initiating request is cancelled.
+pub async fn load_player_playlist<F, Fut>(
     source: PlayerMusicSource,
     playlist_id: &str,
-) -> OwnedMutexGuard<()> {
+    fetch: F,
+) -> PlaylistResult
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<PlayerPlaylist, PlayerPlaylistError>>,
+{
+    if let Some(playlist) = get_cached_player_playlist(source, playlist_id).await {
+        return Ok(playlist);
+    }
     let key = player_playlist_cache_key(source, playlist_id);
-    let lock = {
-        let mut locks = PLAYER_PLAYLIST_LOADS.write().await;
-        locks.retain(|_, lock| lock.strong_count() > 0);
-        if let Some(lock) = locks.get(&key).and_then(Weak::upgrade) {
-            lock
+    let load = {
+        let mut loads = PLAYER_PLAYLIST_LOADS.write().await;
+        loads.retain(|_, load| load.strong_count() > 0);
+        if let Some(load) = loads.get(&key).and_then(Weak::upgrade) {
+            load
         } else {
-            let lock = Arc::new(Mutex::new(()));
-            locks.insert(key, Arc::downgrade(&lock));
-            lock
+            let load = Arc::new(OnceCell::new());
+            loads.insert(key.clone(), Arc::downgrade(&load));
+            load
         }
     };
-    lock.lock_owned().await
+    let result = load
+        .get_or_init(|| async {
+            if let Some(playlist) = get_cached_player_playlist(source, playlist_id).await {
+                return Ok(playlist);
+            }
+            let playlist = Arc::new(fetch().await?);
+            MUSIC_CACHE.write().await.insert_player(
+                key.clone(),
+                Arc::clone(&playlist),
+                Instant::now() + PLAYER_PLAYLIST_CACHE_TTL,
+            );
+            Ok(playlist)
+        })
+        .await
+        .clone();
+    let mut loads = PLAYER_PLAYLIST_LOADS.write().await;
+    if loads
+        .get(&key)
+        .is_some_and(|current| current.ptr_eq(&Arc::downgrade(&load)))
+    {
+        loads.remove(&key);
+    }
+    result
 }
 
+#[cfg(test)]
 pub fn project_netease_player_playlist(playlist_id: &str, upstream: &Value) -> PlayerPlaylist {
     let tracks = upstream
         .pointer("/playlist/tracks")
@@ -154,6 +177,7 @@ pub fn project_qq_player_playlist(
     })
 }
 
+#[cfg(test)]
 fn project_netease_track(track: &Value) -> Option<PlayerSong> {
     let id = json_id(track.get("id")?)?;
     let name = string_field(track, "name");
@@ -273,6 +297,7 @@ fn json_id(value: &Value) -> Option<String> {
     }
 }
 
+#[cfg(test)]
 fn string_field(value: &Value, key: &str) -> String {
     value
         .get(key)
@@ -455,28 +480,134 @@ mod tests {
         assert_eq!(value["source"], "netease");
         assert_eq!(value["songs"][0]["isVip"], true);
     }
+    fn empty_playlist(id: &str) -> PlayerPlaylist {
+        PlayerPlaylist {
+            code: 200,
+            source: PlayerMusicSource::Netease,
+            playlist_id: id.into(),
+            songs: vec![],
+        }
+    }
+
+    async fn wait_for_loaders(id: &str, count: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let joined = PLAYER_PLAYLIST_LOADS
+                    .read()
+                    .await
+                    .get(&player_playlist_cache_key(PlayerMusicSource::Netease, id))
+                    .is_some_and(|load| load.strong_count() >= count);
+                if joined {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("callers joined the same load");
+    }
 
     #[tokio::test]
-    async fn player_playlist_load_lock_serializes_the_same_key() {
+    async fn concurrent_misses_share_success_and_failure_then_allow_retry() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        let inside = Arc::new(AtomicUsize::new(0));
-        let max_inside = Arc::new(AtomicUsize::new(0));
-        let mut tasks = Vec::new();
-        for _ in 0..8 {
-            let inside = inside.clone();
-            let max_inside = max_inside.clone();
-            tasks.push(tokio::spawn(async move {
-                let _guard =
-                    lock_player_playlist_load(PlayerMusicSource::Netease, "25247131").await;
-                let now = inside.fetch_add(1, Ordering::SeqCst) + 1;
-                max_inside.fetch_max(now, Ordering::SeqCst);
-                tokio::time::sleep(Duration::from_millis(15)).await;
-                inside.fetch_sub(1, Ordering::SeqCst);
-            }));
+        for fail in [false, true] {
+            let id = if fail {
+                "coalesced-failure"
+            } else {
+                "coalesced-success"
+            };
+            let calls = Arc::new(AtomicUsize::new(0));
+            let release = Arc::new(tokio::sync::Notify::new());
+            let mut requests = Vec::new();
+            for _ in 0..100 {
+                let calls = calls.clone();
+                let release = release.clone();
+                requests.push(tokio::spawn(async move {
+                    load_player_playlist(PlayerMusicSource::Netease, id, || async {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        release.notified().await;
+                        if fail {
+                            Err(PlayerPlaylistError::FetchFailed)
+                        } else {
+                            Ok(empty_playlist(id))
+                        }
+                    })
+                    .await
+                }));
+            }
+            wait_for_loaders(id, 100).await;
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            release.notify_waiters();
+            let results =
+                tokio::time::timeout(Duration::from_secs(5), futures::future::join_all(requests))
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(Result::unwrap)
+                    .collect::<Vec<_>>();
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            if fail {
+                assert!(
+                    results
+                        .iter()
+                        .all(|result| *result == Err(PlayerPlaylistError::FetchFailed))
+                );
+            } else {
+                let first = results[0].as_ref().unwrap();
+                assert!(
+                    results
+                        .iter()
+                        .all(|result| Arc::ptr_eq(first, result.as_ref().unwrap()))
+                );
+            }
+            let next = load_player_playlist(PlayerMusicSource::Netease, id, || async {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(empty_playlist(id))
+            })
+            .await
+            .unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), if fail { 2 } else { 1 });
+            if !fail {
+                assert!(Arc::ptr_eq(&next, results[0].as_ref().unwrap()));
+            }
+            assert!(
+                !PLAYER_PLAYLIST_LOADS
+                    .read()
+                    .await
+                    .contains_key(&player_playlist_cache_key(PlayerMusicSource::Netease, id))
+            );
         }
-        for task in tasks {
-            task.await.unwrap();
-        }
-        assert_eq!(max_inside.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn cancelled_loader_does_not_strand_waiters_or_other_keys() {
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let leader = tokio::spawn(async {
+            load_player_playlist(PlayerMusicSource::Netease, "cancelled-load", || async {
+                let _ = started.send(());
+                std::future::pending::<Result<PlayerPlaylist, PlayerPlaylistError>>().await
+            })
+            .await
+        });
+        ready.await.unwrap();
+        let waiter = tokio::spawn(async {
+            load_player_playlist(PlayerMusicSource::Netease, "cancelled-load", || async {
+                Ok(empty_playlist("cancelled-load"))
+            })
+            .await
+        });
+        wait_for_loaders("cancelled-load", 2).await;
+        load_player_playlist(PlayerMusicSource::Netease, "independent-load", || async {
+            Ok(empty_playlist("independent-load"))
+        })
+        .await
+        .unwrap();
+        leader.abort();
+        assert!(leader.await.unwrap_err().is_cancelled());
+        tokio::time::timeout(Duration::from_secs(5), waiter)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
     }
 }
