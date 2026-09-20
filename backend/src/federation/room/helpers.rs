@@ -574,32 +574,6 @@ async fn fanout_to_remote_members_with(
 ) -> Result<crate::federation::delivery::FanoutResult, sea_orm::DbErr> {
     let mut result = crate::federation::delivery::FanoutResult::default();
 
-    // Best-effort ensure keys before enqueue; failure is warn-and-continue.
-    if let Ok(Some(uname_row)) = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT username FROM users WHERE id = $1 LIMIT 1",
-            [user_id.into()],
-        ))
-        .await
-    {
-        let username: String = uname_row.try_get("", "username").unwrap_or_default();
-        if !username.is_empty() {
-            if let Err(e) =
-                crate::federation::actor::ensure_user_federation_keys(db, user_id, &username).await
-            {
-                tracing::warn!(
-                    user_id = user_id,
-                    username = %username,
-                    room_id = %room_id,
-                    activity_type = %activity_type,
-                    error = %e,
-                    "Failed to ensure federation keys before room fanout; delivery may retry"
-                );
-            }
-        }
-    }
-
     // 记录 Activity
     let act_row = db
         .query_one_raw(Statement::from_sql_and_values(

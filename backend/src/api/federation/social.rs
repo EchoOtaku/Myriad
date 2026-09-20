@@ -36,20 +36,17 @@ impl LimitQuery {
     }
 }
 
-pub(crate) fn require_user_id(
-    claims: &crate::middleware::auth::Claims,
-) -> Result<i32, Response> {
-    crate::services::tapp_ownership::positive_user_id(&claims.sub)
-        .ok_or_else(|| {
-            (
-                StatusCode::FORBIDDEN,
-                Json(json!({
-                    "error": "A durable user account is required",
-                    "code": "invalid_subject",
-                })),
-            )
-                .into_response()
-        })
+pub(crate) fn require_user_id(claims: &crate::middleware::auth::Claims) -> Result<i32, Response> {
+    crate::services::tapp_ownership::positive_user_id(&claims.sub).ok_or_else(|| {
+        (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "A durable user account is required",
+                "code": "invalid_subject",
+            })),
+        )
+            .into_response()
+    })
 }
 
 fn federation_user_error(context: &'static str, error: impl std::fmt::Display) -> String {
@@ -1286,7 +1283,11 @@ pub(crate) async fn federation_leave_ring(
     extract::Db(db): extract::Db,
     axum::extract::Path(ring_id): axum::extract::Path<String>,
 ) -> Response {
-    match federation::ring::leave_ring(&ring_id, &claims.username, &db).await {
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    match federation::ring::leave_ring(&ring_id, user_id, &claims.username, &db).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
     }
@@ -1314,7 +1315,11 @@ pub(crate) async fn federation_add_ring_peer(
     axum::extract::Path(ring_id): axum::extract::Path<String>,
     Json(add_req): Json<federation::ring::AddPeerRequest>,
 ) -> Response {
-    match federation::ring::add_peer(&ring_id, &claims.username, &db, &add_req).await {
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    match federation::ring::add_peer(&ring_id, user_id, &claims.username, &db, &add_req).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
     }
@@ -1328,7 +1333,11 @@ pub(crate) async fn federation_remove_ring_peer(
     extract::Db(db): extract::Db,
     axum::extract::Path((ring_id, peer_url)): axum::extract::Path<(String, String)>,
 ) -> Response {
-    match federation::ring::remove_peer(&ring_id, &peer_url, &claims.username, &db).await {
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    match federation::ring::remove_peer(&ring_id, &peer_url, user_id, &claims.username, &db).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
     }
@@ -1340,7 +1349,11 @@ pub(crate) async fn federation_trigger_ring_sync(
     extract::Db(db): extract::Db,
     axum::extract::Path(ring_id): axum::extract::Path<String>,
 ) -> Response {
-    match federation::ring::trigger_sync(&ring_id, &claims.username, &db).await {
+    let user_id = match require_user_id(&claims) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    match federation::ring::trigger_sync(&ring_id, user_id, &claims.username, &db).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
     }
@@ -2021,6 +2034,19 @@ mod tests {
         let src = include_str!("social.rs");
         let production = src.split("#[cfg(test)]").next().expect("production");
         assert!(production.contains("fn require_user_id"));
+        for handler in [
+            "federation_leave_ring",
+            "federation_add_ring_peer",
+            "federation_remove_ring_peer",
+            "federation_trigger_ring_sync",
+        ] {
+            let body = production
+                .split(&format!("pub(crate) async fn {handler}"))
+                .nth(1)
+                .and_then(|rest| rest.split("pub(crate) async fn").next())
+                .unwrap_or("");
+            assert!(body.contains("require_user_id"), "{handler}");
+        }
         assert!(!production.contains("claims.sub.parse().unwrap_or(0)"));
         let guest = crate::middleware::auth::mint_session_claims(0, "guest", false, false, 0);
         assert!(super::require_user_id(&guest).is_err());

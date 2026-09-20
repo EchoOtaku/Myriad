@@ -25,7 +25,7 @@ use super::activities::{
 };
 use super::inbox_err;
 use super::local_deliver::DeliveryMode;
-use super::mfp::handle_mfp_activity;
+use super::mfp::{ensure_allowed_mfp_type, handle_mfp_activity};
 use super::receipt::{
     ReceiptClaim, ReceiptKey, ReceiptOutcome, claim_receipt, finish_receipt, receipt_key,
 };
@@ -417,16 +417,7 @@ async fn dispatch_personal_activity<C: ConnectionTrait>(
             .await
         }
         ty if ty.starts_with("myriad:") => {
-            if !super::mfp::ALLOWED_MFP_TYPES.contains(&ty) {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(
-                        AppError::bad_request(format!("Unknown MFP activity type: {ty}"))
-                            .with_code("unknown_activity")
-                            .to_json(),
-                    ),
-                ));
-            }
+            ensure_allowed_mfp_type(ty)?;
             handle_mfp_activity(db, Some(local_user_id), actor_url_str, ty, activity).await
         }
         _ => Ok(StatusCode::ACCEPTED),
@@ -651,6 +642,7 @@ async fn dispatch_shared_activity<C: ConnectionTrait>(
     {
         if let Some(uid) = resolve_shared_inbox_local_user(db, activity_type, activity).await {
             if activity_type.starts_with("myriad:") {
+                ensure_allowed_mfp_type(activity_type)?;
                 return handle_mfp_activity(db, Some(uid), actor_url_str, activity_type, activity)
                     .await;
             }

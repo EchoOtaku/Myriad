@@ -57,6 +57,10 @@ fn illegal_inbox_url_errors_immediately_instead_of_forging_inbox() {
         parse_delivery_inbox("https://peer.example:8443/users/bob/inbox").unwrap();
     assert_eq!(path, "/users/bob/inbox");
     assert_eq!(host, "peer.example:8443");
+    let (path, host) =
+        parse_delivery_inbox("https://peer.example/inbox?shared=1").unwrap();
+    assert_eq!(path, "/inbox?shared=1");
+    assert_eq!(host, "peer.example");
 }
 
 #[test]

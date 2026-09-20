@@ -577,6 +577,10 @@ fn create_and_admit_use_same_transaction_lock() {
         !e2e.contains("let _ = fanout_to_remote_members"),
         "KeyExchange fanout must not be ignored after publishing the marker"
     );
+    assert!(
+        !e2e.contains("if !already_published"),
+        "published_keys marker must not skip delivery to current members"
+    );
 }
 
 #[test]

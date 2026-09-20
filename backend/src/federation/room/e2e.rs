@@ -277,10 +277,6 @@ pub async fn initiate_e2e_key_exchange(
     if !shared["e2e"]["published_keys"].is_object() {
         shared["e2e"]["published_keys"] = json!({});
     }
-    let already_published = shared["e2e"]["published_keys"]
-        .get(&local_actor)
-        .and_then(|v| v.as_str())
-        == Some(public_key.as_str());
     shared["e2e"]["published_keys"][&local_actor] = json!(public_key);
     shared["e2e"]["algorithm"] = json!(crate::federation::e2e::E2E_ALGORITHM);
 
@@ -297,35 +293,34 @@ pub async fn initiate_e2e_key_exchange(
     .await
     .map_err(db_err)?;
 
-    // Skip KeyExchange fan-out when this actor already published the same key
-    // (previous successful commit already queued delivery).
-    if !already_published {
-        let activity_id = generate_activity_id(&base_url);
-        let kx_object = crate::federation::e2e::KeyExchangePayload::for_room(
-            room_id,
-            &public_key,
-            Some(now_iso8601()),
-        )
-        .to_json();
-        let kx_activity = json!({
-            "@context": build_context(),
-            "type": "myriad:KeyExchange",
-            "id": &activity_id,
-            "actor": &local_actor,
-            "object": kx_object
-        });
-        fanout_to_remote_members_required(
-            &txn,
-            user_id,
-            room_id,
-            &activity_id,
-            &kx_activity,
-            "KeyExchange",
-            "KeyExchange",
-        )
-        .await
-        .map_err(db_err)?;
-    }
+    // Marker means the key is on this room; it does not prove every current
+    // remote member has a durable delivery intent. Always fan out; missing
+    // routes fail closed via RequireRoutable.
+    let activity_id = generate_activity_id(&base_url);
+    let kx_object = crate::federation::e2e::KeyExchangePayload::for_room(
+        room_id,
+        &public_key,
+        Some(now_iso8601()),
+    )
+    .to_json();
+    let kx_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:KeyExchange",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": kx_object
+    });
+    fanout_to_remote_members_required(
+        &txn,
+        user_id,
+        room_id,
+        &activity_id,
+        &kx_activity,
+        "KeyExchange",
+        "KeyExchange",
+    )
+    .await
+    .map_err(db_err)?;
     txn.commit().await.map_err(db_err)?;
 
     crate::federation::ws_gateway::broadcast_to_room(

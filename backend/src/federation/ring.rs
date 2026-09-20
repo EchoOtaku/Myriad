@@ -10,32 +10,6 @@ use serde_json::json;
 
 use crate::federation::types::*;
 
-/// Ensure signing keys before ring enqueue (defense-in-depth).
-///
-/// Delivery worker remains the choke point for already-queued rows.
-/// Callers: add_peer / leave / remove_peer / sync enqueue（create_ring 不入队）。
-async fn ensure_keys_before_ring_outbound(
-    db: &impl ConnectionTrait,
-    user_id: i32,
-    username: &str,
-    context: &str,
-) {
-    if username.trim().is_empty() || user_id <= 0 {
-        return;
-    }
-    if let Err(e) =
-        crate::federation::actor::ensure_user_federation_keys(db, user_id, username).await
-    {
-        tracing::warn!(
-            user_id = user_id,
-            username = %username,
-            context = %context,
-            error = %e,
-            "Failed to ensure federation keys before ring outbound; delivery may ensure later"
-        );
-    }
-}
-
 /// 根据用户名查询实际的 user_id，避免硬编码 user_id = 1
 async fn resolve_user_id(
     db: &impl ConnectionTrait,
@@ -336,6 +310,7 @@ pub async fn get_ring(
 /// 离开（删除）Ring
 pub async fn leave_ring(
     ring_id: &str,
+    user_id: i32,
     username: &str,
     db: &DatabaseConnection,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
@@ -379,8 +354,7 @@ pub async fn leave_ring(
         }
     });
 
-    let local_user_id = resolve_user_id(db, username).await?;
-    ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_leave").await;
+    let local_user_id = user_id;
     let mut leave_deliveries = Vec::new();
     for peer in &peers {
         let activity_id = generate_activity_id(&base_url);
@@ -470,6 +444,7 @@ pub async fn get_peers(
 /// 添加 Peer 到 Ring
 pub async fn add_peer(
     ring_id: &str,
+    user_id: i32,
     username: &str,
     db: &DatabaseConnection,
     req: &AddPeerRequest,
@@ -552,8 +527,7 @@ pub async fn add_peer(
             "ringType": ring_row.try_get::<String>("", "ring_type").unwrap_or_default(),
         }
     });
-    let local_user_id = resolve_user_id(db, username).await?;
-    ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_add_peer").await;
+    let local_user_id = user_id;
 
     let txn = db.begin().await.map_err(db_err)?;
     // 原子追加到 known_peers，避免并发读-改-写竞争
@@ -592,13 +566,13 @@ pub async fn add_peer(
 pub async fn remove_peer(
     ring_id: &str,
     peer_url: &str,
+    user_id: i32,
     username: &str,
     db: &DatabaseConnection,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
-    let local_user_id = resolve_user_id(db, username).await?;
-    ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_remove_peer").await;
+    let local_user_id = user_id;
     let notify = match crate::federation::actor::fetch_remote_actor(db, peer_url).await {
         Ok(remote) if !remote.inbox_url.is_empty() => Some(remote.inbox_url),
         Ok(_) => {
@@ -670,6 +644,7 @@ pub async fn remove_peer(
 /// 触发 Gossip 同步：向随机 fanout 个 peer 推送本地数据
 pub async fn trigger_sync(
     ring_id: &str,
+    user_id: i32,
     username: &str,
     db: &DatabaseConnection,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
@@ -718,8 +693,7 @@ pub async fn trigger_sync(
         return Ok(json!({"success": true, "synced_peers": 0, "message": "No peers to sync with"}));
     }
 
-    let local_user_id = resolve_user_id(db, username).await?;
-    ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_sync").await;
+    let local_user_id = user_id;
     let category_filter = gossip_config
         .get("category")
         .or_else(|| gossip_config.get("phantasi_category"))
@@ -1111,9 +1085,10 @@ pub async fn maybe_trigger_phantasi_recommend_sync_for_user(db: &DatabaseConnect
         ))
         .await
     {
-        Ok(Some(row)) => row
-            .try_get::<String>("", "username")
-            .unwrap_or_else(|_| "admin".to_string()),
+        Ok(Some(row)) => match row.try_get::<String>("", "username") {
+            Ok(username) if !username.is_empty() => username,
+            _ => return,
+        },
         _ => return,
     };
 
@@ -1154,7 +1129,7 @@ pub async fn maybe_trigger_phantasi_recommend_sync_for_user(db: &DatabaseConnect
             Ok(id) => id,
             Err(_) => continue,
         };
-        match trigger_sync(&ring_id, &username, db).await {
+        match trigger_sync(&ring_id, user_id, &username, db).await {
             Ok(res) => {
                 tracing::info!(
                     "[Ring] Auto phantasi-recommend sync ring={} user={}: {}",
@@ -1798,6 +1773,29 @@ mod tests {
             .expect("add_peer");
         assert!(add.contains("remote_inbox_missing"));
         assert!(add.contains("insert_and_enqueue_delivery"));
+    }
+
+    #[test]
+    fn ring_writes_use_authenticated_user_id() {
+        let src = include_str!("ring.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        for name in ["leave_ring", "add_peer", "remove_peer", "trigger_sync"] {
+            assert!(
+                production.contains(&format!("user_id: i32")),
+                "{name} must take authenticated user_id"
+            );
+        }
+        let leave = production
+            .split("pub async fn leave_ring")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_peers").next())
+            .expect("leave_ring");
+        assert!(!leave.contains("resolve_user_id"));
+        let auto = production
+            .split("maybe_trigger_phantasi_recommend_sync_for_user")
+            .nth(1)
+            .expect("auto sync");
+        assert!(!auto.contains("unwrap_or_else(|_| \"admin\".to_string())"));
     }
 }
 use myriad_error::AppError;

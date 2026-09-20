@@ -110,19 +110,6 @@ pub async fn follow_remote(
     .await
     .map_err(db_err)?;
 
-    // Defense-in-depth: ensure keys before enqueue. Delivery worker is the
-    // universal choke point and will also ensure-once if keys are still missing.
-    if let Err(e) =
-        crate::federation::actor::ensure_user_federation_keys(&txn, user_id, username).await
-    {
-        tracing::warn!(
-            user_id = user_id,
-            username = %username,
-            error = %e,
-            "Failed to ensure federation keys before Follow enqueue; delivery may ensure later"
-        );
-    }
-
     let act_db_id = insert_local_activity(
         &txn,
         user_id,
@@ -715,6 +702,28 @@ mod tests {
         let url = build_webfinger_url("@bob@remote.example").unwrap();
         assert!(url.contains("remote.example"));
         assert!(url.contains("acct%3Abob%40remote.example"));
+    }
+
+    #[test]
+    fn outbound_enqueue_does_not_swallow_key_ensure() {
+        let follow = include_str!("follow.rs");
+        let send = follow
+            .split("pub async fn send_follow")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn").next())
+            .expect("send_follow");
+        assert!(!send.contains("ensure_user_federation_keys"));
+        let ring = include_str!("ring.rs");
+        assert!(!ring.contains("ensure_keys_before_ring_outbound"));
+        let room = include_str!("room/helpers.rs");
+        let fanout = room
+            .split("RoomFanoutMode")
+            .nth(1)
+            .expect("room fanout");
+        assert!(!fanout.contains("ensure_user_federation_keys"));
+        let dispatch = include_str!("delivery/dispatch.rs");
+        assert!(dispatch.contains("load_user_keypair_ensuring"));
+        assert!(dispatch.contains("is_missing_federation_keys_error"));
     }
 }
 use myriad_error::AppError;

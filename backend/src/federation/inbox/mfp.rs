@@ -1,10 +1,28 @@
 //! Myriad Federation Protocol (MFP) inbox activity handlers.
 
 use axum::{Json, http::StatusCode};
+use myriad_error::AppError;
 use sea_orm::ConnectionTrait;
 use serde_json::json;
 
 use super::inbox_err;
+
+pub(crate) fn ensure_allowed_mfp_type(
+    activity_type: &str,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    if ALLOWED_MFP_TYPES.contains(&activity_type) {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(
+                AppError::bad_request(format!("Unknown MFP activity type: {activity_type}"))
+                    .with_code("unknown_activity")
+                    .to_json(),
+            ),
+        ))
+    }
+}
 
 pub(crate) const ALLOWED_MFP_TYPES: &[&str] = &[
     "myriad:ChannelOpen",
@@ -163,17 +181,14 @@ pub(crate) async fn handle_mfp_activity(
                 .map_err(|e| inbox_err("RoomGovernance handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
-        _ => {
-            tracing::info!("Unhandled MFP activity type: {}", activity_type);
-            Ok(StatusCode::ACCEPTED)
-        }
+        _ => ensure_allowed_mfp_type(activity_type).map(|()| StatusCode::ACCEPTED),
     }
 }
 
 #[cfg(test)]
 mod tests {
     /// `ALLOWED_MFP_TYPES` 与 `match activity_type` 必须一一对应。
-    /// 缺臂会落到 `_` → 202 然后丢弃。对源码断言，因为类型系统表达不了。
+    /// 缺臂会落到 `_` → 400。对源码断言，因为类型系统表达不了。
     #[test]
     fn every_allowed_mfp_type_has_a_dispatch_arm() {
         let src = include_str!("mfp.rs");
@@ -210,8 +225,18 @@ mod tests {
         assert!(
             undispatched.is_empty(),
             "these MFP types are accepted by the inbox allowlist but have no dispatch arm, \n\
-             so they would be signature-verified, answered 202, then silently dropped: {undispatched:?}"
+             so they would be signature-verified then fail closed: {undispatched:?}"
         );
     }
+
+    #[test]
+    fn unknown_mfp_type_is_bad_request_not_accepted() {
+        let err = super::ensure_allowed_mfp_type("myriad:NotAThing").unwrap_err();
+        assert_eq!(err.0, axum::http::StatusCode::BAD_REQUEST);
+        let shared = include_str!("receive.rs")
+            .split("pub async fn post_shared_inbox")
+            .nth(1)
+            .expect("post_shared_inbox");
+        assert!(shared.contains("ensure_allowed_mfp_type"));
+    }
 }
-use myriad_error::AppError;

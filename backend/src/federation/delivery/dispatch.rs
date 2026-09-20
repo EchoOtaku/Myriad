@@ -140,7 +140,10 @@ pub(crate) fn parse_delivery_inbox(target_inbox: &str) -> Result<(String, String
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(format!("Invalid inbox URL: {target_inbox}"));
     }
-    let path = parsed.path().to_string();
+    let path = match parsed.query() {
+        Some(query) if !query.is_empty() => format!("{}?{query}", parsed.path()),
+        _ => parsed.path().to_string(),
+    };
     let host = match (parsed.host_str(), parsed.port()) {
         (Some(host), Some(port)) => format!("{host}:{port}"),
         (Some(host), None) => host.to_string(),

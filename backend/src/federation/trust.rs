@@ -350,6 +350,15 @@ pub async fn check_rate_limit(
     policy: &RateLimitPolicy,
 ) -> Result<PolicyCheckResult, sea_orm::DbErr> {
     let trust = get_instance_trust_level(db, domain).await?;
+    check_rate_limit_for_trust(db, domain, policy, trust).await
+}
+
+async fn check_rate_limit_for_trust(
+    db: &DatabaseConnection,
+    domain: &str,
+    policy: &RateLimitPolicy,
+    trust: TrustLevel,
+) -> Result<PolicyCheckResult, sea_orm::DbErr> {
     let max_requests = effective_max_requests(policy, trust);
 
     // Fast path: process-local counter (no Redis)
@@ -909,8 +918,11 @@ pub async fn enforce_inbound(
             .reason
             .unwrap_or_else(|| format!("Domain {} rejected by instance policy", domain)));
     }
+    let trust = TrustLevel::from_i16(verdict.trust_level.ok_or_else(|| {
+        "Trust policy unavailable: missing trust level after allow".to_string()
+    })?);
 
-    let rate = check_rate_limit(db, domain, &policy.rate_limit)
+    let rate = check_rate_limit_for_trust(db, domain, &policy.rate_limit, trust)
         .await
         .map_err(|e| format!("Trust policy unavailable: {e}"))?;
     if !rate.allowed {
@@ -918,9 +930,6 @@ pub async fn enforce_inbound(
     }
 
     // Content filters from federation_content_filters (enabled rows only applied inside).
-    let trust = get_instance_trust_level(db, domain)
-        .await
-        .map_err(|e| format!("Trust policy unavailable: {e}"))?;
     let rules = load_content_filter_rules(db)
         .await
         .map_err(|e| format!("Trust policy unavailable: {e}"))?;
@@ -1527,6 +1536,19 @@ mod tests {
             body.contains("invalid min_trust_level"),
             "out-of-range min_trust_level must not become Unknown/allow-all"
         );
+    }
+
+    #[test]
+    fn inbound_enforcement_reuses_policy_trust_snapshot() {
+        let src = include_str!("trust.rs");
+        let enforce = src
+            .split("pub async fn enforce_inbound")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn").next())
+            .expect("enforce_inbound");
+        assert!(enforce.contains("check_rate_limit_for_trust"));
+        assert!(enforce.contains("verdict.trust_level"));
+        assert!(!enforce.contains("get_instance_trust_level"));
     }
 
     #[test]
