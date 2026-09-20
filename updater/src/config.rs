@@ -65,13 +65,16 @@ impl DbMode {
             && !raw.trim().is_empty() {
                 return Self::parse(&raw);
             }
-        if let Some(path) = env_file
-            && path.exists()
-                && let Ok(env) = crate::env_file::EnvFile::load(path)
-                    && let Some(raw) = env.get("MYRIAD_DB_MODE")
-                        && !raw.trim().is_empty() {
-                            return Self::parse(raw);
-                        }
+        if let Some(path) = env_file {
+            if crate::probe::filesystem::path_is_present(path)? {
+                let env = crate::env_file::EnvFile::load(path)?;
+                if let Some(raw) = env.get("MYRIAD_DB_MODE")
+                    && !raw.trim().is_empty()
+                {
+                    return Self::parse(raw);
+                }
+            }
+        }
         Ok(DbMode::Bundled)
     }
 }
@@ -412,6 +415,19 @@ mod tests {
         LOCK.get_or_init(|| std::sync::Mutex::new(()))
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn db_mode_resolve_does_not_treat_exists_false_as_absence() {
+        let src = include_str!("config.rs");
+        let resolve = src
+            .split("pub fn resolve(")
+            .nth(1)
+            .and_then(|rest| rest.split("impl std::fmt::Display for DbMode").next())
+            .expect("resolve");
+        assert!(!resolve.contains("path.exists()"));
+        assert!(resolve.contains("path_is_present"));
+        assert!(!resolve.contains("let Ok(env)"));
     }
 
     #[test]

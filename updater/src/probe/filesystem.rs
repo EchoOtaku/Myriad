@@ -9,17 +9,35 @@ use tokio::process::Command;
 
 use crate::error::{Result, UpdaterError};
 
+/// True if `path` exists. Permission and other IO faults are errors, not absence.
+pub fn path_is_present(path: &Path) -> Result<bool> {
+    match std::fs::metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(UpdaterError::Internal(anyhow::anyhow!(
+            "cannot inspect {}: {error}",
+            path.display()
+        ))),
+    }
+}
+
 /// Fail with a clear Precondition when an operation needs pgdata but the path is missing.
 /// Startup no longer treats a missing path as fatal; snapshot/restore must check explicitly.
 pub fn require_pgdata(path: &Path) -> Result<()> {
-    if !path.exists() {
-        return Err(UpdaterError::Precondition(format!(
-            "pgdata path {} does not exist; cannot snapshot or restore until postgres data is present \
-             (check volume mounts / first-time postgres init)",
+    match std::fs::metadata(path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(UpdaterError::Precondition(format!(
+                "pgdata path {} does not exist; cannot snapshot or restore until postgres data is present \
+                 (check volume mounts / first-time postgres init)",
+                path.display()
+            )))
+        }
+        Err(error) => Err(UpdaterError::Precondition(format!(
+            "cannot inspect pgdata {}: {error}",
             path.display()
-        )));
+        ))),
     }
-    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,10 +67,15 @@ pub async fn probe_pgdata(path: &Path, state_dir: &Path) -> PgdataProbe {
 
     // Missing path is non-fatal at startup: fresh deploys may not have created
     // pgdata yet. Operations that need it (snapshot/restore) fail with Precondition.
-    if !path.exists() {
-        return out;
+    // Permission / IO faults are not "missing".
+    match std::fs::metadata(path) {
+        Ok(_) => out.exists = true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return out,
+        Err(error) => {
+            out.error = Some(format!("cannot inspect {}: {error}", path.display()));
+            return out;
+        }
     }
-    out.exists = true;
 
     // Heuristic: a docker named volume mounted as /var/lib/docker/volumes/<name>/_data is
     // a *bind* from updater's POV but the host path is inside docker's volume root.
@@ -121,29 +144,41 @@ pub struct EnvFileProbe {
 }
 
 pub async fn probe_env_file(path: &Path) -> EnvFileProbe {
-    if !path.exists() {
-        // Hint common alternate locations used by compose / older defaults.
-        let alts = ["/host/compose/.env", "/host/.env"];
-        let found_alt = alts.iter().find(|p| Path::new(p).exists()).copied();
-        let hint = match found_alt {
-            Some(alt) => format!(
-                "{} not found; found {alt} — set UPDATER_ENV_FILE={alt} on the updater service",
-                path.display()
-            ),
-            None => format!(
-                "{} not found (also checked /host/compose/.env and /host/.env); \
-                 mount the host compose project and set UPDATER_ENV_FILE",
-                path.display()
-            ),
-        };
-        return EnvFileProbe {
-            exists: false,
-            duplicate_keys: false,
-            has_required_tag_vars: false,
-            known_required_present: vec![],
-            known_required_missing: vec![],
-            error: Some(hint),
-        };
+    match std::fs::metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let alts = ["/host/compose/.env", "/host/.env"];
+            let found_alt = alts.iter().copied().find(|p| std::fs::metadata(p).is_ok());
+            let hint = match found_alt {
+                Some(alt) => format!(
+                    "{} not found; found {alt} — set UPDATER_ENV_FILE={alt} on the updater service",
+                    path.display()
+                ),
+                None => format!(
+                    "{} not found (also checked /host/compose/.env and /host/.env); \
+                     mount the host compose project and set UPDATER_ENV_FILE",
+                    path.display()
+                ),
+            };
+            return EnvFileProbe {
+                exists: false,
+                duplicate_keys: false,
+                has_required_tag_vars: false,
+                known_required_present: vec![],
+                known_required_missing: vec![],
+                error: Some(hint),
+            };
+        }
+        Err(error) => {
+            return EnvFileProbe {
+                exists: false,
+                duplicate_keys: false,
+                has_required_tag_vars: false,
+                known_required_present: vec![],
+                known_required_missing: vec![],
+                error: Some(format!("cannot inspect {}: {error}", path.display())),
+            };
+        }
     }
 
     let s = match std::fs::read_to_string(path) {
@@ -215,6 +250,15 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[test]
+    fn path_is_present_distinguishes_missing_from_io() {
+        let missing = PathBuf::from("/tmp/myriad-updater-path-present-missing-xyz");
+        let _ = std::fs::remove_dir_all(&missing);
+        assert!(!path_is_present(&missing).unwrap());
+        let dir = tempfile::tempdir().unwrap();
+        assert!(path_is_present(dir.path()).unwrap());
+    }
+
     #[tokio::test]
     async fn probe_pgdata_missing_path_is_non_fatal() {
         let missing = PathBuf::from("/tmp/myriad-updater-pgdata-definitely-missing-xyz");
@@ -228,7 +272,23 @@ mod tests {
             probe.error
         );
         assert!(!probe.is_named_volume);
-        assert!(require_pgdata(&missing).is_err());
+        let err = require_pgdata(&missing).unwrap_err();
+        assert!(
+            err.to_string().contains("does not exist"),
+            "missing pgdata must not look like an inspect failure: {err}"
+        );
+    }
+
+    #[test]
+    fn require_pgdata_does_not_treat_exists_false_as_absence() {
+        let src = include_str!("filesystem.rs");
+        let require = src
+            .split("pub fn require_pgdata")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn probe_pgdata").next())
+            .expect("require_pgdata");
+        assert!(!require.contains("path.exists()"));
+        assert!(require.contains("ErrorKind::NotFound"));
     }
 
     #[tokio::test]

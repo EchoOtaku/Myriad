@@ -24,9 +24,18 @@ pub mod history;
 pub mod lock;
 pub mod types;
 
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Result, UpdaterError};
+
+fn read_existing(path: &Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
 
 pub use types::*;
 
@@ -81,16 +90,15 @@ impl StateDir {
         self.root.join("cache")
     }
 
-    pub fn manual_override_enabled(&self) -> bool {
-        self.root.join("manual-override").exists()
+    pub fn manual_override_enabled(&self) -> Result<bool> {
+        crate::probe::filesystem::path_is_present(&self.root.join("manual-override"))
     }
 
     pub fn read_updater(&self) -> Result<UpdaterStateFile> {
         let path = self.root.join("updater.json");
-        if !path.exists() {
+        let Some(bytes) = read_existing(&path)? else {
             return Ok(UpdaterStateFile::default());
-        }
-        let bytes = std::fs::read(&path)?;
+        };
         Ok(serde_json::from_slice(&bytes)?)
     }
 
@@ -100,10 +108,9 @@ impl StateDir {
 
     pub fn read_maintenance(&self) -> Result<MaintenanceFile> {
         let path = self.root.join("maintenance.json");
-        if !path.exists() {
+        let Some(bytes) = read_existing(&path)? else {
             return Ok(MaintenanceFile::inactive());
-        }
-        let bytes = std::fs::read(&path)?;
+        };
         match serde_json::from_slice(&bytes) {
             Ok(m) => Ok(m),
             Err(e) => {
@@ -137,10 +144,10 @@ impl StateDir {
 
     pub fn read_current_job(&self) -> Result<Option<String>> {
         let path = self.root.join("job.current");
-        if !path.exists() {
+        let Some(bytes) = read_existing(&path)? else {
             return Ok(None);
-        }
-        let s = std::fs::read_to_string(&path)?;
+        };
+        let s = String::from_utf8_lossy(&bytes);
         Ok(Some(s.trim().to_string()).filter(|s| !s.is_empty()))
     }
 
@@ -148,12 +155,11 @@ impl StateDir {
         let path = self.root.join("job.current");
         match id {
             Some(id) => atomic::write_atomic_bytes(&path, id.as_bytes()),
-            None => {
-                if path.exists() {
-                    std::fs::remove_file(&path)?;
-                }
-                Ok(())
-            }
+            None => match std::fs::remove_file(&path) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error.into()),
+            },
         }
     }
 
@@ -196,10 +202,9 @@ impl StateDir {
 
     pub fn read_snapshots(&self) -> Result<SnapshotsFile> {
         let path = self.root.join("snapshots.json");
-        if !path.exists() {
+        let Some(bytes) = read_existing(&path)? else {
             return Ok(SnapshotsFile::default());
-        }
-        let bytes = std::fs::read(&path)?;
+        };
         Ok(serde_json::from_slice(&bytes)?)
     }
 
@@ -260,6 +265,33 @@ mod tests {
             matches!(err, UpdaterError::Json(_)),
             "corrupt job must be Json, got {err}"
         );
+    }
+
+    #[test]
+    fn missing_state_files_are_not_found_not_permission_errors() {
+        let src = include_str!("mod.rs");
+        let override_fn = src
+            .split("pub fn manual_override_enabled")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn read_updater").next())
+            .expect("manual_override_enabled");
+        assert!(!override_fn.contains("path.exists()"));
+        assert!(override_fn.contains("path_is_present"));
+        for name in ["read_updater", "read_maintenance", "read_current_job", "read_snapshots"] {
+            let start = src.find(&format!("pub fn {name}")).expect(name);
+            let body = &src[start..];
+            let end = body[1..]
+                .find("
+    pub fn ")
+                .map(|i| i + 1)
+                .unwrap_or(body.len());
+            let fn_src = &body[..end];
+            assert!(
+                !fn_src.contains("path.exists()"),
+                "{name} must not treat exists() false as absence"
+            );
+        }
+        assert!(src.contains("ErrorKind::NotFound"));
     }
 
     #[test]

@@ -158,14 +158,23 @@ pub(crate) fn ensure_host_policy_file(config: &GuardConfig, write_path: &Path) -
     let Some(parent) = write_path.parent() else {
         return Ok(());
     };
-    if !parent.exists() {
-        info!(
-            path = %write_path.display(),
-            "Guard policy parent is not mounted; skipping automatic policy creation"
-        );
-        return Ok(());
+    match crate::probe::filesystem::path_is_present(parent) {
+        Ok(true) => {}
+        Ok(false) => {
+            info!(
+                path = %write_path.display(),
+                "Guard policy parent is not mounted; skipping automatic policy creation"
+            );
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(anyhow!(
+                "cannot inspect Guard policy parent {}: {error}",
+                parent.display()
+            ));
+        }
     }
-    if write_path.exists() {
+    if crate::probe::filesystem::path_is_present(write_path)? {
         if host_policy_file_is_pinned(write_path) {
             heal_host_policy_compose_path(write_path)?;
             return Ok(());

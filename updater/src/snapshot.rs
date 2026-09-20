@@ -106,12 +106,12 @@ impl<'a> SnapshotManager<'a> {
         let tmp = snapshots_dir.join(format!("{snapshot_id}.tmp"));
         let final_path = snapshots_dir.join(snapshot_id);
 
-        if final_path.exists() {
+        if crate::probe::filesystem::path_is_present(&final_path)? {
             return Err(UpdaterError::Precondition(format!(
                 "snapshot {snapshot_id} already exists"
             )));
         }
-        if tmp.exists() {
+        if crate::probe::filesystem::path_is_present(&tmp)? {
             std::fs::remove_dir_all(&tmp)?;
         }
 
@@ -185,7 +185,7 @@ impl<'a> SnapshotManager<'a> {
 
         crate::probe::filesystem::require_pgdata(&self.pgdata)?;
         let snap_path = self.state.snapshots_dir().join(snapshot_id);
-        if !snap_path.exists() {
+        if !crate::probe::filesystem::path_is_present(&snap_path)? {
             return Err(UpdaterError::NotFound(format!(
                 "snapshot {snapshot_id} does not exist on disk"
             )));
@@ -194,7 +194,7 @@ impl<'a> SnapshotManager<'a> {
         let ts = Utc::now().format("%Y%m%dT%H%M%SZ");
         let broken_sibling = self.pgdata.with_extension(format!("broken.{ts}"));
 
-        if self.pgdata.exists() {
+        if crate::probe::filesystem::path_is_present(&self.pgdata)? {
             match std::fs::rename(&self.pgdata, &broken_sibling) {
                 Ok(()) => {
                     info!(
@@ -204,12 +204,26 @@ impl<'a> SnapshotManager<'a> {
                     );
                     if let Err(e) = copy_tree(&snap_path, &self.pgdata).await {
                         // Best-effort undo of the rename.
-                        if broken_sibling.exists() && !self.pgdata.exists() {
+                        if crate::probe::filesystem::path_is_present(&broken_sibling).unwrap_or(false)
+                            && matches!(
+                                crate::probe::filesystem::path_is_present(&self.pgdata),
+                                Ok(false)
+                            )
+                        {
                             let _ = std::fs::rename(&broken_sibling, &self.pgdata);
                         }
                         return Err(e);
                     }
                     fsync_dir(&self.pgdata)?;
+                    if let Err(error) =
+                        self.adopt_aside_directory(&broken_sibling, &format!("aside-{ts}"))
+                    {
+                        warn!(
+                            err = %error,
+                            aside = %broken_sibling.display(),
+                            "pgdata restored but aside copy was not registered as a protected snapshot"
+                        );
+                    }
                     info!(snapshot = %snapshot_id, "pgdata restored from snapshot (rename path)");
                     return Ok(());
                 }
@@ -247,7 +261,7 @@ impl<'a> SnapshotManager<'a> {
             .state
             .snapshots_dir()
             .join(format!("broken-inplace-{ts}"));
-        if safety.exists() {
+        if crate::probe::filesystem::path_is_present(&safety)? {
             std::fs::remove_dir_all(&safety)?;
         }
         if dir_has_entries(&self.pgdata)? {
@@ -271,7 +285,7 @@ impl<'a> SnapshotManager<'a> {
             .state
             .snapshots_dir()
             .join(format!("restore-stage-{ts}"));
-        if stage.exists() {
+        if crate::probe::filesystem::path_is_present(&stage)? {
             std::fs::remove_dir_all(&stage)?;
         }
         std::fs::create_dir_all(&stage)?;
@@ -288,7 +302,7 @@ impl<'a> SnapshotManager<'a> {
         // `cp -a stage/. dest/` into the existing mount directory.
         if let Err(e) = copy_tree_into(&stage, &self.pgdata).await {
             // Attempt to put safety copy back if we have one.
-            if safety.exists() {
+            if crate::probe::filesystem::path_is_present(&safety).unwrap_or(false) {
                 let _ = clear_dir_contents(&self.pgdata);
                 let _ = copy_tree_into(&safety, &self.pgdata).await;
             }
@@ -299,11 +313,61 @@ impl<'a> SnapshotManager<'a> {
         }
         let _ = std::fs::remove_dir_all(&stage);
         fsync_dir(&self.pgdata)?;
+        if crate::probe::filesystem::path_is_present(&safety).unwrap_or(false)
+            && let Err(error) = self.adopt_aside_directory(&safety, &format!("aside-{ts}"))
+        {
+            warn!(
+                err = %error,
+                aside = %safety.display(),
+                "in-place restore succeeded but safety copy was not registered as a protected snapshot"
+            );
+        }
         info!(
             snapshot = %snapshot_id,
             safety = %safety.display(),
             "pgdata restored from snapshot (in-place / mount-point path)"
         );
+        Ok(())
+    }
+
+    /// Move a restore safety copy under `snapshots/` and pin it (`keep=true`)
+    /// so retention cannot drop the only pre-restore pgdata until an operator
+    /// clears the pin.
+    fn adopt_aside_directory(&self, src: &Path, id: &str) -> Result<()> {
+        validate_snapshot_id(id)?;
+        if !crate::probe::filesystem::path_is_present(src)? {
+            return Ok(());
+        }
+        let dest = self.state.snapshots_dir().join(id);
+        if src != dest.as_path() {
+            if crate::probe::filesystem::path_is_present(&dest)? {
+                return Err(UpdaterError::Precondition(format!(
+                    "aside snapshot {id} already exists"
+                )));
+            }
+            std::fs::create_dir_all(self.state.snapshots_dir())?;
+            std::fs::rename(src, &dest).map_err(|e| {
+                UpdaterError::Internal(anyhow::anyhow!(
+                    "move pgdata aside into snapshots/{id} failed: {e}"
+                ))
+            })?;
+            fsync_dir(&dest)?;
+            fsync_dir(&self.state.snapshots_dir())?;
+        }
+        let (size, count, sample) = measure_and_sample(&dest)?;
+        let mut sf = self.state.read_snapshots()?;
+        if !sf.items.iter().any(|m| m.id == id) {
+            sf.items.push(SnapshotMeta {
+                id: id.to_string(),
+                created_at: Utc::now(),
+                source_version: None,
+                size_bytes: size,
+                file_count: count,
+                keep: true,
+                sample_sha256: Some(sample),
+            });
+            self.state.write_snapshots(&sf)?;
+        }
         Ok(())
     }
 
@@ -388,8 +452,24 @@ impl<'a> SnapshotManager<'a> {
 
         for id in drop_ids {
             let p = self.state.snapshots_dir().join(&id);
-            if p.exists()
-                && let Err(e) = std::fs::remove_dir_all(&p)
+            match crate::probe::filesystem::path_is_present(&p) {
+                Ok(false) => {
+                    removed.push(id);
+                    continue;
+                }
+                Err(e) => {
+                    warn!(
+                        snapshot = %id,
+                        path = %p.display(),
+                        err = %e,
+                        "snapshot prune: cannot inspect dir; keeping id in snapshots.json"
+                    );
+                    disk_failures.push(id);
+                    continue;
+                }
+                Ok(true) => {}
+            }
+            if let Err(e) = std::fs::remove_dir_all(&p)
             {
                 warn!(
                     snapshot = %id,
@@ -439,7 +519,8 @@ impl<'a> SnapshotManager<'a> {
     /// `snapshots.json`, when the name matches a safe pattern only:
     /// - opaque snapshot id (`[A-Za-z0-9_-]+`)
     /// - create leftover `{id}.tmp`
-    /// - in-place restore leftovers `broken-inplace-*`, `restore-stage-*`
+    /// - restore staging `restore-stage-*`
+    /// Safety copies (`aside-*`, `broken-inplace-*`) are never swept.
     ///
     /// Never touches names with path separators or other characters.
     pub fn sweep_orphan_snapshot_dirs(&self) -> Result<Vec<String>> {
@@ -465,8 +546,11 @@ impl<'a> SnapshotManager<'a> {
             if !is_safe_snapshot_dir_name(name) {
                 continue;
             }
-            // Keep meta-tracked snapshot dirs.
-            if known.contains(name) {
+            // Keep meta-tracked snapshot dirs and unregistered restore safety copies.
+            if known.contains(name)
+                || name.starts_with("aside-")
+                || name.starts_with("broken-inplace-")
+            {
                 continue;
             }
             let path = entry.path();
@@ -507,7 +591,7 @@ impl<'a> SnapshotManager<'a> {
 
         let Some(meta) = meta else {
             // Best-effort orphan cleanup when metadata already dropped the entry.
-            if path.exists() {
+            if crate::probe::filesystem::path_is_present(&path).unwrap_or(false) {
                 let _ = std::fs::remove_dir_all(&path);
                 info!(snapshot = %id, "removed orphan snapshot dir (not in snapshots.json)");
             }
@@ -532,7 +616,7 @@ impl<'a> SnapshotManager<'a> {
             )));
         }
 
-        if path.exists() {
+        if crate::probe::filesystem::path_is_present(&path)? {
             std::fs::remove_dir_all(&path).map_err(|e| {
                 UpdaterError::Internal(anyhow::anyhow!(
                     "remove snapshot dir {}: {e}",
@@ -748,6 +832,18 @@ mod tests {
             std::fs::read_to_string(pgdata.join("base/1")).unwrap(),
             "live\n"
         );
+        let asides: Vec<_> = state
+            .read_snapshots()
+            .unwrap()
+            .items
+            .into_iter()
+            .filter(|m| m.id.starts_with("aside-") && m.keep)
+            .collect();
+        assert_eq!(asides.len(), 1, "pre-restore pgdata must be a pinned snapshot");
+        assert!(
+            state.snapshots_dir().join(&asides[0].id).join("base/1").exists(),
+            "aside snapshot must contain the mutated live tree"
+        );
     }
 
     #[tokio::test]
@@ -777,9 +873,16 @@ mod tests {
             "live\n"
         );
         assert!(!pgdata.join("extra").exists());
-        // Safety copy retained.
-        let safety = state.snapshots_dir().join("broken-inplace-testts");
+        let safety = state.snapshots_dir().join("aside-testts");
         assert!(safety.join("extra").exists());
+        let meta = state
+            .read_snapshots()
+            .unwrap()
+            .items
+            .into_iter()
+            .find(|m| m.id == "aside-testts")
+            .expect("safety copy registered");
+        assert!(meta.keep, "pre-restore copy must be pinned until health is confirmed");
     }
 
     #[test]
@@ -1272,7 +1375,10 @@ mod tests {
         assert!(snaps.join("tracked").exists());
         assert!(!snaps.join("orphan-id").exists());
         assert!(!snaps.join("leftover.tmp").exists());
-        assert!(!snaps.join("broken-inplace-20260101T000000Z").exists());
+        assert!(
+            snaps.join("broken-inplace-20260101T000000Z").exists(),
+            "unregistered restore safety copies must not be swept"
+        );
         assert!(!snaps.join("restore-stage-20260101T000000Z").exists());
         assert!(
             snaps.join("weird.name").exists(),

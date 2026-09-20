@@ -125,6 +125,15 @@ impl Manifest {
                     "release.json has invalid commit_sha: {sha}"
                 )));
             }
+        let pg = self.postgres.min_pg_version.trim();
+        if !pg.is_empty()
+            && !pg.eq_ignore_ascii_case("unbounded")
+            && !pg.chars().all(|c| c.is_ascii_digit())
+        {
+            return Err(UpdaterError::Precondition(format!(
+                "release.json has invalid min_pg_version: {pg}"
+            )));
+        }
         Ok(())
     }
 
@@ -165,6 +174,15 @@ mod tests {
         })))
         .expect("manifest without upper bound parses");
         assert!(manifest.postgres.max_pg_version.is_none());
+    }
+
+    #[test]
+    fn invalid_min_pg_version_is_rejected() {
+        let err = Manifest::from_json(&manifest_json(json!({
+            "min_pg_version": "latest"
+        })))
+        .unwrap_err();
+        assert!(err.to_string().contains("min_pg_version"), "{err}");
     }
 
     #[test]

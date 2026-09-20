@@ -128,14 +128,7 @@ pub async fn execute_inline(
                 summary = %out.error_summary(),
                 "compose stop frontend/backend non-zero; forcing container stop"
             );
-            for name in [
-                "myriad-federation-worker",
-                "myriad-persona-worker",
-                "myriad-frontend",
-                "frontend",
-                "myriad-backend",
-                "backend",
-            ] {
+            for name in ["myriad-frontend", "frontend"] {
                 let _ = worker.docker().force_stop_container(name).await;
             }
         }
@@ -144,20 +137,18 @@ pub async fn execute_inline(
                 err = %e,
                 "compose stop frontend/backend errored; forcing container stop"
             );
-            for name in [
-                "myriad-federation-worker",
-                "myriad-persona-worker",
-                "myriad-frontend",
-                "frontend",
-                "myriad-backend",
-                "backend",
-            ] {
+            for name in ["myriad-frontend", "frontend"] {
                 let _ = worker.docker().force_stop_container(name).await;
             }
         }
     }
-    // The fallback above is best-effort for legacy containers. This new writer
-    // must be proven stopped before either physical or external-DB rollback.
+    if let Err(e) = worker.docker().stop_app_writers_for_restore().await {
+        let msg = format!(
+            "rollback: cannot prove app writers are stopped ({e}); refusing restore"
+        );
+        error!(err = %e, %msg, "rollback writer stop failed");
+        return Err(UpdaterError::Precondition(msg));
+    }
     worker.docker().stop_federation_worker().await?;
     worker.docker().stop_persona_worker().await?;
     let _ = rec.finish_step_ok();

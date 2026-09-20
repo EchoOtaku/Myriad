@@ -45,10 +45,11 @@ fn rotate_if_needed(path: &Path) {
 
 /// Read the last `n` lines (for diagnostics / tests).
 pub fn tail(path: &Path, n: usize) -> Result<Vec<String>> {
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let mut f = OpenOptions::new().read(true).open(path)?;
+    let mut f = match OpenOptions::new().read(true).open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(error) => return Err(error.into()),
+    };
     let mut buf = String::new();
     // Prefer reading from the end for large files, but audit logs are small;
     // full read is fine under the soft cap.
@@ -74,6 +75,25 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("audit: test_event job=abc"));
         assert!(lines[1].contains("audit: another"));
+    }
+
+    #[test]
+    fn missing_audit_log_is_empty_not_an_io_error() {
+        let dir = tempdir().unwrap();
+        let lines = tail(&dir.path().join("audit.log"), 10).unwrap();
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn tail_does_not_treat_exists_false_as_absence() {
+        let src = include_str!("audit.rs");
+        let body = src
+            .split("pub fn tail(")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("tail");
+        assert!(!body.contains("path.exists()"));
+        assert!(body.contains("ErrorKind::NotFound"));
     }
 
     #[test]

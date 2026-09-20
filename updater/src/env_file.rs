@@ -168,7 +168,7 @@ impl EnvFile {
 /// sibling tmp+rename path that official RO deploy roots cannot complete.
 pub(crate) fn persist_env_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     if parent_allows_sibling_creates(path) {
-        if path.exists() {
+        if crate::probe::filesystem::path_is_present(path)? {
             snapshot_before_save(path)?;
         }
         return match atomic::write_atomic_bytes(path, bytes) {
@@ -177,7 +177,7 @@ pub(crate) fn persist_env_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
             Err(e) => Err(e),
         };
     }
-    if path.exists() {
+    if crate::probe::filesystem::path_is_present(path)? {
         snapshot_into_state_dir(path)?;
     }
     write_existing_file_in_place(path, bytes)

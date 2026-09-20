@@ -305,7 +305,7 @@ fn check_manageable_tag_vars(worker: &Worker) -> Result<()> {
         )));
     }
 
-    let files = discover_compose_files(&worker.cli().compose_dir);
+    let files = discover_compose_files(&worker.cli().compose_dir)?;
     if files.is_empty() {
         return Err(UpdaterError::Precondition(format!(
             "no compose file under {} (or one level below); cannot verify ${{MYRIAD_TAG}} wiring",
@@ -314,9 +314,13 @@ fn check_manageable_tag_vars(worker: &Worker) -> Result<()> {
     }
     let mut refs_tag = false;
     for f in &files {
-        if let Ok(s) = std::fs::read_to_string(f)
-            && (s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG"))
-        {
+        let s = std::fs::read_to_string(f).map_err(|error| {
+            UpdaterError::Precondition(format!(
+                "cannot read compose file {}: {error}",
+                f.display()
+            ))
+        })?;
+        if s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG") {
             refs_tag = true;
             break;
         }
@@ -331,7 +335,7 @@ fn check_manageable_tag_vars(worker: &Worker) -> Result<()> {
     Ok(())
 }
 
-fn discover_compose_files(compose_dir: &Path) -> Vec<PathBuf> {
+fn discover_compose_files(compose_dir: &Path) -> Result<Vec<PathBuf>> {
     let names = [
         "compose.yaml",
         "compose.yml",
@@ -341,26 +345,36 @@ fn discover_compose_files(compose_dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for name in names {
         let p = compose_dir.join(name);
-        if p.exists() {
+        if crate::probe::filesystem::path_is_present(&p)? {
             files.push(p);
         }
     }
-    if files.is_empty()
-        && let Ok(rd) = std::fs::read_dir(compose_dir)
-    {
-        for entry in rd.flatten() {
+    if files.is_empty() {
+        let rd = std::fs::read_dir(compose_dir).map_err(|error| {
+            UpdaterError::Precondition(format!(
+                "cannot list compose dir {}: {error}",
+                compose_dir.display()
+            ))
+        })?;
+        for entry in rd {
+            let entry = entry.map_err(|error| {
+                UpdaterError::Precondition(format!(
+                    "cannot read compose dir {}: {error}",
+                    compose_dir.display()
+                ))
+            })?;
             if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 continue;
             }
             for name in names {
                 let p = entry.path().join(name);
-                if p.exists() {
+                if crate::probe::filesystem::path_is_present(&p)? {
                     files.push(p);
                 }
             }
         }
     }
-    files
+    Ok(files)
 }
 
 fn check_paths_writable(worker: &Worker) -> Result<()> {
@@ -376,7 +390,7 @@ fn check_paths_writable(worker: &Worker) -> Result<()> {
     if !worker.cli().db_mode.is_external() {
         // Snapshot copies into state; pgdata itself must be readable (write not required until restore).
         let pg = &worker.cli().pgdata;
-        if pg.exists() {
+        if crate::probe::filesystem::path_is_present(pg)? {
             assert_readable_dir(pg, "pgdata")?;
         }
     }
@@ -422,7 +436,7 @@ fn assert_readable_dir(path: &Path, label: &str) -> Result<()> {
 }
 
 fn assert_writable_file(path: &Path, label: &str) -> Result<()> {
-    if !path.exists() {
+    if !crate::probe::filesystem::path_is_present(path)? {
         return Err(UpdaterError::Precondition(format!(
             "{label} {} does not exist",
             path.display()

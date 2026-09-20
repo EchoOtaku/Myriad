@@ -44,6 +44,14 @@ pub enum CrashRecoveryPlan {
     ClearOrphanMaintenance,
 }
 
+/// Observed `MYRIAD_TAG` while classifying a SwapTag crash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvTagObservation {
+    Known(String),
+    Absent,
+    Unknown,
+}
+
 /// Decide crash recovery without I/O (except the optional `env_myriad_tag` snapshot).
 ///
 /// Inputs:
@@ -57,7 +65,7 @@ pub fn plan_crash_recovery(
     maint: &MaintenanceFile,
     current_job_id: Option<&str>,
     job: Option<&Job>,
-    env_myriad_tag: Option<&str>,
+    env_myriad_tag: &EnvTagObservation,
 ) -> CrashRecoveryPlan {
     let job_id = maint
         .job_id
@@ -101,31 +109,47 @@ pub fn plan_crash_recovery(
         }
     };
 
-    // SwapTag is entered *before* writing MYRIAD_TAG. Only treat as post-swap when
-    // .env already shows the job's target tag.
+    // SwapTag is entered *before* writing MYRIAD_TAG. Distinguish confirmed
+    // old tag, confirmed target tag, and "could not observe".
     if matches!(effective_phase, Phase::SwapTag) {
         let to = job.and_then(|j| j.to_version.as_ref().map(|t| t.as_str()));
-        let post_write = matches!(
-            (to, env_myriad_tag),
-            (Some(t), Some(e)) if t == e
-        );
+        let from = job.and_then(|j| j.from_version.as_ref().map(|t| t.as_str()));
         if let Some(ref id) = job_id {
-            if post_write {
-                return CrashRecoveryPlan::NeedsManual {
-                    job_id: id.clone(),
-                    phase: Phase::SwapTag,
-                    reason: format!(
-                        "recovered mid-SwapTag after MYRIAD_TAG already matches target \
-                         ({}); manual intervention required",
-                        to.unwrap_or("?")
-                    ),
-                };
-            }
-            if job_inflight || maint.active {
-                return CrashRecoveryPlan::ClearPreSwap {
-                    job_id: id.clone(),
-                    phase: Phase::SwapTag,
-                };
+            match env_myriad_tag {
+                EnvTagObservation::Known(tag) if to == Some(tag.as_str()) => {
+                    return CrashRecoveryPlan::NeedsManual {
+                        job_id: id.clone(),
+                        phase: Phase::SwapTag,
+                        reason: format!(
+                            "recovered mid-SwapTag after MYRIAD_TAG already matches target                              ({tag}); manual intervention required"
+                        ),
+                    };
+                }
+                EnvTagObservation::Known(tag) if from == Some(tag.as_str()) => {
+                    if job_inflight || maint.active {
+                        return CrashRecoveryPlan::ClearPreSwap {
+                            job_id: id.clone(),
+                            phase: Phase::SwapTag,
+                        };
+                    }
+                }
+                EnvTagObservation::Known(tag) => {
+                    return CrashRecoveryPlan::NeedsManual {
+                        job_id: id.clone(),
+                        phase: Phase::SwapTag,
+                        reason: format!(
+                            "recovered mid-SwapTag with unexpected MYRIAD_TAG {tag};                              refusing to guess pre- vs post-write"
+                        ),
+                    };
+                }
+                EnvTagObservation::Unknown | EnvTagObservation::Absent => {
+                    return CrashRecoveryPlan::NeedsManual {
+                        job_id: id.clone(),
+                        phase: Phase::SwapTag,
+                        reason: "recovered mid-SwapTag but MYRIAD_TAG could not be confirmed"
+                            .into(),
+                    };
+                }
             }
         } else if maint.active {
             return CrashRecoveryPlan::ClearOrphanMaintenance;
@@ -240,12 +264,17 @@ impl Worker {
             None => None,
         };
 
-        let env_tag = env_file.and_then(|p| {
-            crate::env_file::EnvFile::load(p)
-                .ok()
-                .and_then(|e| e.get("MYRIAD_TAG").map(|s| s.to_string()))
-        });
-        let plan = plan_crash_recovery(&maint, job_id.as_deref(), job.as_ref(), env_tag.as_deref());
+        let env_tag = match env_file {
+            None => EnvTagObservation::Absent,
+            Some(path) => match crate::env_file::EnvFile::load(path) {
+                Ok(env) => match env.get("MYRIAD_TAG").filter(|value| !value.is_empty()) {
+                    Some(tag) => EnvTagObservation::Known(tag.to_string()),
+                    None => EnvTagObservation::Absent,
+                },
+                Err(_) => EnvTagObservation::Unknown,
+            },
+        };
+        let plan = plan_crash_recovery(&maint, job_id.as_deref(), job.as_ref(), &env_tag);
         match plan {
             CrashRecoveryPlan::Idle => Ok(RecoveryReport::Idle),
             CrashRecoveryPlan::NeedsManual {
@@ -333,11 +362,20 @@ impl Worker {
                 Ok(RecoveryReport::ClearedPreSwap)
             }
             CrashRecoveryPlan::ClearOrphanMaintenance => {
-                warn!("maintenance active but no recoverable job; clearing");
-                state.clear_maintenance()?;
-                state.set_current_job(None)?;
-                state.append_history("recovery: cleared orphan maintenance (no job)")?;
-                Ok(RecoveryReport::ClearedPreSwap)
+                warn!("maintenance active but no recoverable job; freezing");
+                let mut maint = state.read_maintenance()?;
+                maint.active = true;
+                maint.phase = Phase::NeedsManual;
+                maint.message_key = "updater.phase.needs_manual".into();
+                maint.bump_heartbeat();
+                state.write_maintenance(&maint)?;
+                state.append_history("recovery: frozen orphan maintenance (no job)")?;
+                let _ = state.append_audit("audit: recovery_orphan_maintenance_frozen");
+                Ok(RecoveryReport::NeedsManual {
+                    job_id: maint.job_id.unwrap_or_default(),
+                    phase: Phase::NeedsManual,
+                    reason: "active maintenance with no recoverable job".into(),
+                })
             }
         }
     }
@@ -422,7 +460,7 @@ mod recovery_plan_tests {
     fn idle_when_nothing_in_flight() {
         let m = MaintenanceFile::inactive();
         assert_eq!(
-            plan_crash_recovery(&m, None, None, None),
+            plan_crash_recovery(&m, None, None, &EnvTagObservation::Absent),
             CrashRecoveryPlan::Idle
         );
     }
@@ -432,7 +470,7 @@ mod recovery_plan_tests {
         // Phase 2 frontend probe sets active=false while job still running post-swap.
         let m = maint(false, Phase::HealthProbing, Some("j1"));
         let j = job(JobStatus::Running, Phase::HealthProbing);
-        match plan_crash_recovery(&m, Some("j1"), Some(&j), None) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Absent) {
             CrashRecoveryPlan::NeedsManual { phase, .. } => {
                 assert_eq!(phase, Phase::HealthProbing);
             }
@@ -444,7 +482,7 @@ mod recovery_plan_tests {
     fn job_current_alone_with_post_swap_step_is_needs_manual() {
         let m = MaintenanceFile::inactive();
         let j = job(JobStatus::Running, Phase::StartingNew);
-        match plan_crash_recovery(&m, Some("j1"), Some(&j), None) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Absent) {
             CrashRecoveryPlan::NeedsManual { phase, .. } => {
                 assert_eq!(phase, Phase::StartingNew);
             }
@@ -456,7 +494,7 @@ mod recovery_plan_tests {
     fn pre_swap_stopping_clears_for_stack_restore() {
         let m = maint(true, Phase::Stopping, Some("j1"));
         let j = job(JobStatus::Running, Phase::Stopping);
-        match plan_crash_recovery(&m, Some("j1"), Some(&j), None) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Absent) {
             CrashRecoveryPlan::ClearPreSwap { phase, .. } => {
                 assert_eq!(phase, Phase::Stopping);
             }
@@ -471,7 +509,7 @@ mod recovery_plan_tests {
         j.to_version = Some(DeployTag::parse("v0.2.3").unwrap());
         j.from_version = Some(DeployTag::parse("v0.2.2").unwrap());
         // .env still on old tag → pre-write crash
-        match plan_crash_recovery(&m, Some("j1"), Some(&j), Some("v0.2.2")) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Known("v0.2.2".into())) {
             CrashRecoveryPlan::ClearPreSwap { phase, .. } => {
                 assert_eq!(phase, Phase::SwapTag);
             }
@@ -484,7 +522,7 @@ mod recovery_plan_tests {
         let m = maint(true, Phase::SwapTag, Some("j1"));
         let mut j = job(JobStatus::Running, Phase::SwapTag);
         j.to_version = Some(DeployTag::parse("v0.2.3").unwrap());
-        match plan_crash_recovery(&m, Some("j1"), Some(&j), Some("v0.2.3")) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Known("v0.2.3".into())) {
             CrashRecoveryPlan::NeedsManual { phase, .. } => {
                 assert_eq!(phase, Phase::SwapTag);
             }
@@ -493,20 +531,45 @@ mod recovery_plan_tests {
     }
 
     #[test]
-    fn active_rollback_phase_is_needs_manual() {
-        let m = maint(true, Phase::RestoreSnapshot, Some("j1"));
-        let j = job(JobStatus::Running, Phase::RestoreSnapshot);
+    fn swap_tag_unknown_env_is_not_pre_write() {
+        let m = maint(true, Phase::SwapTag, Some("j1"));
+        let mut j = job(JobStatus::Running, Phase::SwapTag);
+        j.to_version = Some(DeployTag::parse("v0.2.3").unwrap());
+        j.from_version = Some(DeployTag::parse("v0.2.2").unwrap());
         assert!(matches!(
-            plan_crash_recovery(&m, Some("j1"), Some(&j), None),
+            plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Unknown),
+            CrashRecoveryPlan::NeedsManual { .. }
+        ));
+        assert!(matches!(
+            plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Absent),
+            CrashRecoveryPlan::NeedsManual { .. }
+        ));
+        assert!(matches!(
+            plan_crash_recovery(
+                &m,
+                Some("j1"),
+                Some(&j),
+                &EnvTagObservation::Known("v9.9.9".into())
+            ),
             CrashRecoveryPlan::NeedsManual { .. }
         ));
     }
 
     #[test]
-    fn orphan_active_maintenance_clears() {
+    fn active_rollback_phase_is_needs_manual() {
+        let m = maint(true, Phase::RestoreSnapshot, Some("j1"));
+        let j = job(JobStatus::Running, Phase::RestoreSnapshot);
+        assert!(matches!(
+            plan_crash_recovery(&m, Some("j1"), Some(&j), &EnvTagObservation::Absent),
+            CrashRecoveryPlan::NeedsManual { .. }
+        ));
+    }
+
+    #[test]
+    fn orphan_active_maintenance_freezes() {
         let m = maint(true, Phase::MaintenanceOn, None);
         assert_eq!(
-            plan_crash_recovery(&m, None, None, None),
+            plan_crash_recovery(&m, None, None, &EnvTagObservation::Absent),
             CrashRecoveryPlan::ClearOrphanMaintenance
         );
     }

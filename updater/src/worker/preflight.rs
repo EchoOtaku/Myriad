@@ -1029,15 +1029,18 @@ pub(crate) fn enforce_min_pg_version(
     min_pg_version: &str,
 ) -> Result<()> {
     let min = match parse_pg_major(min_pg_version) {
-        None => return Ok(()),
-        Some(m) => m,
+        Ok(None) => return Ok(()),
+        Ok(Some(m)) => m,
+        Err(reason) => {
+            return Err(UpdaterError::Precondition(format!(
+                "release min_pg_version is invalid ({reason}): {min_pg_version:?}"
+            )));
+        }
     };
     if db_mode.is_external() {
-        warn!(
-            min_pg = min,
-            "preflight: release requires PostgreSQL >= {min}; db_mode=external has no PG_VERSION to probe"
-        );
-        return Ok(());
+        return Err(UpdaterError::Precondition(format!(
+            "db_mode=external cannot verify PostgreSQL >= {min} from PG_VERSION; refusing update"
+        )));
     }
     let running = read_pgdata_major(pgdata)?;
     if running < min {
@@ -1048,12 +1051,16 @@ pub(crate) fn enforce_min_pg_version(
     Ok(())
 }
 
-fn parse_pg_major(raw: &str) -> Option<u32> {
+/// `Ok(None)` = no floor. `Ok(Some(n))` = required major. `Err` = illegal spec.
+pub(crate) fn parse_pg_major(raw: &str) -> std::result::Result<Option<u32>, &'static str> {
     let s = raw.trim();
-    if s.is_empty() || s == "unbounded" {
-        return None;
+    if s.is_empty() || s.eq_ignore_ascii_case("unbounded") {
+        return Ok(None);
     }
-    s.parse().ok()
+    if !s.chars().all(|c| c.is_ascii_digit()) {
+        return Err("not a PostgreSQL major");
+    }
+    s.parse().map(Some).map_err(|_| "not a PostgreSQL major")
 }
 
 fn read_pgdata_major(pgdata: &std::path::Path) -> Result<u32> {
@@ -1064,13 +1071,16 @@ fn read_pgdata_major(pgdata: &std::path::Path) -> Result<u32> {
             path.display()
         ))
     })?;
-    parse_pg_major(&raw).ok_or_else(|| {
-        UpdaterError::Precondition(format!(
-            "{} is not a PostgreSQL major version: {:?}",
-            path.display(),
-            raw.trim()
-        ))
-    })
+    parse_pg_major(&raw)
+        .ok()
+        .flatten()
+        .ok_or_else(|| {
+            UpdaterError::Precondition(format!(
+                "{} is not a PostgreSQL major version: {:?}",
+                path.display(),
+                raw.trim()
+            ))
+        })
 }
 
 fn digest_matches(pulled: &str, expected: &str) -> bool {
@@ -1150,6 +1160,22 @@ mod min_pg_version_tests {
         let dir = tempfile::tempdir().unwrap();
         enforce_min_pg_version(DbMode::Bundled, dir.path(), "").unwrap();
         enforce_min_pg_version(DbMode::Bundled, dir.path(), "unbounded").unwrap();
+    }
+
+    #[test]
+    fn illegal_min_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = enforce_min_pg_version(DbMode::Bundled, dir.path(), "latest").unwrap_err();
+        assert!(matches!(err, UpdaterError::Precondition(_)), "got {err}");
+        assert!(err.to_string().contains("invalid"));
+    }
+
+    #[test]
+    fn external_declared_floor_is_not_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = enforce_min_pg_version(DbMode::External, dir.path(), "16").unwrap_err();
+        assert!(matches!(err, UpdaterError::Precondition(_)), "got {err}");
+        assert!(err.to_string().contains("external"));
     }
 }
 

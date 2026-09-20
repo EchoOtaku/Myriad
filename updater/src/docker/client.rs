@@ -182,6 +182,19 @@ impl DockerClient {
         Ok(())
     }
 
+    /// Prove every known database writer is stopped before snapshot restore.
+    pub async fn stop_app_writers_for_restore(&self) -> Result<()> {
+        for name in [
+            "myriad-federation-worker",
+            "myriad-persona-worker",
+            "myriad-backend",
+            "backend",
+        ] {
+            self.force_stop_container(name).await?;
+        }
+        Ok(())
+    }
+
     pub async fn ping(&self) -> Result<()> {
         self.inner
             .ping()

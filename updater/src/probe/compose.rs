@@ -27,55 +27,62 @@ pub enum ComposeBinary {
 pub async fn probe(compose_dir: &Path) -> ComposeProbe {
     let binary = detect_binary().await;
 
-    let mut files = Vec::new();
-    for name in [
-        "compose.yaml",
-        "compose.yml",
-        "docker-compose.yaml",
-        "docker-compose.yml",
-    ] {
-        let p = compose_dir.join(name);
-        if p.exists() {
-            files.push(p);
+    let files = match collect_compose_files(compose_dir) {
+        Ok(files) => files,
+        Err(error) => {
+            return ComposeProbe {
+                binary,
+                compose_files: Vec::new(),
+                references_required_tag_vars: false,
+                project_name_pinned: false,
+                error: Some(error),
+            };
         }
-    }
-    // One-level nested scan for 1Panel-style layouts where the app compose lives
-    // under a subdirectory of the mounted compose root.
-    if files.is_empty()
-        && let Ok(rd) = std::fs::read_dir(compose_dir) {
-            for entry in rd.flatten() {
-                if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    continue;
-                }
-                for name in [
-                    "compose.yaml",
-                    "compose.yml",
-                    "docker-compose.yaml",
-                    "docker-compose.yml",
-                ] {
-                    let p = entry.path().join(name);
-                    if p.exists() {
-                        files.push(p);
-                    }
-                }
-            }
-        }
+    };
 
     let mut refs_tag = false;
     for f in &files {
-        if let Ok(s) = std::fs::read_to_string(f)
-            && (s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG")) {
-                refs_tag = true;
-                break;
+        let s = match std::fs::read_to_string(f) {
+            Ok(s) => s,
+            Err(error) => {
+                let path = f.display().to_string();
+                return ComposeProbe {
+                    binary,
+                    compose_files: files,
+                    references_required_tag_vars: false,
+                    project_name_pinned: false,
+                    error: Some(format!("cannot read compose file {path}: {error}")),
+                };
             }
+        };
+        if s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG") {
+            refs_tag = true;
+            break;
+        }
     }
 
-    let project_name_pinned = std::env::var("COMPOSE_PROJECT_NAME").is_ok()
-        || files.iter().any(|f| {
-            std::fs::read_to_string(f)
-                .ok()
-                .is_some_and(|s| s.lines().any(|l| l.trim_start().starts_with("name:")))
-        });
+    let mut project_name_pinned = std::env::var("COMPOSE_PROJECT_NAME").is_ok();
+    if !project_name_pinned {
+        for f in &files {
+            let s = match std::fs::read_to_string(f) {
+                Ok(s) => s,
+                Err(error) => {
+                    let path = f.display().to_string();
+                    return ComposeProbe {
+                        binary,
+                        compose_files: files,
+                        references_required_tag_vars: refs_tag,
+                        project_name_pinned: false,
+                        error: Some(format!("cannot read compose file {path}: {error}")),
+                    };
+                }
+            };
+            if s.lines().any(|l| l.trim_start().starts_with("name:")) {
+                project_name_pinned = true;
+                break;
+            }
+        }
+    }
 
     let error = if binary.is_none() {
         Some("neither `docker compose` (v2) nor `docker-compose` (v1) is available".into())
@@ -122,6 +129,43 @@ async fn detect_binary() -> Option<ComposeBinary> {
     None
 }
 
+fn collect_compose_files(compose_dir: &Path) -> std::result::Result<Vec<PathBuf>, String> {
+    let names = [
+        "compose.yaml",
+        "compose.yml",
+        "docker-compose.yaml",
+        "docker-compose.yml",
+    ];
+    let mut files = Vec::new();
+    for name in names {
+        let p = compose_dir.join(name);
+        if crate::probe::filesystem::path_is_present(&p).map_err(|error| error.to_string())? {
+            files.push(p);
+        }
+    }
+    if files.is_empty() {
+        let rd = std::fs::read_dir(compose_dir).map_err(|error| {
+            format!("cannot list compose dir {}: {error}", compose_dir.display())
+        })?;
+        for entry in rd {
+            let entry = entry.map_err(|error| {
+                format!("cannot read compose dir {}: {error}", compose_dir.display())
+            })?;
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            for name in names {
+                let p = entry.path().join(name);
+                if crate::probe::filesystem::path_is_present(&p).map_err(|error| error.to_string())?
+                {
+                    files.push(p);
+                }
+            }
+        }
+    }
+    Ok(files)
+}
+
 impl ComposeBinary {
     /// Build a `Command` invoking the binary with `-p <project>` and the discovered compose file(s).
     pub fn command(&self, project: &str, files: &[PathBuf]) -> tokio::process::Command {
@@ -138,5 +182,22 @@ impl ComposeBinary {
             cmd.arg("-f").arg(f);
         }
         cmd
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collect_compose_files_does_not_treat_exists_false_as_absence() {
+        let src = include_str!("compose.rs");
+        let prod = src.split("#[cfg(test)]").next().expect("prod");
+        assert!(!prod.contains("p.exists()"));
+        assert!(prod.contains("path_is_present"));
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("compose.yaml"), "name: t\nservices: {}\n").unwrap();
+        let files = collect_compose_files(dir.path()).unwrap();
+        assert_eq!(files.len(), 1);
     }
 }

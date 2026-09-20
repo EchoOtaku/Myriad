@@ -184,16 +184,28 @@ pub async fn token_and_manual_required(
     req: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    if !state.state.manual_override_enabled() {
-        // Explicit body so UIs don't confuse this with CSRF / admin 403.
-        return Err((
-            StatusCode::FORBIDDEN,
-            axum::Json(serde_json::json!({
-                "error": "manual override required",
-                "message": "touch state/manual-override on the host (dev: .dev-updater/state/manual-override) before calling rescue endpoints"
-            })),
-        )
-            .into_response());
+    match state.state.manual_override_enabled() {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err((
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({
+                    "error": "manual override required",
+                    "message": "touch state/manual-override on the host (dev: .dev-updater/state/manual-override) before calling rescue endpoints"
+                })),
+            )
+                .into_response());
+        }
+        Err(error) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(serde_json::json!({
+                    "error": "manual override inspect failed",
+                    "message": error.to_string(),
+                })),
+            )
+                .into_response());
+        }
     }
     token_required(State(state), req, next)
         .await
