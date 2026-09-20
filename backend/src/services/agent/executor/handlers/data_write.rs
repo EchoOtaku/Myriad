@@ -24,7 +24,7 @@ use crate::services::tapp_storage::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-    QuerySelect, sea_query::OnConflict,
+    QuerySelect,
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -144,8 +144,7 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
     // 尝试通过后台处理器提交刷新任务
     let mut results = Vec::new();
     for p in &platforms_to_refresh {
-        match crate::api::tasks::submit_and_start_platform_task(p.to_string()).await
-        {
+        match crate::api::tasks::submit_and_start_platform_task(p.to_string()).await {
             Ok(task_id) => {
                 results.push(json!({
                     "platform": p,
@@ -467,23 +466,17 @@ async fn execute_phantasi_subscribe(
                     })
                     .collect();
 
-                // Unique (source_id, guid). This path counts exec_without_returning rows;
-                // phantasi_scheduler counts RETURNING len.
+                // Shared insertion keeps RSS references atomic and counts only inserted rows.
                 let inserted_count = if item_models.is_empty() {
                     0usize
                 } else {
-                    let on_conflict = OnConflict::columns([
-                        phantasi_items::Column::SourceId,
-                        phantasi_items::Column::Guid,
-                    ])
-                    .do_nothing()
-                    .to_owned();
-                    match phantasi_items::Entity::insert_many(item_models)
-                        .on_conflict(on_conflict)
-                        .exec_without_returning(ctx.db)
-                        .await
+                    match crate::services::phantasi_scheduler::insert_feed_items(
+                        ctx.db,
+                        item_models,
+                    )
+                    .await
                     {
-                        Ok(rows) => rows as usize,
+                        Ok(rows) => rows.len(),
                         Err(e) => {
                             tracing::warn!("[Phantasi] bulk insert items failed: {}", e);
                             0

@@ -14,7 +14,7 @@ use crate::models::entities::{media_assets, media_migration_jobs, media_url_alia
 
 use super::error::MediaError;
 use super::legacy::{
-    LegacyKind, LegacyOwner, LegacyPaths, brew_alias_of, ext_from_legacy, legacy_disk_path,
+    LegacyKind, LegacyOwner, LegacyPaths, cache_equivalent_path, ext_from_legacy, legacy_disk_path,
     legacy_kind, owner_from_local_path,
 };
 use super::store::{MediaStore, hash_path};
@@ -236,7 +236,11 @@ pub(super) async fn migrate_one(
     };
     let public_id = row.public_id.unwrap_or_else(Uuid::new_v4);
     let key = storage_key(public_id, ext)?;
-    let token = Uuid::new_v4();
+    // Upgrade holds this asset's row lock. A stable token lets a restarted
+    // process discard only this copy's abandoned partial file, without crawling
+    // or deleting another writer's temporary files.
+    let token = public_id;
+    store.remove_owned_temp(token).await?;
     let copy = match store.publish_from_path(&key, token, &plan.disk).await {
         Ok(copy) => copy,
         Err(MediaError::Missing) => {
@@ -293,13 +297,7 @@ pub(super) async fn migrate_one(
         row.created_at,
     )
     .await?;
-    let mut aliases = 0_u64;
-    aliases += ensure_alias(db, &plan.local_path, row.id).await? as u64;
-    if plan.kind == LegacyKind::ImageCache {
-        if let Some(brew) = brew_alias_of(&plan.local_path) {
-            aliases += ensure_alias(db, &brew, row.id).await? as u64;
-        }
-    }
+    let aliases = register_aliases(db, row, plan, &copy.checksum_sha256).await?;
     record_job(
         db,
         "catalog",
@@ -385,6 +383,57 @@ async fn mark_row_missing(db: &impl ConnectionTrait, id: i32) -> Result<(), Medi
     model.state_since = Set(Some(now));
     model.update(db).await?;
     Ok(())
+}
+
+pub(super) async fn register_aliases(
+    db: &impl ConnectionTrait,
+    row: &media_assets::Model,
+    plan: &CatalogPlan,
+    checksum: &str,
+) -> Result<u64, MediaError> {
+    let mut aliases = 0_u64;
+    let equivalent = if plan.kind == LegacyKind::ImageCache {
+        cache_equivalent_path(&plan.local_path)
+    } else {
+        None
+    };
+    let mut alias_owner = row.id;
+    // Previously interrupted discovery may have catalogued both URL spellings.
+    // Preserve those asset IDs and their independent storage objects, but let
+    // both historical URLs continue to use the already registered identity.
+    for path in std::iter::once(&plan.local_path).chain(equivalent.iter()) {
+        if let Some(alias) = media_url_aliases::Entity::find()
+            .filter(media_url_aliases::Column::LocalPath.eq(path))
+            .one(db)
+            .await?
+        {
+            if alias.asset_id != row.id {
+                let existing = media_assets::Entity::find_by_id(alias.asset_id)
+                    .one(db)
+                    .await?
+                    .ok_or(MediaError::Missing)?;
+                let existing_path = url::Url::parse(&existing.url)
+                    .ok()
+                    .map(|url| url.path().to_owned())
+                    .unwrap_or_else(|| existing.url.clone());
+                if plan.kind != LegacyKind::ImageCache
+                    || (existing_path != plan.local_path
+                        && Some(&existing_path) != equivalent.as_ref())
+                    || existing.state.as_deref() != Some("ready")
+                    || existing.source.as_deref() != Some("legacy")
+                    || existing.checksum_sha256.as_deref() != Some(checksum)
+                {
+                    return Err(MediaError::conflict("Media URL is already registered"));
+                }
+                alias_owner = alias.asset_id;
+            }
+        }
+    }
+    aliases += ensure_alias(db, &plan.local_path, alias_owner).await? as u64;
+    if let Some(other) = equivalent {
+        aliases += ensure_alias(db, &other, alias_owner).await? as u64;
+    }
+    Ok(aliases)
 }
 
 async fn ensure_alias(

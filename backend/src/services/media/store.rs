@@ -109,6 +109,7 @@ impl MediaStore {
         if tokio::fs::metadata(&dest).await.is_ok() {
             let (dest_size, dest_sum) = hash_path(&dest).await?;
             if dest_size == src_size && dest_sum == src_sum {
+                sync_parent(&dest).await?;
                 return Ok(CopyReport {
                     size: dest_size,
                     checksum_sha256: dest_sum,
@@ -126,7 +127,10 @@ impl MediaStore {
         if let Some(parent) = dest.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        copy_exclusive(&tmp, source).await?;
+        if let Err(error) = copy_exclusive(&tmp, source).await {
+            let _ = remove_if_exists(&tmp).await;
+            return Err(error);
+        }
         let (tmp_size, tmp_sum) = match hash_path(&tmp).await {
             Ok(ok) => ok,
             Err(error) => {
@@ -141,15 +145,19 @@ impl MediaStore {
             ));
         }
         match tokio::fs::rename(&tmp, &dest).await {
-            Ok(()) => Ok(CopyReport {
-                size: src_size,
-                checksum_sha256: src_sum,
-                wrote: true,
-            }),
+            Ok(()) => {
+                sync_parent(&dest).await?;
+                Ok(CopyReport {
+                    size: src_size,
+                    checksum_sha256: src_sum,
+                    wrote: true,
+                })
+            }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 let _ = tokio::fs::remove_file(&tmp).await;
                 let (dest_size, dest_sum) = hash_path(&dest).await?;
                 if dest_size == src_size && dest_sum == src_sum {
+                    sync_parent(&dest).await?;
                     Ok(CopyReport {
                         size: dest_size,
                         checksum_sha256: dest_sum,
@@ -167,6 +175,13 @@ impl MediaStore {
             }
         }
     }
+}
+
+async fn sync_parent(path: &Path) -> Result<(), MediaError> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::File::open(parent).await?.sync_all().await?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

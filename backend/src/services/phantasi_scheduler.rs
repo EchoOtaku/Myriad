@@ -11,7 +11,7 @@ use futures::stream::{self, StreamExt};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, DatabaseConnection,
     EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Statement,
-    Value as SeaValue, sea_query::OnConflict,
+    TransactionTrait, Value as SeaValue, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -25,6 +25,44 @@ use crate::services::rsshub_service::RsshubService;
 fn phantasi_store_failed(context: &'static str, error: impl std::fmt::Display) -> String {
     tracing::error!(%error, context, "phantasi store failed");
     format!("Failed to {context}")
+}
+
+/// Both scheduled fetches and agent subscriptions write RSS media references
+/// in the same transaction as their newly inserted items.
+pub(crate) async fn insert_feed_items(
+    db: &DatabaseConnection,
+    items: Vec<phantasi_items::ActiveModel>,
+) -> Result<Vec<phantasi_items::Model>, sea_orm::DbErr> {
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    let origins = crate::services::media::upgrade::configured_origins().await;
+    let txn = db.begin().await?;
+    let inserted = match phantasi_items::Entity::insert_many(items)
+        .on_conflict(
+            OnConflict::columns([
+                phantasi_items::Column::SourceId,
+                phantasi_items::Column::Guid,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_with_returning(&txn)
+        .await
+    {
+        Ok(rows) => rows,
+        Err(sea_orm::DbErr::RecordNotInserted) => Vec::new(),
+        Err(error) => return Err(error),
+    };
+    for row in &inserted {
+        let payload = serde_json::to_value(row)
+            .map_err(|_| sea_orm::DbErr::Custom("Failed to serialize feed item".into()))?;
+        crate::services::media::bind_rss_item(&txn, row.id, &payload, &origins)
+            .await
+            .map_err(|error| sea_orm::DbErr::Custom(error.code().into()))?;
+    }
+    txn.commit().await?;
+    Ok(inserted)
 }
 
 // 调度器常量
@@ -590,17 +628,7 @@ impl PhantasiSchedulerEngine {
             (0_i32, Vec::new())
         } else {
             let candidate_len = new_items.len();
-            let on_conflict = OnConflict::columns([
-                phantasi_items::Column::SourceId,
-                phantasi_items::Column::Guid,
-            ])
-            .do_nothing()
-            .to_owned();
-            let inserted = match phantasi_items::Entity::insert_many(new_items)
-                .on_conflict(on_conflict)
-                .exec_with_returning(db)
-                .await
-            {
+            let inserted = match insert_feed_items(db, new_items).await {
                 Ok(models) => models,
                 // SeaORM may surface zero RETURNING rows as RecordNotInserted; for our
                 // DO NOTHING path that means concurrent/idempotent skips — count 0.

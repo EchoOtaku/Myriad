@@ -4,17 +4,19 @@ use super::{LegacyPaths, MediaError, MediaStore, cite, migration};
 use crate::models::entities::{media_assets, media_migration_jobs};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, QueryFilter, Set, Statement, TransactionTrait,
+    DatabaseTransaction, EntityTrait, QueryFilter, Set, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 const JOB: &str = "platform_media_v2";
 const BATCH: u64 = 50;
+const REVISION: u32 = 2;
+const FAILURE_JOB: &str = "upgrade_failure";
 const PHASES: &[(&str, &str, &str)] = &[
     ("media_assets", "id", "TRUE"),
     ("phantasi_note_docs", "id", "TRUE"),
-    ("phantasi_items", "id", "content_md IS NOT NULL"),
+    ("phantasi_items", "id", "TRUE"),
     (
         "phantasi_note_history",
         "(doc_id::text || ':' || revision::text)",
@@ -39,6 +41,12 @@ const PHASES: &[(&str, &str, &str)] = &[
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct UpgradeProgress {
+    #[serde(default)]
+    pub revision: u32,
+    #[serde(default)]
+    pub pending_failures: u64,
+    #[serde(default)]
+    pub retrying: bool,
     /// 0: discover citations, 1: copy catalog, 2: bind consumers.
     #[serde(default)]
     pub pass: u8,
@@ -169,6 +177,20 @@ async fn advance_inner(
     } else {
         status(&txn).await?
     };
+    if restart || progress.revision != REVISION {
+        progress = UpgradeProgress {
+            revision: REVISION,
+            ..Default::default()
+        };
+        txn.execute_unprepared(
+            "DELETE FROM media_migration_jobs WHERE source_kind = 'upgrade_failure'",
+        )
+        .await?;
+        // Older completed jobs did not repair dashboard URLs. Recheck their
+        // consumers before allowing migrated assets to be deleted.
+        txn.execute_unprepared("UPDATE media_assets SET references_complete = FALSE WHERE source = 'legacy' AND state = 'ready'").await?;
+    }
+    let saved_progress = progress.clone();
     if progress.complete {
         return Ok(manual.map(|_| progress));
     }
@@ -177,24 +199,23 @@ async fn advance_inner(
     }
     progress.error = None;
     progress.error_source = None;
-    // Savepoint keeps the previous cursor on any failed consumer/copy while
-    // retaining a durable, redacted error for the administrator.
+    progress.next_retry_at = None;
+    // Batch-level failures preserve the cursor; individual record failures use
+    // nested savepoints and are retained without blocking later records.
     let batch = txn.begin().await?;
-    let result = advance_on(&batch, store, paths, origins, &mut progress).await;
+    let result = advance_on(&batch, store, paths, origins, &mut progress, now).await;
     match result {
         Ok(()) => {
             batch.commit().await?;
-            progress.consecutive_failures = 0;
-            progress.next_retry_at = None;
+            if progress.pending_failures == 0 {
+                progress.consecutive_failures = 0;
+                progress.next_retry_at = None;
+            }
         }
         Err(error) => {
             batch.rollback().await?;
             let failed_source = progress.error_source.clone();
-            progress = if restart {
-                UpgradeProgress::default()
-            } else {
-                status(&txn).await?
-            };
+            progress = saved_progress;
             progress.error_source = failed_source;
             progress.error = Some(error.code().to_string());
             progress.consecutive_failures = progress.consecutive_failures.saturating_add(1);
@@ -210,11 +231,12 @@ async fn advance_inner(
 }
 
 async fn advance_on(
-    db: &impl ConnectionTrait,
+    db: &DatabaseTransaction,
     store: &MediaStore,
     paths: &LegacyPaths,
     origins: &[String],
     progress: &mut UpgradeProgress,
+    now: i64,
 ) -> Result<(), MediaError> {
     if progress.pass == 1 && progress.phase > 0 {
         progress.pass = 2;
@@ -227,54 +249,104 @@ async fn advance_on(
         return Ok(());
     }
     let Some(&(table, key, filter)) = PHASES.get(progress.phase) else {
+        refresh_failures(db, progress).await?;
+        if progress.pending_failures > 0 {
+            // Retry only durable work records. Failed bindings also enqueue
+            // discovery; newly discovered assets enqueue their copy dependency.
+            progress.retrying = true;
+            progress.pass = 0;
+            progress.phase = 0;
+            progress.after.clear();
+            progress.consecutive_failures = progress.consecutive_failures.saturating_add(1);
+            let delay = (60_i64
+                * (1_i64 << progress.consecutive_failures.saturating_sub(1).min(6)))
+            .min(3600);
+            progress.next_retry_at = Some(now.saturating_add(delay));
+            return Ok(());
+        }
         // Only migrated legacy rows are eligible. New writers already maintain
         // references transactionally; incomplete or missing imports stay protected.
         db.execute_unprepared("UPDATE media_assets SET references_complete = TRUE WHERE source = 'legacy' AND state = 'ready' AND references_complete = FALSE").await?;
         progress.complete = true;
         return Ok(());
     };
-    // All identifiers and predicates come exclusively from the server whitelist.
-    let sql = format!(
-        "SELECT {key}::text AS cursor, to_jsonb(s) AS payload FROM {table} s WHERE ({filter}) AND {key}::text > $1 ORDER BY {key}::text LIMIT $2 FOR UPDATE"
-    );
-    let rows = db
-        .query_all_raw(Statement::from_sql_and_values(
+    let prefix = format!("{}:{}:", progress.pass, progress.phase);
+    let rows = if progress.retrying {
+        db.query_all_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+            "SELECT substring(source_key FROM length($1) + 1) AS cursor FROM media_migration_jobs WHERE source_kind = 'upgrade_failure' AND starts_with(source_key, $1) AND source_key > $2 ORDER BY source_key LIMIT $3",
+            [prefix.clone().into(), format!("{prefix}{}", progress.after).into(), (BATCH as i64).into()])).await?
+    } else {
+        // Select IDs without locking the whole batch. Each payload is read
+        // under its own lock immediately before use, never from a stale snapshot.
+        db.query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            sql,
+            scan_sql(table, key, filter),
             [progress.after.clone().into(), (BATCH as i64).into()],
         ))
-        .await?;
+        .await?
+    };
     let started = std::time::Instant::now();
     let mut processed = 0;
     for row in &rows {
         let cursor: String = row.try_get("", "cursor")?;
-        let payload: Value = row.try_get("", "payload")?;
         progress.error_source = Some(format!("{table}:{cursor}"));
-        if progress.pass == 0 && progress.phase == 0 {
-            db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
-                "UPDATE media_assets SET public_id = gen_random_uuid() WHERE id = $1 AND public_id IS NULL",
-                [cursor.parse::<i32>().map_err(|_| MediaError::StoreFailed)?.into()])).await?;
-        } else if progress.pass == 0 {
-            let layout = parse_layout(table, &payload);
-            import_cited(
-                db,
-                store,
-                paths,
-                origins,
-                layout.as_ref().unwrap_or(&payload),
-                false,
-            )
+        let record = db.begin().await?;
+        // Short lock waits are deferred like other record errors. Business
+        // writes and federation workers must not queue behind an entire batch.
+        record
+            .execute_unprepared("SET LOCAL lock_timeout = '250ms'")
             .await?;
-        } else if progress.phase == 0 {
-            let asset: media_assets::Model =
-                serde_json::from_value(payload).map_err(|_| MediaError::StoreFailed)?;
-            if asset.state.is_none() || asset.state.as_deref() == Some("missing") {
-                if let Ok(plan) = migration::plan_catalog_url(&asset.url, origins, paths) {
-                    ensure_copied(store, db, &asset, &plan).await?;
-                }
+        let result = async {
+            let row = record.query_one_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+                format!("SELECT to_jsonb(s) AS payload FROM {table} s WHERE ({filter}) AND {} FOR UPDATE NOWAIT", row_predicate(table, key)),
+                [cursor.clone().into()])).await?;
+            if let Some(row) = row {
+                let payload: Value = row.try_get("", "payload")?;
+                process_row(&record, store, paths, origins, progress.pass, progress.phase, table, &cursor, &payload).await?;
             }
-        } else {
-            bind_row(db, store, paths, origins, table, &cursor, &payload).await?;
+            Ok::<_, MediaError>(())
+        }.await;
+        let failure_key = format!("{}:{}:{cursor}", progress.pass, progress.phase);
+        match result {
+            Ok(()) => {
+                record.commit().await?;
+                db.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "DELETE FROM media_migration_jobs WHERE source_kind = $1 AND source_key = $2",
+                    [FAILURE_JOB.into(), failure_key.into()],
+                ))
+                .await?;
+            }
+            Err(error) => {
+                record.rollback().await?;
+                if progress.pass == 2 {
+                    // A concurrent edit may introduce a previously unknown asset.
+                    migration::record_job(
+                        db,
+                        FAILURE_JOB,
+                        &format!("0:{}:{cursor}", progress.phase),
+                        None,
+                        "pending",
+                        "pending",
+                        "pending",
+                        None,
+                        Some(&format!("{table}:{cursor}")),
+                    )
+                    .await?;
+                }
+                migration::record_job(
+                    db,
+                    FAILURE_JOB,
+                    &failure_key,
+                    None,
+                    "pending",
+                    "pending",
+                    "pending",
+                    Some(error.code()),
+                    Some(&format!("{table}:{cursor}")),
+                )
+                .await?;
+            }
         }
         progress.error_source = None;
         progress.after = cursor;
@@ -289,6 +361,111 @@ async fn advance_on(
     if processed == rows.len() && rows.len() < BATCH as usize {
         progress.phase += 1;
         progress.after.clear();
+    }
+    refresh_failures(db, progress).await?;
+    Ok(())
+}
+
+fn scan_sql(table: &str, key: &str, filter: &str) -> String {
+    let (predicate, order) = if table == "phantasi_note_history" {
+        ("(doc_id, revision) > (COALESCE(NULLIF(split_part($1, ':', 1), '')::bigint, 0), COALESCE(NULLIF(split_part($1, ':', 2), '')::bigint, 0))".into(), "doc_id, revision".into())
+    } else if key == "id" && table != "agent_persona" {
+        (
+            format!("{key} > COALESCE(NULLIF($1, '')::bigint, 0)"),
+            key.to_owned(),
+        )
+    } else {
+        (format!("{key} > $1"), key.to_owned())
+    };
+    // Compare/order native primary keys so each page can use the existing index.
+    format!(
+        "SELECT {key}::text AS cursor FROM {table} s WHERE ({filter}) AND {predicate} ORDER BY {order} LIMIT $2"
+    )
+}
+
+fn row_predicate(table: &str, key: &str) -> String {
+    if table == "phantasi_note_history" {
+        "doc_id = split_part($1, ':', 1)::bigint AND revision = split_part($1, ':', 2)::bigint"
+            .into()
+    } else if key == "id" && table != "agent_persona" {
+        format!("{key} = $1::bigint")
+    } else {
+        format!("{key} = $1")
+    }
+}
+
+async fn refresh_failures(
+    db: &impl ConnectionTrait,
+    progress: &mut UpgradeProgress,
+) -> Result<(), MediaError> {
+    let row = db.query_one_raw(Statement::from_string(DatabaseBackend::Postgres,
+        "SELECT count(*)::bigint AS count FROM media_migration_jobs WHERE source_kind = 'upgrade_failure'"))
+        .await?.ok_or(MediaError::StoreFailed)?;
+    progress.pending_failures = row.try_get::<i64>("", "count")? as u64;
+    let failure = media_migration_jobs::Entity::find()
+        .filter(media_migration_jobs::Column::SourceKind.eq(FAILURE_JOB))
+        .filter(media_migration_jobs::Column::ErrorCode.is_not_null())
+        .one(db)
+        .await?;
+    progress.error = failure.as_ref().and_then(|row| row.error_code.clone());
+    progress.error_source = failure.and_then(|row| row.cursor);
+    Ok(())
+}
+
+async fn process_row(
+    db: &impl ConnectionTrait,
+    store: &MediaStore,
+    paths: &LegacyPaths,
+    origins: &[String],
+    pass: u8,
+    phase: usize,
+    table: &str,
+    cursor: &str,
+    payload: &Value,
+) -> Result<(), MediaError> {
+    if pass == 0 && phase == 0 {
+        db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+                "UPDATE media_assets SET public_id = gen_random_uuid() WHERE id = $1 AND public_id IS NULL",
+                [cursor.parse::<i32>().map_err(|_| MediaError::StoreFailed)?.into()])).await?;
+    } else if pass == 0 {
+        // RSS cache-only files retain their disposable cache lifecycle. Only
+        // already catalogued assets need durable RSS references in pass 2.
+        if table == "phantasi_items" && payload["content_md"].is_null() {
+            return Ok(());
+        }
+        let layout = parse_layout(table, &payload);
+        import_cited(
+            db,
+            store,
+            paths,
+            origins,
+            layout.as_ref().unwrap_or(&payload),
+            false,
+        )
+        .await?;
+    } else if phase == 0 {
+        let asset: media_assets::Model =
+            serde_json::from_value(payload.clone()).map_err(|_| MediaError::StoreFailed)?;
+        if let Ok(plan) = migration::plan_catalog_url(&asset.url, origins, paths) {
+            if asset.state.is_none() || asset.state.as_deref() == Some("missing") {
+                ensure_copied(store, db, &asset, &plan).await?;
+            } else if asset.state.as_deref() == Some("ready")
+                && asset.source.as_deref() == Some("legacy")
+            {
+                migration::register_aliases(
+                    db,
+                    &asset,
+                    &plan,
+                    asset
+                        .checksum_sha256
+                        .as_deref()
+                        .ok_or(MediaError::StoreFailed)?,
+                )
+                .await?;
+            }
+        }
+    } else {
+        bind_row(db, store, paths, origins, table, &cursor, &payload).await?;
     }
     Ok(())
 }
@@ -330,7 +507,15 @@ async fn import_cited(
         let Ok(_plan) = migration::plan_catalog_url(url, origins, paths) else {
             continue;
         };
-        if let Some(id) = cite::resolve_asset_id(db, url).await? {
+        let equivalent = super::legacy::cache_equivalent_path(url);
+        let found = match cite::resolve_asset_id(db, url).await? {
+            Some(id) => Some(id),
+            None => match equivalent.as_deref() {
+                Some(other) => cite::resolve_asset_id(db, other).await?,
+                None => None,
+            },
+        };
+        if let Some(id) = found {
             let row = super::assets::find_by_id(db, id)
                 .await?
                 .ok_or(MediaError::Missing)?;
@@ -356,7 +541,7 @@ async fn import_cited(
             "mov" => "video/quicktime",
             _ => return Err(MediaError::invalid("Unsupported legacy media")),
         };
-        media_assets::ActiveModel {
+        let asset = media_assets::ActiveModel {
             kind: Set("upload".into()),
             url: Set(url.clone()),
             mime: Set(mime.into()),
@@ -367,6 +552,18 @@ async fn import_cited(
             ..Default::default()
         }
         .insert(db)
+        .await?;
+        migration::record_job(
+            db,
+            FAILURE_JOB,
+            &format!("1:0:{}", asset.id),
+            None,
+            "pending",
+            "pending",
+            "pending",
+            None,
+            Some(&format!("media_assets:{}", asset.id)),
+        )
         .await?;
         // Identity commits in the discovery pass before any file copy. Retrying
         // a failed or interrupted copy therefore reuses the same public_id/key.
@@ -405,6 +602,9 @@ async fn bind_row(
     let text = |key: &str| payload.get(key).and_then(Value::as_str);
     let id = || cursor.parse::<i32>().map_err(|_| MediaError::StoreFailed);
     let layout = parse_layout(table, payload);
+    if table == "phantasi_items" && payload["content_md"].is_null() {
+        return cite::bind_rss_item(db, id()?, payload, origins).await;
+    }
     let urls = import_cited(
         db,
         store,
@@ -497,7 +697,16 @@ async fn bind_row(
             .await
         }
         "configurations" => {
-            cite::bind_stickers(db, &layout.unwrap_or(Value::Null).to_string(), origins).await
+            let rewritten = cite::bind_and_publish_dashboard_layout(
+                db,
+                &layout.unwrap_or(Value::Null).to_string(),
+                origins,
+            )
+            .await?;
+            db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+                "UPDATE configurations SET value = $1, updated_at = NOW() WHERE key = 'dashboard_layout'",
+                [serde_json::json!(rewritten).into()])).await?;
+            Ok(())
         }
         "tapp_runtime_registry" => {
             let task: crate::services::ai_task_registry::PersistedAiTask =

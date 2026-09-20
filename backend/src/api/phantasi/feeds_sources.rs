@@ -870,6 +870,9 @@ pub(crate) async fn delete_source(
                 .begin()
                 .await
                 .map_err(|e| phantasi_store_http("begin source delete", e))?;
+            crate::services::media::clear_rss_source(&txn, id)
+                .await
+                .map_err(|e| phantasi_store_http("release source media", e))?;
             if let Err(error) =
                 crate::services::note_publish::detach_note_docs_for_source(&txn, source.id).await
             {

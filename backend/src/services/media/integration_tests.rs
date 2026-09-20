@@ -270,7 +270,7 @@ async fn postgres_upgrade_resumes_over_1000_and_preserves_cached_citations() {
 }
 
 #[tokio::test]
-async fn postgres_upgrade_failure_keeps_cursor_and_retries() {
+async fn postgres_upgrade_failure_is_deferred_and_retries() {
     let Some(f) = Fixture::new().await else {
         return;
     };
@@ -282,8 +282,8 @@ async fn postgres_upgrade_failure_keeps_cursor_and_retries() {
     let mut failed = upgrade::advance(&f.db, f.service.store(), &paths, &[], false)
         .await
         .unwrap();
-    for _ in 0..20 {
-        if failed.error.is_some() {
+    for _ in 0..50 {
+        if failed.next_retry_at.is_some() {
             break;
         }
         failed = upgrade::advance(&f.db, f.service.store(), &paths, &[], false)
@@ -299,11 +299,10 @@ async fn postgres_upgrade_failure_keeps_cursor_and_retries() {
     tokio::fs::write(paths.federation_root.join("1/missing.png"), png())
         .await
         .unwrap();
-    let retried = upgrade::advance(&f.db, f.service.store(), &paths, &[], false)
-        .await
-        .unwrap();
+    let retried = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp() + 3600).await;
+    assert!(retried.complete);
     assert!(retried.error.is_none());
-    assert_eq!(retried.phase, 1);
+    assert_eq!(retried.pending_failures, 0);
     f.close().await;
 }
 
@@ -448,7 +447,7 @@ async fn postgres_automatic_upgrade_starts_retries_resumes_and_stops() {
             .await
             .unwrap()
             .unwrap();
-        if progress.error.is_some() {
+        if progress.next_retry_at.is_some() {
             break;
         }
     }
@@ -469,19 +468,12 @@ async fn postgres_automatic_upgrade_starts_retries_resumes_and_stops() {
     );
     // A new handle reads durable backoff and cursor, as a restarted process would.
     let resumed = MediaStore::new(f.service.store().root().to_path_buf());
-    let second = upgrade::automatic_step(&f.db, &resumed, &paths, &[], now + 60)
-        .await
-        .unwrap()
-        .unwrap();
+    let second = drive_upgrade(&f, &paths, now + 60).await;
     assert_eq!(
-        (
-            second.pass,
-            second.phase,
-            second.after.clone(),
-            second.scanned
-        ),
-        cursor
+        (second.pass, second.phase, second.after.clone()),
+        (cursor.0, cursor.1, cursor.2)
     );
+    assert!(second.scanned > cursor.3);
     assert_eq!(second.consecutive_failures, 2);
     assert_eq!(second.next_retry_at, Some(now + 180));
     tokio::fs::create_dir_all(paths.federation_root.join("1"))
@@ -495,13 +487,13 @@ async fn postgres_automatic_upgrade_starts_retries_resumes_and_stops() {
             .await
             .unwrap()
             .unwrap();
-        assert!(progress.error.is_none());
-        assert_eq!(progress.consecutive_failures, 0);
         if progress.complete {
             break;
         }
     }
     assert!(progress.complete);
+    assert_eq!(progress.consecutive_failures, 0);
+    assert!(progress.error.is_none());
     assert!(
         upgrade::automatic_step(&f.db, &resumed, &paths, &[], now + 3600)
             .await
@@ -515,6 +507,721 @@ async fn postgres_automatic_upgrade_starts_retries_resumes_and_stops() {
     assert!(
         paths.federation_root.join("1/automatic.png").exists(),
         "source is retained"
+    );
+    f.close().await;
+}
+
+async fn drive_upgrade(f: &Fixture, paths: &LegacyPaths, now: i64) -> upgrade::UpgradeProgress {
+    let mut result = upgrade::UpgradeProgress::default();
+    for _ in 0..100 {
+        result = upgrade::automatic_step(&f.db, f.service.store(), paths, &[], now)
+            .await
+            .unwrap()
+            .unwrap();
+        if result.complete || result.next_retry_at.is_some() {
+            break;
+        }
+    }
+    result
+}
+
+#[tokio::test]
+async fn postgres_regression_brew_and_phantasi_aliases_of_one_file() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    let hash = "a".repeat(64);
+    let brew = format!("/api/brew/image-cache/aa/{hash}.png");
+    let phantasi = format!("/api/phantasi/image-cache/aa/{hash}.png");
+    tokio::fs::create_dir_all(paths.cache_images.join("aa"))
+        .await
+        .unwrap();
+    tokio::fs::write(paths.cache_images.join(format!("aa/{hash}.png")), png())
+        .await
+        .unwrap();
+    f.db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO phantasi_note_docs(user_id,title,content_md) VALUES (1,'old mixed aliases',$1)",
+        [format!("![old]({brew})\n![new]({phantasi})").into()])).await.unwrap();
+    let progress = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    let result = (
+        progress.complete,
+        progress.error.clone(),
+        progress.error_source.clone(),
+    );
+    f.close().await;
+    assert!(
+        result.0,
+        "same physical cache file must migrate: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn postgres_regression_stored_private_sticker_is_repaired() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    migration::record_job(
+        &f.db,
+        "upgrade",
+        "platform_media_v2",
+        None,
+        "copied",
+        "verified",
+        "switched",
+        None,
+        Some(
+            &serde_json::to_string(&upgrade::UpgradeProgress {
+                complete: true,
+                ..Default::default()
+            })
+            .unwrap(),
+        ),
+    )
+    .await
+    .unwrap();
+    let image = f.image().await;
+    let layout =
+        json!({"standard":[],"free":[{"type":"sticker","config":{"imageUrl":image.content_path}}]});
+    f.db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO configurations(key,value,updated_at) VALUES ('dashboard_layout',$1::json,NOW())",
+        [json!(layout.to_string()).to_string().into()])).await.unwrap();
+    let progress = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    let row = assets::find_by_id(&f.db, image.id).await.unwrap().unwrap();
+    let cfg =
+        f.db.query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT value::text AS value FROM configurations WHERE key='dashboard_layout'",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let value: String = cfg.try_get("", "value").unwrap();
+    let evidence = (progress.complete, row.exposure, value);
+    f.close().await;
+    assert!(
+        evidence.0
+            && evidence.1.as_deref() == Some("public")
+            && evidence.2.contains("/media/assets/"),
+        "completed upgrade must fix public sticker: {evidence:?}"
+    );
+}
+
+#[tokio::test]
+async fn postgres_regression_missing_file_does_not_starve_other_valid_assets() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    f.db.execute_unprepared("INSERT INTO media_assets(kind,url,mime,name,size) VALUES ('upload','/media/federation/1/missing.png','image/png','missing.png',0), ('upload','/media/federation/1/valid.png','image/png','valid.png',0)").await.unwrap();
+    tokio::fs::create_dir_all(paths.federation_root.join("1"))
+        .await
+        .unwrap();
+    tokio::fs::write(paths.federation_root.join("1/valid.png"), png())
+        .await
+        .unwrap();
+    f.db.execute_unprepared("INSERT INTO phantasi_note_docs(user_id,title,content_md) VALUES (1,'healthy note','![image](/media/federation/1/valid.png)')").await.unwrap();
+    let progress = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    assert!(
+        active_count(&f.db, 2).await.unwrap() > 0,
+        "healthy consumers must also bind before retries"
+    );
+    let valid = assets::find_by_id(&f.db, 2).await.unwrap().unwrap();
+    let evidence = (progress.error, progress.error_source, valid.state);
+    assert!(!progress.complete);
+    assert_eq!(progress.pending_failures, 1);
+    assert!(
+        !valid.references_complete,
+        "unresolved consumers retain deletion protection"
+    );
+    assert!(f.service.delete(&f.db, 2).await.is_err());
+    tokio::fs::write(paths.federation_root.join("1/missing.png"), png())
+        .await
+        .unwrap();
+    let repaired = drive_upgrade(&f, &paths, progress.next_retry_at.unwrap()).await;
+    assert!(repaired.complete);
+    assert_eq!(repaired.pending_failures, 0);
+    f.close().await;
+    assert_eq!(
+        evidence.2.as_deref(),
+        Some("ready"),
+        "missing cache must not starve healthy file: {evidence:?}"
+    );
+}
+
+#[tokio::test]
+async fn postgres_upgrade_repairs_preexisting_duplicate_cache_catalog() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    let hash = "b".repeat(64);
+    let brew = format!("/api/brew/image-cache/bb/{hash}.png");
+    let phantasi = format!("/api/phantasi/image-cache/bb/{hash}.png");
+    tokio::fs::create_dir_all(paths.cache_images.join("bb"))
+        .await
+        .unwrap();
+    tokio::fs::write(paths.cache_images.join(format!("bb/{hash}.png")), png())
+        .await
+        .unwrap();
+    // Old discovery committed both rows before the copy pass got stuck.
+    for url in [&brew, &phantasi] {
+        f.db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+            "INSERT INTO media_assets(kind,url,mime,name,size) VALUES ('upload',$1,'image/png','cache.png',0)",
+            [url.clone().into()])).await.unwrap();
+    }
+    let progress = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    assert!(progress.complete, "{:?}", progress.error);
+    let owner = resolve_asset_id(&f.db, &brew).await.unwrap().unwrap();
+    assert_eq!(
+        resolve_asset_id(&f.db, &phantasi).await.unwrap(),
+        Some(owner)
+    );
+    for id in [1, 2] {
+        let row = assets::find_by_id(&f.db, id).await.unwrap().unwrap();
+        assert_eq!(row.state.as_deref(), Some("ready"));
+        assert_eq!(
+            tokio::fs::read(
+                f.service
+                    .store()
+                    .final_path(row.storage_key.as_deref().unwrap())
+                    .unwrap()
+            )
+            .await
+            .unwrap(),
+            png()
+        );
+    }
+    // Old completed runs could have only the brew alias. Repair without reading
+    // the legacy file again, even after that cache has been evicted.
+    f.db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM media_url_aliases WHERE local_path = $1",
+        [phantasi.clone().into()],
+    ))
+    .await
+    .unwrap();
+    tokio::fs::remove_dir_all(&paths.cache_images)
+        .await
+        .unwrap();
+    upgrade::advance(&f.db, f.service.store(), &paths, &[], true)
+        .await
+        .unwrap();
+    let repaired = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    assert!(repaired.complete);
+    assert_eq!(
+        resolve_asset_id(&f.db, &phantasi).await.unwrap(),
+        Some(owner)
+    );
+    assert!(matches!(
+        resolve_alias_or_legacy(&f.db, f.service.store(), &paths, &phantasi, true)
+            .await
+            .unwrap(),
+        ServeOutcome::File(_)
+    ));
+    f.close().await;
+}
+
+#[tokio::test]
+async fn postgres_upgrade_sticker_failure_rolls_back_publication_and_retries() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    let image = f.image().await;
+    let layout =
+        json!({"standard":[],"free":[{"type":"sticker","config":{"imageUrl":image.content_path}}]});
+    f.db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "INSERT INTO configurations(key,value,updated_at) VALUES ('dashboard_layout',$1,NOW())",
+        [json!(layout.to_string()).into()],
+    ))
+    .await
+    .unwrap();
+    f.db.execute_unprepared("CREATE FUNCTION reject_upgrade_layout() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected layout update failure'; END $$; CREATE TRIGGER reject_upgrade_layout BEFORE UPDATE ON configurations FOR EACH ROW EXECUTE FUNCTION reject_upgrade_layout()").await.unwrap();
+    let progress = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    assert!(!progress.complete);
+    assert_eq!(progress.pending_failures, 2);
+    assert_eq!(
+        assets::find_by_id(&f.db, image.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .exposure
+            .as_deref(),
+        Some("private")
+    );
+    assert_eq!(active_count(&f.db, image.id).await.unwrap(), 0);
+    let cfg =
+        f.db.query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT value FROM configurations WHERE key='dashboard_layout'",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        cfg.try_get::<serde_json::Value>("", "value").unwrap(),
+        json!(layout.to_string())
+    );
+    f.db.execute_unprepared("DROP TRIGGER reject_upgrade_layout ON configurations")
+        .await
+        .unwrap();
+    let repaired = drive_upgrade(&f, &paths, progress.next_retry_at.unwrap()).await;
+    assert!(repaired.complete);
+    assert_eq!(repaired.pending_failures, 0);
+    assert_eq!(
+        assets::find_by_id(&f.db, image.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .exposure
+            .as_deref(),
+        Some("public")
+    );
+    assert!(active_count(&f.db, image.id).await.unwrap() > 0);
+    f.close().await;
+}
+
+#[tokio::test]
+async fn postgres_rss_shared_assets_are_protected_and_new_feed_writes_are_atomic() {
+    use crate::models::entities::phantasi_items;
+    use sea_orm::{ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    tokio::fs::create_dir_all(paths.federation_root.join("1"))
+        .await
+        .unwrap();
+    tokio::fs::write(paths.federation_root.join("1/shared.png"), png())
+        .await
+        .unwrap();
+    f.db.execute_unprepared("INSERT INTO media_assets(kind,url,mime,name,size) VALUES ('upload','/media/federation/1/shared.png','image/png','shared.png',0);
+        INSERT INTO phantasi_sources(id,user_id,name,url,feed_type) VALUES (1,1,'RSS','https://example.com/feed','rss');
+        INSERT INTO phantasi_items(source_id,guid,title,link,published_at,fetched_at,content) VALUES (1,'old','old','https://example.com/old',NOW(),NOW(),'<img src=\"/media/federation/1/shared.png\">');
+        INSERT INTO phantasi_note_docs(user_id,title,content_md) VALUES (1,'shared','![shared](/media/federation/1/shared.png)')").await.unwrap();
+    let progress = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    assert!(progress.complete, "{:?}", progress.error);
+    assert_eq!(active_count(&f.db, 1).await.unwrap(), 2);
+    let txn = f.db.begin().await.unwrap();
+    bind_note_draft(&txn, 1, None, "", &[]).await.unwrap();
+    txn.commit().await.unwrap();
+    assert_eq!(
+        f.service.delete(&f.db, 1).await.unwrap_err(),
+        MediaError::InUse
+    );
+    let item = |guid: &str| phantasi_items::ActiveModel {
+        source_id: Set(1),
+        guid: Set(guid.into()),
+        title: Set(guid.into()),
+        link: Set(format!("https://example.com/{guid}")),
+        image: Set(Some("/media/federation/1/shared.png".into())),
+        published_at: Set(chrono::Utc::now().fixed_offset()),
+        fetched_at: Set(chrono::Utc::now().fixed_offset()),
+        ..Default::default()
+    };
+    crate::services::phantasi_scheduler::insert_feed_items(&f.db, vec![item("new")])
+        .await
+        .unwrap();
+    assert_eq!(active_count(&f.db, 1).await.unwrap(), 2);
+    f.db.execute_unprepared("CREATE FUNCTION reject_rss_ref() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected rss bind failure'; END $$; CREATE TRIGGER reject_rss_ref BEFORE INSERT ON media_references FOR EACH ROW EXECUTE FUNCTION reject_rss_ref()").await.unwrap();
+    assert!(
+        crate::services::phantasi_scheduler::insert_feed_items(&f.db, vec![item("rollback")])
+            .await
+            .is_err()
+    );
+    assert!(
+        phantasi_items::Entity::find()
+            .filter(phantasi_items::Column::Guid.eq("rollback"))
+            .one(&f.db)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    f.db.execute_unprepared("DROP TRIGGER reject_rss_ref ON media_references")
+        .await
+        .unwrap();
+    let txn = f.db.begin().await.unwrap();
+    clear_rss_source(&txn, 1).await.unwrap();
+    txn.execute_unprepared("DELETE FROM phantasi_sources WHERE id=1")
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+    assert_eq!(active_count(&f.db, 1).await.unwrap(), 0);
+    f.service.delete(&f.db, 1).await.unwrap();
+    f.close().await;
+}
+
+#[tokio::test]
+async fn postgres_upgrade_defers_locked_note_and_binds_latest_edit() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    tokio::fs::create_dir_all(paths.federation_root.join("1"))
+        .await
+        .unwrap();
+    tokio::fs::write(paths.federation_root.join("1/old.png"), png())
+        .await
+        .unwrap();
+    f.db.execute_unprepared("INSERT INTO media_assets(kind,url,mime,name,size) VALUES ('upload','/media/federation/1/old.png','image/png','old.png',0);
+        INSERT INTO phantasi_note_docs(user_id,title,content_md) VALUES (1,'editable','![old](/media/federation/1/old.png)')").await.unwrap();
+    let new_image = f.image().await;
+    let now = chrono::Utc::now().timestamp();
+    for _ in 0..40 {
+        let p = upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now)
+            .await
+            .unwrap()
+            .unwrap();
+        if p.pass == 1 && p.phase == 1 {
+            break;
+        }
+    }
+    let edit = f.db.begin().await.unwrap();
+    let body = format!("![new]({})", new_image.content_path);
+    edit.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE phantasi_note_docs SET content_md=$1 WHERE id=1",
+        [body.clone().into()],
+    ))
+    .await
+    .unwrap();
+    bind_note_draft(&edit, 1, None, &body, &[]).await.unwrap();
+    let p = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap();
+    assert!(
+        p.pending_failures > 0,
+        "locked row must be queued, not silently skipped"
+    );
+    // History snapshots protect the prior image under the same transaction;
+    // deletion must serialize with the edit rather than bypass its asset lock.
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            f.service.delete(&f.db, 1)
+        )
+        .await
+        .is_err()
+    );
+    edit.commit().await.unwrap();
+    let p = drive_upgrade(&f, &paths, now).await;
+    assert!(!p.complete);
+    let p = drive_upgrade(&f, &paths, p.next_retry_at.unwrap()).await;
+    assert!(p.complete, "{:?}", p.error);
+    assert!(
+        active_count(&f.db, 1).await.unwrap() > 0,
+        "historical revision retains old image"
+    );
+    assert_eq!(active_count(&f.db, new_image.id).await.unwrap(), 1);
+    assert_eq!(
+        f.service.delete(&f.db, 1).await.unwrap_err(),
+        MediaError::InUse
+    );
+    f.close().await;
+}
+
+#[tokio::test]
+async fn postgres_retry_work_is_bounded_by_failures_not_history_size() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    f.db.execute_unprepared("INSERT INTO phantasi_note_docs(user_id,title,content_md) SELECT 1,'healthy-'||n,'' FROM generate_series(1,1200) n;
+        INSERT INTO media_assets(kind,url,mime,name,size) VALUES ('upload','/media/federation/1/missing.png','image/png','missing.png',0)").await.unwrap();
+    let p = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    assert_eq!(p.pending_failures, 1);
+    assert!(p.retrying);
+    let again = drive_upgrade(&f, &paths, p.next_retry_at.unwrap()).await;
+    assert_eq!(
+        again.scanned - p.scanned,
+        1,
+        "1200 healthy records must not be reprocessed"
+    );
+    assert_eq!(again.pending_failures, 1);
+    // Deleted work items must retire instead of becoming a permanent failure.
+    f.db.execute_unprepared("DELETE FROM media_assets WHERE id=1")
+        .await
+        .unwrap();
+    let retired = drive_upgrade(&f, &paths, again.next_retry_at.unwrap()).await;
+    assert!(retired.complete);
+    f.close().await;
+}
+
+#[tokio::test]
+async fn postgres_retry_discovers_new_copy_dependencies_after_edit() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    f.db.execute_unprepared("INSERT INTO phantasi_note_docs(user_id,title,content_md) VALUES (1,'edit','![missing](/media/federation/1/first.png)')").await.unwrap();
+    let p = drive_upgrade(&f, &paths, chrono::Utc::now().timestamp()).await;
+    // A pending edit can reveal a new asset behind the original scan cursor.
+    f.db.execute_unprepared("UPDATE phantasi_note_docs SET content_md='![new](/media/federation/1/second.png)' WHERE id=1").await.unwrap();
+    tokio::fs::create_dir_all(paths.federation_root.join("1"))
+        .await
+        .unwrap();
+    for name in ["first.png", "second.png"] {
+        tokio::fs::write(paths.federation_root.join("1").join(name), png())
+            .await
+            .unwrap();
+    }
+    let repaired = drive_upgrade(&f, &paths, p.next_retry_at.unwrap()).await;
+    assert!(repaired.complete, "{:?}", repaired.error);
+    let second = resolve_asset_id(&f.db, "/media/federation/1/second.png")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(active_count(&f.db, second).await.unwrap(), 1);
+    f.close().await;
+}
+
+// Executed only as a child of the crash test, with an isolated schema/root.
+#[tokio::test]
+#[ignore = "subprocess crash harness"]
+async fn media_upgrade_crash_child() {
+    let schema = std::env::var("MYRIAD_MEDIA_CRASH_SCHEMA").unwrap();
+    let root = std::path::PathBuf::from(std::env::var("MYRIAD_MEDIA_CRASH_ROOT").unwrap());
+    let mut options =
+        sea_orm::ConnectOptions::new(std::env::var("MYRIAD_MEDIA_TEST_DATABASE_URL").unwrap());
+    options
+        .set_schema_search_path(schema)
+        .max_connections(1)
+        .sqlx_logging(false);
+    let db = sea_orm::Database::connect(options).await.unwrap();
+    let pid = db
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT pg_backend_pid() AS pid",
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<i32>("", "pid")
+        .unwrap();
+    tokio::fs::write(root.join("crash.pid"), pid.to_string())
+        .await
+        .unwrap();
+    let store = MediaStore::new(root.clone());
+    let paths = LegacyPaths {
+        federation_root: root.join("old"),
+        cache_images: root.join("cache"),
+    };
+    upgrade::automatic_step(&db, &store, &paths, &[], chrono::Utc::now().timestamp())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn postgres_process_kill_after_copy_resumes_without_new_identity() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let root = f.service.store().root();
+    let paths = LegacyPaths {
+        federation_root: root.join("old"),
+        cache_images: root.join("cache"),
+    };
+    tokio::fs::create_dir_all(paths.federation_root.join("1"))
+        .await
+        .unwrap();
+    tokio::fs::write(paths.federation_root.join("1/crash.png"), png())
+        .await
+        .unwrap();
+    f.db.execute_unprepared("INSERT INTO media_assets(kind,url,mime,name,size) VALUES ('upload','/media/federation/1/crash.png','image/png','crash.png',0)").await.unwrap();
+    let now = chrono::Utc::now().timestamp();
+    for _ in 0..30 {
+        let p = upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now)
+            .await
+            .unwrap()
+            .unwrap();
+        if p.pass == 1 && p.phase == 0 {
+            break;
+        }
+    }
+    let row = assets::find_by_id(&f.db, 1).await.unwrap().unwrap();
+    let public_id = row.public_id.unwrap();
+    let key = storage_key(public_id, "png").unwrap();
+    let before = upgrade::status(&f.db).await.unwrap();
+    // Simulate a prior kill during the streaming copy. This token belongs only
+    // to this migration; another writer's partial file must survive cleanup.
+    f.service
+        .store()
+        .stage_bytes(public_id, b"incomplete copy")
+        .await
+        .unwrap();
+    let other_token = Uuid::new_v4();
+    f.service
+        .store()
+        .stage_bytes(other_token, b"another writer")
+        .await
+        .unwrap();
+    f.db.execute_unprepared("CREATE FUNCTION pause_after_media_copy() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='ready' THEN PERFORM pg_sleep(3); END IF; RETURN NEW; END $$; CREATE TRIGGER pause_after_media_copy BEFORE UPDATE ON media_assets FOR EACH ROW EXECUTE FUNCTION pause_after_media_copy()").await.unwrap();
+    let schema: String =
+        f.db.query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT current_schema() AS schema",
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "schema")
+        .unwrap();
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "services::media::integration_tests::media_upgrade_crash_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("MYRIAD_MEDIA_CRASH_SCHEMA", schema)
+        .env("MYRIAD_MEDIA_CRASH_ROOT", root)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut paused = false;
+    while std::time::Instant::now() < deadline {
+        if let Ok(pid) = tokio::fs::read_to_string(root.join("crash.pid")).await {
+            let pid: i32 = pid.parse().unwrap();
+            let row = f.db.query_one_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event='PgSleep') AS paused", [pid.into()])).await.unwrap().unwrap();
+            if row.try_get::<bool>("", "paused").unwrap() {
+                paused = true;
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let _ = child.kill();
+    child.wait().unwrap();
+    assert!(
+        paused,
+        "child must reach the database switch after copying bytes"
+    );
+    // DDL waits for the killed connection's sleeping statement to finish and
+    // roll back. No test rollback or cooperative cancellation in the child.
+    f.db.execute_unprepared("DROP TRIGGER pause_after_media_copy ON media_assets")
+        .await
+        .unwrap();
+    assert_eq!(
+        tokio::fs::read(f.service.store().final_path(&key).unwrap())
+            .await
+            .unwrap(),
+        png()
+    );
+    let row = assets::find_by_id(&f.db, 1).await.unwrap().unwrap();
+    assert!(row.state.is_none());
+    assert_eq!(row.public_id, Some(public_id));
+    assert_eq!(
+        upgrade::status(&f.db).await.unwrap().scanned,
+        before.scanned
+    );
+    let recovered = drive_upgrade(&f, &paths, now).await;
+    assert!(recovered.complete);
+    let row = assets::find_by_id(&f.db, 1).await.unwrap().unwrap();
+    assert_eq!(row.public_id, Some(public_id));
+    assert_eq!(row.storage_key.as_deref(), Some(key.as_str()));
+    assert!(!f.service.store().temp_exists(public_id).await);
+    assert!(f.service.store().temp_exists(other_token).await);
+    assert!(paths.federation_root.join("1/crash.png").exists());
+    f.close().await;
+}
+
+#[tokio::test]
+async fn postgres_upgrade_does_not_rebind_completed_concurrent_delivery() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    let image = f.image().await;
+    let token = Uuid::new_v4();
+    f.db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO federation_activities(id,activity_id,user_id,activity_type,object_json,is_local,published_at) VALUES (1,'https://example.com/activities/1',1,'Create',$1,TRUE,NOW())",
+        [json!({"attachment":[{"url":image.content_path}]}).into()])).await.unwrap();
+    f.db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO federation_delivery_queue(id,activity_id,target_inbox,target_domain,status,attempts,max_attempts,lease_token,created_at) VALUES (1,1,'https://peer.test/inbox','peer.test','delivering',1,3,$1,NOW())", [token.into()])).await.unwrap();
+    let now = chrono::Utc::now().timestamp();
+    for _ in 0..40 {
+        let p = upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now)
+            .await
+            .unwrap()
+            .unwrap();
+        if p.pass == 2 && p.phase == 7 {
+            break;
+        }
+    }
+    let delivery = f.db.begin().await.unwrap();
+    delivery
+        .execute_unprepared("SELECT id FROM federation_delivery_queue WHERE id=1 FOR UPDATE")
+        .await
+        .unwrap();
+    let p = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap();
+    assert!(p.pending_failures > 0);
+    assert!(
+        crate::federation::delivery::mark_delivery_delivered_if_owned(&delivery, 1, token)
+            .await
+            .unwrap()
+    );
+    delivery.commit().await.unwrap();
+    let p = drive_upgrade(&f, &paths, now).await;
+    let done = drive_upgrade(&f, &paths, p.next_retry_at.unwrap()).await;
+    assert!(done.complete);
+    let row = f.db.query_one_raw(Statement::from_string(DatabaseBackend::Postgres,"SELECT count(*)::bigint AS n FROM media_references WHERE consumer_type='federation_outbox' AND consumer_id='1'")).await.unwrap().unwrap();
+    assert_eq!(
+        row.try_get::<i64>("", "n").unwrap(),
+        0,
+        "delivered rows must leave the deferred queue without stale references"
+    );
+    assert_eq!(
+        active_count(&f.db, image.id).await.unwrap(),
+        1,
+        "activity reference still protects the attachment"
     );
     f.close().await;
 }

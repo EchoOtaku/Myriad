@@ -221,6 +221,78 @@ pub async fn bind_note_draft(
     sync_note_history_refs(txn, doc_id, origins).await
 }
 
+/// RSS downloads remain an evictable cache. Protect any referenced asset that
+/// has already entered the durable catalog; do not import every external image.
+pub async fn clear_rss_source(
+    txn: &impl ConnectionTrait,
+    source_id: i32,
+) -> Result<(), MediaError> {
+    // Block new FK inserts, then serialize with migration's item locks before
+    // clearing references and letting the caller cascade-delete the source.
+    for sql in [
+        "SELECT id FROM phantasi_sources WHERE id = $1 FOR UPDATE",
+        "SELECT id FROM phantasi_items WHERE source_id = $1 ORDER BY id FOR UPDATE",
+        "DELETE FROM media_references WHERE consumer_type = 'rss_item' AND consumer_id IN (SELECT id::text FROM phantasi_items WHERE source_id = $1)",
+    ] {
+        txn.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            [source_id.into()],
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn bind_rss_item(
+    txn: &impl ConnectionTrait,
+    item_id: i32,
+    payload: &Value,
+    origins: &[String],
+) -> Result<(), MediaError> {
+    let mut strings = Vec::new();
+    for key in [
+        "image",
+        "content",
+        "summary",
+        "audio_url",
+        "video_url",
+        "enclosures",
+    ] {
+        collect_strings(&payload[key], &mut strings);
+    }
+    let mut paths = Vec::new();
+    for text in strings {
+        if let Some(path) = cite_local_path(&text, origins) {
+            paths.push(path);
+        }
+        paths.extend(extract_registered_paths(&text, origins));
+    }
+    paths.sort();
+    paths.dedup();
+    let mut refs = Vec::new();
+    for path in paths {
+        let id = match resolve_asset_id(txn, &path).await? {
+            Some(id) => Some(id),
+            None => match super::legacy::cache_equivalent_path(&path) {
+                Some(other) => resolve_asset_id(txn, &other).await?,
+                None => None,
+            },
+        };
+        if let Some(asset_id) = id {
+            if !refs.iter().any(|r: &NewReference| r.asset_id == asset_id) {
+                refs.push(NewReference {
+                    asset_id,
+                    slot: format!("media:{}", refs.len()),
+                    requires_public: true,
+                    expires_at: None,
+                });
+            }
+        }
+    }
+    bind_consumer(txn, "rss_item", item_id.to_string(), &refs).await
+}
+
 pub async fn bind_note_published(
     txn: &impl ConnectionTrait,
     item_id: i32,

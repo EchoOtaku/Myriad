@@ -105,6 +105,16 @@ pub fn brew_alias_of(local_path: &str) -> Option<String> {
         .map(|rest| format!("/api/brew/image-cache/{rest}"))
 }
 
+/// Both URL generations address the same validated cache file.
+pub fn cache_equivalent_path(local_path: &str) -> Option<String> {
+    let path = registered_local_path(local_path)?;
+    if let Some(rest) = path.strip_prefix("/api/brew/image-cache/") {
+        Some(format!("/api/phantasi/image-cache/{rest}"))
+    } else {
+        brew_alias_of(&path)
+    }
+}
+
 pub fn legacy_disk_path(paths: &LegacyPaths, local_path: &str) -> Option<PathBuf> {
     let path = registered_local_path(local_path)?;
     if let Some(rest) = path.strip_prefix("/media/federation/") {

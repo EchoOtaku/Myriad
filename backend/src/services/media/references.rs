@@ -10,6 +10,7 @@ use super::error::MediaError;
 use super::types::MediaState;
 
 const CONSUMER_TYPES: &[&str] = &[
+    "rss_item",
     "note_draft",
     "note_published",
     "note_history",

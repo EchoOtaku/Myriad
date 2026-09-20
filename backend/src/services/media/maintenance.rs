@@ -63,8 +63,8 @@ pub fn start_upgrade_worker() -> tokio::task::JoinHandle<()> {
                     tracing::info!(scanned = progress.scanned, "media upgrade completed")
                 }
                 Ok(Some(progress)) if progress.error.is_some() => tracing::warn!(
-                    error = ?progress.error, source = ?progress.error_source, next_retry_at = ?progress.next_retry_at,
-                    "media upgrade will retry automatically"),
+                    error = ?progress.error, source = ?progress.error_source, pending_failures = progress.pending_failures, next_retry_at = ?progress.next_retry_at,
+                    "media upgrade has deferred records; normal records continue before retry"),
                 Ok(_) => {}
                 Err(error) => {
                     // Disconnected/uninitialized DB cannot persist its backoff yet.

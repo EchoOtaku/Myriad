@@ -17,7 +17,9 @@ pub fn catalog_reference_labels(consumer_types: &[String]) -> Vec<String> {
     for kind in consumer_types {
         match kind.as_str() {
             "note_draft" | "note_published" | "note_history" => push(&mut labels, "notes"),
-            "federation_activity" | "federation_outbox" => push(&mut labels, "articles"),
+            "rss_item" | "federation_activity" | "federation_outbox" => {
+                push(&mut labels, "articles")
+            }
             _ => push(&mut labels, "site"),
         }
     }
