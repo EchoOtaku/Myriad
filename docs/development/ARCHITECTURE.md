@@ -1,13 +1,13 @@
 # Architecture Overview
 
-Myriad is a self-hosted personal digital-life portal: Astro/React UI, Rust/Axum API, PostgreSQL, plus a production edge of **proxy + updater**.
+Myriad is a self-hosted personal digital-life portal: Vite/React UI, Rust/Axum API, PostgreSQL, plus a production edge of **proxy + updater**.
 
 ## Runtime topologies
 
 **Development**
 
 ```text
-browser → Astro dev (:1102)
+browser → Vite dev (:1102)
             └─ /api/*, /health, /ready, federation public paths → backend (:1103) → postgres
 ```
 
@@ -41,7 +41,7 @@ host HTTP_PORT
 
 | Component | Path | Role |
 | --- | --- | --- |
-| Frontend | `frontend/` | Astro 7 + React 19 SPA; widgets, Library, Phantasi, reports, config, Tapp runtime |
+| Frontend | `frontend/` | Vite 8 + React 19 SPA; widgets, Library, Phantasi, reports, config, Tapp runtime |
 | Backend | `backend/` | 同一镜像三个进程：web（迁移 + 剩余 API）、`federation-worker`、`persona-worker` |
 | Proxy | `proxy/` | Host-facing reverse proxy + maintenance page (own Cargo tree) |
 | Updater | `updater/` | Self-update, snapshots, docker-guard / gateway binaries (own Cargo tree) |

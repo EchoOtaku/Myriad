@@ -611,7 +611,7 @@ interaction 使用 PostgreSQL TTL registry 与持久 mailbox。写入同时发�
 `pg_notify` 唤醒信号；当前 SSE 以 mailbox 轮询作为消费与补读路径，通知丢失或副本切换不会
 丢掉权威状态。
 
-仓库不是可发布的前端 SDK 包。未被任何 Astro 入口引用的 `frontend/src/tapp/index.ts` 和
+仓库不是可发布的前端 SDK 包。未被任何 SPA 入口引用的 `frontend/src/tapp/index.ts` 和
 `frontend/src/tapp/services/index.ts` 旧聚合导出已删除；运行时代码按实际边界直接引用，
 避免聚合入口掩盖依赖和保留死导出。
 

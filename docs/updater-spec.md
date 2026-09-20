@@ -542,7 +542,7 @@ backend 必须实现此 schema，updater 严格校验：升级与回滚都要求
 `routes_full` 时，updater 回退到 `mode == "full"`。
 
 `/ready` 与 `/health` 一样由 backend 提供。生产入口经 proxy 转发，开发入口经
-Astro dev proxy 转发；updater 仍直连 `http://backend:1103/health` 读 JSON。
+Vite dev proxy 转发；updater 仍直连 `http://backend:1103/health` 读 JSON。
 不要用前端 HTML 的 HTTP 200 认定业务就绪。
 新版 backend 在启动时以实际运行 UID 对 data/cache 及现有 Tapp owner 目录
 执行写入探针；探针失败时不得进入健康状态。`storage_writable` 是最近一次

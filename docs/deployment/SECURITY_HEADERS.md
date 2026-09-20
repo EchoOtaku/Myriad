@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | **backend** | `backend/src/middleware/security.rs` | API 响应：CSP、XFO、Permissions-Policy 等 |
 | **proxy** | `proxy/src/main.rs` | 上游**未带** `Permissions-Policy` 时补齐（覆盖静态 SPA 文档） |
-| **frontend** | `frontend/scripts/spa-server.mjs` + Astro dev middleware | SPA 文档级 `Permissions-Policy`；proxy 仅在上游缺失时补齐 |
+| **frontend** | `frontend/scripts/spa-server.mjs` + Vite dev middleware | SPA 文档级 `Permissions-Policy`；proxy 仅在上游缺失时补齐 |
 
 浏览器定位（天气）依赖 **HTML 文档** 上的
 `Permissions-Policy: geolocation=(self)`，而不是仅 API 响应头。

@@ -115,7 +115,7 @@ MYRIAD_VERSION="v$(git describe --tags --always)" cargo build --release
 
 ## 5. Build the frontend
 
-The frontend is a **static** Astro/React SPA (`output: 'static'`). Building it
+The frontend is a **static** Vite/React SPA (`appType: 'spa'`). Building it
 produces a `dist/` folder of plain files that the backend will serve.
 
 ```bash

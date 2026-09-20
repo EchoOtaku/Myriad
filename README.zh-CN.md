@@ -19,7 +19,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/myriad-you/Myriad)](https://github.com/myriad-you/Myriad/releases)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://github.com/rust-lang/rust)
-[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](https://github.com/withastro/astro)
+[![Vite](https://img.shields.io/badge/Vite-8-blueviolet.svg)](https://github.com/vitejs/vite)
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://github.com/facebook/react)
 
 [快速开始](docs/QUICKSTART.md) · [文档](docs/INDEX.md) · [反馈](https://github.com/myriad-you/Myriad/issues)
@@ -421,7 +421,7 @@ flowchart LR
 **开发**
 
 ```text
-browser → Astro dev (:1102)
+browser → Vite dev (:1102)
             └─ /api/*, /health, /ready, federation public paths → backend (:1103) → postgres
 ```
 
@@ -453,7 +453,7 @@ host HTTP_PORT
 ```
 Myriad/
 ├── backend/          Rust API、SeaORM、migrations
-├── frontend/         Astro + React UI、Tapp 运行时、i18n（7 种宿主 locale）
+├── frontend/         Vite + React UI、Tapp 运行时、i18n（7 种宿主 locale）
 ├── proxy/            生产反向代理（独立 Cargo 树）
 ├── updater/          自更新守护进程（独立 Cargo 树）
 ├── crates/           工作区库
@@ -477,7 +477,7 @@ Myriad/
 <td width="50%" valign="top">
 
 **前端**  
-[Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
+[Vite](https://github.com/vitejs/vite) 8 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7<br>
 [Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
 `zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`
 

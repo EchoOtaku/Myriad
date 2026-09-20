@@ -17,7 +17,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/myriad-you/Myriad)](https://github.com/myriad-you/Myriad/releases)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://github.com/rust-lang/rust)
-[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](https://github.com/withastro/astro)
+[![Vite](https://img.shields.io/badge/Vite-8-blueviolet.svg)](https://github.com/vitejs/vite)
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://github.com/facebook/react)
 
 [Quick start](docs/QUICKSTART.md) · [Docs](docs/INDEX.md) · [Issues](https://github.com/myriad-you/Myriad/issues)
@@ -419,7 +419,7 @@ flowchart LR
 **Development**
 
 ```text
-browser → Astro dev (:1102)
+browser → Vite dev (:1102)
             └─ /api/*, /health, /ready, federation public paths → backend (:1103) → postgres
 ```
 
@@ -456,7 +456,7 @@ Crawler / in-app-share user-agents receive an SEO HTML shell for Home, Library, 
 ```
 Myriad/
 ├── backend/          Rust API, SeaORM, migrations
-├── frontend/         Astro + React UI, Tapp runtime, i18n (7 host locales)
+├── frontend/         Vite + React UI, Tapp runtime, i18n (7 host locales)
 ├── proxy/            production reverse proxy (own Cargo tree)
 ├── updater/          self-update daemon (own Cargo tree)
 ├── crates/           workspace libraries
@@ -480,7 +480,7 @@ Myriad/
 <td width="50%" valign="top">
 
 **Frontend**  
-[Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
+[Vite](https://github.com/vitejs/vite) 8 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7<br>
 [Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
 `zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`
 

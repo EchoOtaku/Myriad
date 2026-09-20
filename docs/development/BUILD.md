@@ -157,14 +157,15 @@ pnpm run preview
 
 ### Build Configuration
 
-Edit `astro.config.mjs` to customize:
+Edit `vite.config.mjs` to customize:
 
 ```javascript
 export default defineConfig({
-  output: 'static',  // or 'server' for SSR
+  appType: 'spa',
+  server: { port: 1102, host: true },
   build: {
-    assets: 'assets',
-    format: 'directory',
+    outDir: 'dist',
+    assetsDir: 'assets',
   },
   // ... more options
 });
@@ -297,7 +298,23 @@ docker build -f docker/Dockerfile.backend -t myriad-backend .
 
 ```bash
 cargo clean
-(cd frontend && rm -rf node_modules dist .astro)
+(cd frontend && rm -rf node_modules dist node_modules/.vite)
 ```
 
 部署见 [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md)。
+
+### SPA document and fonts
+
+`frontend/index.html` is the sole human document. `scripts/vite/documentPlugin.ts`
+injects locale, brand, theme, release metadata and critical CSS before React
+mounts from `src/main.tsx`. `PUBLIC_API_URL`, `PUBLIC_MYRIAD_VERSION` and
+`PUBLIC_MYRIAD_COMMIT_SHA` retain their deployment meanings.
+
+`src/siteFonts.mjs` owns the 11 self-hosted families, their hashed woff2 paths,
+weights and CSS variables. Assets and licenses live in `public/fonts/site/`.
+Builds require no font service; Docker runs the asset build without networking.
+Only Inter and Qwitcher Grypen 700 are preloaded.
+
+Use `pnpm dev` for the SPA plus backend dev proxy. `pnpm preview` previews
+assets and branding only; `pnpm start` runs the production SPA server. Production
+API and crawler routing remains the outer proxy's responsibility.

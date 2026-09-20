@@ -134,7 +134,7 @@ only when the proxy must listen on a non-default host port.
 
 | Service | Local port | Started by | Notes |
 | --- | --- | --- | --- |
-| frontend dev server | `1102` | `pnpm dev` in `frontend/` | Serves the app. Astro proxy matches production `is_backend_path` (`/api/*`, health/SEO, webfinger/inbox/`/users/*`/`/media/federation/*`). It does **not** upgrade WebSockets, does **not** split persona/federation onto workers, and does **not** claim ActivityPub object prefixes such as `/activities/*`. |
+| frontend dev server | `1102` | `pnpm dev` in `frontend/` | Serves the app. Vite dev proxy matches production `is_backend_path` (`/api/*`, health/SEO, webfinger/inbox/`/users/*`/`/media/federation/*`). It does **not** upgrade WebSockets, does **not** split persona/federation onto workers, and does **not** claim ActivityPub object prefixes such as `/activities/*`. |
 | backend | `1103` | `cargo run --bin myriad-backend` in `backend/` | Combined process (`MYRIAD_PROCESS_ROLE=all`). Production rejects `all`. |
 | postgres dev | `5432` | `docker compose -f docker-compose.dev.yml up -d postgres` | Uses the `postgres_dev_data` named volume. |
 | proxy | not started | n/a | Production-only in the normal dev loop. |
