@@ -3,8 +3,6 @@
 //! Business modules depend on this crate path. This module must not depend on
 //! `crate::federation`.
 //!
-//! P1 adds the store and row lifecycle; HTTP and producers switch in later
-//! stages, so the public entry is unused until those land.
 #![allow(dead_code)]
 
 mod access;
@@ -333,6 +331,8 @@ mod tests {
             include_str!("migration.rs"),
             include_str!("recovery.rs"),
             include_str!("references.rs"),
+            include_str!("cite.rs"),
+            include_str!("scan.rs"),
             include_str!("serve.rs"),
             include_str!("store.rs"),
             include_str!("types.rs"),
@@ -486,5 +486,18 @@ mod tests {
         assert!(prod.contains("persist_federation_upload"));
         assert!(!prod.contains("media_catalog::register"));
         assert!(prod.contains("MediaService"));
+    }
+
+    #[test]
+    fn legacy_write_paths_are_retired() {
+        let federation_media = include_str!("../../federation/content/media.rs");
+        assert!(!federation_media.contains(concat!("store_federation", "_media")));
+        let orch = include_str!("../../db/schema_check/orchestrator.rs");
+        assert!(!orch.contains(concat!("backfill", "_federation")));
+        let catalog = include_str!("../media_catalog.rs");
+        assert!(!catalog.contains(concat!("pub async fn ", "register(")));
+        let cache = include_str!("../image_cache.rs");
+        assert!(!cache.contains(concat!("store_bytes", "_with_status")));
+        assert!(cache.contains("store_cache_bytes"));
     }
 }

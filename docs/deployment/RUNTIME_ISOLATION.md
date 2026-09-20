@@ -40,8 +40,9 @@ dropped, `no-new-privileges`, and a 32 MiB `/tmp`. `backend_data` is read-only a
 | Volume subpath | Container path | Purpose |
 | --- | --- | --- |
 | `backend_data/federation` | `/app/data/federation` | File transfers |
-| `backend_data/federation_media` | `/app/data/federation_media` | Published Note media |
-| `backend_cache/images` | `/tmp/cache/images` | Shared avatar cache |
+| `backend_data/federation_media` | `/app/data/federation_media` | Historical Note media aliases |
+| `backend_data/media` | `/app/data/media` | Persistent media assets |
+| `backend_cache/images` | `/tmp/cache/images` | Rebuildable outbound image cache |
 
 The volume initializer creates these directories before container creation and
 rejects symlinks. No data relocation is needed. This requires Docker/Compose support

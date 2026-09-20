@@ -1,111 +1,12 @@
-//! Federation media upload, MIME classification, and attachment URL checks.
+//! Federation media MIME classification and attachment URL checks.
+//! Uploads persist through the platform media service, not this module.
 
-use axum::{Json, http::StatusCode};
-use myriad_error::AppError;
-use serde_json::json;
-use std::path::{Path, PathBuf};
-
-use super::types::MediaUploadResponse;
-use crate::federation::types::get_base_url;
-
-/// 保存联邦媒体附件，返回可被 AP attachment 引用的公开 URL。
-pub async fn store_federation_media(
-    user_id: i32,
-    filename: &str,
-    mime: &str,
-    bytes: &[u8],
-) -> Result<MediaUploadResponse, (StatusCode, Json<serde_json::Value>)> {
-    let mime = mime
-        .split(';')
-        .next()
-        .unwrap_or(mime)
-        .trim()
-        .to_ascii_lowercase();
-    let kind = stored_media_kind(&mime).ok_or_else(|| {
-        (
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            Json(json!({
-                "error": "Unsupported media type",
-                "allowed": ["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/webm","video/quicktime"]
-            })),
-        )
-    })?;
-    let attachment_type = kind.attachment_type;
-
-    let max = if attachment_type == "Image" {
-        crate::federation::limits::note_image_limit()
-    } else {
-        crate::federation::limits::note_video_limit()
-    };
-    if bytes.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(AppError::public_json("Empty file")),
-        ));
-    }
-    if bytes.len() > max {
-        return Err((
-            StatusCode::PAYLOAD_TOO_LARGE,
-            Json(json!({
-                "error": format!("File too large (max {} bytes for {})", max, attachment_type),
-                "max_bytes": max,
-            })),
-        ));
-    }
-
-    let media_id = uuid::Uuid::new_v4();
-    let stored_name = format!("{}.{}", media_id, kind.extension);
-    let dir = federation_media_dir(user_id);
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| {
-        tracing::error!("Failed to create media dir: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(AppError::public_json("Failed to store media")),
-        )
-    })?;
-
-    let path = dir.join(&stored_name);
-    tokio::fs::write(&path, bytes).await.map_err(|e| {
-        tracing::error!("Failed to write media file: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(AppError::public_json("Failed to store media")),
-        )
-    })?;
-
-    let base_url = get_base_url().await;
-    let url = format!(
-        "{}/media/federation/{}/{}",
-        base_url.trim_end_matches('/'),
-        user_id,
-        stored_name
-    );
-
-    let safe_name = Path::new(filename)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("upload")
-        .chars()
-        .take(200)
-        .collect::<String>();
-
-    Ok(MediaUploadResponse {
-        url,
-        media_type: mime,
-        name: safe_name,
-        size: bytes.len() as u64,
-        attachment_type: attachment_type.to_string(),
-    })
-}
+use std::path::PathBuf;
 
 pub fn federation_media_root() -> PathBuf {
     crate::services::data_paths::paths()
         .root
         .join("federation_media")
-}
-
-fn federation_media_dir(user_id: i32) -> PathBuf {
-    federation_media_root().join(user_id.to_string())
 }
 
 struct StoredMediaKind {
@@ -390,16 +291,10 @@ mod tests {
     #[test]
     fn stored_media_uses_mime_extension_not_filename() {
         let src = include_str!("media.rs");
-        let store = src
-            .split("pub async fn store_federation_media")
-            .nth(1)
-            .and_then(|rest| rest.split("pub fn federation_media_root").next())
-            .expect("store_federation_media");
-        assert!(store.contains("kind.extension"));
-        assert!(!store.contains("unwrap_or(\"bin\")"));
-        assert!(!store.contains(".extension()"));
+        assert!(!src.contains(concat!("store_federation", "_media")));
         assert_eq!(extension_for_mime("image/jpeg"), Some("jpg"));
         assert_eq!(classify_media_mime("image/jpeg"), Some("Image"));
         assert!(stored_media_kind("application/pdf").is_none());
+        assert!(!src.contains("unwrap_or(\"bin\")"));
     }
 }

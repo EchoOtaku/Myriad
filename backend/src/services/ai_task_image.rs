@@ -204,7 +204,7 @@ mod tests {
         let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
         bytes.extend_from_slice(uuid::Uuid::new_v4().as_bytes());
         let stored = service
-            .store_bytes_with_status(&bytes, "image/png")
+            .store_cache_bytes(&bytes, "image/png")
             .await
             .unwrap();
         let input = json!({"referenceImages": [stored.url]});

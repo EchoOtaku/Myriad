@@ -232,9 +232,8 @@ impl ImageCacheService {
         Ok(cached_url)
     }
 
-    /// Content-addressed write with creation status for transactional callers
-    /// that need to compensate a later database failure.
-    pub async fn store_bytes_with_status(
+    /// Cache-only content-addressed write. Persistent producers must not use this.
+    pub async fn store_cache_bytes(
         &self,
         bytes: &[u8],
         media_type: &str,

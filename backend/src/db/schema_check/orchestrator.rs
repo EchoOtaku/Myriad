@@ -256,9 +256,7 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
                 "idx_channels_active_relationship" => {
                     ensure_channels_active_relationship_unique(db).await
                 }
-                "idx_platform_metadata_user_platform" => {
-                    ensure_platform_metadata_unique(db).await
-                }
+                "idx_platform_metadata_user_platform" => ensure_platform_metadata_unique(db).await,
                 _ => db.execute_unprepared(ddl).await.map(|_| ()),
             };
             result.map_err(|e| DbErr::Custom(format!("schema repair DDL failed: {ddl}: {e}")))?;
@@ -288,7 +286,6 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     ensure_phantasi_note_authors_table(db).await?;
     ensure_phantasi_source_applications_table(db).await?;
     ensure_media_assets_table(db).await?;
-    crate::services::media_catalog::backfill_federation(db).await?;
     ensure_phantasi_note_source_unique(db).await?;
     ensure_rsshub_global_url_unique(db).await?;
     ensure_phantasi_application_pending_unique(db).await?;

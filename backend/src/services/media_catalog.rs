@@ -1,41 +1,14 @@
-//! 上传/生成媒体目录。`cache_image` 拉来的外链缓存不进这里。
+//! 媒体目录查询。常规写入走 `services::media`，这里不再登记新文件。
 
-use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    QueryFilter, QueryOrder, Set,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
 };
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
 
 use crate::federation::content::federation_media_root;
 use crate::models::entities::media_assets;
 use crate::services::image_cache::ImageCacheService;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MediaKind {
-    Upload,
-    Generated,
-}
-
-impl MediaKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Upload => "upload",
-            Self::Generated => "generated",
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RegisterMedia {
-    pub kind: MediaKind,
-    pub url: String,
-    pub mime: String,
-    pub name: String,
-    pub size: i64,
-}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MediaAssetView {
@@ -79,76 +52,6 @@ fn catalog_path(path: &str) -> Option<String> {
 #[cfg(test)]
 pub fn catalogs_cache_image() -> bool {
     false
-}
-
-pub fn should_register_store_bytes(created: bool) -> bool {
-    created
-}
-
-#[allow(dead_code)]
-pub async fn register_if_created(
-    db: &DatabaseConnection,
-    kind: MediaKind,
-    url: impl Into<String>,
-    mime: impl Into<String>,
-    name: impl Into<String>,
-    size: i64,
-    created: bool,
-) {
-    if !should_register_store_bytes(created) {
-        return;
-    }
-    let _ = register(
-        db,
-        RegisterMedia {
-            kind,
-            url: url.into(),
-            mime: mime.into(),
-            name: name.into(),
-            size,
-        },
-    )
-    .await;
-}
-
-pub async fn register(
-    db: &DatabaseConnection,
-    input: RegisterMedia,
-) -> Result<media_assets::Model, DbErr> {
-    let url = canonical_media_url(&input.url)
-        .ok_or_else(|| DbErr::Custom("media url is not a catalog path".into()))?;
-    if let Some(existing) = media_assets::Entity::find()
-        .filter(media_assets::Column::Url.eq(&url))
-        .one(db)
-        .await?
-    {
-        return Ok(existing);
-    }
-    let now = Utc::now().fixed_offset();
-    let row = media_assets::ActiveModel {
-        kind: Set(input.kind.as_str().to_string()),
-        url: Set(url),
-        mime: Set(input.mime),
-        name: Set(input.name),
-        size: Set(input.size),
-        created_at: Set(now),
-        ..Default::default()
-    };
-    match row.insert(db).await {
-        Ok(model) => Ok(model),
-        Err(err) if is_unique_violation(&err) => media_assets::Entity::find()
-            .filter(
-                media_assets::Column::Url.eq(canonical_media_url(&input.url).unwrap_or_default()),
-            )
-            .one(db)
-            .await?
-            .ok_or(err),
-        Err(err) => Err(err),
-    }
-}
-
-fn is_unique_violation(err: &DbErr) -> bool {
-    err.to_string().contains("duplicate key") || err.to_string().contains("UNIQUE")
 }
 
 pub async fn list_assets(db: &DatabaseConnection) -> Result<Vec<MediaAssetView>, DbErr> {
@@ -247,106 +150,6 @@ fn federation_disk_path(url: &str) -> Option<std::path::PathBuf> {
         return None;
     }
     Some(federation_media_root().join(user).join(file))
-}
-
-pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
-    let root = federation_media_root();
-    let mut users = match tokio::fs::read_dir(&root).await {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(DbErr::Custom(format!(
-                "cannot read federation media root {}: {error}",
-                root.display()
-            )));
-        }
-    };
-    while let Some(user_ent) = users
-        .next_entry()
-        .await
-        .map_err(|error| DbErr::Custom(format!("cannot iterate federation media root: {error}")))?
-    {
-        if !user_ent
-            .file_type()
-            .await
-            .map(|t| t.is_dir())
-            .unwrap_or(false)
-        {
-            continue;
-        }
-        let user = user_ent.file_name();
-        let user = user.to_string_lossy();
-        if !user.chars().all(|c| c.is_ascii_digit()) {
-            continue;
-        }
-        let mut files = tokio::fs::read_dir(user_ent.path())
-            .await
-            .map_err(|error| {
-                DbErr::Custom(format!(
-                    "cannot read federation media dir {}: {error}",
-                    user_ent.path().display()
-                ))
-            })?;
-        while let Some(file_ent) = files.next_entry().await.map_err(|error| {
-            DbErr::Custom(format!(
-                "cannot iterate federation media dir {}: {error}",
-                user
-            ))
-        })? {
-            if !file_ent
-                .file_type()
-                .await
-                .map(|t| t.is_file())
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            let name = file_ent.file_name();
-            let name = name.to_string_lossy();
-            if name.contains('/') || name.contains("..") {
-                continue;
-            }
-            let url = format!("/media/federation/{user}/{name}");
-            let meta = file_ent.metadata().await.map_err(|error| {
-                DbErr::Custom(format!(
-                    "cannot stat {}: {error}",
-                    file_ent.path().display()
-                ))
-            })?;
-            register(
-                db,
-                RegisterMedia {
-                    kind: MediaKind::Upload,
-                    url,
-                    mime: mime_from_name(&name),
-                    name: name.to_string(),
-                    size: meta.len() as i64,
-                },
-            )
-            .await?;
-        }
-    }
-    Ok(())
-}
-
-fn mime_from_name(name: &str) -> String {
-    match Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "mp4" => "video/mp4",
-        "webm" => "video/webm",
-        "mov" => "video/quicktime",
-        other => return format!("application/{other}"),
-    }
-    .to_string()
 }
 
 fn like_contains_pattern(url: &str) -> String {
@@ -494,31 +297,17 @@ mod tests {
     }
 
     #[test]
-    fn store_bytes_only_registers_new_writes() {
-        assert!(super::should_register_store_bytes(true));
-        assert!(!super::should_register_store_bytes(false));
-    }
-
-    #[test]
-    fn list_does_not_scan_disk_and_batches_references() {
+    fn list_does_not_scan_disk_and_does_not_register() {
         let src = include_str!("media_catalog.rs");
         let list = src
             .split("pub async fn list_assets")
             .nth(1)
             .and_then(|rest| rest.split("pub async fn get_asset").next())
             .expect("list_assets");
-        assert!(
-            !list.contains("backfill_federation"),
-            "list must not mix catalog reads with disk backfill"
-        );
+        assert!(!list.contains("read_dir"));
         assert!(list.contains("catalog_labels_for_assets"));
-        let backfill = src
-            .split("pub async fn backfill_federation")
-            .nth(1)
-            .and_then(|rest| rest.split("fn mime_from_name").next())
-            .expect("backfill");
-        assert!(!backfill.contains("let _ = register"));
-        assert!(backfill.contains("ErrorKind::NotFound"));
+        assert!(!src.contains(concat!("backfill", "_federation")));
+        assert!(!src.contains(concat!("pub async fn ", "register(")));
     }
 
     #[test]

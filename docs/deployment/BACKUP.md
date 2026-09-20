@@ -4,7 +4,9 @@
 小组件字体在 `backend_data`（容器内 `/app/data`）。密钥在部署目录的 `.env`。
 这三样都要带上，才能从空机器恢复。
 
-`cache` / `backend_cache` 可再生，不要当灾备。Updater 对 `./pgdata` 的文件级
+`cache` / `backend_cache` 可再生，不要当灾备。媒体资产在 `backend_data/media`，
+会进 `backend_data.tar.gz`。旧 `/media/federation` 与 image-cache 地址靠别名读，
+不依赖缓存卷。细节见 [MEDIA.md](MEDIA.md)。Updater 对 `./pgdata` 的文件级
 快照只服务升级回滚，**不是**整站备份。
 
 ## 备份
@@ -68,4 +70,5 @@ bash scripts/extra/backup.sh restore --from /var/backups/myriad-20260101
 - 只备份 SQL、不备份 `backend_data`：Tapp 与形象文件会丢。
 - 把 Updater 的 `./pgdata` 快照当整站备份。
 - 把 `backend_cache` 打进灾备包。
+- 用 `rm -rf` 清 `federation_media` 或 image-cache 来「完成迁移」。
 - 在聊天、工单或日志里粘贴 `.env`。

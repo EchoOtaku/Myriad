@@ -575,6 +575,7 @@ mod tests {
     fn migration_is_not_hooked_from_schema_startup() {
         let orch = include_str!("../../db/schema_check/orchestrator.rs");
         assert!(!orch.contains("migrate_catalog_batch"));
+        assert!(!orch.contains(concat!("backfill", "_federation")));
         let src = include_str!("migration.rs");
         assert!(!src.contains(concat!("read_dir", "(")));
         assert!(!src.contains(concat!("Walk", "Dir")));
