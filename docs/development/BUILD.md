@@ -155,6 +155,31 @@ pnpm run preview
 # Output will be in: frontend/dist/
 ```
 
+### Frontend performance checks
+
+Run from `frontend/` after building:
+
+```bash
+pnpm test:home-budget
+pnpm test:production-budget
+```
+
+`test:home-budget` walks the built document's static JS/CSS imports, including
+Home, and compares their gzip sizes with `scripts/home-budget.baseline.json`.
+It also rejects eager Agora or Config loading. This is a build graph budget;
+it does not count every module loaded by startup effects.
+
+`test:production-budget` runs the built SPA in Chromium with fixture API replies.
+Its `production-performance.json` attachment records JS gzip bytes actually
+requested during startup and route cycling, heap use after garbage collection,
+and browser timing samples. The empty-home case also waits for background TAPP
+startup and route warming, then rejects unnecessary sandbox or Agent API loads.
+These local fixture results do not establish production field Web Vitals.
+
+Use `MYRIAD_BROWSER_CHANNEL=chrome` to run against installed Chrome when needed.
+Run production checks serially and keep `dist/` unchanged until they finish;
+they share a server port and output directory.
+
 ### Build Configuration
 
 Edit `vite.config.mjs` to customize:
