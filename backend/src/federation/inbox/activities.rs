@@ -1120,7 +1120,13 @@ async fn get_username_by_id(
             )
         })?;
 
-    Ok(row.try_get("", "username").unwrap_or_default())
+    let username: String = row.try_get("", "username").map_err(db_err)?;
+    if username.is_empty() {
+        return Err(db_err(sea_orm::DbErr::Custom(
+            "user username is empty".into(),
+        )));
+    }
+    Ok(username)
 }
 
 #[cfg(test)]

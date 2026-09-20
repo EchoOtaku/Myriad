@@ -126,12 +126,22 @@ pub async fn lookup_openid(
             ],
         ))
         .await?;
-    Ok(match row {
-        Some(row) => PairingLookup::Paired {
-            user_id: row.try_get::<i32>("", "user_id").unwrap_or(0),
-        },
-        None => PairingLookup::Unpaired,
-    })
+    match row {
+        Some(row) => Ok(PairingLookup::Paired {
+            user_id: pairing_user_id(&row)?,
+        }),
+        None => Ok(PairingLookup::Unpaired),
+    }
+}
+
+fn pairing_user_id(row: &sea_orm::QueryResult) -> Result<i32, DbErr> {
+    let user_id = row
+        .try_get::<i32>("", "user_id")
+        .map_err(|error| DbErr::Custom(error.to_string()))?;
+    if user_id <= 0 {
+        return Err(DbErr::Custom("pairing user_id is invalid".into()));
+    }
+    Ok(user_id)
 }
 
 /// First matching key wins. Empty keys are skipped.
@@ -142,10 +152,10 @@ pub async fn lookup_any(
 ) -> Result<PairingLookup, DbErr> {
     for key in keys {
         match lookup_openid(db, channel, key).await? {
-            PairingLookup::Paired { user_id } if user_id != 0 => {
+            PairingLookup::Paired { user_id } => {
                 return Ok(PairingLookup::Paired { user_id });
             }
-            _ => {}
+            PairingLookup::Unpaired => {}
         }
     }
     Ok(PairingLookup::Unpaired)
@@ -488,7 +498,7 @@ async fn bind_openids(
             ))
             .await?;
         if let Some(row) = existing {
-            let bound_user: i32 = row.try_get("", "user_id").unwrap_or(0);
+            let bound_user = pairing_user_id(&row)?;
             if bound_user != user_id {
                 txn.commit().await?;
                 return Ok(PairingBindResult::OpenidTaken);
@@ -551,6 +561,25 @@ async fn bind_openids(
 #[cfg(test)]
 mod tests {
     use super::is_pairing_provider;
+
+    #[test]
+    fn pairing_lookup_does_not_treat_decode_failure_as_unpaired() {
+        let src = include_str!("channel_pairing.rs");
+        let lookup = src
+            .split("pub async fn lookup_openid")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn lookup_any").next())
+            .expect("lookup_openid");
+        assert!(lookup.contains("pairing_user_id"));
+        assert!(!lookup.contains("unwrap_or(0)"));
+        let bind = src
+            .split("let bound_user")
+            .nth(1)
+            .and_then(|rest| rest.split("txn.execute_raw").next())
+            .expect("bound_user");
+        assert!(bind.contains("pairing_user_id"));
+        assert!(!bind.contains("unwrap_or(0)"));
+    }
 
     #[test]
     fn pairing_providers_are_not_oauth_slugs() {

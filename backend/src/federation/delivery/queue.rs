@@ -32,7 +32,14 @@ pub(crate) async fn get_username_by_id(
         })?
         .ok_or_else(|| "User not found".to_string())?;
 
-    Ok(row.try_get("", "username").unwrap_or_default())
+    let username: String = row.try_get("", "username").map_err(|error| {
+        tracing::error!(%error, "failed to decode delivery username");
+        "Database error".to_string()
+    })?;
+    if username.is_empty() {
+        return Err("User username is empty".into());
+    }
+    Ok(username)
 }
 
 /// Immediate enqueue result (send path observability — before HTTP delivery).
@@ -681,7 +688,8 @@ pub async fn process_delivery_queue_detailed(
             break;
         };
 
-        let queue_id: i32 = row.try_get("", "id").unwrap_or(0);
+        let queue_id = crate::federation::types::row_positive_id(&row, "id")
+            .map_err(|e| format!("Queue claim decode failed: {e}"))?;
         let target_inbox: String = row.try_get("", "target_inbox").unwrap_or_default();
         let target_domain: String = row.try_get("", "target_domain").unwrap_or_default();
         let attempts: i32 = row.try_get("", "attempts").unwrap_or(0);
@@ -692,7 +700,8 @@ pub async fn process_delivery_queue_detailed(
         let _ap_activity_id: String = row.try_get("", "ap_activity_id").unwrap_or_default();
         let activity_type: String = row.try_get("", "activity_type").unwrap_or_default();
         let object_json: serde_json::Value = row.try_get("", "object_json").unwrap_or_default();
-        let user_id: i32 = row.try_get("", "user_id").unwrap_or(0);
+        let user_id = crate::federation::types::row_positive_id(&row, "user_id")
+            .map_err(|e| format!("Queue claim decode failed: {e}"))?;
         stats.claimed += 1;
         let _lease_heartbeat = spawn_delivery_lease_heartbeat(db.clone(), queue_id, lease_token);
 
@@ -726,36 +735,139 @@ pub async fn process_delivery_queue_detailed(
         }
 
         // 投递前：`enforce_outbound`（空域名 / `federation_instances.is_blocked`）
-        if let Err(reason) = crate::federation::trust::enforce_outbound(db, &target_domain).await {
-            let mark = db
-                .execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"UPDATE federation_delivery_queue
-                       SET status = 'dead', error_message = $1, last_attempt_at = NOW(),
-                           lease_token = NULL, lease_expires_at = NULL
-                       WHERE id = $2 AND status = 'delivering' AND lease_token = $3"#,
-                    [reason.clone().into(), queue_id.into(), lease_token.into()],
-                ))
-                .await
-                .map_err(|e| format!("Queue trust-policy update failed: {e}"))?;
-            if !lease_update_applied(mark.rows_affected(), &mut stats, queue_id, "dead") {
+        match crate::federation::trust::enforce_outbound(db, &target_domain).await {
+            Ok(()) => {}
+            Err(error) if error.is_unavailable() => {
+                let reason = error.as_str().to_string();
+                let backoff_secs = retry_backoff_secs(attempts.max(1));
+                let mark = db
+                    .execute_raw(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"UPDATE federation_delivery_queue
+                           SET status = 'pending', error_message = $1, last_attempt_at = NOW(),
+                               next_retry_at = NOW() + make_interval(secs => $2::double precision),
+                               lease_token = NULL, lease_expires_at = NULL
+                           WHERE id = $3 AND status = 'delivering' AND lease_token = $4"#,
+                        [
+                            reason.clone().into(),
+                            backoff_secs.into(),
+                            queue_id.into(),
+                            lease_token.into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(|e| format!("Queue trust-policy retry update failed: {e}"))?;
+                if !lease_update_applied(mark.rows_affected(), &mut stats, queue_id, "pending") {
+                    continue;
+                }
+                tracing::warn!(
+                    "⏸️ Delivery deferred; local trust policy unavailable: target={}, reason={}",
+                    target_inbox,
+                    reason
+                );
+                stats.retried += 1;
                 continue;
             }
-            tracing::warn!(
-                "🛑 Delivery blocked by trust policy: target={}, reason={}",
-                target_inbox,
-                reason
-            );
-            mark_delivery_dead(user_id, &activity_type, &target_domain, &reason).await;
-            stats.dead += 1;
-            continue;
+            Err(error) => {
+                let reason = error.as_str().to_string();
+                let mark = db
+                    .execute_raw(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"UPDATE federation_delivery_queue
+                           SET status = 'dead', error_message = $1, last_attempt_at = NOW(),
+                               lease_token = NULL, lease_expires_at = NULL
+                           WHERE id = $2 AND status = 'delivering' AND lease_token = $3"#,
+                        [reason.clone().into(), queue_id.into(), lease_token.into()],
+                    ))
+                    .await
+                    .map_err(|e| format!("Queue trust-policy update failed: {e}"))?;
+                if !lease_update_applied(mark.rows_affected(), &mut stats, queue_id, "dead") {
+                    continue;
+                }
+                tracing::warn!(
+                    "🛑 Delivery blocked by trust policy: target={}, reason={}",
+                    target_inbox,
+                    reason
+                );
+                mark_delivery_dead(user_id, &activity_type, &target_domain, &reason).await;
+                stats.dead += 1;
+                continue;
+            }
         }
 
         // object_json 已经是完整的 Activity JSON（含 @context/type/id/actor/object），直接发送
         let base_url = get_base_url().await;
-        let username = get_username_by_id(db, user_id).await.unwrap_or_default();
+        let username = match get_username_by_id(db, user_id).await {
+            Ok(username) => username,
+            Err(error) if error == "Database error" => {
+                let backoff_secs = retry_backoff_secs(attempts.max(1));
+                let mark = db
+                    .execute_raw(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"UPDATE federation_delivery_queue
+                           SET status = 'pending', error_message = $1, last_attempt_at = NOW(),
+                               next_retry_at = NOW() + make_interval(secs => $2::double precision),
+                               lease_token = NULL, lease_expires_at = NULL
+                           WHERE id = $3 AND status = 'delivering' AND lease_token = $4"#,
+                        [
+                            error.clone().into(),
+                            backoff_secs.into(),
+                            queue_id.into(),
+                            lease_token.into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(|e| format!("Queue username retry update failed: {e}"))?;
+                if !lease_update_applied(mark.rows_affected(), &mut stats, queue_id, "pending") {
+                    continue;
+                }
+                stats.retried += 1;
+                continue;
+            }
+            Err(error) => {
+                let mark = db
+                    .execute_raw(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"UPDATE federation_delivery_queue
+                           SET status = 'dead', error_message = $1, last_attempt_at = NOW(),
+                               lease_token = NULL, lease_expires_at = NULL
+                           WHERE id = $2 AND status = 'delivering' AND lease_token = $3"#,
+                        [error.clone().into(), queue_id.into(), lease_token.into()],
+                    ))
+                    .await
+                    .map_err(|e| format!("Queue username dead-letter update failed: {e}"))?;
+                if !lease_update_applied(mark.rows_affected(), &mut stats, queue_id, "dead") {
+                    continue;
+                }
+                mark_delivery_dead(user_id, &activity_type, &target_domain, &error).await;
+                stats.dead += 1;
+                continue;
+            }
+        };
 
-        let body_bytes = serde_json::to_vec(&object_json).unwrap_or_default();
+        let body_bytes = match serde_json::to_vec(&object_json) {
+            Ok(bytes) if !bytes.is_empty() => bytes,
+            Ok(_) | Err(_) => {
+                let reason = "activity JSON encode failed".to_string();
+                let mark = db
+                    .execute_raw(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"UPDATE federation_delivery_queue
+                           SET status = 'dead', error_message = $1, last_attempt_at = NOW(),
+                               lease_token = NULL, lease_expires_at = NULL
+                           WHERE id = $2 AND status = 'delivering' AND lease_token = $3"#,
+                        [reason.clone().into(), queue_id.into(), lease_token.into()],
+                    ))
+                    .await
+                    .map_err(|e| format!("Queue encode dead-letter update failed: {e}"))?;
+                if !lease_update_applied(mark.rows_affected(), &mut stats, queue_id, "dead") {
+                    continue;
+                }
+                mark_delivery_dead(user_id, &activity_type, &target_domain, &reason).await;
+                stats.dead += 1;
+                continue;
+            }
+        };
 
         // Move is signed as the **old** actor. Prefer activity.actor origin for
         // keyId so peers verifying against the old actor document succeed even

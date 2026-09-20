@@ -693,7 +693,8 @@ pub async fn pin_room_message(
         ));
     }
 
-    let updated = db
+    let txn = db.begin().await.map_err(db_err)?;
+    let updated = txn
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_room_messages
@@ -710,17 +711,15 @@ pub async fn pin_room_message(
                 Json(AppError::public_json("Message not found")),
             )
         })?;
+    let pinned_message_id: String = updated.try_get("", "message_id").map_err(db_err)?;
+    if pinned_message_id.is_empty() {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AppError::public_json("Pinned message id is empty")),
+        ));
+    }
 
-    let pinned_message_id: String = updated.try_get("", "message_id").unwrap_or_default();
-    let ws_msg = json!({
-        "type": "room_message_pinned",
-        "room_id": room_id,
-        "message_id": pinned_message_id,
-        "is_pinned": req.pinned
-    });
-    crate::federation::ws_gateway::broadcast_to_room(room_id, &ws_msg).await;
-
-    // 向远程成员投递 RoomPin
     let activity_id = generate_activity_id(&base_url);
     let pin_activity = json!({
         "@context": build_context(),
@@ -734,8 +733,8 @@ pub async fn pin_room_message(
             "pinned": req.pinned
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         room_id,
         &activity_id,
@@ -744,9 +743,19 @@ pub async fn pin_room_message(
         "RoomPin",
     )
     .await
-    {
-        tracing::warn!("[Room] pin fanout failed for {}: {}", room_id, e);
-    }
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "room_message_pinned",
+            "room_id": room_id,
+            "message_id": pinned_message_id,
+            "is_pinned": req.pinned
+        }),
+    )
+    .await;
 
     tracing::info!(
         "[Room] {} set pinned={} for message {} in room {}",

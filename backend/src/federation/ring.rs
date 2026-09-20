@@ -4,7 +4,7 @@
 //! 基于 Gossip 协议进行对等同步，每个节点维护 known_peers 列表
 
 use axum::{Json, http::StatusCode};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -379,53 +379,48 @@ pub async fn leave_ring(
         }
     });
 
-    // 向每个 peer 投递离开通知
     let local_user_id = resolve_user_id(db, username).await?;
     ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_leave").await;
+    let mut leave_deliveries = Vec::new();
     for peer in &peers {
-        // 为每个 peer 生成独立的 activity_id，避免 DB 冲突
         let activity_id = generate_activity_id(&base_url);
         let mut leave_activity = leave_base.clone();
         leave_activity["id"] = json!(&activity_id);
-        if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, peer).await {
-            if !remote.inbox_url.is_empty() {
-                let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
-                let act_row = db
-                    .query_one_raw(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        r#"INSERT INTO federation_activities
-                           (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                           VALUES ($1, $2, 'RingLeave', 'Ring', $3, true, NOW())
-                           RETURNING id"#,
-                        [activity_id.clone().into(), local_user_id.into(), leave_activity.clone().into()],
-                    ))
-                    .await
-                    .map_err(db_err)?;
-
-                if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-                    let _ = db
-                        .execute_raw(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"INSERT INTO federation_delivery_queue
-                               (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                            [act_id.into(), remote.inbox_url.into(), domain.into()],
-                        ))
-                        .await;
-                }
+        match crate::federation::actor::fetch_remote_actor(db, peer).await {
+            Ok(remote) if !remote.inbox_url.is_empty() => {
+                leave_deliveries.push((activity_id, leave_activity, remote.inbox_url));
+            }
+            Ok(_) => {
+                tracing::warn!(peer = %peer, "[Ring] leave skip: empty inbox");
+            }
+            Err(error) => {
+                tracing::warn!(peer = %peer, %error, "[Ring] leave skip: unresolved peer");
             }
         }
     }
 
-    // 删除本地记录
-    db.execute_raw(Statement::from_sql_and_values(
+    let txn = db.begin().await.map_err(db_err)?;
+    for (activity_id, leave_activity, inbox) in &leave_deliveries {
+        insert_and_enqueue_delivery(
+            &txn,
+            local_user_id,
+            activity_id,
+            "RingLeave",
+            Some("Ring"),
+            leave_activity.clone(),
+            inbox,
+        )
+        .await
+        .map_err(db_err)?;
+    }
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "DELETE FROM federation_ring_memberships WHERE ring_id = $1",
         [ring_id.into()],
     ))
     .await
     .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
 
     tracing::info!("[Ring] Left ring {}", ring_id);
 
@@ -534,23 +529,16 @@ pub async fn add_peer(
         }
     }
 
-    // 原子追加到 known_peers，避免并发读-改-写竞争
-    // known_peers is json (not jsonb); cast for @> / || containment ops
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"UPDATE federation_ring_memberships
-           SET known_peers = CASE
-             WHEN NOT (COALESCE(known_peers, '[]'::json)::jsonb @> $2::jsonb)
-             THEN (COALESCE(known_peers, '[]'::json)::jsonb || $2::jsonb)
-             ELSE COALESCE(known_peers, '[]'::json)::jsonb
-           END
-           WHERE ring_id = $1"#,
-        [ring_id.into(), json!([&peer_url]).into()],
-    ))
-    .await
-    .map_err(db_err)?;
+    if remote.inbox_url.is_empty() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Cannot add peer: remote inbox is missing",
+                "code": "remote_inbox_missing",
+            })),
+        ));
+    }
 
-    // 发送 RingJoin Activity 通知新 peer
     let activity_id = generate_activity_id(&base_url);
     let join_activity = json!({
         "@context": build_context(),
@@ -564,36 +552,36 @@ pub async fn add_peer(
             "ringType": ring_row.try_get::<String>("", "ring_type").unwrap_or_default(),
         }
     });
+    let local_user_id = resolve_user_id(db, username).await?;
+    ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_add_peer").await;
 
-    if !remote.inbox_url.is_empty() {
-        let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
-        let local_user_id = resolve_user_id(db, username).await?;
-        ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_add_peer").await;
-        let act_row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_activities
-                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                   VALUES ($1, $2, 'RingJoin', 'Ring', $3, true, NOW())
-                   RETURNING id"#,
-                [activity_id.clone().into(), local_user_id.into(), join_activity.clone().into()],
-            ))
-            .await
-            .map_err(db_err)?;
-
-        if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-            let _ = db
-                .execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_delivery_queue
-                       (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                    [act_id.into(), remote.inbox_url.into(), domain.into()],
-                ))
-                .await;
-        }
-    }
+    let txn = db.begin().await.map_err(db_err)?;
+    // 原子追加到 known_peers，避免并发读-改-写竞争
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"UPDATE federation_ring_memberships
+           SET known_peers = CASE
+             WHEN NOT (COALESCE(known_peers, '[]'::json)::jsonb @> $2::jsonb)
+             THEN (COALESCE(known_peers, '[]'::json)::jsonb || $2::jsonb)
+             ELSE COALESCE(known_peers, '[]'::json)::jsonb
+           END
+           WHERE ring_id = $1"#,
+        [ring_id.into(), json!([&peer_url]).into()],
+    ))
+    .await
+    .map_err(db_err)?;
+    insert_and_enqueue_delivery(
+        &txn,
+        local_user_id,
+        &activity_id,
+        "RingJoin",
+        Some("Ring"),
+        join_activity,
+        &remote.inbox_url,
+    )
+    .await
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
 
     tracing::info!("[Ring] Added peer {} to ring {}", peer_url, ring_id);
 
@@ -608,8 +596,23 @@ pub async fn remove_peer(
     db: &DatabaseConnection,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
-    // 使用子查询原子地从 JSON 数组中移除指定 peer（cast to jsonb for ops）
-    let result = db
+    let local_actor = actor_url(&base_url, username);
+    let local_user_id = resolve_user_id(db, username).await?;
+    ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_remove_peer").await;
+    let notify = match crate::federation::actor::fetch_remote_actor(db, peer_url).await {
+        Ok(remote) if !remote.inbox_url.is_empty() => Some(remote.inbox_url),
+        Ok(_) => {
+            tracing::warn!(peer = %peer_url, "[Ring] remove skip notify: empty inbox");
+            None
+        }
+        Err(error) => {
+            tracing::warn!(peer = %peer_url, %error, "[Ring] remove skip notify: unresolved peer");
+            None
+        }
+    };
+
+    let txn = db.begin().await.map_err(db_err)?;
+    let result = txn
         .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_ring_memberships
@@ -623,63 +626,39 @@ pub async fn remove_peer(
         ))
         .await
         .map_err(db_err)?;
-
     if result.rows_affected() == 0 {
+        txn.rollback().await.ok();
         return Err((
             StatusCode::NOT_FOUND,
             Json(AppError::public_json("Ring not found")),
         ));
     }
-
-    // 向被移除 peer 投递 RingLeave，让对方从 known_peers 去掉本节点
-    let local_actor = actor_url(&base_url, username);
-    let local_user_id = resolve_user_id(db, username).await?;
-    ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_remove_peer").await;
-    if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, peer_url).await {
-        if !remote.inbox_url.is_empty() {
-            let activity_id = generate_activity_id(&base_url);
-            let leave_activity = json!({
-                "@context": build_context(),
-                "type": "myriad:RingLeave",
-                "id": &activity_id,
-                "actor": &local_actor,
-                "object": {
-                    "type": "myriad:Ring",
-                    "id": ring_id,
-                    "removedPeer": peer_url
-                }
-            });
-            let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
-            if let Ok(Some(act_row)) = db
-                .query_one_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_activities
-                       (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                       VALUES ($1, $2, 'RingLeave', 'Ring', $3, true, NOW())
-                       RETURNING id"#,
-                    [
-                        activity_id.into(),
-                        local_user_id.into(),
-                        leave_activity.into(),
-                    ],
-                ))
-                .await
-            {
-                if let Ok(act_id) = act_row.try_get::<i32>("", "id") {
-                    let _ = db
-                        .execute_raw(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"INSERT INTO federation_delivery_queue
-                               (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                            [act_id.into(), remote.inbox_url.into(), domain.into()],
-                        ))
-                        .await;
-                }
+    if let Some(inbox) = notify {
+        let activity_id = generate_activity_id(&base_url);
+        let leave_activity = json!({
+            "@context": build_context(),
+            "type": "myriad:RingLeave",
+            "id": &activity_id,
+            "actor": &local_actor,
+            "object": {
+                "type": "myriad:Ring",
+                "id": ring_id,
+                "removedPeer": peer_url
             }
-        }
+        });
+        insert_and_enqueue_delivery(
+            &txn,
+            local_user_id,
+            &activity_id,
+            "RingLeave",
+            Some("Ring"),
+            leave_activity,
+            &inbox,
+        )
+        .await
+        .map_err(db_err)?;
     }
+    txn.commit().await.map_err(db_err)?;
 
     tracing::info!("[Ring] Removed peer {} from ring {}", peer_url, ring_id);
 
@@ -816,34 +795,22 @@ pub async fn trigger_sync(
         });
 
         if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, &peer_url).await {
-            if !remote.inbox_url.is_empty() {
-                let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
-                let act_row = db
-                    .query_one_raw(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        r#"INSERT INTO federation_activities
-                           (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                           VALUES ($1, $2, 'RingSync', 'Ring', $3, true, NOW())
-                           RETURNING id"#,
-                        [activity_id.clone().into(), local_user_id.into(), sync_activity.clone().into()],
-                    ))
-                    .await
-                    .map_err(db_err)?;
-
-                if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-                    let _ = db
-                        .execute_raw(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"INSERT INTO federation_delivery_queue
-                               (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                            [act_id.into(), remote.inbox_url.into(), domain.into()],
-                        ))
-                        .await;
-                }
-                synced += 1;
+            if remote.inbox_url.is_empty() {
+                tracing::warn!("[Ring] Skipping empty inbox for {} during sync", peer_url);
+                continue;
             }
+            insert_and_enqueue_delivery(
+                db,
+                local_user_id,
+                &activity_id,
+                "RingSync",
+                Some("Ring"),
+                sync_activity,
+                &remote.inbox_url,
+            )
+            .await
+            .map_err(db_err)?;
+            synced += 1;
         }
     }
 
@@ -1625,7 +1592,6 @@ pub async fn handle_ring_sync(
                         let inbox_url: String =
                             remote_row.try_get("", "inbox_url").unwrap_or_default();
                         if !inbox_url.is_empty() {
-                            let domain = extract_domain(&inbox_url).unwrap_or_default();
                             let act_row = db
                                 .query_one_raw(Statement::from_sql_and_values(
                                     DatabaseBackend::Postgres,
@@ -1638,20 +1604,10 @@ pub async fn handle_ring_sync(
                                 .await
                                 .map_err(|e| e.to_string())?;
 
-                            if let Some(r) = act_row {
-                                let act_id =
-                                    r.try_get::<i32>("", "id").map_err(|e| e.to_string())?;
-                                db.execute_raw(Statement::from_sql_and_values(
-                                    DatabaseBackend::Postgres,
-                                    r#"INSERT INTO federation_delivery_queue
-                                       (activity_id, target_inbox, target_domain, status, created_at)
-                                       VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                                    [act_id.into(), inbox_url.into(), domain.into()],
-                                ))
+                            let act_id = returning_id(act_row).map_err(|e| e.to_string())?;
+                            enqueue_delivery(db, act_id, &inbox_url, "pending")
                                 .await
                                 .map_err(|e| e.to_string())?;
-                            }
                         }
                     }
                 }
@@ -1820,6 +1776,28 @@ mod tests {
         let c: CreateRingRequest =
             serde_json::from_str(r#"{"name":"r","ring_type":"tapp-store"}"#).unwrap();
         assert!(c.category.is_none());
+    }
+
+    #[test]
+    fn ring_outbound_does_not_skip_enqueue_on_id_decode() {
+        let src = include_str!("ring.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("insert_and_enqueue_delivery"));
+        assert!(!production.contains("if let Some(act_id)"));
+        let leave = production
+            .split("pub async fn leave_ring")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_peers").next())
+            .expect("leave_ring");
+        assert!(leave.contains("db.begin()"));
+        assert!(leave.contains("insert_and_enqueue_delivery"));
+        let add = production
+            .split("pub async fn add_peer")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn remove_peer").next())
+            .expect("add_peer");
+        assert!(add.contains("remote_inbox_missing"));
+        assert!(add.contains("insert_and_enqueue_delivery"));
     }
 }
 use myriad_error::AppError;

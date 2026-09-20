@@ -128,6 +128,16 @@ pub async fn invite_member(
                 )
             })?;
 
+        if remote.inbox_url.is_empty() {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "Cannot invite: remote inbox is missing",
+                    "code": "remote_inbox_missing",
+                })),
+            ));
+        }
+
         // Remote invitee stays *pending* until they accept (no RoomJoin fan-out yet).
         let txn = db.begin().await.map_err(db_err)?;
         assert_room_has_capacity(&txn, room_id).await?;
@@ -147,9 +157,9 @@ pub async fn invite_member(
             ))
             .await
             .map_err(db_err)?;
-        txn.commit().await.map_err(db_err)?;
 
         if insert_result.rows_affected() == 0 {
+            txn.rollback().await.ok();
             return Err((
                 StatusCode::CONFLICT,
                 Json(AppError::public_json("Actor is already a room member")),
@@ -158,7 +168,7 @@ pub async fn invite_member(
 
         // Snapshot *active* members so the invitee can seed federation_room_members
         // (especially the inviter/owner). Without this, remote rejects RoomMessage.
-        let member_rows = db
+        let member_rows = txn
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT actor_url, role FROM federation_room_members
@@ -179,7 +189,7 @@ pub async fn invite_member(
 
         // Re-read room name immediately before building the Activity so invites
         // always carry a non-empty display name (never blank / null).
-        let fresh_name_row = db
+        let fresh_name_row = txn
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT name FROM federation_rooms WHERE room_id = $1",
@@ -194,6 +204,7 @@ pub async fn invite_member(
         let invite_room_name = match invite_room_name {
             Some(n) => n,
             None => {
+                txn.rollback().await.ok();
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(AppError::public_json(
@@ -225,34 +236,18 @@ pub async fn invite_member(
             }
         });
 
-        let inbox = &remote.inbox_url;
-        if !inbox.is_empty() {
-            let domain = extract_domain(inbox).unwrap_or_default();
-            let act_row = db
-                .query_one_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_activities
-                       (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                       VALUES ($1, $2, 'RoomInvite', 'Room', $3, true, NOW())
-                       RETURNING id"#,
-                    [activity_id.into(), user_id.into(), invite_activity.into()],
-                ))
-                .await
-                .map_err(db_err)?;
-
-            if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-                let _ = db
-                    .execute_raw(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        r#"INSERT INTO federation_delivery_queue
-                           (activity_id, target_inbox, target_domain, status, created_at)
-                           VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                        [act_id.into(), inbox.into(), domain.into()],
-                    ))
-                    .await;
-            }
-        }
+        insert_and_enqueue_delivery(
+            &txn,
+            user_id,
+            &activity_id,
+            "RoomInvite",
+            Some("Room"),
+            invite_activity,
+            &remote.inbox_url,
+        )
+        .await
+        .map_err(db_err)?;
+        txn.commit().await.map_err(db_err)?;
 
         // Do NOT fan-out RoomJoin until the invitee accepts (pending handshake).
         // Local WS: show pending invite on inviter's open clients.
@@ -295,16 +290,17 @@ pub async fn invite_member(
                 [raw_target_actor.into()],
             ))
             .await
-            .map_err(db_err)?;
-
-        let target_user_id: Option<i32> = local_row.and_then(|r| r.try_get("", "id").ok());
-        let target_user_id = target_user_id.ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(AppError::public_json(
-                    "Local user not found. Use Actor URL or @user@domain for remote users",
-                )),
-            )
+            .map_err(db_err)?
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(AppError::public_json(
+                        "Local user not found. Use Actor URL or @user@domain for remote users",
+                    )),
+                )
+            })?;
+        let target_user_id = row_positive_id(&local_row, "id").map_err(|error| {
+            db_err(sea_orm::DbErr::Custom(error))
         })?;
 
         // Same-instance invite: auto-join as *active* (no accept hop).
@@ -327,16 +323,14 @@ pub async fn invite_member(
             ))
             .await
             .map_err(db_err)?;
-        txn.commit().await.map_err(db_err)?;
-
         if insert_result.rows_affected() == 0 {
+            txn.rollback().await.ok();
             return Err((
                 StatusCode::CONFLICT,
                 Json(AppError::public_json("Actor is already a room member")),
             ));
         }
 
-        // 向远程成员 fan-out RoomJoin。
         let join_activity_id = generate_activity_id(&base_url);
         let join_activity = json!({
             "@context": build_context(),
@@ -351,8 +345,8 @@ pub async fn invite_member(
                 "game": room_game,
             }
         });
-        if let Err(e) = fanout_to_remote_members(
-            db,
+        fanout_to_remote_members_required(
+            &txn,
             user_id,
             room_id,
             &join_activity_id,
@@ -361,13 +355,8 @@ pub async fn invite_member(
             "Room",
         )
         .await
-        {
-            tracing::warn!(
-                "[Room] local-invite RoomJoin fanout failed for {}: {}",
-                room_id,
-                e
-            );
-        }
+        .map_err(db_err)?;
+        txn.commit().await.map_err(db_err)?;
 
         crate::federation::ws_gateway::broadcast_to_room(
             room_id,
@@ -486,7 +475,7 @@ pub async fn get_public_room(
         owner_actor: row.try_get("", "owner_actor").unwrap_or_default(),
         home_server: row.try_get("", "home_server").unwrap_or_default(),
         invite_policy: row.try_get("", "invite_policy").unwrap_or_default(),
-        max_members: row.try_get::<i32>("", "max_members").unwrap_or(50),
+        max_members: row.try_get::<i32>("", "max_members").map_err(db_err)?,
         is_public: true,
         member_count: row.try_get::<i64>("", "member_count").unwrap_or(0),
         game: super::game::parse_room_game_config(
@@ -959,14 +948,21 @@ pub async fn join_room(
     }
 
     let txn = db.begin().await.map_err(db_err)?;
+    let (max_members, active) = lock_room_capacity(&txn, &room_id)
+        .await
+        .map_err(db_err)?;
     let already_active = matches!(
         get_membership(&txn, &room_id, &local_actor)
             .await
             .map_err(db_err)?,
         Some((_, ref status)) if status == "active"
     );
-    if !already_active {
-        assert_room_has_capacity(&txn, &room_id).await?;
+    if !already_active && room_is_full(active, max_members) {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Room is full"})),
+        ));
     }
     let insert_result = txn
         .execute_raw(Statement::from_sql_and_values(
@@ -987,16 +983,15 @@ pub async fn join_room(
         ))
         .await
         .map_err(db_err)?;
-    txn.commit().await.map_err(db_err)?;
-
     if insert_result.rows_affected() == 0 {
+        txn.rollback().await.ok();
         return Err((
             StatusCode::CONFLICT,
             Json(AppError::public_json("Could not join room")),
         ));
     }
 
-    let join_game = load_room_game_config(db, &room_id).await.ok().flatten();
+    let join_game = load_room_game_config(&txn, &room_id).await.ok().flatten();
     let join_activity_id = generate_activity_id(&base_url);
     let join_activity = json!({
         "@context": build_context(),
@@ -1011,8 +1006,8 @@ pub async fn join_room(
             "game": join_game,
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         &room_id,
         &join_activity_id,
@@ -1021,13 +1016,8 @@ pub async fn join_room(
         "Room",
     )
     .await
-    {
-        tracing::warn!(
-            "[Room] open-join RoomJoin fanout failed for {}: {}",
-            room_id,
-            e
-        );
-    }
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
 
     crate::federation::ws_gateway::broadcast_to_room(
         &room_id,
@@ -1062,7 +1052,9 @@ pub async fn accept_room_invite(
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
 
-    let membership = get_membership(db, room_id, &local_actor)
+    let txn = db.begin().await.map_err(db_err)?;
+    let (max_members, active) = lock_room_capacity(&txn, room_id).await.map_err(db_err)?;
+    let membership = get_membership(&txn, room_id, &local_actor)
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
@@ -1073,6 +1065,7 @@ pub async fn accept_room_invite(
         })?;
     let (role, status) = membership;
     if status == "active" {
+        txn.commit().await.map_err(db_err)?;
         return Ok(json!({
             "success": true,
             "room_id": room_id,
@@ -1082,6 +1075,7 @@ pub async fn accept_room_invite(
         }));
     }
     if status != "pending" {
+        txn.rollback().await.ok();
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({
@@ -1090,22 +1084,32 @@ pub async fn accept_room_invite(
             })),
         ));
     }
+    if room_is_full(active, max_members) {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Room is full"})),
+        ));
+    }
+    let accepted = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_room_members
+               SET membership_status = 'active', joined_at = NOW()
+               WHERE room_id = $1 AND actor_url = $2 AND membership_status = 'pending'"#,
+            [room_id.into(), local_actor.clone().into()],
+        ))
+        .await
+        .map_err(db_err)?;
+    if accepted.rows_affected() != 1 {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::CONFLICT,
+            Json(AppError::public_json("Could not accept room invite")),
+        ));
+    }
 
-    let txn = db.begin().await.map_err(db_err)?;
-    assert_room_has_capacity(&txn, room_id).await?;
-    txn.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"UPDATE federation_room_members
-           SET membership_status = 'active', joined_at = NOW()
-           WHERE room_id = $1 AND actor_url = $2"#,
-        [room_id.into(), local_actor.clone().into()],
-    ))
-    .await
-    .map_err(db_err)?;
-    txn.commit().await.map_err(db_err)?;
-
-    // Announce join to all *active* remote peers (inviter + others)
-    let join_game = load_room_game_config(db, room_id).await.ok().flatten();
+    let join_game = load_room_game_config(&txn, room_id).await.ok().flatten();
     let join_activity_id = generate_activity_id(&base_url);
     let join_activity = json!({
         "@context": build_context(),
@@ -1120,8 +1124,8 @@ pub async fn accept_room_invite(
             "game": join_game,
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         room_id,
         &join_activity_id,
@@ -1130,13 +1134,8 @@ pub async fn accept_room_invite(
         "Room",
     )
     .await
-    {
-        tracing::warn!(
-            "[Room] accept RoomJoin fanout failed for {}: {}",
-            room_id,
-            e
-        );
-    }
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
 
     crate::federation::ws_gateway::broadcast_to_room(
         room_id,
@@ -1211,68 +1210,71 @@ pub async fn reject_room_invite(
     let invited_by: Option<String> = row.try_get("", "invited_by").ok().flatten();
     let role: String = row.try_get("", "role").unwrap_or_else(|_| "member".into());
 
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"DELETE FROM federation_room_members
-           WHERE room_id = $1 AND actor_url = $2 AND COALESCE(membership_status, 'active') = 'pending'"#,
-        [room_id.into(), local_actor.clone().into()],
-    ))
-    .await
-    .map_err(db_err)?;
-
-    // Notify inviter (if remote) via standard AP Reject
-    if let Some(ref inviter) = invited_by {
+    let notify = if let Some(ref inviter) = invited_by {
         if !same_actor_url(inviter, &local_actor) {
-            if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, inviter).await {
-                let inbox = remote.inbox_url.clone();
-                if !inbox.is_empty() {
-                    let activity_id = generate_activity_id(&base_url);
-                    let reject_activity = json!({
-                        "@context": build_context(),
-                        "type": "Reject",
-                        "id": &activity_id,
-                        "actor": &local_actor,
-                        "to": [inviter],
-                        "object": {
-                            "type": "myriad:RoomInvite",
-                            "id": room_id,
-                            "room": room_id,
-                            "role": &role
-                        }
-                    });
-                    let domain = extract_domain(&inbox).unwrap_or_default();
-                    if let Ok(Some(act_row)) = db
-                        .query_one_raw(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"INSERT INTO federation_activities
-                               (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                               VALUES ($1, $2, 'Reject', 'RoomInvite', $3, true, NOW())
-                               RETURNING id"#,
-                            [
-                                activity_id.into(),
-                                user_id.into(),
-                                reject_activity.into(),
-                            ],
-                        ))
-                        .await
-                    {
-                        if let Ok(act_id) = act_row.try_get::<i32>("", "id") {
-                            let _ = db
-                                .execute_raw(Statement::from_sql_and_values(
-                                    DatabaseBackend::Postgres,
-                                    r#"INSERT INTO federation_delivery_queue
-                                       (activity_id, target_inbox, target_domain, status, created_at)
-                                       VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                                    [act_id.into(), inbox.into(), domain.into()],
-                                ))
-                                .await;
-                        }
-                    }
+            match crate::federation::actor::fetch_remote_actor(db, inviter).await {
+                Ok(remote) if !remote.inbox_url.is_empty() => Some((inviter.clone(), remote.inbox_url)),
+                Ok(_) => {
+                    tracing::warn!(inviter = %inviter, "[Room] reject skip notify: empty inbox");
+                    None
+                }
+                Err(error) => {
+                    tracing::warn!(inviter = %inviter, %error, "[Room] reject skip notify: unresolved inviter");
+                    None
                 }
             }
+        } else {
+            None
         }
+    } else {
+        None
+    };
+
+    let txn = db.begin().await.map_err(db_err)?;
+    let deleted = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"DELETE FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2 AND COALESCE(membership_status, 'active') = 'pending'"#,
+            [room_id.into(), local_actor.clone().into()],
+        ))
+        .await
+        .map_err(db_err)?;
+    if deleted.rows_affected() != 1 {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::CONFLICT,
+            Json(AppError::public_json("Could not reject room invite")),
+        ));
     }
+    if let Some((inviter, inbox)) = notify {
+        let activity_id = generate_activity_id(&base_url);
+        let reject_activity = json!({
+            "@context": build_context(),
+            "type": "Reject",
+            "id": &activity_id,
+            "actor": &local_actor,
+            "to": [&inviter],
+            "object": {
+                "type": "myriad:RoomInvite",
+                "id": room_id,
+                "room": room_id,
+                "role": &role
+            }
+        });
+        insert_and_enqueue_delivery(
+            &txn,
+            user_id,
+            &activity_id,
+            "Reject",
+            Some("RoomInvite"),
+            reject_activity,
+            &inbox,
+        )
+        .await
+        .map_err(db_err)?;
+    }
+    txn.commit().await.map_err(db_err)?;
 
     crate::federation::ws_gateway::broadcast_to_room(
         room_id,
@@ -1359,32 +1361,30 @@ pub async fn set_member_role(
         }));
     }
 
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"UPDATE federation_room_members
-           SET role = $3
-           WHERE room_id = $1 AND actor_url = $2
-             AND COALESCE(membership_status, 'active') = 'active'"#,
-        [
-            room_id.into(),
-            target_stored.clone().into(),
-            new_role.into(),
-        ],
-    ))
-    .await
-    .map_err(db_err)?;
+    let txn = db.begin().await.map_err(db_err)?;
+    let updated = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_room_members
+               SET role = $3
+               WHERE room_id = $1 AND actor_url = $2
+                 AND COALESCE(membership_status, 'active') = 'active'"#,
+            [
+                room_id.into(),
+                target_stored.clone().into(),
+                new_role.into(),
+            ],
+        ))
+        .await
+        .map_err(db_err)?;
+    if updated.rows_affected() != 1 {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::CONFLICT,
+            Json(AppError::public_json("Could not update member role")),
+        ));
+    }
 
-    let system_msg = json!({
-        "type": "system",
-        "room_id": room_id,
-        "event": "member_role_changed",
-        "actor": &target_stored,
-        "role": new_role,
-        "changed_by": &local_actor
-    });
-    crate::federation::ws_gateway::broadcast_to_room(room_id, &system_msg).await;
-
-    // fan-out RoomGovernance.set_member_role（仅 owner 可发）。
     let activity_id = generate_activity_id(&base_url);
     let gov_activity = json!({
         "@context": build_context(),
@@ -1402,8 +1402,8 @@ pub async fn set_member_role(
             }
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         room_id,
         &activity_id,
@@ -1412,13 +1412,21 @@ pub async fn set_member_role(
         "RoomGovernance",
     )
     .await
-    {
-        tracing::warn!(
-            "[Room] set_member_role fanout failed for {}: {}",
-            room_id,
-            e
-        );
-    }
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "member_role_changed",
+            "actor": &target_stored,
+            "role": new_role,
+            "changed_by": &local_actor
+        }),
+    )
+    .await;
 
     tracing::info!(
         "[Room] {} set {} role to {} in {}",
@@ -1469,11 +1477,6 @@ pub async fn remove_member(
         ));
     }
 
-    let _ = user_id; // fan-out 投递用 user_id；角色校验不读它
-
-    // Fan-out kick before local delete so remotes still have membership for delivery targets
-    // (fanout uses remaining remote members; kicked target is still in the list here —
-    // we send RoomLeave with object.member so remotes remove the target, not the admin).
     let activity_id = generate_activity_id(&base_url);
     let leave_activity = json!({
         "@context": build_context(),
@@ -1487,8 +1490,9 @@ pub async fn remove_member(
             "removedBy": &local_actor
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+    let txn = db.begin().await.map_err(db_err)?;
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         room_id,
         &activity_id,
@@ -1497,17 +1501,23 @@ pub async fn remove_member(
         "Room",
     )
     .await
-    {
-        tracing::warn!("[Room] kick fanout failed for {}: {}", room_id, e);
-    }
-
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
-        [room_id.into(), target_actor.into()],
-    ))
-    .await
     .map_err(db_err)?;
+    let removed = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            [room_id.into(), target_actor.into()],
+        ))
+        .await
+        .map_err(db_err)?;
+    if removed.rows_affected() != 1 {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::CONFLICT,
+            Json(AppError::public_json("Could not remove member")),
+        ));
+    }
+    txn.commit().await.map_err(db_err)?;
 
     // 广播系统消息
     let system_msg = json!({
@@ -1611,7 +1621,8 @@ pub async fn transfer_room_ownership(
         .map(|(url, _)| url)
         .unwrap_or_else(|| owner_actor.clone());
 
-    db.execute_raw(Statement::from_sql_and_values(
+    let txn = db.begin().await.map_err(db_err)?;
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_rooms SET owner_actor = $2, updated_at = NOW() WHERE room_id = $1",
         [room_id.into(), target_actor.clone().into()],
@@ -1619,7 +1630,7 @@ pub async fn transfer_room_ownership(
     .await
     .map_err(db_err)?;
 
-    let demoted = db
+    let demoted = txn
         .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_room_members
@@ -1630,8 +1641,7 @@ pub async fn transfer_room_ownership(
         .await
         .map_err(db_err)?;
     if demoted.rows_affected() == 0 {
-        // Fallback: demote any same_actor owner row
-        let rows = db
+        let rows = txn
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT actor_url FROM federation_room_members
@@ -1640,21 +1650,31 @@ pub async fn transfer_room_ownership(
             ))
             .await
             .map_err(db_err)?;
+        let mut demoted_any = false;
         for r in rows {
-            let url: String = r.try_get("", "actor_url").unwrap_or_default();
+            let url: String = r.try_get("", "actor_url").map_err(db_err)?;
             if same_actor_url(&url, &owner_actor) {
-                let _ = db
+                let fallback = txn
                     .execute_raw(Statement::from_sql_and_values(
                         DatabaseBackend::Postgres,
                         r#"UPDATE federation_room_members SET role = 'admin'
-                           WHERE room_id = $1 AND actor_url = $2"#,
+                           WHERE room_id = $1 AND actor_url = $2 AND role = 'owner'"#,
                         [room_id.into(), url.into()],
                     ))
-                    .await;
+                    .await
+                    .map_err(db_err)?;
+                demoted_any |= fallback.rows_affected() > 0;
             }
         }
+        if !demoted_any {
+            txn.rollback().await.ok();
+            return Err((
+                StatusCode::CONFLICT,
+                Json(AppError::public_json("Could not demote previous owner")),
+            ));
+        }
     }
-    let promoted = db
+    let promoted = txn
         .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_room_members
@@ -1665,6 +1685,7 @@ pub async fn transfer_room_ownership(
         .await
         .map_err(db_err)?;
     if promoted.rows_affected() == 0 {
+        txn.rollback().await.ok();
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(AppError::public_json(
@@ -1674,6 +1695,31 @@ pub async fn transfer_room_ownership(
     }
 
     let changes = json!({ "transfer_owner": &target_actor });
+    let activity_id = generate_activity_id(&base_url);
+    let gov_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomGovernance",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:RoomGovernance",
+            "room": room_id,
+            "changes": &changes
+        }
+    });
+    fanout_to_remote_members_required(
+        &txn,
+        user_id,
+        room_id,
+        &activity_id,
+        &gov_activity,
+        "RoomGovernance",
+        "RoomGovernance",
+    )
+    .await
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
+
     crate::federation::ws_gateway::broadcast_to_room(
         room_id,
         &json!({
@@ -1685,32 +1731,6 @@ pub async fn transfer_room_ownership(
         }),
     )
     .await;
-
-    let activity_id = generate_activity_id(&base_url);
-    let gov_activity = json!({
-        "@context": build_context(),
-        "type": "myriad:RoomGovernance",
-        "id": &activity_id,
-        "actor": &local_actor,
-        "object": {
-            "type": "myriad:RoomGovernance",
-            "room": room_id,
-            "changes": changes
-        }
-    });
-    if let Err(e) = fanout_to_remote_members(
-        db,
-        user_id,
-        room_id,
-        &activity_id,
-        &gov_activity,
-        "RoomGovernance",
-        "RoomGovernance",
-    )
-    .await
-    {
-        tracing::warn!("[Room] ownership transfer fanout failed: {}", e);
-    }
 
     tracing::info!(
         "[Room] ownership of {} transferred {} → {}",
@@ -1763,9 +1783,6 @@ pub async fn leave_room(
         ));
     }
 
-    let _ = user_id;
-
-    // Fan-out leave while we still appear as a member (delivery targets = other remotes)
     let activity_id = generate_activity_id(&base_url);
     let leave_activity = json!({
         "@context": build_context(),
@@ -1777,8 +1794,9 @@ pub async fn leave_room(
             "id": room_id
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+    let txn = db.begin().await.map_err(db_err)?;
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         room_id,
         &activity_id,
@@ -1787,17 +1805,23 @@ pub async fn leave_room(
         "Room",
     )
     .await
-    {
-        tracing::warn!("[Room] leave fanout failed for {}: {}", room_id, e);
-    }
-
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
-        [room_id.into(), local_actor.clone().into()],
-    ))
-    .await
     .map_err(db_err)?;
+    let left = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            [room_id.into(), local_actor.clone().into()],
+        ))
+        .await
+        .map_err(db_err)?;
+    if left.rows_affected() != 1 {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::CONFLICT,
+            Json(AppError::public_json("Could not leave room")),
+        ));
+    }
+    txn.commit().await.map_err(db_err)?;
 
     // 广播
     let system_msg = json!({

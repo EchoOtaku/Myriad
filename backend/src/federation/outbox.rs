@@ -477,10 +477,16 @@ async fn get_local_user(
             )
         })?;
 
-    Ok((
-        row.try_get("", "id").unwrap_or(0),
-        row.try_get("", "username").unwrap_or_default(),
-    ))
+    let id = row_positive_id(&row, "id").map_err(|error| {
+        db_err(sea_orm::DbErr::Custom(error))
+    })?;
+    let username: String = row.try_get("", "username").map_err(db_err)?;
+    if username.is_empty() {
+        return Err(db_err(sea_orm::DbErr::Custom(
+            "user username is empty".into(),
+        )));
+    }
+    Ok((id, username))
 }
 
 #[cfg(test)]

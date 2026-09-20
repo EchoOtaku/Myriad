@@ -270,7 +270,7 @@ pub async fn initiate_room_transfer(
             "protocol": "mfp/1.0"
         }
     });
-    crate::federation::room::fanout_to_remote_members(
+    crate::federation::room::fanout_to_remote_members_required(
         &txn,
         user_id,
         room_id,
@@ -607,7 +607,7 @@ pub async fn upload_chunk(
                     "isLast": is_last_chunk
                 }
             });
-            if let Err(error) = crate::federation::room::fanout_to_remote_members(
+            crate::federation::room::fanout_to_remote_members_required(
                 db,
                 user_id,
                 rid,
@@ -617,10 +617,17 @@ pub async fn upload_chunk(
                 "FileChunk",
             )
             .await
-            {
-                tracing::warn!(%error, "file chunk room fanout failed");
-            }
-        } else if let Some(inbox) = remote_inbox.filter(|i| !i.is_empty()) {
+            .map_err(db_err)?;
+        } else {
+            let inbox = remote_inbox.filter(|i| !i.is_empty()).ok_or_else(|| {
+                (
+                    StatusCode::CONFLICT,
+                    Json(json!({
+                        "error": "Cannot send file chunk: remote inbox is missing",
+                        "code": "remote_inbox_missing",
+                    })),
+                )
+            })?;
             let activity_id = generate_activity_id(&base_url);
             let chunk_activity = json!({
                 "@context": build_context(),
@@ -638,32 +645,17 @@ pub async fn upload_chunk(
                     "isLast": is_last_chunk
                 }
             });
-
-            let domain = extract_domain(&inbox).unwrap_or_default();
-            if let Ok(Some(act_row)) = db
-                .query_one_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_activities
-                       (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                       VALUES ($1, $2, 'FileTransfer', 'FileChunk', $3, true, NOW())
-                       RETURNING id"#,
-                    [activity_id.into(), user_id.into(), chunk_activity.into()],
-                ))
-                .await
-            {
-                if let Ok(act_id) = act_row.try_get::<i32>("", "id") {
-                    let _ = db
-                        .execute_raw(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"INSERT INTO federation_delivery_queue
-                               (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())
-                       ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                            [act_id.into(), inbox.into(), domain.into()],
-                        ))
-                        .await;
-                }
-            }
+            insert_and_enqueue_delivery(
+                db,
+                user_id,
+                &activity_id,
+                "FileTransfer",
+                Some("FileChunk"),
+                chunk_activity,
+                &inbox,
+            )
+            .await
+            .map_err(db_err)?;
         }
     }
 
@@ -1126,7 +1118,6 @@ pub async fn cancel_transfer(
     ))
     .await
     .map_err(db_err)?;
-    txn.commit().await.map_err(db_err)?;
 
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
@@ -1147,8 +1138,8 @@ pub async fn cancel_transfer(
             "actor": &local_actor,
             "object": cancel_object
         });
-        if let Err(error) = crate::federation::room::fanout_to_remote_members(
-            db,
+        crate::federation::room::fanout_to_remote_members_required(
+            &txn,
             user_id,
             rid,
             &activity_id,
@@ -1157,9 +1148,45 @@ pub async fn cancel_transfer(
             "FileCancel",
         )
         .await
-        {
-            tracing::warn!(%error, "file cancel room fanout failed");
-        }
+        .map_err(db_err)?;
+    } else if !channel_id.is_empty() {
+        let remote_inbox = row
+            .try_get::<Option<String>>("", "inbox_url")
+            .unwrap_or(None)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                (
+                    StatusCode::CONFLICT,
+                    Json(json!({
+                        "error": "Cannot cancel transfer: remote inbox is missing",
+                        "code": "remote_inbox_missing",
+                    })),
+                )
+            })?;
+        let remote_actor: String = row.try_get("", "actor_url").unwrap_or_default();
+        let cancel_activity = json!({
+            "@context": build_context(),
+            "type": "myriad:FileTransfer",
+            "id": &activity_id,
+            "actor": &local_actor,
+            "to": [&remote_actor],
+            "object": cancel_object
+        });
+        insert_and_enqueue_delivery(
+            &txn,
+            user_id,
+            &activity_id,
+            "FileTransfer",
+            Some("FileCancel"),
+            cancel_activity,
+            &remote_inbox,
+        )
+        .await
+        .map_err(db_err)?;
+    }
+    txn.commit().await.map_err(db_err)?;
+
+    if let Some(ref rid) = room_id {
         crate::federation::ws_gateway::broadcast_to_room(
             rid,
             &json!({
@@ -1170,45 +1197,6 @@ pub async fn cancel_transfer(
         )
         .await;
     } else if !channel_id.is_empty() {
-        let remote_inbox: Option<String> = row
-            .try_get::<Option<String>>("", "inbox_url")
-            .unwrap_or(None);
-        let remote_actor: String = row.try_get("", "actor_url").unwrap_or_default();
-        if let Some(inbox) = remote_inbox.filter(|s| !s.is_empty()) {
-            let cancel_activity = json!({
-                "@context": build_context(),
-                "type": "myriad:FileTransfer",
-                "id": &activity_id,
-                "actor": &local_actor,
-                "to": [&remote_actor],
-                "object": cancel_object
-            });
-            let domain = extract_domain(&inbox).unwrap_or_default();
-            if let Ok(Some(act_row)) = db
-                .query_one_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_activities
-                       (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                       VALUES ($1, $2, 'FileTransfer', 'FileCancel', $3, true, NOW())
-                       RETURNING id"#,
-                    [activity_id.into(), user_id.into(), cancel_activity.into()],
-                ))
-                .await
-            {
-                if let Ok(act_id) = act_row.try_get::<i32>("", "id") {
-                    let _ = db
-                        .execute_raw(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"INSERT INTO federation_delivery_queue
-                               (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                            [act_id.into(), inbox.into(), domain.into()],
-                        ))
-                        .await;
-                }
-            }
-        }
         crate::federation::ws_gateway::broadcast_to_channel(
             &channel_id,
             &json!({
@@ -1234,7 +1222,7 @@ mod tests {
         let src = include_str!("http.rs");
         assert!(src.contains("insert_local_activity"));
         assert!(src.contains("enqueue_delivery"));
-        assert!(src.contains("fanout_to_remote_members"));
+        assert!(src.contains("fanout_to_remote_members_required"));
         // Built at runtime so this assertion's own literal is not the needle it
         // forbids (include_str! would otherwise always match it).
         let ignored =
@@ -1243,5 +1231,21 @@ mod tests {
             !src.contains(&ignored),
             "room transfer fanout must not be ignored after pending insert"
         );
+        let chunk = src
+            .split("if should_fanout")
+            .nth(1)
+            .expect("chunk fanout");
+        assert!(chunk.contains("fanout_to_remote_members_required"));
+        assert!(chunk.contains("insert_and_enqueue_delivery"));
+        assert!(!chunk.contains("if let Ok(Some(act_row))"));
+        let cancel = src
+            .split("pub async fn cancel_transfer")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("cancel_transfer");
+        assert!(cancel.contains("fanout_to_remote_members_required"));
+        assert!(cancel.contains("insert_and_enqueue_delivery"));
+        assert!(cancel.contains("txn.commit()"));
+        assert!(!cancel.contains("if let Ok(Some(act_row))"));
     }
 }

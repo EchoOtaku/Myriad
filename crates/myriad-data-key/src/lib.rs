@@ -203,20 +203,44 @@ fn write_key_file(path: &Path, encoded: &str) -> std::io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    // create_new：并发启动时只有一个进程能成功建文件，另一个回去读它，
-    // 避免两个进程各自生成密钥、后写的那把覆盖先写的。
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
+    // Write privately, then publish with a no-replace link so concurrent
+    // starters never observe a truncated destination.
+    let temp = path.with_file_name(format!(
+        ".{}.tmp-{:x}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("secret-key"),
+        rand::random::<u64>()
+    ));
+
     {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        use std::io::Write;
+        let mut file = options.open(&temp)?;
+        writeln!(file, "{encoded}")?;
+        file.sync_all()?;
     }
 
-    use std::io::Write;
-    let mut file = options.open(path)?;
-    writeln!(file, "{encoded}")?;
-    file.sync_all()
+    let published = std::fs::hard_link(&temp, path);
+    let _ = std::fs::remove_file(&temp);
+    published?;
+    #[cfg(unix)]
+    if let Some(parent) = path.parent() {
+        let dir = std::fs::File::open(parent).map_err(|error| {
+            std::io::Error::new(
+                error.kind(),
+                format!("failed to sync parent directory {}: {error}", parent.display()),
+            )
+        })?;
+        dir.sync_all()?;
+    }
+    Ok(())
 }
 
 fn env_flag_enabled(name: &str) -> bool {
@@ -280,17 +304,42 @@ fn load_or_create_from(
                 anyhow!("MYRIAD_MIGRATE_DATA_KEY_FROM_JWT is set but JWT_SECRET is empty")
             })?;
         let key = derive_legacy_key(secret);
-        write_key_file(path, &BASE64.encode(key)).with_context(|| {
-            format!("failed to write migrated data key file {}", path.display())
-        })?;
-        tracing::warn!(
-            path = %path.display(),
-            "Wrote the historical JWT_SECRET-derived data key to the key file (explicit migration)"
-        );
-        return Ok(DataKey {
-            key,
-            source: KeySource::File,
-        });
+        match write_key_file(path, &BASE64.encode(key)) {
+            Ok(()) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    "Wrote the historical JWT_SECRET-derived data key to the key file (explicit migration)"
+                );
+                return Ok(DataKey {
+                    key,
+                    source: KeySource::File,
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let contents = std::fs::read_to_string(path).with_context(|| {
+                    format!(
+                        "failed to read data key file {} after migrate race",
+                        path.display()
+                    )
+                })?;
+                let existing = parse_key_material(&contents).ok_or_else(|| {
+                    anyhow!(
+                        "data key file {} exists but is invalid after migrate race",
+                        path.display()
+                    )
+                })?;
+                return Ok(DataKey {
+                    key: existing,
+                    source: KeySource::File,
+                });
+            }
+            Err(error) => {
+                return Err(anyhow!(
+                    "failed to write migrated data key file {}: {error}",
+                    path.display()
+                ));
+            }
+        }
     }
 
     let key = rand::random::<[u8; KEY_LEN]>();

@@ -115,7 +115,7 @@ ON CONFLICT (namespace, record_id) DO UPDATE SET
     payload = EXCLUDED.payload,
     expires_at = EXCLUDED.expires_at,
     updated_at = NOW()
-WHERE tapp_runtime_registry.expires_at < EXTRACT(EPOCH FROM NOW())::BIGINT
+WHERE tapp_runtime_registry.expires_at <= EXTRACT(EPOCH FROM NOW())::BIGINT
 RETURNING record_id
 "#,
         vec![
@@ -702,5 +702,19 @@ mod tests {
         };
         assert!(id.subject_id.is_none());
         assert!(id.tapp_id.is_none());
+    }
+
+    #[test]
+    fn expired_means_not_live() {
+        let src = include_str!("lib.rs")
+            .split("mod tests")
+            .next()
+            .expect("impl");
+        assert!(
+            !src.contains("expires_at < EXTRACT(EPOCH FROM NOW())"),
+            "live is expires_at > now; expired is the complement <="
+        );
+        assert!(src.contains("expires_at <= EXTRACT(EPOCH FROM NOW())::BIGINT"));
+        assert!(src.contains("expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT"));
     }
 }

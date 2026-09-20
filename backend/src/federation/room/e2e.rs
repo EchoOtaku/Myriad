@@ -314,7 +314,7 @@ pub async fn initiate_e2e_key_exchange(
             "actor": &local_actor,
             "object": kx_object
         });
-        fanout_to_remote_members(
+        fanout_to_remote_members_required(
             &txn,
             user_id,
             room_id,

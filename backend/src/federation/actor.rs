@@ -498,7 +498,7 @@ async fn lookup_cached_remote_actor(
     }
 
     Ok(Some(RemoteActorInfo {
-        id: row.try_get("", "id").unwrap_or(0),
+        id: row_positive_id(&row, "id")?,
         actor_url: row.try_get("", "actor_url").unwrap_or_default(),
         username: row.try_get("", "username").ok(),
         domain: row.try_get("", "domain").unwrap_or_default(),
@@ -653,9 +653,9 @@ async fn upsert_remote_actor_document(
             ],
         ))
         .await
-        .map_err(|e| format!("Failed to cache remote actor: {}", e))?
-        .map(|r| r.try_get::<i32>("", "id").unwrap_or(0))
-        .unwrap_or(0);
+        .map_err(|e| format!("Failed to cache remote actor: {}", e))?;
+    let actor_id = returning_id(actor_id)
+        .map_err(|error| format!("Failed to cache remote actor id: {error}"))?;
 
     let _ = upsert_instance(db, &doc.domain, doc.mfp_version.as_deref()).await;
 
@@ -769,9 +769,9 @@ async fn upsert_local_actor_as_remote(
             ],
         ))
         .await
-        .map_err(|e| format!("Failed to cache local actor: {}", e))?
-        .map(|r| r.try_get::<i32>("", "id").unwrap_or(0))
-        .unwrap_or(0);
+        .map_err(|e| format!("Failed to cache local actor: {}", e))?;
+    let actor_id = returning_id(actor_id)
+        .map_err(|error| format!("Failed to cache local actor id: {error}"))?;
 
     Ok(RemoteActorInfo {
         id: actor_id,
@@ -896,10 +896,9 @@ pub async fn get_local_identity(
         ))
         .await
     {
-        let user_id: i32 = row.try_get("", "id").unwrap_or(0);
         display_name = row.try_get("", "display_name").ok();
         avatar_url = row.try_get("", "avatar_url").ok();
-        if user_id > 0 {
+        if let Ok(user_id) = row_positive_id(&row, "id") {
             if let Err(e) = ensure_user_federation_keys(db, user_id, username).await {
                 tracing::warn!(
                     user_id = user_id,
@@ -1154,26 +1153,16 @@ async fn broadcast_person_key_update(
         }
     });
 
-    let act_row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"INSERT INTO federation_activities
-               (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-               VALUES ($1, $2, 'Update', 'Person', $3, true, NOW())
-               RETURNING id"#,
-            [
-                activity_id.into(),
-                user_id.into(),
-                update.clone().into(),
-            ],
-        ))
-        .await
-        .map_err(|e| format!("Failed to record Update activity: {}", e))?;
-
-    let act_db_id: i32 = act_row.and_then(|r| r.try_get("", "id").ok()).unwrap_or(0);
-    if act_db_id <= 0 {
-        return Ok(0);
-    }
+    let act_db_id = insert_local_activity(
+        db,
+        user_id,
+        &activity_id,
+        "Update",
+        Some("Person"),
+        update.clone(),
+    )
+    .await
+    .map_err(|e| format!("Failed to record Update activity: {e}"))?;
 
     let queued =
         crate::federation::content::fan_out_to_followers(db, user_id, act_db_id, &update).await;
@@ -1306,10 +1295,16 @@ async fn get_local_user(
             )
         })?;
 
-    Ok((
-        row.try_get("", "id").unwrap_or(0),
-        row.try_get("", "username").unwrap_or_default(),
-    ))
+    let id = row_positive_id(&row, "id").map_err(|error| {
+        db_err(sea_orm::DbErr::Custom(error))
+    })?;
+    let username: String = row.try_get("", "username").map_err(db_err)?;
+    if username.is_empty() {
+        return Err(db_err(sea_orm::DbErr::Custom(
+            "user username is empty".into(),
+        )));
+    }
+    Ok((id, username))
 }
 
 async fn get_base_url() -> String {

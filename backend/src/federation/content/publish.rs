@@ -402,7 +402,9 @@ pub async fn unpublish_content(
         )
     })?;
 
-    let pub_id: i32 = row.try_get("", "id").unwrap_or(0);
+    let pub_id = crate::federation::types::row_positive_id(&row, "id").map_err(|error| {
+        db_err(sea_orm::DbErr::Custom(error))
+    })?;
     let original_activity_id: String = row.try_get("", "activity_id").unwrap_or_default();
     let content_type: String = row
         .try_get::<String>("", "content_type")

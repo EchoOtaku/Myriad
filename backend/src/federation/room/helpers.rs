@@ -63,7 +63,7 @@ pub(crate) async fn lock_room_capacity(
         ))
         .await?
         .ok_or_else(|| sea_orm::DbErr::Custom("Room not found".into()))?;
-    let max_members: i32 = room.try_get("", "max_members").unwrap_or(50);
+    let max_members: i32 = room.try_get("", "max_members")?;
     let count_row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -73,8 +73,8 @@ pub(crate) async fn lock_room_capacity(
         ))
         .await?;
     let active: i32 = count_row
-        .and_then(|r| r.try_get::<i32>("", "cnt").ok())
-        .unwrap_or(0);
+        .ok_or_else(|| sea_orm::DbErr::Custom("room capacity count missing".into()))?
+        .try_get("", "cnt")?;
     Ok((max_members, active))
 }
 
@@ -478,6 +478,14 @@ pub(crate) fn is_missing_or_fallback_room_name(name: &str, room_id: &str) -> boo
     trimmed.is_empty() || trimmed == fallback_room_name(room_id)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RoomFanoutMode {
+    /// Chat / roster: skip members we cannot route and keep going.
+    BestEffort,
+    /// File transfer / key publish / dissolve: every active remote must be queued.
+    RequireRoutable,
+}
+
 /// 向 Room 的所有远程成员 fan-out 一个 Activity
 pub(crate) async fn fanout_to_remote_members(
     db: &impl ConnectionTrait,
@@ -488,7 +496,7 @@ pub(crate) async fn fanout_to_remote_members(
     activity_type: &str,
     object_type: &str,
 ) -> Result<crate::federation::delivery::FanoutResult, sea_orm::DbErr> {
-    fanout_to_remote_members_excluding(
+    fanout_to_remote_members_with(
         db,
         user_id,
         room_id,
@@ -497,13 +505,38 @@ pub(crate) async fn fanout_to_remote_members(
         activity_type,
         object_type,
         &[],
+        RoomFanoutMode::BestEffort,
     )
     .await
 }
 
-/// Fan-out with optional actor URL exclusions (e.g. skip invitee on RoomJoin roster announce).
+/// Fail closed when an active remote member has no inbox / remote_actors row.
+pub(crate) async fn fanout_to_remote_members_required(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    room_id: &str,
+    activity_id: &str,
+    activity_json: &serde_json::Value,
+    activity_type: &str,
+    object_type: &str,
+) -> Result<crate::federation::delivery::FanoutResult, sea_orm::DbErr> {
+    fanout_to_remote_members_with(
+        db,
+        user_id,
+        room_id,
+        activity_id,
+        activity_json,
+        activity_type,
+        object_type,
+        &[],
+        RoomFanoutMode::RequireRoutable,
+    )
+    .await
+}
+
+/// Fan-out with actor URL exclusions. Every remaining remote must be queued.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn fanout_to_remote_members_excluding(
+pub(crate) async fn fanout_to_remote_members_excluding_required(
     db: &impl ConnectionTrait,
     user_id: i32,
     room_id: &str,
@@ -512,6 +545,32 @@ pub(crate) async fn fanout_to_remote_members_excluding(
     activity_type: &str,
     object_type: &str,
     exclude_actors: &[&str],
+) -> Result<crate::federation::delivery::FanoutResult, sea_orm::DbErr> {
+    fanout_to_remote_members_with(
+        db,
+        user_id,
+        room_id,
+        activity_id,
+        activity_json,
+        activity_type,
+        object_type,
+        exclude_actors,
+        RoomFanoutMode::RequireRoutable,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn fanout_to_remote_members_with(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    room_id: &str,
+    activity_id: &str,
+    activity_json: &serde_json::Value,
+    activity_type: &str,
+    object_type: &str,
+    exclude_actors: &[&str],
+    mode: RoomFanoutMode,
 ) -> Result<crate::federation::delivery::FanoutResult, sea_orm::DbErr> {
     let mut result = crate::federation::delivery::FanoutResult::default();
 
@@ -559,14 +618,11 @@ pub(crate) async fn fanout_to_remote_members_excluding(
         ))
         .await?;
 
-    let act_db_id = match act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-        Some(id) => id,
-        None => {
-            return Err(sea_orm::DbErr::Custom(format!(
-                "room fanout activity insert returned no id: activity={activity_id} room={room_id}"
-            )));
-        }
-    };
+    let act_db_id = returning_id(act_row).map_err(|error| {
+        sea_orm::DbErr::Custom(format!(
+            "room fanout activity insert returned no id: activity={activity_id} room={room_id}: {error}"
+        ))
+    })?;
 
     // Count remote *active* members missing remote_actors (cannot resolve inbox)
     let unresolved_row = db
@@ -651,6 +707,15 @@ pub(crate) async fn fanout_to_remote_members_excluding(
             activity_type,
             result.enqueued
         );
+    }
+
+    if mode == RoomFanoutMode::RequireRoutable
+        && (result.unresolved_members > 0 || result.skipped_empty_inbox > 0)
+    {
+        return Err(sea_orm::DbErr::Custom(format!(
+            "room {room_id} {activity_type} needs every active remote member routable; unresolved={} empty_inbox={}",
+            result.unresolved_members, result.skipped_empty_inbox
+        )));
     }
 
     Ok(result)

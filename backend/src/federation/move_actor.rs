@@ -15,7 +15,7 @@
 
 use axum::Json;
 use axum::http::StatusCode;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -661,12 +661,29 @@ pub enum FollowUpdateOutcome {
 
 pub fn classify_follow_update(res: Result<sea_orm::ExecResult, sea_orm::DbErr>) -> FollowUpdateOutcome {
     match res {
+        Ok(exec) if exec.rows_affected() == 0 => {
+            FollowUpdateOutcome::Other("follow update matched no rows".into())
+        }
         Ok(_) => FollowUpdateOutcome::Applied,
         Err(e) if crate::federation::types::is_unique_violation(&e) => {
             FollowUpdateOutcome::UniqueConflict
         }
         Err(e) => FollowUpdateOutcome::Other(e.to_string()),
     }
+}
+
+fn row_i32(row: &sea_orm::QueryResult, column: &str) -> Result<i32, String> {
+    row.try_get("", column).map_err(|error| {
+        tracing::error!(column, %error, "follow/move row decode failed");
+        "Database error".to_string()
+    })
+}
+
+fn row_string(row: &sea_orm::QueryResult, column: &str) -> Result<String, String> {
+    row.try_get("", column).map_err(|error| {
+        tracing::error!(column, %error, "follow/move row decode failed");
+        "Database error".to_string()
+    })
 }
 
 pub fn plan_follow_repoint(
@@ -681,16 +698,91 @@ pub fn plan_follow_repoint(
     }
 }
 
+async fn merge_follow_onto_existing(
+    db: &impl ConnectionTrait,
+    old_follow_id: i32,
+    user_id: i32,
+    new_remote_id: i32,
+    direction: &str,
+    old_status: &str,
+    activity_id: Option<String>,
+) -> Result<(), String> {
+    let existing = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT id, status FROM federation_follows
+               WHERE user_id = $1 AND remote_actor_id = $2 AND direction = $3
+               FOR UPDATE"#,
+            [user_id.into(), new_remote_id.into(), direction.into()],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("DB error locking target follow: {}", e);
+            "Database error".to_string()
+        })?;
+    let Some(existing) = existing else {
+        return Err("unique follow conflict without a target row".into());
+    };
+    let ex_id = row_i32(&existing, "id")?;
+    let ex_status = row_string(&existing, "status")?;
+    if ex_id <= 0 {
+        return Err("unique follow conflict without a target row".into());
+    }
+    match plan_follow_repoint(old_status, Some(ex_status.as_str())) {
+        FollowRepointAction::DropOld {
+            promote_new_to_accepted,
+        } => {
+            if promote_new_to_accepted {
+                let promoted = db
+                    .execute_raw(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"UPDATE federation_follows
+                               SET status = 'accepted',
+                                   activity_id = COALESCE($1, activity_id),
+                                   accepted_at = COALESCE(accepted_at, NOW())
+                               WHERE id = $2"#,
+                        [activity_id.clone().into(), ex_id.into()],
+                    ))
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("DB error promoting follow: {}", e);
+                        "Database error".to_string()
+                    })?;
+                if promoted.rows_affected() == 0 {
+                    return Err("follow promote matched no rows".into());
+                }
+            }
+            let deleted = db
+                .execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "DELETE FROM federation_follows WHERE id = $1",
+                    [old_follow_id.into()],
+                ))
+                .await
+                .map_err(|e| {
+                    tracing::error!("DB error deleting old follow: {}", e);
+                    "Database error".to_string()
+                })?;
+            if deleted.rows_affected() == 0 {
+                return Err("old follow delete matched no rows".into());
+            }
+            Ok(())
+        }
+        FollowRepointAction::UpdateRemoteId => {
+            Err("target follow existed but planner asked to retarget".into())
+        }
+    }
+}
+
 /// Re-point local follow rows from old remote actor URL to new (idempotent).
 ///
-/// Updates `federation_follows.remote_actor_id` and ensures the new actor is cached.
-/// On unique conflicts (already following new), drops the old row.
+/// HTTP resolution stays outside the transaction. Row locks + savepoints keep
+/// accepted status and activity references when the unique key already exists.
 pub async fn migrate_follows_old_to_new(
     db: &DatabaseConnection,
     old_actor_url: &str,
     new_actor_url: &str,
 ) -> Result<u32, String> {
-    // Old must already be in `federation_remote_actors`; fetch (and cache) new.
     let old_remote = match db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -702,15 +794,12 @@ pub async fn migrate_follows_old_to_new(
             tracing::error!("DB error: {}", e);
             "Database error".to_string()
         })? {
-        Some(r) => r.try_get::<i32>("", "id").unwrap_or(0),
-        None => {
-            // No local knowledge of old actor — nothing to migrate
-            return Ok(0);
-        }
+        Some(r) => row_i32(&r, "id")?,
+        None => return Ok(0),
     };
 
-    if old_remote == 0 {
-        return Ok(0);
+    if old_remote <= 0 {
+        return Err("old remote actor id is invalid".into());
     }
 
     let new_remote = fetch_remote_actor(db, new_actor_url)
@@ -721,13 +810,18 @@ pub async fn migrate_follows_old_to_new(
         return Ok(0);
     }
 
-    // All follows that pointed at old remote
-    let follows = db
+    let txn = db.begin().await.map_err(|e| {
+        tracing::error!("DB error beginning follow migration: {}", e);
+        "Database error".to_string()
+    })?;
+
+    let follows = txn
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT id, user_id, direction, status, activity_id
                FROM federation_follows
-               WHERE remote_actor_id = $1"#,
+               WHERE remote_actor_id = $1
+               FOR UPDATE"#,
             [old_remote.into()],
         ))
         .await
@@ -739,19 +833,21 @@ pub async fn migrate_follows_old_to_new(
     let mut migrated = 0u32;
 
     for row in follows {
-        let follow_id: i32 = row.try_get("", "id").unwrap_or(0);
-        let user_id: i32 = row.try_get("", "user_id").unwrap_or(0);
-        let direction: String = row.try_get("", "direction").unwrap_or_default();
-        let status: String = row.try_get("", "status").unwrap_or_default();
+        let follow_id = row_i32(&row, "id")?;
+        let user_id = row_i32(&row, "user_id")?;
+        let direction = row_string(&row, "direction")?;
+        let status = row_string(&row, "status")?;
         let activity_id: Option<String> = row.try_get("", "activity_id").ok();
+        if follow_id <= 0 || user_id <= 0 || direction.is_empty() {
+            return Err("follow row missing identity".into());
+        }
 
-        // Is there already a follow for (user, new, direction)?
-        let existing = db
+        let existing = txn
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT id, status FROM federation_follows
                    WHERE user_id = $1 AND remote_actor_id = $2 AND direction = $3
-                   LIMIT 1"#,
+                   FOR UPDATE"#,
                 [
                     user_id.into(),
                     new_remote.id.into(),
@@ -772,42 +868,28 @@ pub async fn migrate_follows_old_to_new(
                 .as_deref(),
         ) {
             FollowRepointAction::DropOld {
-                promote_new_to_accepted,
+                promote_new_to_accepted: _,
             } => {
-                let ex_id: i32 = existing
-                    .as_ref()
-                    .and_then(|ex| ex.try_get("", "id").ok())
-                    .unwrap_or(0);
-                if promote_new_to_accepted && ex_id != 0 {
-                    db.execute_raw(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        r#"UPDATE federation_follows
-                               SET status = 'accepted',
-                                   activity_id = COALESCE($1, activity_id),
-                                   accepted_at = COALESCE(accepted_at, NOW())
-                               WHERE id = $2"#,
-                        [activity_id.clone().into(), ex_id.into()],
-                    ))
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("DB error promoting follow: {}", e);
-                        "Database error".to_string()
-                    })?;
-                }
-                db.execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "DELETE FROM federation_follows WHERE id = $1",
-                    [follow_id.into()],
-                ))
-                .await
-                .map_err(|e| {
-                    tracing::error!("DB error deleting old follow: {}", e);
-                    "Database error".to_string()
-                })?;
+                merge_follow_onto_existing(
+                    &txn,
+                    follow_id,
+                    user_id,
+                    new_remote.id,
+                    &direction,
+                    &status,
+                    activity_id,
+                )
+                .await?;
                 migrated += 1;
             }
             FollowRepointAction::UpdateRemoteId => {
-                let res = db
+                txn.execute_unprepared("SAVEPOINT follow_repoint")
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("DB error opening follow savepoint: {}", e);
+                        "Database error".to_string()
+                    })?;
+                let res = txn
                     .execute_raw(Statement::from_sql_and_values(
                         DatabaseBackend::Postgres,
                         r#"UPDATE federation_follows
@@ -817,18 +899,32 @@ pub async fn migrate_follows_old_to_new(
                     ))
                     .await;
                 match classify_follow_update(res) {
-                    FollowUpdateOutcome::Applied => migrated += 1,
+                    FollowUpdateOutcome::Applied => {
+                        txn.execute_unprepared("RELEASE SAVEPOINT follow_repoint")
+                            .await
+                            .map_err(|e| {
+                                tracing::error!("DB error releasing follow savepoint: {}", e);
+                                "Database error".to_string()
+                            })?;
+                        migrated += 1;
+                    }
                     FollowUpdateOutcome::UniqueConflict => {
-                        db.execute_raw(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            "DELETE FROM federation_follows WHERE id = $1",
-                            [follow_id.into()],
-                        ))
-                        .await
-                        .map_err(|e| {
-                            tracing::error!("DB error deleting conflicting follow: {}", e);
-                            "Database error".to_string()
-                        })?;
+                        txn.execute_unprepared("ROLLBACK TO SAVEPOINT follow_repoint")
+                            .await
+                            .map_err(|e| {
+                                tracing::error!("DB error rolling follow savepoint: {}", e);
+                                "Database error".to_string()
+                            })?;
+                        merge_follow_onto_existing(
+                            &txn,
+                            follow_id,
+                            user_id,
+                            new_remote.id,
+                            &direction,
+                            &status,
+                            activity_id,
+                        )
+                        .await?;
                         migrated += 1;
                     }
                     FollowUpdateOutcome::Other(e) => {
@@ -839,6 +935,11 @@ pub async fn migrate_follows_old_to_new(
             }
         }
     }
+
+    txn.commit().await.map_err(|e| {
+        tracing::error!("DB error committing follow migration: {}", e);
+        "Database error".to_string()
+    })?;
 
     tracing::info!(
         old = %old_actor_url,
@@ -854,7 +955,7 @@ pub async fn migrate_follows_old_to_new(
 
 /// Persist domain alias (upsert by old_base_url). **B** — enables actor `alsoKnownAs` / `movedTo`.
 pub async fn store_domain_alias(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     old_base: &str,
     new_base: &str,
 ) -> Result<(), String> {
@@ -878,7 +979,7 @@ pub async fn store_domain_alias(
 /// Choice: `keyId` becomes `{new_base}/users/{username}#main-key` (new domain host)
 /// with the same stored `public_key_pem` (Mastodon-style continuity).
 pub async fn retarget_shared_keys(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     old_base: &str,
     new_base: &str,
     dry_run: bool,
@@ -903,7 +1004,10 @@ pub async fn retarget_shared_keys(
         ))
         .await
         .map_err(|e| format!("Failed to count users: {}", e))?;
-    let total_users: i32 = all_users.and_then(|r| r.try_get("", "c").ok()).unwrap_or(0);
+    let total_users = match all_users {
+        Some(row) => row_i32(&row, "c")?,
+        None => return Err("Failed to count users".into()),
+    };
 
     let mut report = SharedKeysReport {
         users_with_keys: rows.len() as u32,
@@ -913,10 +1017,10 @@ pub async fn retarget_shared_keys(
     };
 
     for row in rows {
-        let user_id: i32 = row.try_get("", "user_id").unwrap_or(0);
-        let username: String = row.try_get("", "username").unwrap_or_default();
-        let old_kid: String = row.try_get("", "key_id").unwrap_or_default();
-        let pem: String = row.try_get("", "public_key_pem").unwrap_or_default();
+        let user_id = row_i32(&row, "user_id")?;
+        let username = row_string(&row, "username")?;
+        let old_kid = row_string(&row, "key_id")?;
+        let pem = row_string(&row, "public_key_pem")?;
 
         if pem.trim().is_empty() {
             return Err(format!(
@@ -967,7 +1071,7 @@ pub async fn retarget_shared_keys(
 
 /// Count rows in a text column whose value starts with `old_base` (local only).
 async fn count_prefix_rows(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     table: &str,
     column: &str,
     old_base: &str,
@@ -1003,16 +1107,24 @@ async fn count_prefix_rows(
 
 /// Apply prefix rewrite for one whitelisted text column.
 async fn rewrite_prefix_column(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     table: &str,
     column: &str,
     old_base: &str,
     new_base: &str,
     dry_run: bool,
 ) -> Result<u32, String> {
-    let count = count_prefix_rows(db, table, column, old_base).await?;
-    if dry_run || count == 0 {
-        return Ok(count);
+    if !LOCAL_URL_REWRITE_WHITELIST
+        .iter()
+        .any(|(t, c)| *t == table && *c == column)
+    {
+        return Err(format!(
+            "column {}.{} not on rewrite whitelist",
+            table, column
+        ));
+    }
+    if dry_run {
+        return count_prefix_rows(db, table, column, old_base).await;
     }
     let like = prefix_like_pattern(old_base);
     // Postgres: rewrite only matching prefix; leave foreign rows alone via LIKE filter.
@@ -1022,14 +1134,15 @@ async fn rewrite_prefix_column(
            WHERE {} IS NOT NULL AND {} LIKE $3"#,
         table, column, column, column, column
     );
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        &sql,
-        [new_base.into(), old_base.into(), like.into()],
-    ))
-    .await
-    .map_err(|e| format!("rewrite {}.{}: {}", table, column, e))?;
-    Ok(count)
+    let res = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            &sql,
+            [new_base.into(), old_base.into(), like.into()],
+        ))
+        .await
+        .map_err(|e| format!("rewrite {}.{}: {}", table, column, e))?;
+    Ok(res.rows_affected() as u32)
 }
 
 /// **E** — Rewrite this instance’s stored absolute federation URLs `old_base` → `new_base`.
@@ -1037,7 +1150,7 @@ async fn rewrite_prefix_column(
 /// Whitelist columns; `LIKE` prefix on `old_base` (substring hosts can match).
 /// `federation_remote_actors.domain` set to new host when `domain` is old and `actor_url` LIKE old_base% or new_base%.
 pub async fn rewrite_local_federation_urls(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     old_base: &str,
     new_base: &str,
     dry_run: bool,
@@ -1065,26 +1178,44 @@ pub async fn rewrite_local_federation_urls(
     let old_domain = extract_domain(old_base).unwrap_or_default();
     let new_domain = extract_domain(new_base).unwrap_or_default();
     if !old_domain.is_empty() && !new_domain.is_empty() && old_domain != new_domain {
-        let domain_count_sql = r#"SELECT COUNT(*)::int AS c FROM federation_remote_actors
-               WHERE domain = $1
-                 AND (actor_url LIKE $2 OR actor_url LIKE $3)"#;
         let like_old = prefix_like_pattern(old_base);
         let like_new = prefix_like_pattern(new_base);
-        let domain_rows = db
-            .query_one_raw(Statement::from_sql_and_values(
+        let dcount = if dry_run {
+            let domain_rows = db
+                .query_one_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"SELECT COUNT(*)::int AS c FROM federation_remote_actors
+                       WHERE domain = $1
+                         AND (actor_url LIKE $2 OR actor_url LIKE $3)"#,
+                    [
+                        old_domain.clone().into(),
+                        like_old.clone().into(),
+                        like_new.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(|e| format!("count remote_actors.domain: {}", e))?;
+            domain_rows
+                .and_then(|r| r.try_get::<i32>("", "c").ok())
+                .unwrap_or(0) as u32
+        } else {
+            db.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                domain_count_sql,
+                r#"UPDATE federation_remote_actors
+                   SET domain = $1
+                   WHERE domain = $2
+                     AND (actor_url LIKE $3 OR actor_url LIKE $4)"#,
                 [
+                    new_domain.clone().into(),
                     old_domain.clone().into(),
                     like_old.clone().into(),
                     like_new.clone().into(),
                 ],
             ))
             .await
-            .map_err(|e| format!("count remote_actors.domain: {}", e))?;
-        let dcount = domain_rows
-            .and_then(|r| r.try_get::<i32>("", "c").ok())
-            .unwrap_or(0) as u32;
+            .map_err(|e| format!("rewrite remote_actors.domain: {}", e))?
+            .rows_affected() as u32
+        };
         if dcount > 0 {
             report.columns.push(RewriteColumnStat {
                 table: "federation_remote_actors".into(),
@@ -1092,23 +1223,6 @@ pub async fn rewrite_local_federation_urls(
                 rows: dcount,
             });
             report.total_rows += dcount;
-            if !dry_run {
-                db.execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"UPDATE federation_remote_actors
-                       SET domain = $1
-                       WHERE domain = $2
-                         AND (actor_url LIKE $3 OR actor_url LIKE $4)"#,
-                    [
-                        new_domain.clone().into(),
-                        old_domain.clone().into(),
-                        like_old.into(),
-                        like_new.into(),
-                    ],
-                ))
-                .await
-                .map_err(|e| format!("rewrite remote_actors.domain: {}", e))?;
-            }
         }
     }
 
@@ -1116,21 +1230,40 @@ pub async fn rewrite_local_federation_urls(
     if !old_domain.is_empty() && !new_domain.is_empty() && old_domain != new_domain {
         let like_new_inbox = prefix_like_pattern(new_base);
         let like_old_inbox = prefix_like_pattern(old_base);
-        let dq = db
-            .query_one_raw(Statement::from_sql_and_values(
+        let c = if dry_run {
+            let dq = db
+                .query_one_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"SELECT COUNT(*)::int AS c FROM federation_delivery_queue
+                       WHERE target_domain = $1
+                         AND (target_inbox LIKE $2 OR target_inbox LIKE $3)"#,
+                    [
+                        old_domain.clone().into(),
+                        like_old_inbox.clone().into(),
+                        like_new_inbox.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(|e| format!("count delivery target_domain: {}", e))?;
+            dq.and_then(|r| r.try_get::<i32>("", "c").ok()).unwrap_or(0) as u32
+        } else {
+            db.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                r#"SELECT COUNT(*)::int AS c FROM federation_delivery_queue
-                   WHERE target_domain = $1
-                     AND (target_inbox LIKE $2 OR target_inbox LIKE $3)"#,
+                r#"UPDATE federation_delivery_queue
+                   SET target_domain = $1
+                   WHERE target_domain = $2
+                     AND (target_inbox LIKE $3 OR target_inbox LIKE $4)"#,
                 [
+                    new_domain.clone().into(),
                     old_domain.clone().into(),
-                    like_old_inbox.clone().into(),
-                    like_new_inbox.clone().into(),
+                    like_old_inbox.into(),
+                    like_new_inbox.into(),
                 ],
             ))
             .await
-            .map_err(|e| format!("count delivery target_domain: {}", e))?;
-        let c = dq.and_then(|r| r.try_get::<i32>("", "c").ok()).unwrap_or(0) as u32;
+            .map_err(|e| format!("rewrite delivery target_domain: {}", e))?
+            .rows_affected() as u32
+        };
         if c > 0 {
             report.columns.push(RewriteColumnStat {
                 table: "federation_delivery_queue".into(),
@@ -1138,37 +1271,68 @@ pub async fn rewrite_local_federation_urls(
                 rows: c,
             });
             report.total_rows += c;
-            if !dry_run {
-                db.execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"UPDATE federation_delivery_queue
-                       SET target_domain = $1
-                       WHERE target_domain = $2
-                         AND (target_inbox LIKE $3 OR target_inbox LIKE $4)"#,
-                    [
-                        new_domain.clone().into(),
-                        old_domain.clone().into(),
-                        like_old_inbox.into(),
-                        like_new_inbox.into(),
-                    ],
-                ))
-                .await
-                .map_err(|e| format!("rewrite delivery target_domain: {}", e))?;
-            }
         }
     }
 
     Ok(report)
 }
 
-/// Emit Move for one local user and fan-out to followers.
-pub async fn emit_move_for_user(
-    db: &DatabaseConnection,
+struct EmittedMove {
+    activity_id: String,
+    queued: u32,
+    activity_db_id: i32,
+    activity_json: serde_json::Value,
+}
+
+async fn enqueue_move_to_remote_followers(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    activity_db_id: i32,
+    old_base: &str,
+    new_base: &str,
+) -> Result<u32, String> {
+    let followers = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT ra.inbox_url, ra.domain
+               FROM federation_follows f
+               JOIN federation_remote_actors ra ON ra.id = f.remote_actor_id
+               WHERE f.user_id = $1 AND f.direction = 'incoming' AND f.status = 'accepted'"#,
+            [user_id.into()],
+        ))
+        .await
+        .map_err(|e| format!("Failed to list Move followers: {}", e))?;
+
+    let mut queued = 0u32;
+    for row in followers {
+        let inbox: String = row.try_get("", "inbox_url").unwrap_or_default();
+        if inbox.is_empty() {
+            tracing::warn!(
+                user_id,
+                activity_db_id,
+                "Move fan-out skip: empty inbox_url"
+            );
+            continue;
+        }
+        if url_is_under_base(&inbox, old_base) || url_is_under_base(&inbox, new_base) {
+            continue;
+        }
+        enqueue_delivery(db, activity_db_id, &inbox, "pending")
+            .await
+            .map_err(|e| format!("Failed to enqueue Move delivery: {}", e))?;
+        queued += 1;
+    }
+    Ok(queued)
+}
+
+/// Persist Move activity and remote delivery intent on the given connection.
+async fn emit_move_for_user(
+    db: &impl ConnectionTrait,
     user_id: i32,
     username: &str,
     old_base: &str,
     new_base: &str,
-) -> Result<(String, u32), String> {
+) -> Result<EmittedMove, String> {
     let old_actor = actor_url(old_base, username);
     let new_actor = actor_url(new_base, username);
     // Activity id under the **old** base so peers associate it with the departing identity
@@ -1176,31 +1340,19 @@ pub async fn emit_move_for_user(
     let published = now_iso8601();
     let move_json = build_move_activity(&activity_id, &old_actor, &new_actor, &published);
 
-    let act_row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"INSERT INTO federation_activities
-                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-               VALUES ($1, $2, 'Move', 'Person', $3, true, NOW())
-               RETURNING id"#,
-            [
-                activity_id.clone().into(),
-                user_id.into(),
-                move_json.clone().into(),
-            ],
-        ))
-        .await
-        .map_err(|e| format!("Failed to insert Move activity: {}", e))?;
+    let act_db_id = insert_local_activity(
+        db,
+        user_id,
+        &activity_id,
+        "Move",
+        Some("Person"),
+        move_json.clone(),
+    )
+    .await
+    .map_err(|e| format!("Failed to insert Move activity: {}", e))?;
 
-    let act_db_id: i32 = act_row
-        .map(|r| r.try_get("", "id").unwrap_or(0))
-        .unwrap_or(0);
-
-    if act_db_id == 0 {
-        return Err("Failed to obtain activity DB id for Move".into());
-    }
-
-    let queued = fan_out_to_followers(db, user_id, act_db_id, &move_json).await;
+    let queued =
+        enqueue_move_to_remote_followers(db, user_id, act_db_id, old_base, new_base).await?;
 
     tracing::info!(
         username,
@@ -1211,11 +1363,16 @@ pub async fn emit_move_for_user(
         "Emitted ActivityPub Move"
     );
 
-    Ok((activity_id, queued))
+    Ok(EmittedMove {
+        activity_id,
+        queued,
+        activity_db_id: act_db_id,
+        activity_json: move_json,
+    })
 }
 
 /// Whether this user has a non-empty federation PEM (shared-key continuity).
-async fn user_has_shared_key(db: &DatabaseConnection, user_id: i32) -> Result<bool, String> {
+async fn user_has_shared_key(db: &impl ConnectionTrait, user_id: i32) -> Result<bool, String> {
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -1227,6 +1384,17 @@ async fn user_has_shared_key(db: &DatabaseConnection, user_id: i32) -> Result<bo
         .await
         .map_err(|e| e.to_string())?;
     Ok(row.is_some())
+}
+
+fn federation_move_failed(e: String) -> (StatusCode, Json<serde_json::Value>) {
+    tracing::error!("Failed to move federation identity: {e}");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "error": "Failed to move federation identity",
+            "code": "federation_move_failed",
+        })),
+    )
 }
 
 /// Admin domain-move job: **B + G + C + E** (or dry_run counts).
@@ -1274,61 +1442,28 @@ pub async fn domain_move_all_users(
 
     let dry = req.dry_run;
 
-    // 3. B — actor document fields (alias)
-    let alias_stored = if dry {
-        false
-    } else {
-        store_domain_alias(db, &old_base, &new_base)
+    if dry {
+        let shared_keys = retarget_shared_keys(db, &old_base, &new_base, true)
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to store domain alias: {e}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": "Failed to move federation identity",
-                        "code": "federation_move_failed",
-                    })),
-                )
-            })?;
-        true
-    };
-
-    // 4. G — shared keys (retarget keyId only; never regenerate)
-    let shared_keys = retarget_shared_keys(db, &old_base, &new_base, dry)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to retarget shared keys: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Failed to move federation identity",
-                    "code": "federation_move_failed",
-                })),
-            )
-        })?;
-
-    // 5. C — emit Move per user
-    let mut results = Vec::new();
-    let mut enqueued = 0u32;
-    let mut failed = 0u32;
-
-    for row in users {
-        let user_id: i32 = row.try_get("", "id").unwrap_or(0);
-        let username: String = row.try_get("", "username").unwrap_or_default();
-        if user_id == 0 || username.is_empty() {
-            continue;
-        }
-
-        let old_actor = actor_url(&old_base, &username);
-        let new_actor = actor_url(&new_base, &username);
-        let has_key = user_has_shared_key(db, user_id).await.unwrap_or(false);
-
-        if dry {
+            .map_err(federation_move_failed)?;
+        let mut results = Vec::new();
+        let mut enqueued = 0u32;
+        for row in users {
+            let user_id = row_i32(&row, "id").map_err(federation_move_failed)?;
+            let username = row_string(&row, "username").map_err(federation_move_failed)?;
+            if user_id <= 0 || username.is_empty() {
+                return Err(federation_move_failed(
+                    "user row missing identity".into(),
+                ));
+            }
+            let has_key = user_has_shared_key(db, user_id)
+                .await
+                .map_err(federation_move_failed)?;
             results.push(DomainMoveUserResult {
                 user_id,
-                username,
-                old_actor,
-                new_actor,
+                username: username.clone(),
+                old_actor: actor_url(&old_base, &username),
+                new_actor: actor_url(&new_base, &username),
                 status: "would_enqueue".into(),
                 shared_key: Some(has_key),
                 activity_id: None,
@@ -1336,12 +1471,52 @@ pub async fn domain_move_all_users(
                 error: None,
             });
             enqueued += 1;
-            continue;
         }
+        let local_rewrite = rewrite_local_federation_urls(db, &old_base, &new_base, true)
+            .await
+            .map_err(federation_move_failed)?;
+        let total_users = results.len() as u32;
+        return Ok(DomainMoveResponse {
+            dry_run: true,
+            old_base_url: old_base,
+            new_base_url: new_base,
+            alias_stored: false,
+            total_users,
+            enqueued,
+            failed: 0,
+            shared_keys,
+            local_rewrite,
+            results,
+        });
+    }
 
-        match emit_move_for_user(db, user_id, &username, &old_base, &new_base).await {
-            Ok((activity_id, queued)) => {
+    let txn = db.begin().await.map_err(db_err)?;
+    store_domain_alias(&txn, &old_base, &new_base)
+        .await
+        .map_err(federation_move_failed)?;
+    let shared_keys = retarget_shared_keys(&txn, &old_base, &new_base, false)
+        .await
+        .map_err(federation_move_failed)?;
+
+    let mut results = Vec::new();
+    let mut enqueued = 0u32;
+    let mut pending_local = Vec::new();
+    for row in users {
+        let user_id = row_i32(&row, "id").map_err(federation_move_failed)?;
+        let username = row_string(&row, "username").map_err(federation_move_failed)?;
+        if user_id <= 0 || username.is_empty() {
+            txn.rollback().await.map_err(db_err)?;
+            return Err(federation_move_failed("user row missing identity".into()));
+        }
+        let old_actor = actor_url(&old_base, &username);
+        let new_actor = actor_url(&new_base, &username);
+        let has_key = user_has_shared_key(&txn, user_id)
+            .await
+            .map_err(federation_move_failed)?;
+        match emit_move_for_user(&txn, user_id, &username, &old_base, &new_base).await {
+            Ok(emitted) => {
                 enqueued += 1;
+                pending_local.push((user_id, emitted.activity_db_id, emitted.activity_json.clone()));
                 results.push(DomainMoveUserResult {
                     user_id,
                     username,
@@ -1349,58 +1524,42 @@ pub async fn domain_move_all_users(
                     new_actor,
                     status: "enqueued".into(),
                     shared_key: Some(has_key),
-                    activity_id: Some(activity_id),
-                    queued: Some(queued),
+                    activity_id: Some(emitted.activity_id),
+                    queued: Some(emitted.queued),
                     error: None,
                 });
             }
             Err(e) => {
-                failed += 1;
                 tracing::error!(
                     user_id,
                     username = %username,
                     error = %e,
-                    "domain-move emit failed"
+                    "domain-move emit failed; rolling back identity rewrite"
                 );
-                results.push(DomainMoveUserResult {
-                    user_id,
-                    username,
-                    old_actor,
-                    new_actor,
-                    status: "failed".into(),
-                    shared_key: Some(has_key),
-                    activity_id: None,
-                    queued: None,
-                    error: Some(e),
-                });
+                txn.rollback().await.map_err(db_err)?;
+                return Err(federation_move_failed(e));
             }
         }
     }
 
-    // 6. E — local DB rewrite (after Move enqueue)
-    let local_rewrite = rewrite_local_federation_urls(db, &old_base, &new_base, dry)
+    let local_rewrite = rewrite_local_federation_urls(&txn, &old_base, &new_base, false)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to rewrite local federation URLs: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Failed to move federation identity",
-                    "code": "federation_move_failed",
-                })),
-            )
-        })?;
+        .map_err(federation_move_failed)?;
+    txn.commit().await.map_err(db_err)?;
 
-    // 7. Full report
+    for (user_id, act_db_id, json) in pending_local {
+        let _ = fan_out_to_followers(db, user_id, act_db_id, &json).await;
+    }
+
     let total_users = results.len() as u32;
     Ok(DomainMoveResponse {
-        dry_run: dry,
+        dry_run: false,
         old_base_url: old_base,
         new_base_url: new_base,
-        alias_stored,
+        alias_stored: true,
         total_users,
         enqueued,
-        failed,
+        failed: 0,
         shared_keys,
         local_rewrite,
         results,
@@ -1428,6 +1587,47 @@ mod tests {
             classify_follow_update(Err(dup)),
             FollowUpdateOutcome::UniqueConflict
         );
+    }
+
+    #[test]
+    fn move_identity_rows_do_not_decode_to_zero() {
+        let src = include_str!("move_actor.rs");
+        let migrate = src
+            .split("pub async fn migrate_follows_old_to_new")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn store_domain_alias").next())
+            .expect("migrate");
+        assert!(!migrate.contains("unwrap_or(0)"));
+        assert!(migrate.contains("row_i32"));
+    }
+
+    #[test]
+    fn unique_conflict_merges_instead_of_blind_delete() {
+        let src = include_str!("move_actor.rs");
+        let migrate = src
+            .split("pub async fn migrate_follows_old_to_new")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn store_domain_alias").next())
+            .expect("migrate_follows_old_to_new");
+        assert!(migrate.contains("SAVEPOINT follow_repoint"));
+        assert!(migrate.contains("ROLLBACK TO SAVEPOINT follow_repoint"));
+        assert!(migrate.contains("merge_follow_onto_existing"));
+        assert!(migrate.contains("FOR UPDATE"));
+    }
+
+    #[test]
+    fn domain_move_commits_identity_in_one_transaction() {
+        let src = include_str!("move_actor.rs");
+        let body = src
+            .split("pub async fn domain_move_all_users")
+            .nth(1)
+            .and_then(|rest| rest.split("// Tests").next())
+            .expect("domain_move_all_users");
+        assert!(body.contains("db.begin()"));
+        let rewrite = body.find("rewrite_local_federation_urls(&txn").expect("rewrite in txn");
+        let commit = body.find("txn.commit()").expect("commit");
+        assert!(rewrite < commit, "URL rewrite must commit with alias/keys/Move");
+        assert!(body.contains("txn.rollback()"));
     }
 
     #[test]

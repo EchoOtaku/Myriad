@@ -255,20 +255,20 @@ pub async fn accept_channel(
     }
 
     let remote_actor_url: String = row.try_get("", "actor_url").unwrap_or_default();
-    let remote_inbox: Option<String> = row
+    let remote_inbox = row
         .try_get::<Option<String>>("", "inbox_url")
-        .unwrap_or(None);
+        .unwrap_or(None)
+        .filter(|inbox| !inbox.is_empty())
+        .ok_or_else(|| {
+            (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "Cannot accept channel: remote inbox is missing",
+                    "code": "channel_inbox_missing",
+                })),
+            )
+        })?;
 
-    // 更新状态
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "UPDATE federation_channels SET status = 'accepted' WHERE channel_id = $1",
-        [channel_id.into()],
-    ))
-    .await
-    .map_err(db_err)?;
-
-    // 发送 Accept Activity
     let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
     let accept = json!({
@@ -283,37 +283,37 @@ pub async fn accept_channel(
         }
     });
 
-    if let Some(inbox) = remote_inbox {
-        let domain = extract_domain(&inbox).unwrap_or_default();
-        let act_row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_activities
-                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                   VALUES ($1, $2, 'Accept', 'ChannelOpen', $3, true, NOW())
-                   RETURNING id"#,
-                [
-                    activity_id.clone().into(),
-                    user_id.into(),
-                    accept.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(db_err)?;
-
-        if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-            let _ = db
-                .execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_delivery_queue
-                       (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                    [act_id.into(), inbox.into(), domain.into()],
-                ))
-                .await;
-        }
+    let txn = db.begin().await.map_err(db_err)?;
+    let accepted = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE federation_channels SET status = 'accepted' WHERE channel_id = $1 AND status = 'pending'",
+            [channel_id.into()],
+        ))
+        .await
+        .map_err(db_err)?;
+    if accepted.rows_affected() != 1 {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Cannot accept this invite",
+                "code": "invite_invalid_status",
+            })),
+        ));
     }
+    insert_and_enqueue_delivery(
+        &txn,
+        user_id,
+        &activity_id,
+        "Accept",
+        Some("ChannelOpen"),
+        accept,
+        &remote_inbox,
+    )
+    .await
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
 
     let notif_id = crate::federation::notify::channel_invite_notification_id(channel_id, user_id);
     crate::federation::notify::mark_invite_notification_read(user_id, &notif_id).await;
@@ -438,9 +438,19 @@ pub async fn initiate_e2e_key_exchange(
         ));
     }
 
-    let remote_inbox: Option<String> = ch_row
+    let remote_inbox = ch_row
         .try_get::<Option<String>>("", "inbox_url")
-        .unwrap_or(None);
+        .unwrap_or(None)
+        .filter(|inbox| !inbox.is_empty())
+        .ok_or_else(|| {
+            (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "Cannot start key exchange: remote inbox is missing",
+                    "code": "channel_inbox_missing",
+                })),
+            )
+        })?;
     let remote_actor_url: String = ch_row.try_get("", "actor_url").unwrap_or_default();
     let mut properties = ch_row
         .try_get::<Option<serde_json::Value>>("", "properties")
@@ -592,37 +602,17 @@ pub async fn initiate_e2e_key_exchange(
             .await;
     }
 
-    if let Some(inbox) = remote_inbox {
-        let domain = extract_domain(&inbox).unwrap_or_default();
-        let act_row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_activities
-                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                   VALUES ($1, $2, 'KeyExchange', 'KeyExchange', $3, true, NOW())
-                   RETURNING id"#,
-                [
-                    activity_id.clone().into(),
-                    user_id.into(),
-                    kx_activity.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(db_err)?;
-
-        if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-            let _ = db
-                .execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_delivery_queue
-                       (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                    [act_id.into(), inbox.into(), domain.into()],
-                ))
-                .await;
-        }
-    }
+    insert_and_enqueue_delivery(
+        db,
+        user_id,
+        &activity_id,
+        "KeyExchange",
+        Some("KeyExchange"),
+        kx_activity,
+        &remote_inbox,
+    )
+    .await
+    .map_err(db_err)?;
 
     crate::federation::ws_gateway::broadcast_to_channel(
         channel_id,
@@ -654,3 +644,34 @@ pub async fn initiate_e2e_key_exchange(
     })
 }
 use myriad_error::AppError;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn accept_channel_commits_status_with_delivery_intent() {
+        let src = include_str!("e2e.rs");
+        let body = src
+            .split("pub async fn accept_channel")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn handle_channel_accept").next())
+            .expect("accept_channel");
+        assert!(body.contains("db.begin()"));
+        assert!(body.contains("insert_and_enqueue_delivery"));
+        assert!(body.contains("status = 'pending'"));
+        assert!(body.contains("channel_inbox_missing"));
+        assert!(!body.contains("if let Some(act_id)"));
+    }
+
+    #[test]
+    fn initiate_key_exchange_does_not_skip_enqueue() {
+        let src = include_str!("e2e.rs");
+        let body = src
+            .split("pub async fn initiate_e2e_key_exchange")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("initiate_e2e_key_exchange");
+        assert!(body.contains("insert_and_enqueue_delivery"));
+        assert!(body.contains("channel_inbox_missing"));
+        assert!(!body.contains("if let Some(act_id)"));
+    }
+}

@@ -228,7 +228,7 @@ pub async fn get_instance_trust_level(
         .await?;
 
     let level = match row {
-        Some(r) => Some(r.try_get::<i16>("", "trust_level").unwrap_or(0)),
+        Some(r) => Some(r.try_get::<i16>("", "trust_level")?),
         None => None,
     };
     trust_level_from_query(Ok(level))
@@ -700,37 +700,37 @@ async fn load_instance_policy(
         return policy_from_query(Ok(None));
     };
 
-    let min_level: i16 = r.try_get("", "min_trust_level").unwrap_or(0);
-    let domains_val: serde_json::Value = r
-        .try_get("", "allowed_domains")
-        .unwrap_or_else(|_| json!([]));
-    let allowed_domains: Vec<String> = domains_val
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
-                .collect()
-        })
-        .unwrap_or_default();
-    let auto_discover: bool = r.try_get("", "auto_discover").unwrap_or(true);
-    let defaults = RateLimitPolicy::default();
+    let min_level: i16 = r.try_get("", "min_trust_level")?;
+    let min_trust_level = match min_level {
+        0..=4 => TrustLevel::from_i16(min_level),
+        other => {
+            return Err(sea_orm::DbErr::Custom(format!(
+                "invalid min_trust_level {other}"
+            )))
+        }
+    };
+    let domains_val: serde_json::Value = r.try_get("", "allowed_domains")?;
+    let allowed_domains: Vec<String> = match &domains_val {
+        serde_json::Value::Null => Vec::new(),
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
+            .collect(),
+        _ => {
+            return Err(sea_orm::DbErr::Custom(
+                "allowed_domains is not an array".into(),
+            ))
+        }
+    };
+    let auto_discover: bool = r.try_get("", "auto_discover")?;
     let rate_limit = RateLimitPolicy {
-        max_requests_per_window: r
-            .try_get::<i64>("", "rate_max_requests")
-            .unwrap_or(defaults.max_requests_per_window)
-            .max(1),
-        window_seconds: r
-            .try_get::<i64>("", "rate_window_seconds")
-            .unwrap_or(defaults.window_seconds)
-            .max(1),
-        trusted_multiplier: r
-            .try_get::<i64>("", "rate_trusted_multiplier")
-            .unwrap_or(defaults.trusted_multiplier)
-            .max(1),
+        max_requests_per_window: r.try_get::<i64>("", "rate_max_requests")?.max(1),
+        window_seconds: r.try_get::<i64>("", "rate_window_seconds")?.max(1),
+        trusted_multiplier: r.try_get::<i64>("", "rate_trusted_multiplier")?.max(1),
     };
 
     policy_from_query(Ok(Some(InstancePolicy {
-        min_trust_level: TrustLevel::from_i16(min_level),
+        min_trust_level,
         allowed_domains,
         blocked_domains: Vec::new(), // DB is_blocked is authoritative
         auto_discover,
@@ -876,7 +876,10 @@ async fn is_domain_blocked(
             [domain.into()],
         ))
         .await?;
-    let blocked = row.and_then(|r| r.try_get::<bool>("", "is_blocked").ok());
+    let blocked = match row {
+        Some(r) => Some(r.try_get::<bool>("", "is_blocked")?),
+        None => None,
+    };
     blocked_from_query(Ok(blocked))
 }
 
@@ -937,17 +940,50 @@ pub async fn enforce_inbound(
 /// 出站投递策略检查（delivery 调用）
 ///
 /// 空域名拒绝；仅 `is_blocked`。投递不消耗入站速率配额。
-pub async fn enforce_outbound(db: &DatabaseConnection, target_domain: &str) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutboundTrustError {
+    Denied(String),
+    Unavailable(String),
+}
+
+impl OutboundTrustError {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Denied(reason) | Self::Unavailable(reason) => reason,
+        }
+    }
+
+    pub fn is_unavailable(&self) -> bool {
+        matches!(self, Self::Unavailable(_))
+    }
+}
+
+pub fn outbound_trust_from_block_lookup(
+    target_domain: &str,
+    blocked: Result<bool, sea_orm::DbErr>,
+) -> Result<(), OutboundTrustError> {
     if target_domain.is_empty() {
-        return Err("Empty target domain".to_string());
+        return Err(OutboundTrustError::Denied("Empty target domain".into()));
     }
-    if is_domain_blocked(db, target_domain)
-        .await
-        .map_err(|e| format!("Trust policy unavailable: {e}"))?
-    {
-        return Err(format!("Target {} is blocked", target_domain));
+    match blocked {
+        Ok(true) => Err(OutboundTrustError::Denied(format!(
+            "Target {target_domain} is blocked"
+        ))),
+        Ok(false) => Ok(()),
+        Err(error) => Err(OutboundTrustError::Unavailable(format!(
+            "Trust policy unavailable: {error}"
+        ))),
     }
-    Ok(())
+}
+
+pub async fn enforce_outbound(
+    db: &DatabaseConnection,
+    target_domain: &str,
+) -> Result<(), OutboundTrustError> {
+    outbound_trust_from_block_lookup(
+        target_domain,
+        is_domain_blocked(db, target_domain).await,
+    )
 }
 
 /// 加载当前生效的内容过滤规则（`federation_content_filters`）
@@ -1441,6 +1477,43 @@ mod tests {
         let default = policy_from_query(Ok(None)).unwrap();
         assert_eq!(default.min_trust_level, TrustLevel::Unknown);
         assert!(default.allowed_domains.is_empty());
+    }
+
+    #[test]
+    fn outbound_unavailable_is_not_denied() {
+        assert!(matches!(
+            outbound_trust_from_block_lookup("", Ok(false)),
+            Err(OutboundTrustError::Denied(_))
+        ));
+        assert!(matches!(
+            outbound_trust_from_block_lookup("peer.example", Ok(true)),
+            Err(OutboundTrustError::Denied(_))
+        ));
+        assert!(outbound_trust_from_block_lookup("peer.example", Ok(false)).is_ok());
+        let err = outbound_trust_from_block_lookup(
+            "peer.example",
+            Err(sea_orm::DbErr::Custom("db down".into())),
+        )
+        .unwrap_err();
+        assert!(err.is_unavailable(), "{err:?}");
+    }
+
+    #[test]
+    fn existing_policy_row_must_decode() {
+        let src = include_str!("trust.rs");
+        let start = src.find("async fn load_instance_policy").expect("load");
+        let body = src[start..]
+            .split("pub async fn update_instance_trust")
+            .next()
+            .expect("body");
+        assert!(
+            !body.contains("unwrap_or"),
+            "a present policy row must not fall back to permissive defaults"
+        );
+        assert!(
+            body.contains("invalid min_trust_level"),
+            "out-of-range min_trust_level must not become Unknown/allow-all"
+        );
     }
 
     #[test]

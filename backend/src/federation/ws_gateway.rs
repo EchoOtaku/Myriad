@@ -184,7 +184,9 @@ pub async fn channel_websocket(
         Err(err) => return err.into_response(),
     };
 
-    let user_id: i32 = claims.sub.parse().unwrap_or(-1);
+    let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&claims.sub) else {
+        return ws_ticket_http_error(WsTicketError::InvalidSubject).into_response();
+    };
     let username = claims.username.clone();
 
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
@@ -207,10 +209,8 @@ async fn resolve_ws_ticket(
         return Ok(None);
     };
     // Fail closed: never fall open to host identity when a ticket was supplied.
-    let subject_id: i32 = claims
-        .sub
-        .parse()
-        .map_err(|_| ws_ticket_http_error(WsTicketError::InvalidSubject))?;
+    let subject_id = crate::services::tapp_ownership::positive_user_id(&claims.sub)
+        .ok_or_else(|| ws_ticket_http_error(WsTicketError::InvalidSubject))?;
     let consumed = tapp_ws_ticket::consume_ws_ticket(db, ticket, subject_id, kind, resource_id)
         .await
         .map_err(ws_ticket_http_error)?;
@@ -401,7 +401,9 @@ pub async fn room_websocket(
         Err(err) => return err.into_response(),
     };
 
-    let user_id: i32 = claims.sub.parse().unwrap_or(-1);
+    let Some(user_id) = crate::services::tapp_ownership::positive_user_id(&claims.sub) else {
+        return ws_ticket_http_error(WsTicketError::InvalidSubject).into_response();
+    };
     let username = claims.username.clone();
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_WS_MESSAGE_BYTES)
@@ -692,6 +694,14 @@ async fn handle_ws_client_message(
 #[cfg(test)]
 mod registry_lifecycle_tests {
     use super::*;
+
+    #[test]
+    fn websocket_upgrade_rejects_non_positive_subject() {
+        let src = include_str!("ws_gateway.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production");
+        assert!(production.contains("positive_user_id"));
+        assert!(!production.contains("unwrap_or(-1)"));
+    }
 
     #[tokio::test]
     async fn subscription_drop_releases_last_registry_entry() {

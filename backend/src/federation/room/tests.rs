@@ -461,6 +461,47 @@ fn room_is_full_at_capacity() {
 }
 
 #[test]
+fn room_capacity_decode_does_not_default() {
+    let crud = include_str!("crud.rs");
+    let list = crud
+        .split("pub async fn list_rooms")
+        .nth(1)
+        .and_then(|rest| rest.split("pub async fn get_room").next())
+        .expect("list_rooms");
+    let detail = crud
+        .split("pub async fn get_room")
+        .nth(1)
+        .and_then(|rest| rest.split("pub async fn update_room").next())
+        .expect("get_room");
+    assert!(
+        !list.contains("max_members\").unwrap_or(50)"),
+        "list must not invent capacity"
+    );
+    assert!(list.contains("max_members\").map_err(db_err)"));
+    assert!(
+        !detail.contains("max_members\").unwrap_or(50)"),
+        "detail must not invent capacity"
+    );
+    let public = include_str!("members.rs");
+    assert!(!public.contains("max_members\").unwrap_or(50)"));
+}
+
+#[test]
+fn accept_invite_locks_before_reading_membership() {
+    let src = include_str!("members.rs");
+    let body = src
+        .split("pub async fn accept_room_invite")
+        .nth(1)
+        .and_then(|rest| rest.split("pub async fn ").next())
+        .expect("accept_room_invite");
+    let lock = body.find("lock_room_capacity").expect("lock");
+    let membership = body.find("get_membership").expect("membership");
+    assert!(lock < membership, "capacity lock must precede membership");
+    assert!(body.contains("membership_status = 'pending'"));
+    assert!(body.contains("rows_affected()"));
+}
+
+#[test]
 fn create_and_admit_use_same_transaction_lock() {
     let crud = include_str!("crud.rs");
     assert!(crud.contains("db.begin()"));
@@ -469,7 +510,69 @@ fn create_and_admit_use_same_transaction_lock() {
     assert!(members.contains("assert_room_has_capacity"));
     assert!(members.contains("FOR UPDATE") || include_str!("helpers.rs").contains("FOR UPDATE"));
     let e2e = include_str!("e2e.rs");
-    assert!(e2e.contains("fanout_to_remote_members"));
+    assert!(include_str!("helpers.rs").contains("RoomFanoutMode::RequireRoutable"));
+    assert!(include_str!("helpers.rs").contains("returning_id(act_row)"));
+    let invite = include_str!("members.rs");
+    let invite_fn = invite
+        .split("pub async fn invite_member")
+        .nth(1)
+        .expect("invite_member");
+    assert!(invite_fn.contains("insert_and_enqueue_delivery"));
+    assert!(invite_fn.contains("remote_inbox_missing"));
+    assert!(!invite_fn.contains("if let Some(act_id)"));
+    let reject = invite
+        .split("pub async fn reject_room_invite")
+        .nth(1)
+        .expect("reject_room_invite");
+    assert!(reject.contains("insert_and_enqueue_delivery"));
+    assert!(reject.contains("db.begin()"));
+    let transfer = members
+        .split("pub async fn transfer_room_ownership")
+        .nth(1)
+        .and_then(|rest| rest.split("pub async fn leave_room").next())
+        .expect("transfer_room_ownership");
+    assert!(transfer.contains("fanout_to_remote_members_required"));
+    assert!(transfer.contains("db.begin()"));
+    assert!(!transfer.contains("let _ = db"));
+    let leave = members
+        .split("pub async fn leave_room")
+        .nth(1)
+        .expect("leave_room");
+    assert!(leave.contains("fanout_to_remote_members_required"));
+    let update = crud
+        .split("pub async fn update_room")
+        .nth(1)
+        .and_then(|rest| rest.split("pub async fn delete_room").next())
+        .expect("update_room");
+    assert!(update.contains("fanout_to_remote_members_required"));
+    assert!(update.contains("txn.commit()"));
+    let role = members
+        .split("pub async fn set_member_role")
+        .nth(1)
+        .and_then(|rest| rest.split("pub async fn remove_member").next())
+        .expect("set_member_role");
+    assert!(role.contains("fanout_to_remote_members_required"));
+    let kick = members
+        .split("pub async fn remove_member")
+        .nth(1)
+        .and_then(|rest| rest.split("pub async fn transfer_room_ownership").next())
+        .expect("remove_member");
+    assert!(kick.contains("fanout_to_remote_members_required"));
+    let accept = members
+        .split("pub async fn accept_room_invite")
+        .nth(1)
+        .expect("accept_room_invite");
+    assert!(accept.contains("fanout_to_remote_members_required"));
+    assert!(!accept.contains("if let Err(e) = fanout_to_remote_members("));
+    let pin = include_str!("messages.rs")
+        .split("pub async fn pin_room_message")
+        .nth(1)
+        .expect("pin_room_message");
+    assert!(pin.contains("fanout_to_remote_members_required"));
+    let stickers = include_str!("stickers.rs");
+    assert!(stickers.contains("persist_and_fanout_stickers"));
+    assert!(stickers.contains("fanout_to_remote_members_required"));
+    assert!(e2e.contains("fanout_to_remote_members_required"));
     assert!(
         !e2e.contains("let _ = fanout_to_remote_members"),
         "KeyExchange fanout must not be ignored after publishing the marker"

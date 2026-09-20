@@ -58,9 +58,9 @@ pub(crate) async fn enqueue_delivery(
         .await
         .map_err(db_err)?;
 
-    let act_id: i32 = act_row
-        .map(|r| r.try_get("", "id").unwrap_or(0))
-        .unwrap_or(0);
+    let act_id = returning_id(act_row).map_err(|error| {
+        db_err(sea_orm::DbErr::Custom(error))
+    })?;
 
     // Same-instance inbox → handle directly (Follow / Accept / Undo / …).
     // Box::pin breaks the async recursion cycle:

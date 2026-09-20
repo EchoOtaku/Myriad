@@ -424,40 +424,20 @@ pub async fn close_channel(
     }
 
     let remote_actor_url: String = row.try_get("", "actor_url").unwrap_or_default();
-    let remote_inbox: Option<String> = row
+    let remote_inbox = row
         .try_get::<Option<String>>("", "inbox_url")
-        .unwrap_or(None);
+        .unwrap_or(None)
+        .filter(|inbox| !inbox.is_empty())
+        .ok_or_else(|| {
+            (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "Cannot close channel: remote inbox is missing",
+                    "code": "channel_inbox_missing",
+                })),
+            )
+        })?;
 
-    // 更新状态
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "UPDATE federation_channels SET status = 'closed', closed_at = NOW() WHERE channel_id = $1",
-        [channel_id.into()],
-    ))
-    .await
-    .map_err(db_err)?;
-
-    // Drop pending KeyExchange / messages for this channel (remote will not accept after close).
-    // Order: cancel stale *before* enqueue ChannelClose. cancel_pending also excludes
-    // ChannelClose/RoomDissolve activity types so a reverse order would still be safe.
-    let _ = crate::federation::delivery::cancel_pending_deliveries_for_resource(
-        db,
-        channel_id,
-        "cancelled: local channel closed",
-    )
-    .await;
-
-    // Notify other local tabs/devices immediately (remote path already broadcasts in handle_channel_close)
-    crate::federation::ws_gateway::broadcast_to_channel(
-        channel_id,
-        &json!({
-            "type": "channel_closed",
-            "channel_id": channel_id
-        }),
-    )
-    .await;
-
-    // 通知远程方
     let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
     let close_activity = json!({
@@ -472,37 +452,55 @@ pub async fn close_channel(
         }
     });
 
-    if let Some(inbox) = remote_inbox {
-        let domain = extract_domain(&inbox).unwrap_or_default();
-        let act_row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_activities
-                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                   VALUES ($1, $2, 'ChannelClose', 'Channel', $3, true, NOW())
-                   RETURNING id"#,
-                [
-                    activity_id.clone().into(),
-                    user_id.into(),
-                    close_activity.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(db_err)?;
-
-        if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-            let _ = db
-                .execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_delivery_queue
-                       (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                    [act_id.into(), inbox.into(), domain.into()],
-                ))
-                .await;
-        }
+    let txn = db.begin().await.map_err(db_err)?;
+    let closed = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE federation_channels SET status = 'closed', closed_at = NOW()              WHERE user_id = $1 AND channel_id = $2 AND status <> 'closed'",
+            [user_id.into(), channel_id.into()],
+        ))
+        .await
+        .map_err(db_err)?;
+    if closed.rows_affected() != 1 {
+        txn.rollback().await.ok();
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AppError::public_json("Channel already closed")),
+        ));
     }
+
+    crate::federation::delivery::cancel_pending_deliveries_for_resource(
+        &txn,
+        channel_id,
+        "cancelled: local channel closed",
+    )
+    .await
+    .map_err(db_err)?;
+
+    let act_id = insert_local_activity(
+        &txn,
+        user_id,
+        &activity_id,
+        "ChannelClose",
+        Some("Channel"),
+        close_activity,
+    )
+    .await
+    .map_err(db_err)?;
+    enqueue_delivery(&txn, act_id, &remote_inbox, "pending")
+        .await
+        .map_err(db_err)?;
+
+    txn.commit().await.map_err(db_err)?;
+
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "channel_closed",
+            "channel_id": channel_id
+        }),
+    )
+    .await;
 
     tracing::info!("[Channel] Closed channel {}", channel_id);
 
@@ -925,4 +923,29 @@ pub async fn get_messages(
     messages.reverse();
 
     Ok(messages)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn close_channel_commits_status_with_delivery_intent() {
+        let src = include_str!("crud.rs");
+        let start = src.find("pub async fn close_channel").expect("close_channel");
+        let body = src[start..]
+            .split("pub async fn delete_channel")
+            .next()
+            .expect("body");
+        assert!(body.contains("db.begin()"), "close must share a transaction");
+        assert!(body.contains("insert_local_activity"));
+        assert!(body.contains("enqueue_delivery"));
+        assert!(body.contains("status <> 'closed'"));
+        assert!(
+            !body.contains("let _ = db"),
+            "delivery enqueue errors must roll back the close"
+        );
+        assert!(
+            body.contains("channel_inbox_missing"),
+            "close must refuse when the remote cannot be reached"
+        );
+    }
 }

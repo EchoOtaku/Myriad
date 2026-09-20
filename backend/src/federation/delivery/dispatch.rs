@@ -310,9 +310,18 @@ async fn load_user_keypair(
         .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?
         .ok_or_else(|| "No federation keys found for user".to_string())?;
 
-    let pub_pem: String = row.try_get("", "public_key_pem").unwrap_or_default();
-    let encrypted: String = row.try_get("", "private_key_encrypted").unwrap_or_default();
-    let stored_kid: String = row.try_get("", "key_id").unwrap_or_default();
+    let pub_pem: String = row.try_get("", "public_key_pem").map_err(|error| {
+        tracing::error!(%error, "failed to decode federation public_key_pem");
+        "Database error".to_string()
+    })?;
+    let encrypted: String = row.try_get("", "private_key_encrypted").map_err(|error| {
+        tracing::error!(%error, "failed to decode federation private_key_encrypted");
+        "Database error".to_string()
+    })?;
+    let stored_kid: String = row.try_get("", "key_id").map_err(|error| {
+        tracing::error!(%error, "failed to decode federation key_id");
+        "Database error".to_string()
+    })?;
 
     if pub_pem.trim().is_empty() || encrypted.trim().is_empty() {
         return Err("No federation keys found for user".to_string());

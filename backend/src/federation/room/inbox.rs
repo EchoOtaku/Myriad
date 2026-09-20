@@ -689,6 +689,14 @@ pub async fn handle_room_join(
         ));
     }
 
+    let (max_members, active) = match lock_room_capacity(db, room_id).await {
+        Err(error) if error.to_string().contains("Room not found") => {
+            return Err(format!(
+                "Room {room_id} not yet present; retry after RoomInvite"
+            ));
+        }
+        other => other.map_err(|e| e.to_string())?,
+    };
     let prior = get_membership(db, room_id, joining)
         .await
         .map_err(|e| e.to_string())?;
@@ -754,13 +762,8 @@ pub async fn handle_room_join(
         .as_ref()
         .map(|(_, st)| st == "active")
         .unwrap_or(false);
-    if !already_active {
-        let (max_members, active) = lock_room_capacity(db, room_id)
-            .await
-            .map_err(|e| e.to_string())?;
-        if room_is_full(active, max_members) {
-            return Err("Room is full".into());
-        }
+    if !already_active && room_is_full(active, max_members) {
+        return Err("Room is full".into());
     }
 
     // 加入/激活成员（pending → active on accept-side RoomJoin)
@@ -787,7 +790,7 @@ pub async fn handle_room_join(
     // roll back the membership write under the caller's receipt transaction.
     if was_pending || is_new {
         refanout_local_e2e_keys_to_member(db, room_id, joining).await?;
-        backfill_roster_for_new_member(db, room_id, &owner_actor, joining, role).await;
+        backfill_roster_for_new_member(db, room_id, &owner_actor, joining, role).await?;
     }
 
     crate::federation::ws_gateway::broadcast_to_room(
@@ -830,20 +833,20 @@ pub async fn handle_room_join(
 /// arrived, so anything they encrypt is undecryptable. The owner's local
 /// instance is the one that repairs the gap.
 ///
-/// Best-effort: errors here do not fail the membership write. A peer we cannot
-/// reach right now does not fail this write (no roster retry here).
+/// Fail closed on announce/enqueue: the inbound receipt retries instead of
+/// leaving a member invisible to the rest of the room.
 pub(crate) async fn backfill_roster_for_new_member(
     db: &impl ConnectionTrait,
     room_id: &str,
     owner_actor: &str,
     joining: &str,
     joining_role: &str,
-) {
+) -> Result<(), String> {
     let base_url = get_base_url().await;
     // Only the owner's local instance speaks for the roster — otherwise every member's
     // server would announce the same rows to everyone else.
     if owner_actor.is_empty() || local_username_from_actor_url(&base_url, owner_actor).is_none() {
-        return;
+        return Ok(());
     }
 
     let owner_row = db
@@ -858,7 +861,7 @@ pub(crate) async fn backfill_roster_for_new_member(
         .ok()
         .flatten();
     let Some(user_id) = owner_row.and_then(|r| r.try_get::<i32>("", "local_user_id").ok()) else {
-        return;
+        return Ok(());
     };
 
     // 1) Tell the rest of the room about the newcomer. Their own accept only
@@ -876,7 +879,7 @@ pub(crate) async fn backfill_roster_for_new_member(
             "role": joining_role
         }
     });
-    if let Err(e) = fanout_to_remote_members_excluding(
+    if let Err(e) = fanout_to_remote_members_excluding_required(
         db,
         user_id,
         room_id,
@@ -888,12 +891,9 @@ pub(crate) async fn backfill_roster_for_new_member(
     )
     .await
     {
-        tracing::warn!(
-            room_id = %room_id,
-            member = %joining,
-            error = %e,
-            "[Room] roster announce of new member failed"
-        );
+        return Err(format!(
+            "roster announce of {joining} in room {room_id} failed: {e}"
+        ));
     }
 
     // 2) Tell the newcomer about everyone already here.
@@ -911,13 +911,13 @@ pub(crate) async fn backfill_roster_for_new_member(
         let domain: String = r.try_get("", "domain").unwrap_or_default();
         require_remote_inbox(Some((inbox, domain))).ok()
     });
-    let Some((inbox, domain)) = inbox_domain else {
+    let Some((inbox, _domain)) = inbox_domain else {
         tracing::warn!(
             room_id = %room_id,
             member = %joining,
             "[Room] roster backfill skipped — no inbox for new member"
         );
-        return;
+        return Ok(());
     };
 
     let members = match db
@@ -931,24 +931,31 @@ pub(crate) async fn backfill_roster_for_new_member(
     {
         Ok(rows) => rows,
         Err(e) => {
-            tracing::warn!(
-                room_id = %room_id,
-                error = %e,
-                "[Room] roster backfill could not read members"
-            );
-            return;
+            return Err(format!(
+                "roster backfill could not read members for room {room_id}: {e}"
+            ));
         }
     };
 
     let mut sent = 0u32;
     for row in members {
-        let member_actor: String = row.try_get("", "actor_url").unwrap_or_default();
-        if member_actor.is_empty() || same_actor_url(&member_actor, joining) {
+        let member_actor: String = row.try_get("", "actor_url").map_err(|e| {
+            format!("roster backfill member actor_url decode failed: {e}")
+        })?;
+        if member_actor.is_empty() {
+            return Err("roster backfill saw a member with empty actor_url".into());
+        }
+        if same_actor_url(&member_actor, joining) {
             continue;
         }
         let member_role: String = row
             .try_get("", "role")
-            .unwrap_or_else(|_| "member".to_string());
+            .map_err(|e| format!("roster backfill member role decode failed: {e}"))?;
+        let member_role = if member_role.is_empty() {
+            "member".to_string()
+        } else {
+            member_role
+        };
 
         let activity_id = generate_activity_id(&base_url);
         let activity = json!({
@@ -964,51 +971,19 @@ pub(crate) async fn backfill_roster_for_new_member(
                 "role": member_role
             }
         });
-
-        let act_row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_activities
-                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-                   VALUES ($1, $2, 'RoomJoin', 'Room', $3, true, NOW())
-                   RETURNING id"#,
-                [activity_id.into(), user_id.into(), activity.into()],
-            ))
-            .await;
-        let act_id = match act_row {
-            Ok(Some(r)) => r.try_get::<i32>("", "id").ok(),
-            Ok(None) => None,
-            Err(e) => {
-                tracing::warn!(
-                    room_id = %room_id,
-                    member = %member_actor,
-                    error = %e,
-                    "[Room] roster backfill activity insert failed"
-                );
-                None
-            }
-        };
-        let Some(act_id) = act_id else { continue };
-
-        if let Err(e) = db
-            .execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_delivery_queue
-                   (activity_id, target_inbox, target_domain, status, created_at)
-                   VALUES ($1, $2, $3, 'pending', NOW())
-                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
-                [act_id.into(), inbox.clone().into(), domain.clone().into()],
-            ))
-            .await
-        {
-            tracing::warn!(
-                room_id = %room_id,
-                member = %member_actor,
-                error = %e,
-                "[Room] roster backfill enqueue failed"
-            );
-            continue;
-        }
+        insert_and_enqueue_delivery(
+            db,
+            user_id,
+            &activity_id,
+            "RoomJoin",
+            Some("Room"),
+            activity,
+            &inbox,
+        )
+        .await
+        .map_err(|e| {
+            format!("roster backfill enqueue of {member_actor} to {joining} in room {room_id} failed: {e}")
+        })?;
         sent += 1;
     }
 
@@ -1020,6 +995,7 @@ pub(crate) async fn backfill_roster_for_new_member(
             room_id
         );
     }
+    Ok(())
 }
 
 /// After a remote member becomes active, deliver KeyExchange for every *local*
@@ -1630,4 +1606,34 @@ pub async fn handle_room_governance(
         changes
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn room_join_locks_before_reading_membership() {
+        let src = include_str!("inbox.rs");
+        let body = src
+            .split("pub async fn handle_room_join(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) async fn backfill_roster_for_new_member").next())
+            .expect("handle_room_join");
+        let lock_at = body.find("lock_room_capacity").expect("lock");
+        let prior_at = body.find("get_membership").expect("membership");
+        assert!(lock_at < prior_at, "stale membership must not skip the room lock");
+        assert!(!body.contains("if !already_active {"));
+    }
+
+    #[test]
+    fn roster_backfill_does_not_skip_enqueue_failures() {
+        let src = include_str!("inbox.rs");
+        let body = src
+            .split("pub(crate) async fn backfill_roster_for_new_member")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) async fn refanout_local_e2e_keys_to_member").next())
+            .expect("backfill_roster_for_new_member");
+        assert!(body.contains("insert_and_enqueue_delivery"));
+        assert!(!body.contains("roster backfill enqueue failed"));
+        assert!(!body.contains("let Some(act_id) = act_id else { continue }"));
+    }
 }

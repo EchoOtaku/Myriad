@@ -140,6 +140,18 @@ fn missing_keys_error_is_detected() {
     assert!(!is_missing_federation_keys_error(
         "Key load failed (ensure): Key generation failed"
     ));
+    assert!(!is_missing_federation_keys_error("Database error"));
+}
+
+#[test]
+fn federation_key_decode_failure_is_not_treated_as_missing() {
+    let src = include_str!("dispatch.rs");
+    let load = src
+        .split("async fn load_user_keypair(")
+        .nth(1)
+        .expect("load_user_keypair");
+    assert!(load.contains("Database error"));
+    assert!(!load.contains("unwrap_or_default()"));
 }
 
 #[test]

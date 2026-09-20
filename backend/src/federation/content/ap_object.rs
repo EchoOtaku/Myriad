@@ -297,7 +297,9 @@ pub(super) async fn build_ap_object(
                         .map_err(db_err)?
                         .ok_or_else(|| not_found("Library metadata not found"))?;
                     (
-                        row.try_get::<i32>("", "id").unwrap_or(id),
+                        row_positive_id(&row, "id").map_err(|error| {
+                            db_err(sea_orm::DbErr::Custom(error))
+                        })?,
                         row.try_get::<String>("", "platform_name")
                             .unwrap_or_default(),
                         row.try_get::<serde_json::Value>("", "raw_data")
@@ -329,7 +331,9 @@ pub(super) async fn build_ap_object(
                             not_found(&format!("No library metadata for platform '{}'", platform))
                         })?;
                     (
-                        row.try_get::<i32>("", "id").unwrap_or(0),
+                        row_positive_id(&row, "id").map_err(|error| {
+                            db_err(sea_orm::DbErr::Custom(error))
+                        })?,
                         row.try_get::<String>("", "platform_name")
                             .unwrap_or_else(|_| platform.to_string()),
                         row.try_get::<serde_json::Value>("", "raw_data")
@@ -678,10 +682,7 @@ async fn deliver_create_to_local_follower(
     let Some(user_row) = user_row else {
         return Ok(false);
     };
-    let follower_user_id: i32 = user_row.try_get("", "id").unwrap_or(0);
-    if follower_user_id == 0 {
-        return Ok(false);
-    }
+    let follower_user_id = crate::federation::types::row_positive_id(&user_row, "id")?;
 
     let publisher_actor = activity_json["actor"].as_str().unwrap_or("").to_string();
     if publisher_actor.is_empty() {
@@ -826,9 +827,10 @@ async fn ensure_remote_actor_stub(
         .await
         .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?;
 
-    row.map(|r| r.try_get("", "id").unwrap_or(0))
-        .filter(|id| *id != 0)
-        .ok_or_else(|| "Failed to upsert remote actor stub".into())
+    returning_id(row).map_err(|error| {
+        tracing::error!(%error, "remote actor stub RETURNING id decode failed");
+        "Failed to upsert remote actor stub".into()
+    })
 }
 
 // 辅助函数

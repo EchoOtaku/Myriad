@@ -1,6 +1,6 @@
 //! Room shared stickers.
 use axum::{Json, http::StatusCode};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::json;
 
 use crate::federation::types::*;
@@ -76,31 +76,17 @@ pub(crate) async fn save_room_shared_config(
     Ok(())
 }
 
-pub(crate) async fn broadcast_and_fanout_stickers(
-    db: &impl ConnectionTrait,
+pub(crate) async fn persist_and_fanout_stickers(
+    db: &DatabaseConnection,
     user_id: i32,
     room_id: &str,
     local_actor: &str,
     base_url: &str,
     stickers: &[RoomStickerItem],
+    shared: serde_json::Value,
     op: &str,
-) {
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
     let stickers_val = stickers_to_json(stickers);
-    crate::federation::ws_gateway::broadcast_to_room(
-        room_id,
-        &json!({
-            "type": "system",
-            "room_id": room_id,
-            "event": "stickers_changed",
-            "actor": local_actor,
-            "op": op,
-            "stickers": &stickers_val,
-        }),
-    )
-    .await;
-
-    // Fan-out as RoomGovernance so remote homes mirror the pack.
-    // handle_room_governance applies `stickers` only from owner/admin actors.
     let activity_id = generate_activity_id(base_url);
     let gov_activity = json!({
         "@context": build_context(),
@@ -111,12 +97,14 @@ pub(crate) async fn broadcast_and_fanout_stickers(
             "type": "myriad:RoomGovernance",
             "room": room_id,
             "changes": {
-                "stickers": stickers_val
+                "stickers": &stickers_val
             }
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+    let txn = db.begin().await.map_err(db_err)?;
+    save_room_shared_config(&txn, room_id, shared).await?;
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         room_id,
         &activity_id,
@@ -125,13 +113,21 @@ pub(crate) async fn broadcast_and_fanout_stickers(
         "RoomGovernance",
     )
     .await
-    {
-        tracing::warn!(
-            "[Room] Failed to fan-out stickers for room {}: {}",
-            room_id,
-            e
-        );
-    }
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "stickers_changed",
+            "actor": local_actor,
+            "op": op,
+            "stickers": stickers_val,
+        }),
+    )
+    .await;
+    Ok(())
 }
 
 /// POST /api/federation/rooms/{room_id}/stickers — room owner/admin only (edit shared pack).
@@ -140,7 +136,7 @@ pub async fn add_room_sticker(
     username: &str,
     room_id: &str,
     req: AddRoomStickerRequest,
-    db: &impl ConnectionTrait,
+    db: &DatabaseConnection,
 ) -> Result<RoomStickersResponse, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
@@ -226,18 +222,17 @@ pub async fn add_room_sticker(
         stickers.truncate(ROOM_STICKER_MAX_COUNT);
     }
     shared["stickers"] = stickers_to_json(&stickers);
-    save_room_shared_config(db, room_id, shared).await?;
-
-    broadcast_and_fanout_stickers(
+    persist_and_fanout_stickers(
         db,
         user_id,
         room_id,
         &local_actor,
         &base_url,
         &stickers,
+        shared,
         "add",
     )
-    .await;
+    .await?;
 
     tracing::info!(
         "[Room] Sticker shared in {} by {} (count={})",
@@ -259,7 +254,7 @@ pub async fn remove_room_sticker(
     username: &str,
     room_id: &str,
     sticker_id: &str,
-    db: &impl ConnectionTrait,
+    db: &DatabaseConnection,
 ) -> Result<RoomStickersResponse, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
@@ -321,18 +316,17 @@ pub async fn remove_room_sticker(
 
     stickers.retain(|s| s.id != sticker_id);
     shared["stickers"] = stickers_to_json(&stickers);
-    save_room_shared_config(db, room_id, shared).await?;
-
-    broadcast_and_fanout_stickers(
+    persist_and_fanout_stickers(
         db,
         user_id,
         room_id,
         &local_actor,
         &base_url,
         &stickers,
+        shared,
         "remove",
     )
-    .await;
+    .await?;
 
     Ok(RoomStickersResponse {
         success: true,

@@ -303,7 +303,8 @@ pub async fn update_room(
     );
     values.push(room_id.into());
 
-    db.execute_raw(Statement::from_sql_and_values(
+    let txn = db.begin().await.map_err(db_err)?;
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         &sql,
         values,
@@ -335,20 +336,12 @@ pub async fn update_room(
         changes.insert("is_public".into(), json!(true));
     }
 
-    if !changes.is_empty() {
-        let changes_val = serde_json::Value::Object(changes);
-        crate::federation::ws_gateway::broadcast_to_room(
-            room_id,
-            &json!({
-                "type": "system",
-                "room_id": room_id,
-                "event": "governance_changed",
-                "actor": &local_actor,
-                "changes": &changes_val
-            }),
-        )
-        .await;
-
+    let changes_val = if changes.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(changes))
+    };
+    if let Some(ref changes_val) = changes_val {
         let activity_id = generate_activity_id(&base_url);
         let gov_activity = json!({
             "@context": build_context(),
@@ -361,8 +354,8 @@ pub async fn update_room(
                 "changes": changes_val
             }
         });
-        if let Err(e) = fanout_to_remote_members(
-            db,
+        fanout_to_remote_members_required(
+            &txn,
             user_id,
             room_id,
             &activity_id,
@@ -371,13 +364,21 @@ pub async fn update_room(
             "RoomGovernance",
         )
         .await
-        {
-            tracing::warn!(
-                "[Room] Failed to fan-out governance for room {}: {}",
-                room_id,
-                e
-            );
-        }
+        .map_err(db_err)?;
+    }
+    txn.commit().await.map_err(db_err)?;
+    if let Some(changes_val) = changes_val {
+        crate::federation::ws_gateway::broadcast_to_room(
+            room_id,
+            &json!({
+                "type": "system",
+                "room_id": room_id,
+                "event": "governance_changed",
+                "actor": &local_actor,
+                "changes": changes_val
+            }),
+        )
+        .await;
     }
 
     // 返回更新后的详情
@@ -422,18 +423,6 @@ pub async fn delete_room(
         ));
     }
 
-    // Cancel stale traffic (messages / KeyExchange / invites) *before* dissolve
-    // fan-out. cancel_pending_deliveries_for_resource also excludes RoomDissolve /
-    // ChannelClose, but ordering first is defense-in-depth so dissolve rows are
-    // never present when we cancel.
-    let _ = crate::federation::delivery::cancel_pending_deliveries_for_resource(
-        db,
-        room_id,
-        "cancelled: local room dissolved",
-    )
-    .await;
-
-    // Fan-out dissolve while remote members still exist for delivery targets
     let activity_id = generate_activity_id(&base_url);
     let dissolve_activity = json!({
         "@context": build_context(),
@@ -445,8 +434,17 @@ pub async fn delete_room(
             "id": room_id
         }
     });
-    if let Err(e) = fanout_to_remote_members(
-        db,
+
+    let txn = db.begin().await.map_err(db_err)?;
+    crate::federation::delivery::cancel_pending_deliveries_for_resource(
+        &txn,
+        room_id,
+        "cancelled: local room dissolved",
+    )
+    .await
+    .map_err(db_err)?;
+    fanout_to_remote_members_required(
+        &txn,
         user_id,
         room_id,
         &activity_id,
@@ -455,9 +453,29 @@ pub async fn delete_room(
         "Room",
     )
     .await
-    {
-        tracing::warn!("[Room] dissolve fanout failed for {}: {}", room_id, e);
-    }
+    .map_err(db_err)?;
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_room_messages WHERE room_id = $1",
+        [room_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_room_members WHERE room_id = $1",
+        [room_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_rooms WHERE room_id = $1",
+        [room_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+    txn.commit().await.map_err(db_err)?;
 
     let delete_notice = json!({
         "type": "room_deleted",
@@ -465,30 +483,6 @@ pub async fn delete_room(
         "deleted_by": local_actor
     });
     crate::federation::ws_gateway::broadcast_to_room(room_id, &delete_notice).await;
-
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "DELETE FROM federation_room_messages WHERE room_id = $1",
-        [room_id.into()],
-    ))
-    .await
-    .map_err(db_err)?;
-
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "DELETE FROM federation_room_members WHERE room_id = $1",
-        [room_id.into()],
-    ))
-    .await
-    .map_err(db_err)?;
-
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "DELETE FROM federation_rooms WHERE room_id = $1",
-        [room_id.into()],
-    ))
-    .await
-    .map_err(db_err)?;
 
     // Do NOT cancel again after fan-out — object.id = room_id matches LIKE %room_id%.
     // Exclusion + pre-cancel above keep dissolve pending until the delivery worker finishes.
@@ -642,7 +636,7 @@ pub async fn list_rooms(
             governance_type: row.try_get("", "governance_type").unwrap_or_default(),
             invite_policy: row.try_get("", "invite_policy").unwrap_or_default(),
             member_count: row.try_get::<i64>("", "member_count").unwrap_or(0),
-            max_members: row.try_get::<i32>("", "max_members").unwrap_or(50),
+            max_members: row.try_get::<i32>("", "max_members").map_err(db_err)?,
             is_public: row.try_get::<bool>("", "is_public").unwrap_or(false),
             my_role: row.try_get::<Option<String>>("", "my_role").unwrap_or(None),
             my_membership_status: row
@@ -717,7 +711,7 @@ pub async fn get_room(
             .unwrap_or(None),
         invite_policy: row.try_get("", "invite_policy").unwrap_or_default(),
         distribution_strategy: row.try_get("", "distribution_strategy").unwrap_or_default(),
-        max_members: row.try_get::<i32>("", "max_members").unwrap_or(50),
+        max_members: row.try_get::<i32>("", "max_members").map_err(db_err)?,
         is_public: row.try_get::<bool>("", "is_public").unwrap_or(false),
         enabled_tapps: row
             .try_get::<Option<serde_json::Value>>("", "enabled_tapps")
@@ -827,3 +821,24 @@ pub async fn get_members(
     Ok(members)
 }
 use myriad_error::AppError;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn delete_room_commits_rows_with_dissolve_intent() {
+        let src = include_str!("crud.rs");
+        let start = src.find("pub async fn delete_room").expect("delete_room");
+        let body = src[start..]
+            .split("pub async fn handle_room_dissolve")
+            .next()
+            .expect("body");
+        assert!(body.contains("db.begin()"));
+        assert!(body.contains("fanout_to_remote_members_required"));
+        assert!(body.contains("txn.commit()"));
+        assert!(
+            body.find("txn.commit()").unwrap()
+                < body.find("broadcast_to_room").unwrap(),
+            "notify only after the dissolve transaction commits"
+        );
+    }
+}

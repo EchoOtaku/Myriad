@@ -80,7 +80,7 @@ pub async fn handle_channel_open(
         .map_err(|e| e.to_string())?
         .ok_or("Remote actor not found")?;
 
-    let remote_actor_id: i32 = actor_row.try_get("", "id").unwrap_or(0);
+    let remote_actor_id = crate::federation::types::row_positive_id(&actor_row, "id")?;
 
     // 路由目标用户：优先按 Activity 的 to 字段解析本地 actor（发起方在
     // create_channel 里总会把目标 actor URL 写进 to）；解析不出时按关注

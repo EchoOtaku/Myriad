@@ -630,10 +630,18 @@ pub fn require_positive_id(id: Option<i32>) -> Result<i32, String> {
     }
 }
 
+/// Decode a stored primary key. Decode failure is not id 0.
+pub fn row_positive_id(row: &sea_orm::QueryResult, column: &str) -> Result<i32, String> {
+    let id = row
+        .try_get::<i32>("", column)
+        .map_err(|error| format!("invalid {column}: {error}"))?;
+    require_positive_id(Some(id)).map_err(|error| format!("{column}: {error}"))
+}
+
 /// Decode `RETURNING id` from an INSERT row. Missing row or non-positive id is an error.
 pub fn returning_id(row: Option<sea_orm::QueryResult>) -> Result<i32, String> {
-    let id = row.and_then(|r| r.try_get::<i32>("", "id").ok());
-    require_positive_id(id)
+    let row = row.ok_or_else(|| "INSERT RETURNING id produced no row".to_string())?;
+    row_positive_id(&row, "id")
 }
 
 pub fn is_unique_violation(err: &sea_orm::DbErr) -> bool {
@@ -694,6 +702,29 @@ pub async fn enqueue_delivery(
     ))
     .await?;
     Ok(())
+}
+
+/// Record a local activity and enqueue it. Decode/insert failure is not a skipped send.
+pub async fn insert_and_enqueue_delivery(
+    db: &impl sea_orm::ConnectionTrait,
+    user_id: i32,
+    activity_id: &str,
+    activity_type: &str,
+    object_type: Option<&str>,
+    object_json: serde_json::Value,
+    target_inbox: &str,
+) -> Result<i32, sea_orm::DbErr> {
+    let act_id = insert_local_activity(
+        db,
+        user_id,
+        activity_id,
+        activity_type,
+        object_type,
+        object_json,
+    )
+    .await?;
+    enqueue_delivery(db, act_id, target_inbox, "pending").await?;
+    Ok(act_id)
 }
 
 /// SSRF 防护：检查 URL 是否指向内网/保留地址
@@ -1429,6 +1460,68 @@ mod tests {
         assert!(require_positive_id(Some(0)).is_err());
         assert!(require_positive_id(Some(-1)).is_err());
         assert_eq!(require_positive_id(Some(1)).unwrap(), 1);
+    }
+
+    #[test]
+    fn claimed_delivery_rows_do_not_decode_ids_to_zero() {
+        let src = include_str!("delivery/queue.rs");
+        let body = src
+            .split("pub async fn process_delivery_queue_detailed")
+            .nth(1)
+            .expect("process_delivery_queue_detailed");
+        assert!(body.contains("row_positive_id(&row, \"id\")"));
+        assert!(body.contains("row_positive_id(&row, \"user_id\")"));
+        assert!(body.contains("let username = match get_username_by_id"));
+        assert!(!body.contains("get_username_by_id(db, user_id).await.unwrap_or_default()"));
+    }
+
+    #[test]
+    fn delivery_username_lookup_does_not_decode_to_empty() {
+        let src = include_str!("delivery/queue.rs");
+        let lookup = src
+            .split("pub(crate) async fn get_username_by_id")
+            .nth(1)
+            .and_then(|rest| rest.split("pub struct DeliveryEnqueueInfo").next())
+            .expect("get_username_by_id");
+        assert!(lookup.contains("User username is empty"));
+        assert!(!lookup.contains("unwrap_or_default"));
+    }
+
+    #[test]
+    fn returning_id_does_not_swallow_decode_errors() {
+        let src = include_str!("types.rs");
+        let body = src
+            .split("pub fn returning_id")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn is_unique_violation").next())
+            .expect("returning_id");
+        assert!(body.contains("row_positive_id"));
+        assert!(!body.contains(".ok()"));
+    }
+
+    #[test]
+    fn insert_and_enqueue_uses_returning_id() {
+        let src = include_str!("types.rs");
+        let body = src
+            .split("pub async fn insert_and_enqueue_delivery")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn is_internal_url").next())
+            .expect("insert_and_enqueue_delivery");
+        assert!(body.contains("insert_local_activity"));
+        assert!(body.contains("enqueue_delivery"));
+        assert!(!body.contains("unwrap_or(0)"));
+    }
+
+    #[test]
+    fn local_enqueue_does_not_queue_id_zero() {
+        let src = include_str!("inbox/local_deliver.rs");
+        let body = src
+            .split("pub(crate) async fn enqueue_delivery(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) async fn enqueue_delivery_queue").next())
+            .expect("enqueue_delivery");
+        assert!(body.contains("returning_id"));
+        assert!(!body.contains("unwrap_or(0)"));
     }
 
     #[test]
