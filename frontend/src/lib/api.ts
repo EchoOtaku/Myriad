@@ -14,6 +14,7 @@ import {
   formatRateLimitMessage,
   retryAfterSecondsFromBody,
 } from '../utils/httpRateLimitToast'
+import { invalidatePermissionConfig } from '../utils/permissionConfig'
 import { checkRateLimit, RateLimitError } from '../utils/rateLimiter'
 import { isUselessErrorText, userFacingError } from '../utils/userFacingError'
 
@@ -317,6 +318,7 @@ export async function restoreSettingsBackup(backup: unknown) {
         : currentCopy().errors.settingsBackupRestoreFailed,
     )
   }
+  invalidatePermissionConfig()
   return response.data
 }
 
@@ -333,6 +335,7 @@ export async function updatePermissionsConfig(
     response.data,
     currentCopy().errors.configSaveFailed,
   )
+  invalidatePermissionConfig()
   return response.data
 }
 
@@ -342,6 +345,7 @@ export async function reloadSystemConfig() {
     response.data,
     currentCopy().errors.configReloadFailed,
   )
+  invalidatePermissionConfig()
   return response.data
 }
 

@@ -4,7 +4,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import React, { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useRef } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -23,8 +23,8 @@ import { AgentGlobalActions } from './contexts/AgentGlobalActions'
 import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { I18nNamespace, I18nProvider, useI18n } from './contexts/I18nContext'
-
 import { LocaleAccountSync } from './contexts/LocaleAccountSync'
+
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
 import { NavigationProvider } from './contexts/NavigationContext'
 import { PageContentProvider } from './contexts/PageContentContext'
@@ -34,14 +34,15 @@ import { useRouteScheduler } from './hooks/animation/useRouteScheduler'
 import { isExlight, useAnimationLevel } from './hooks/useAnimationLevel'
 import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
-
 import { resolvePageRouteAnimation } from './tapp/routing/tappRouteMeta'
+
 import { TAPP_LIST_PATH, tappRunPath } from './tapp/utils/tappPaths'
 import {
   canAccessModuleVisibility,
   canUseAgent,
   useModuleVisibilityPreferences,
 } from './utils/moduleVisibility'
+import { usePermissionConfig } from './utils/permissionConfig'
 import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
@@ -241,36 +242,7 @@ function GlobalAgentWindowHandler() {
 function AgentAccessGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isAdmin, hasChecked } = useAuth()
   const { preferences, isLoading } = useModuleVisibilityPreferences()
-  const [elevatedAiChat, setElevatedAiChat] = useState<
-    { user: boolean; guest: boolean } | undefined
-  >(undefined)
-  const [permLoaded, setPermLoaded] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const { fetchPermissionsConfig } = await import('./lib/api')
-        const response = await fetchPermissionsConfig()
-        if (cancelled) return
-        if (response?.success && response.config) {
-          setElevatedAiChat({
-            user: !!response.config.user?.ai_chat,
-            guest: !!response.config.guest?.ai_chat,
-          })
-        } else {
-          setElevatedAiChat(undefined)
-        }
-      } catch {
-        if (!cancelled) setElevatedAiChat(undefined)
-      } finally {
-        if (!cancelled) setPermLoaded(true)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { elevatedAiChat, loaded: permLoaded } = usePermissionConfig()
 
   if (!hasChecked || isLoading || !permLoaded) {
     return null
