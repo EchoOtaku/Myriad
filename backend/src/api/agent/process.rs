@@ -1349,31 +1349,11 @@ fn spawn_answer_resume(
                 return;
             }
         }
-        // Keep the original Work waiter alive until continuation succeeds.
-        // Quota rejection or a competing replica must not terminate that run.
-        let waiting_ctx = if is_work {
-            None
-        } else {
-            take_waiting_task(&task_id, user_id).await
-        };
-        let original_progress = if is_work {
-            WAITING_TASKS
-                .lock()
-                .unwrap()
-                .get(&task_id)
-                .filter(|ctx| ctx.user_id == user_id)
-                .map(|ctx| ctx.progress_tx.clone())
-        } else {
-            waiting_ctx.as_ref().map(|ctx| ctx.progress_tx.clone())
-        };
-        let ctx_session_id = waiting_ctx
-            .as_ref()
-            .map(|ctx| ctx.session_id.clone())
-            .or(session_from_waiting)
-            .unwrap_or_default();
-        if !ctx_session_id.is_empty() {
+        // Persist before consuming the waiter. A store failure must leave the
+        // original wait context in place so the user can retry.
+        if let Some(session_id) = session_from_waiting.as_ref().filter(|s| !s.is_empty()) {
             if let Err(error) = require_user_message_persisted(
-                persist_user_message(&db, &ctx_session_id, &answer.answer).await,
+                persist_user_message(&db, session_id, &answer.answer).await,
             ) {
                 tracing::error!(%error, "[Agent API] Failed to persist user message");
                 let _ = tx
@@ -1386,6 +1366,14 @@ fn spawn_answer_resume(
                 return;
             }
         }
+        // Keep every waiter until continuation succeeds. Taking it earlier
+        // makes a failed resume unretryable.
+        let original_progress = WAITING_TASKS
+            .lock()
+            .unwrap()
+            .get(&task_id)
+            .filter(|ctx| ctx.user_id == user_id)
+            .map(|ctx| ctx.progress_tx.clone());
 
         // Existing run subscribers and this continuation observe the same progress.
         let resume_tx = if let Some(original) = original_progress {
@@ -1419,12 +1407,7 @@ fn spawn_answer_resume(
                     .unwrap_or_else(|_| AppError::public_json("serialization failed"));
 
                 // 唤醒 `spawn_restored_wait_loop` 的 `done_tx`（不是 process_stream 本体）
-                let completed_waiter = if is_work {
-                    take_waiting_task(&task_id, user_id).await
-                } else {
-                    waiting_ctx
-                };
-                if let Some(ctx) = completed_waiter {
+                if let Some(ctx) = take_waiting_task(&task_id, user_id).await {
                     let _ = ctx.done_tx.send(response_value.clone());
                 }
 
@@ -1443,14 +1426,6 @@ fn spawn_answer_resume(
                     tracing::error!(error = %e, "[Agent API] Resume failed");
                 }
 
-                // 回传错误给 wait-loop 的 `done_tx`
-                if let Some(ctx) = waiting_ctx {
-                    let _ = ctx.done_tx.send(json!({
-                        "success": false,
-                        "message": e.clone(),
-                        "responseType": "error",
-                    }));
-                }
                 let _ = tx
                     .send(AgentProgressEvent::Error {
                         task_id: Some(task_id),
@@ -1896,6 +1871,36 @@ mod quota_error_tests {
         assert_eq!(
             completed_turn_intention_status(&blocked),
             IntentStatus::Failed
+        );
+    }
+}
+
+#[cfg(test)]
+mod resume_persist_tests {
+    #[test]
+    fn resume_takes_the_waiter_only_after_success() {
+        let src = include_str!("process.rs");
+        let body = src
+            .split("fn spawn_answer_resume(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn clarify").next())
+            .expect("spawn_answer_resume");
+        let persist_at = body.find("persist_user_message").expect("persist");
+        let resume_at = body.find("resume_task_with_progress").expect("resume");
+        let take_at = body.find("take_waiting_task").expect("take");
+        assert!(persist_at < resume_at, "persist before resume");
+        assert!(
+            resume_at < take_at,
+            "a failed resume must not drop the original waiter"
+        );
+        let err = body
+            .split("resume_task_with_progress")
+            .nth(1)
+            .and_then(|rest| rest.split("Err(e)").nth(1))
+            .expect("resume err");
+        assert!(
+            !err.contains("take_waiting_task"),
+            "resume failure must leave the waiter for retry"
         );
     }
 }

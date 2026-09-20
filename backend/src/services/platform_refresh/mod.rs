@@ -15,4 +15,4 @@ pub use errors::{
     platform_fetch_details, platform_has_usable_data, resolve_platform_fetch_message,
     resolve_platform_fetch_message_for,
 };
-pub use fetch::{FreshPlatformData, fetch_fresh_platform_data, refresh_platform_for_scheduler};
+pub use fetch::{FreshPlatformData, configured_platform_ids, fetch_fresh_platform_data, refresh_platform_for_scheduler};

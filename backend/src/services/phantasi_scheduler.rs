@@ -10,8 +10,8 @@ use chrono::Utc;
 use futures::stream::{self, StreamExt};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Statement, Value as SeaValue,
-    sea_query::OnConflict,
+    EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Statement,
+    Value as SeaValue, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -60,12 +60,12 @@ pub(crate) fn retry_interval_minutes(update_interval: i32, error_count: i32) -> 
 pub(crate) fn retry_interval_sql() -> String {
     format!(
         "CASE \
-            WHEN error_count < {BACKOFF_START_ERRORS} THEN GREATEST(update_interval, 1)::bigint \
+            WHEN error_count < {BACKOFF_START_ERRORS} THEN GREATEST(update_interval, 1)::int \
             ELSE LEAST( \
                 {BACKOFF_MAX_MINUTES}::numeric, \
                 GREATEST(update_interval, 1)::numeric \
                     * (2::numeric ^ LEAST(GREATEST(error_count - {BACKOFF_START_ERRORS} + 1, 0), 20)) \
-            )::bigint \
+            )::int \
          END"
     )
 }
@@ -957,6 +957,15 @@ mod tests {
         );
         assert!(sql.contains(&BACKOFF_START_ERRORS.to_string()));
         assert!(sql.contains(&BACKOFF_MAX_MINUTES.to_string()));
+        let interval = retry_interval_sql();
+        assert!(
+            interval.contains("::int") && !interval.contains("::bigint"),
+            "make_interval(mins) is integer; the CASE must produce int"
+        );
+        assert!(
+            sql.contains(&format!("make_interval(mins => ({interval}))")),
+            "due SQL must use the integer interval as the mins argument"
+        );
         let tick = include_str!("phantasi_scheduler.rs")
             .split("async fn tick(")
             .nth(1)

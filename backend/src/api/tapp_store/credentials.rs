@@ -35,6 +35,7 @@ fn credential_http_error(error: TappCredentialError) -> HttpError {
         }
         TappCredentialError::Missing => StatusCode::NOT_FOUND,
         TappCredentialError::ReauthorizationRequired => StatusCode::CONFLICT,
+        TappCredentialError::QuotaExceeded => StatusCode::PAYLOAD_TOO_LARGE,
         TappCredentialError::Encryption | TappCredentialError::Database => {
             StatusCode::INTERNAL_SERVER_ERROR
         }

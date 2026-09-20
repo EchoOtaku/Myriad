@@ -15,9 +15,10 @@ use std::fs;
 
 // Platform refresh / site owner live in services (scheduler must not depend on HTTP).
 use crate::services::platform_refresh::{
-    PLATFORM_CACHE_HOURS, fetch_fresh_platform_data, load_platform_data_cache,
+    PLATFORM_CACHE_HOURS, configured_platform_ids, fetch_fresh_platform_data,
+    load_platform_cache_files, load_platform_data_cache, platform_cache_from_files,
     platform_data_warning_for, platform_fetch_details, platform_has_usable_data,
-    resolve_platform_fetch_message_for, save_platform_data_cache,
+    required_platforms_are_fresh, resolve_platform_fetch_message_for, save_platform_data_cache,
 };
 pub use crate::services::site_owner::site_owner_user_id;
 
@@ -37,11 +38,24 @@ fn site_owner_error(error: String) -> (StatusCode, Json<Value>) {
     )
 }
 
+
+async fn fresh_configured_platform_cache() -> Option<crate::services::platform_refresh::PlatformDataCache> {
+    let files = load_platform_cache_files();
+    let required = {
+        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        configured_platform_ids(&config)
+    };
+    if required_platforms_are_fresh(&files, &required, Utc::now()) {
+        platform_cache_from_files(&files)
+    } else {
+        None
+    }
+}
+
 pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     tracing::info!("Starting fetch all data...");
 
-    // 检查缓存
-    if let Some(cache) = load_platform_data_cache() {
+    if let Some(cache) = fresh_configured_platform_cache().await {
         tracing::info!("📦 Returning cached platform data");
         return (
             StatusCode::OK,
@@ -110,21 +124,18 @@ pub async fn refresh_platform_data(
     Query(query): Query<RefreshQuery>,
 ) -> (StatusCode, Json<Value>) {
     if !query.force {
-        // 如果不是强制刷新，检查缓存
-        if let Some(cache) = load_platform_data_cache() {
+        if let Some(cache) = fresh_configured_platform_cache().await {
             let age = Utc::now() - cache.fetched_at;
-            if age < Duration::hours(PLATFORM_CACHE_HOURS) {
-                return (
-                    StatusCode::OK,
-                    Json(json!({
-                        "success": true,
-                        "message": "Data still fresh, use force=true to refresh anyway",
-                        "data": cache.data,
-                        "fetched_at": cache.fetched_at.to_rfc3339(),
-                        "age_hours": age.num_hours()
-                    })),
-                );
-            }
+            return (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "message": "Data still fresh, use force=true to refresh anyway",
+                    "data": cache.data,
+                    "fetched_at": cache.fetched_at.to_rfc3339(),
+                    "age_hours": age.num_hours()
+                })),
+            );
         }
     }
 

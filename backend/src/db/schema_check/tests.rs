@@ -166,8 +166,27 @@ fn uniqueness_heals_are_invoked_and_partial() {
         assert!(orchestrator.contains(heal), "orchestrator must call {heal}");
     }
     let heals = include_str!("ensure_heals.rs");
+    assert!(
+        heals.contains("AND key <> NEW.key"),
+        "quota INSERT must exclude the conflicting unique key so UPSERT does not double-count",
+    );
+    let migration = include_str!("../../../migrations/002_tapp_system.rs");
+    assert!(
+        migration.contains("AND key <> NEW.key"),
+        "migration quota INSERT must match the heal",
+    );
+    assert!(
+        heals.contains("ORDER BY fetched_at DESC NULLS LAST"),
+        "platform_metadata unique heal must keep the newest snapshot, not the smallest id"
+    );
+    assert!(heals.contains("UPDATE metadata_history"));
     assert!(heals.contains("idx_phantasi_sources_note_type"));
     assert!(heals.contains("idx_rsshub_instances_global_url"));
+    assert!(heals.contains("CASE health_status"));
+    assert!(heals.contains(
+        "active channel relationship collision across different channel_id"
+    ));
+    assert!(heals.contains("shortcut chord collision across different bindings"));
     assert!(heals.contains("idx_phantasi_source_applications_pending_site"));
     assert!(heals.contains("idx_tapp_shortcuts_owner_chord"));
     let indexes = get_expected_indexes();

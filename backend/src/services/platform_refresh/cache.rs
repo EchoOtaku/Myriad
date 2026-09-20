@@ -13,65 +13,89 @@ pub struct PlatformDataCache {
     pub fetched_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PlatformCacheFile {
+    pub platform: String,
+    pub data: Value,
+    pub fetched_at: DateTime<Utc>,
+}
+
 pub const PLATFORM_CACHE_HOURS: i64 = 12; // 数据缓存12小时
 
-/// 从磁盘加载平台数据缓存
-pub fn load_platform_data_cache() -> Option<PlatformDataCache> {
-    // 从分平台 raw 目录加载；缺失或过期返回 None（无第二缓存路径）
+/// Load every on-disk platform file. This is not a freshness decision.
+pub fn load_platform_cache_files() -> Vec<PlatformCacheFile> {
     let raw_dir = crate::services::data_paths::raw_cache_dir();
-    if raw_dir.exists() {
-        let mut all_data = serde_json::Map::new();
-        let mut latest_time = std::time::SystemTime::UNIX_EPOCH;
-        let mut found_any = false;
-
-        if let Ok(entries) = fs::read_dir(&raw_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            if let Ok(json) = serde_json::from_str(&content) {
-                                all_data.insert(stem.to_string(), json);
-                                found_any = true;
-
-                                if let Ok(metadata) = fs::metadata(&path) {
-                                    if let Ok(modified) = metadata.modified() {
-                                        if modified > latest_time {
-                                            latest_time = modified;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    let Ok(entries) = fs::read_dir(&raw_dir) else {
+        return Vec::new();
+    };
+    let mut files = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
         }
-
-        if found_any {
-            let fetched_at: DateTime<Utc> = latest_time.into();
-            let age = Utc::now() - fetched_at;
-
-            if age < Duration::hours(PLATFORM_CACHE_HOURS) {
-                tracing::info!(
-                    "✓ Loaded platform data from split raw files (age: {}h)",
-                    age.num_hours()
-                );
-                return Some(PlatformDataCache {
-                    data: Value::Object(all_data),
-                    fetched_at,
-                });
-            } else {
-                tracing::info!(
-                    "⏰ Split platform data cache expired (age: {}h)",
-                    age.num_hours()
-                );
-                return None;
-            }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if stem.contains('.') {
+            continue;
         }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str(&content) else {
+            continue;
+        };
+        let fetched_at = fs::metadata(&path)
+            .ok()
+            .and_then(|meta| meta.modified().ok())
+            .map(DateTime::<Utc>::from)
+            .unwrap_or_else(Utc::now);
+        files.push(PlatformCacheFile {
+            platform: stem.to_string(),
+            data: json,
+            fetched_at,
+        });
     }
+    files
+}
 
-    None
+pub fn platform_cache_from_files(files: &[PlatformCacheFile]) -> Option<PlatformDataCache> {
+    if files.is_empty() {
+        return None;
+    }
+    let fetched_at = files.iter().map(|file| file.fetched_at).min()?;
+    let mut all_data = serde_json::Map::new();
+    for file in files {
+        all_data.insert(file.platform.clone(), file.data.clone());
+    }
+    Some(PlatformDataCache {
+        data: Value::Object(all_data),
+        fetched_at,
+    })
+}
+
+pub fn cache_timestamp_is_fresh(fetched_at: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+    now.signed_duration_since(fetched_at) < Duration::hours(PLATFORM_CACHE_HOURS)
+}
+
+/// Bulk short-circuit only when every required platform has its own fresh file.
+pub fn required_platforms_are_fresh(
+    files: &[PlatformCacheFile],
+    required: &[&str],
+    now: DateTime<Utc>,
+) -> bool {
+    !required.is_empty()
+        && required.iter().all(|platform| {
+            files.iter().any(|file| {
+                file.platform == *platform && cache_timestamp_is_fresh(file.fetched_at, now)
+            })
+        })
+}
+
+/// Merge base for fetches. Stale files stay available; callers decide freshness.
+pub fn load_platform_data_cache() -> Option<PlatformDataCache> {
+    platform_cache_from_files(&load_platform_cache_files())
 }
 
 /// 保存平台数据缓存到磁盘（优化：只保存分平台数据，不再保存完整大文件）
@@ -189,6 +213,36 @@ mod atomic_replace_tests {
         assert!(!temp.exists(), "failed temp file must be removed, not copied");
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn freshness_is_per_required_platform() {
+        use super::{PlatformCacheFile, required_platforms_are_fresh};
+        use chrono::{Duration, Utc};
+        use serde_json::json;
+        let now = Utc::now();
+        let files = vec![
+            PlatformCacheFile {
+                platform: "github".into(),
+                data: json!({}),
+                fetched_at: now - Duration::hours(1),
+            },
+            PlatformCacheFile {
+                platform: "bilibili".into(),
+                data: json!({}),
+                fetched_at: now - Duration::hours(13),
+            },
+        ];
+        assert!(
+            !required_platforms_are_fresh(&files, &["github", "bilibili"], now),
+            "one fresh file must not hide another platform's expiry"
+        );
+        assert!(required_platforms_are_fresh(&files, &["github"], now));
+        assert!(
+            !required_platforms_are_fresh(&files, &["github", "steam"], now),
+            "a missing required platform is not fresh"
+        );
+        assert!(!required_platforms_are_fresh(&files, &[], now));
     }
 
     #[test]

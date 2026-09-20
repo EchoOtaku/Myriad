@@ -4,8 +4,7 @@
 //! `crate::api::tapp_store`. HTTP handlers map [`TappStorageError`] to status codes.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
-    TransactionTrait,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, FromQueryResult, Statement,
 };
 use serde_json::Value;
 
@@ -349,6 +348,10 @@ pub async fn read_storage_value(
     Ok(item.map_or(Value::Null, |item| item.value))
 }
 
+pub fn is_storage_quota_exceeded(error: &DbErr) -> bool {
+    error.to_string().contains("Tapp storage quota exceeded")
+}
+
 pub async fn write_storage_value(
     db: &DatabaseConnection,
     user_id: i32,
@@ -356,51 +359,7 @@ pub async fn write_storage_value(
     key: &str,
     value: Value,
 ) -> Result<(), TappStorageError> {
-    let txn = db.begin().await.map_err(|_| TappStorageError::Database)?;
-    txn.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-        vec![format!("tapp-storage:{user_id}:{tapp_id}").into()],
-    ))
-    .await
-    .map_err(|_| TappStorageError::Database)?;
-
-    #[derive(FromQueryResult)]
-    struct ProjectedBytesRow {
-        bytes: i64,
-    }
-    let projected = ProjectedBytesRow::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
-SELECT (
-    COALESCE(SUM(
-        octet_length(key)
-        + octet_length(value::text)
-        + COALESCE(octet_length(encrypted_value), 0)
-    )
-        FILTER (WHERE key <> $3), 0)
-    + octet_length($3)
-    + octet_length($4::jsonb::text)
-)::BIGINT AS bytes
-FROM tapp_storage
-WHERE user_id = $1 AND tapp_id = $2
-"#,
-        vec![
-            user_id.into(),
-            tapp_id.into(),
-            key.into(),
-            value.clone().into(),
-        ],
-    ))
-    .one(&txn)
-    .await
-    .map_err(|_| TappStorageError::Database)?
-    .map_or(i64::MAX, |row| row.bytes);
-    if projected > TAPP_STORAGE_QUOTA_BYTES {
-        txn.rollback().await.ok();
-        return Err(TappStorageError::TooLarge);
-    }
-    txn.execute_raw(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
 INSERT INTO tapp_storage (tapp_id, user_id, key, value, created_at, updated_at)
@@ -412,8 +371,13 @@ ON CONFLICT (user_id, tapp_id, key) DO UPDATE SET
         vec![tapp_id.into(), user_id.into(), key.into(), value.into()],
     ))
     .await
-    .map_err(|_| TappStorageError::Database)?;
-    txn.commit().await.map_err(|_| TappStorageError::Database)?;
+    .map_err(|error| {
+        if is_storage_quota_exceeded(&error) {
+            TappStorageError::TooLarge
+        } else {
+            TappStorageError::Database
+        }
+    })?;
     Ok(())
 }
 
@@ -475,6 +439,36 @@ mod tests {
         }
         assert!(validate_sandbox_storage_key("entries.v1").is_ok());
         assert!(validate_sandbox_storage_key("usage_stats").is_ok());
+    }
+
+    #[test]
+    fn write_storage_value_lets_the_trigger_own_quota() {
+        let src = include_str!("tapp_storage.rs");
+        let write = src
+            .split("pub async fn write_storage_value")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("write_storage_value");
+        assert!(
+            !write.contains("pg_advisory_xact_lock"),
+            "app-layer lock duplicates the quota trigger"
+        );
+        assert!(
+            !write.contains("octet_length"),
+            "app-layer SUM duplicates the quota trigger"
+        );
+        assert!(write.contains("is_storage_quota_exceeded"));
+        assert!(!write.contains("54000"));
+    }
+
+    #[test]
+    fn quota_error_is_not_every_program_limit() {
+        assert!(super::is_storage_quota_exceeded(&sea_orm::DbErr::Custom(
+            "Tapp storage quota exceeded: 9000000 bytes".into()
+        )));
+        assert!(!super::is_storage_quota_exceeded(&sea_orm::DbErr::Custom(
+            "ERROR: 54000 program_limit_exceeded".into()
+        )));
     }
 
     #[test]

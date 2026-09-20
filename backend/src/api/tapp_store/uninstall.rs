@@ -252,7 +252,15 @@ async fn do_uninstall_tapp(
         }
 
         let (task_scope, task_values) = if is_public_install {
-            ("tapp_id = $1", vec![tapp_id.clone().into()])
+            (
+                "tapp_id = $1 AND NOT EXISTS (
+                    SELECT 1 FROM tapps AS remaining
+                    WHERE remaining.user_id = tapp_scheduled_tasks.user_id
+                      AND remaining.tapp_id = tapp_scheduled_tasks.tapp_id
+                      AND remaining.id <> $2
+                )",
+                vec![tapp_id.clone().into(), tapp.id.into()],
+            )
         } else {
             (
                 "user_id = $1 AND tapp_id = $2",
@@ -302,6 +310,25 @@ async fn do_uninstall_tapp(
         .await
         .map_err(|error| {
             tracing::error!(tapp_id, user_id, %error, "Failed to prune orphan activities on uninstall");
+            HttpError(AppError::internal("Database error"))
+        })?;
+        txn.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"DELETE FROM tapp_runtime_registry AS registry
+               WHERE registry.tapp_id = $1
+                 AND NOT EXISTS (
+                   SELECT 1 FROM tapps AS remaining
+                   WHERE remaining.tapp_id = registry.tapp_id
+                     AND (
+                       remaining.user_id = registry.subject_id
+                       OR remaining.user_id = registry.owner_id
+                     )
+                 )"#,
+            vec![tapp_id.clone().into()],
+        ))
+        .await
+        .map_err(|error| {
+            tracing::error!(tapp_id, user_id, %error, "Failed to clean tapp_runtime_registry rows on uninstall");
             HttpError(AppError::internal("Database error"))
         })?;
         Ok(())
@@ -385,22 +412,6 @@ async fn do_uninstall_tapp(
                 "Failed to inspect residual Tapp paths after uninstall"
             );
         }
-    }
-
-    // Best-effort: drop any remaining runtime registry rows for this tapp.
-    if let Err(error) = db
-        .execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "DELETE FROM tapp_runtime_registry WHERE tapp_id = $1",
-            vec![tapp_id.clone().into()],
-        ))
-        .await
-    {
-        tracing::warn!(
-            tapp_id,
-            %error,
-            "Failed to clean tapp_runtime_registry rows on uninstall"
-        );
     }
 
     crate::api::tapp_runtime::invalidate_tapp_apis_cache(tapp_id).await;
@@ -550,6 +561,29 @@ mod tests {
     #[test]
     fn prune_allows_missing_owner_before_setup() {
         assert_eq!(site_owner_id_for_prune::<&str>(Ok(None)).unwrap(), None);
-        assert_eq!(site_owner_id_for_prune::<&str>(Ok(Some(1))).unwrap(), Some(1));
+        assert_eq!(
+            site_owner_id_for_prune::<&str>(Ok(Some(1))).unwrap(),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn uninstall_does_not_sweep_other_installs_by_tapp_id() {
+        let src = include_str!("uninstall.rs")
+            .split("mod tests")
+            .next()
+            .expect("uninstall impl");
+        assert!(
+            src.contains("remaining.user_id = tapp_scheduled_tasks.user_id"),
+            "public uninstall must leave other installs' scheduled tasks"
+        );
+        assert!(
+            src.contains("remaining.user_id = registry.subject_id"),
+            "registry cleanup must keep rows for remaining installs"
+        );
+        assert!(
+            !src.contains("DELETE FROM tapp_runtime_registry WHERE tapp_id = $1"),
+            "unscoped tapp_id registry delete would wipe other owners"
+        );
     }
 }

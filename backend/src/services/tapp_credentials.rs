@@ -30,6 +30,7 @@ pub enum TappCredentialError {
     Missing,
     ReauthorizationRequired,
     Encryption,
+    QuotaExceeded,
     Database,
 }
 
@@ -41,6 +42,7 @@ impl TappCredentialError {
             Self::Missing => "TAPP_CREDENTIAL_MISSING",
             Self::ReauthorizationRequired => "TAPP_CREDENTIAL_REAUTH_REQUIRED",
             Self::Encryption => "TAPP_CREDENTIAL_ENCRYPTION_FAILED",
+            Self::QuotaExceeded => "TAPP_STORAGE_QUOTA_EXCEEDED",
             Self::Database => "TAPP_CREDENTIAL_LOAD_FAILED",
         }
     }
@@ -56,6 +58,7 @@ impl TappCredentialError {
                 "Tapp credential binding changed and must be re-authorized".into()
             }
             Self::Encryption => "Credential encryption is unavailable".into(),
+            Self::QuotaExceeded => "Storage value or quota exceeded".into(),
             Self::Database => "Failed to load Tapp credentials".into(),
         }
     }
@@ -419,7 +422,11 @@ ON CONFLICT (user_id, tapp_id, key) DO UPDATE SET
     .await
     .map_err(|error| {
         tracing::error!(tapp_id, owner_id, credential_key = key, %error, "Failed to store Tapp credential");
-        TappCredentialError::Database
+        if crate::services::tapp_storage::is_storage_quota_exceeded(&error) {
+            TappCredentialError::QuotaExceeded
+        } else {
+            TappCredentialError::Database
+        }
     })?;
 
     Ok(())
@@ -580,6 +587,20 @@ mod tests {
                 }
             }
         })
+    }
+
+    #[test]
+    fn quota_exceeded_is_not_a_generic_database_error() {
+        assert_eq!(
+            TappCredentialError::QuotaExceeded.code(),
+            "TAPP_STORAGE_QUOTA_EXCEEDED"
+        );
+        let src = include_str!("tapp_credentials.rs");
+        let write = src
+            .split("Failed to store Tapp credential")
+            .nth(1)
+            .expect("credential store");
+        assert!(write.contains("is_storage_quota_exceeded"));
     }
 
     #[test]

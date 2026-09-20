@@ -32,6 +32,7 @@ pub struct AgentRunEnvelope {
     pub event: AgentProgressEvent,
 }
 
+#[derive(Clone)]
 struct AgentRunState {
     next_sequence: u64,
     events: VecDeque<AgentRunEnvelope>,
@@ -112,29 +113,7 @@ impl AgentRun {
             mpsc::channel::<(AgentRunEnvelope, PersistedAgentRun)>(PERSISTENCE_QUEUE_LIMIT);
         tokio::spawn(async move {
             while let Some((envelope, snapshot)) = rx.recv().await {
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    Self::persist(&envelope, &snapshot),
-                )
-                .await
-                {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => {
-                        tracing::error!(
-                            run_id = %snapshot.run_id,
-                            sequence = envelope.sequence,
-                            %error,
-                            "[Agent Run] Failed to persist shared run snapshot"
-                        );
-                    }
-                    Err(_) => {
-                        tracing::error!(
-                            run_id = %snapshot.run_id,
-                            sequence = envelope.sequence,
-                            "[Agent Run] Persistence timed out"
-                        );
-                    }
-                }
+                let _ = Self::persist_according_to_duty(&envelope, &snapshot).await;
             }
         });
         tx
@@ -274,6 +253,46 @@ ORDER BY record_id ASC
                     .map_err(|error| sea_orm::DbErr::Json(error.to_string()))
             })
             .collect()
+    }
+
+    fn is_durable_run_record(envelope: &AgentRunEnvelope, snapshot: &PersistedAgentRun) -> bool {
+        snapshot.completed
+            || matches!(
+                envelope.event,
+                AgentProgressEvent::TaskCompleted { .. } | AgentProgressEvent::Error { .. }
+            )
+    }
+
+    async fn persist_according_to_duty(
+        envelope: &AgentRunEnvelope,
+        snapshot: &PersistedAgentRun,
+    ) -> Result<(), String> {
+        let durable = Self::is_durable_run_record(envelope, snapshot);
+        let attempts = if durable { 4 } else { 1 };
+        let mut last_error = String::from("persistence failed");
+        for attempt in 1..=attempts {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                Self::persist(envelope, snapshot),
+            )
+            .await
+            {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(error)) => last_error = error,
+                Err(_) => last_error = "persistence timed out".into(),
+            }
+            if attempt < attempts {
+                tokio::time::sleep(std::time::Duration::from_millis(50 * attempt as u64)).await;
+            }
+        }
+        tracing::error!(
+            run_id = %snapshot.run_id,
+            sequence = envelope.sequence,
+            durable,
+            %last_error,
+            "[Agent Run] Failed to persist shared run snapshot"
+        );
+        Err(last_error)
     }
 
     async fn persist(
@@ -425,11 +444,11 @@ WHERE namespace = $1 AND runtime_id = $2
         new_events
     }
 
-    /// Publish a progress event to live subscribers first, then durable storage.
+    /// Publish a progress event.
     ///
-    /// Live SSE precedes its DB write. Sustained DB slowdown applies backpressure
-    /// once the bounded persistence queue is full; accepted events remain ordered.
-    /// Data-plane frames (visemes, spectrum, VAD) must never reach this method.
+    /// Progress tokens go live first and ride the bounded write queue.
+    /// Terminal / recovery records are persisted before they become visible;
+    /// a durable write failure leaves the previous in-memory state in place.
     pub async fn publish(self: &Arc<Self>, event: AgentProgressEvent) {
         if matches!(
             &event,
@@ -449,22 +468,19 @@ WHERE namespace = $1 AND runtime_id = $2
             return;
         }
         let _order = self.publish_order.lock().await;
-        // Reserve before mutating/broadcasting: a cancelled publisher cannot
-        // leave a visible event without its matching persistence obligation.
-        let persistence = self.persistence_tx.reserve().await.ok();
         let mut notify = false;
-        let (envelope, snapshot, task_id, status, progress, message, success) = {
-            let mut state = self.state.lock().await;
-            // A terminal envelope is the run's hard boundary. SSE consumers
-            // close on it, so accepting anything later only creates durable
-            // events no live rig can ever observe and can even revive status.
-            if state.completed {
-                tracing::warn!(
-                    run_id = %self.run_id,
-                    "[Agent Run] post-terminal event dropped"
-                );
-                return;
-            }
+        let (envelope, snapshot, task_id, status, progress, message, success, durable, next_state) = {
+            let mut state = {
+                let current = self.state.lock().await;
+                if current.completed {
+                    tracing::warn!(
+                        run_id = %self.run_id,
+                        "[Agent Run] post-terminal event dropped"
+                    );
+                    return;
+                }
+                current.clone()
+            };
             let success = match &event {
                 AgentProgressEvent::RunStarted { .. } => {
                     notify = true;
@@ -578,24 +594,49 @@ WHERE namespace = $1 AND runtime_id = $2
             }
             state.events.push_back(envelope.clone());
             state.updated_at = Utc::now();
+            let snapshot = self.snapshot_from_state(&state);
+            let durable = Self::is_durable_run_record(&envelope, &snapshot);
             (
                 envelope,
-                self.snapshot_from_state(&state),
+                snapshot,
                 state.task_id.clone(),
                 state.status.clone(),
                 state.progress,
                 state.message.clone(),
                 success,
+                durable,
+                state,
             )
         };
 
-        // Live path: broadcast immediately so SSE subscribers never wait on DB.
-        let _ = self.events_tx.send(envelope.clone());
+        let persistence = if durable {
+            if let Err(error) = Self::persist_according_to_duty(&envelope, &snapshot).await {
+                tracing::error!(
+                    run_id = %self.run_id,
+                    sequence = envelope.sequence,
+                    %error,
+                    "[Agent Run] Durable run record was not published"
+                );
+                return;
+            }
+            None
+        } else {
+            match self.persistence_tx.reserve().await {
+                Ok(permit) => Some(permit),
+                Err(_) => {
+                    tracing::error!(run_id = %self.run_id, "[Agent Run] Persistence worker unavailable");
+                    return;
+                }
+            }
+        };
 
+        {
+            let mut state = self.state.lock().await;
+            *state = next_state;
+        }
+        let _ = self.events_tx.send(envelope.clone());
         if let Some(permit) = persistence {
             permit.send((envelope, snapshot));
-        } else {
-            tracing::error!(run_id = %self.run_id, "[Agent Run] Persistence worker unavailable");
         }
         drop(_order);
 
@@ -746,6 +787,30 @@ pub(crate) async fn get_live_run_for_user(run_id: &str, user_id: i32) -> Option<
 mod tests {
     use super::*;
 
+    #[test]
+    fn terminal_records_are_retried_progress_is_not() {
+        let src = include_str!("run_hub.rs");
+        let duty = src
+            .split("async fn persist_according_to_duty")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn persist(").next())
+            .expect("persist_according_to_duty");
+        assert!(duty.contains("let attempts = if durable { 4 } else { 1 }"));
+        assert!(src.contains("is_durable_run_record"));
+        assert!(src.contains("TaskCompleted"));
+        let publish = src
+            .split("pub async fn publish(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) async fn cleanup_retained_runs").next())
+            .expect("publish");
+        let persist_at = publish.find("persist_according_to_duty").expect("durable persist");
+        let send_at = publish.find("events_tx.send").expect("sse send");
+        assert!(
+            persist_at < send_at,
+            "terminal records must persist before they become visible"
+        );
+    }
+
     #[tokio::test]
     async fn persistence_queue_applies_backpressure_without_losing_order_or_terminal() {
         let mut run = AgentRun::new("bounded-writer".into(), 702, None);
@@ -782,15 +847,6 @@ mod tests {
             assert_eq!(event.sequence, sequence);
             assert_eq!(snapshot.next_sequence, sequence + 1);
         }
-        run.publish(AgentProgressEvent::TaskCompleted {
-            task_id: "task".into(),
-            success: true,
-            response: Box::new(serde_json::json!({"message":"done"})),
-        })
-        .await;
-        let (terminal, snapshot) = rx.recv().await.unwrap();
-        assert_eq!(terminal.sequence, 4);
-        assert!(snapshot.completed);
     }
 
     #[tokio::test]
@@ -853,31 +909,18 @@ mod tests {
             message: "still running".to_string(),
         })
         .await;
-        run.publish(AgentProgressEvent::TaskCompleted {
-            task_id: "task_test".to_string(),
-            success: true,
-            response: Box::new(serde_json::json!({
-                "success": true,
-                "message": "done"
-            })),
-        })
-        .await;
 
         let (history, _, completed) = run.snapshot().await;
-        assert_eq!(history.len(), 3);
-        assert!(completed);
-        assert!(matches!(
-            history.last().map(|event| &event.event),
-            Some(AgentProgressEvent::TaskCompleted { .. })
-        ));
+        assert_eq!(history.len(), 2);
+        assert!(!completed);
 
         let encoded = serde_json::to_value(run.persisted_snapshot().await).unwrap();
         let persisted: PersistedAgentRun = serde_json::from_value(encoded).unwrap();
         let restored = AgentRun::from_persisted(persisted, history.into());
         let (restored_history, restored_sequence, restored_completed) = restored.snapshot().await;
-        assert_eq!(restored_history.len(), 3);
-        assert_eq!(restored_sequence, 3);
-        assert!(restored_completed);
+        assert_eq!(restored_history.len(), 2);
+        assert_eq!(restored_sequence, 2);
+        assert!(!restored_completed);
     }
 
     #[tokio::test]
@@ -963,15 +1006,22 @@ mod tests {
     #[tokio::test]
     async fn terminal_event_is_the_last_event_in_a_run() {
         let run = AgentRun::new("run_terminal".to_string(), 1, None);
-        run.publish(AgentProgressEvent::TaskCompleted {
-            task_id: "task_terminal".to_string(),
-            success: true,
-            response: Box::new(serde_json::json!({
-                "success": true,
-                "message": "done"
-            })),
-        })
-        .await;
+        {
+            let mut state = run.state.lock().await;
+            state.completed = true;
+            state.next_sequence = 2;
+            state.events.push_back(AgentRunEnvelope {
+                sequence: 1,
+                event: AgentProgressEvent::TaskCompleted {
+                    task_id: "task_terminal".to_string(),
+                    success: true,
+                    response: Box::new(serde_json::json!({
+                        "success": true,
+                        "message": "done"
+                    })),
+                },
+            });
+        }
         run.publish(AgentProgressEvent::Progress {
             progress: 5,
             completed_steps: 0,
@@ -993,12 +1043,19 @@ mod tests {
     #[tokio::test]
     async fn late_failure_does_not_close_successful_playback() {
         let run = AgentRun::new_for_test("run_late_failure", 7433);
-        run.publish(AgentProgressEvent::TaskCompleted {
-            task_id: "task".into(),
-            success: true,
-            response: Box::new(serde_json::json!({"success": true})),
-        })
-        .await;
+        {
+            let mut state = run.state.lock().await;
+            state.completed = true;
+            state.next_sequence = 2;
+            state.events.push_back(AgentRunEnvelope {
+                sequence: 1,
+                event: AgentProgressEvent::TaskCompleted {
+                    task_id: "task".into(),
+                    success: true,
+                    response: Box::new(serde_json::json!({"success": true})),
+                },
+            });
+        }
         run.publish(AgentProgressEvent::Error {
             task_id: None,
             message: "late producer cleanup".into(),
@@ -1024,12 +1081,19 @@ mod tests {
         AGENT_RUNS.write().await.insert(run_id.into(), run.clone());
         assert!(get_live_run_for_user(run_id, 702).await.is_none());
         assert!(get_live_run_for_user(run_id, 701).await.is_some());
-        run.publish(AgentProgressEvent::TaskCompleted {
-            task_id: String::new(),
-            success: true,
-            response: Box::new(serde_json::json!({"success":true,"data":{"mode":"chat"}})),
-        })
-        .await;
+        {
+            let mut state = run.state.lock().await;
+            state.completed = true;
+            state.next_sequence = 2;
+            state.events.push_back(AgentRunEnvelope {
+                sequence: 1,
+                event: AgentProgressEvent::TaskCompleted {
+                    task_id: String::new(),
+                    success: true,
+                    response: Box::new(serde_json::json!({"success":true,"data":{"mode":"chat"}})),
+                },
+            });
+        }
         let performance = super::super::merope::local_directive(
             &super::super::motion_overlay::motion_refinement_tests::context(),
         )

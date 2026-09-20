@@ -6,6 +6,7 @@ use sea_orm::{
     QueryFilter, QueryOrder, Set,
 };
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::federation::content::federation_media_root;
@@ -150,17 +151,19 @@ fn is_unique_violation(err: &DbErr) -> bool {
 }
 
 pub async fn list_assets(db: &DatabaseConnection) -> Result<Vec<MediaAssetView>, DbErr> {
-    backfill_federation(db).await?;
     let rows = media_assets::Entity::find()
         .order_by_desc(media_assets::Column::CreatedAt)
         .all(db)
         .await?;
-    let mut items = Vec::with_capacity(rows.len());
-    for row in rows {
-        let references = media_references(db, &row.url).await?;
-        items.push(to_view(row, references));
-    }
-    Ok(items)
+    let urls: Vec<String> = rows.iter().map(|row| row.url.clone()).collect();
+    let references = media_references_batch(db, &urls).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let refs = references.get(&row.url).cloned().unwrap_or_default();
+            to_view(row, refs)
+        })
+        .collect())
 }
 
 pub async fn get_asset(
@@ -219,10 +222,19 @@ fn federation_disk_path(url: &str) -> Option<std::path::PathBuf> {
 
 pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
     let root = federation_media_root();
-    let Ok(mut users) = tokio::fs::read_dir(&root).await else {
-        return Ok(());
+    let mut users = match tokio::fs::read_dir(&root).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(DbErr::Custom(format!(
+                "cannot read federation media root {}: {error}",
+                root.display()
+            )));
+        }
     };
-    while let Ok(Some(user_ent)) = users.next_entry().await {
+    while let Some(user_ent) = users.next_entry().await.map_err(|error| {
+        DbErr::Custom(format!("cannot iterate federation media root: {error}"))
+    })? {
         if !user_ent
             .file_type()
             .await
@@ -236,10 +248,18 @@ pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
         if !user.chars().all(|c| c.is_ascii_digit()) {
             continue;
         }
-        let Ok(mut files) = tokio::fs::read_dir(user_ent.path()).await else {
-            continue;
-        };
-        while let Ok(Some(file_ent)) = files.next_entry().await {
+        let mut files = tokio::fs::read_dir(user_ent.path()).await.map_err(|error| {
+            DbErr::Custom(format!(
+                "cannot read federation media dir {}: {error}",
+                user_ent.path().display()
+            ))
+        })?;
+        while let Some(file_ent) = files.next_entry().await.map_err(|error| {
+            DbErr::Custom(format!(
+                "cannot iterate federation media dir {}: {error}",
+                user
+            ))
+        })? {
             if !file_ent
                 .file_type()
                 .await
@@ -254,20 +274,20 @@ pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
                 continue;
             }
             let url = format!("/media/federation/{user}/{name}");
-            let meta = file_ent.metadata().await.ok();
-            let size = meta.as_ref().map(|m| m.len() as i64).unwrap_or(0);
-            let mime = mime_from_name(&name);
-            let _ = register(
+            let meta = file_ent.metadata().await.map_err(|error| {
+                DbErr::Custom(format!("cannot stat {}: {error}", file_ent.path().display()))
+            })?;
+            register(
                 db,
                 RegisterMedia {
                     kind: MediaKind::Upload,
                     url,
-                    mime,
+                    mime: mime_from_name(&name),
                     name: name.to_string(),
-                    size,
+                    size: meta.len() as i64,
                 },
             )
-            .await;
+            .await?;
         }
     }
     Ok(())
@@ -293,58 +313,112 @@ fn mime_from_name(name: &str) -> String {
     .to_string()
 }
 
-async fn media_references(db: &DatabaseConnection, url: &str) -> Result<Vec<String>, DbErr> {
+fn like_contains_pattern(url: &str) -> String {
     let needle = canonical_media_url(url).unwrap_or_else(|| url.to_string());
-    let mut refs = Vec::new();
-    let notes = db
+    let escaped = needle
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
+async fn urls_matching(
+    db: &DatabaseConnection,
+    sql: &str,
+    patterns: &[String],
+) -> Result<std::collections::HashSet<String>, DbErr> {
+    if patterns.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let payload = serde_json::to_value(patterns).map_err(|error| DbErr::Json(error.to_string()))?;
+    let rows = db
         .query_all_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            r#"
-            SELECT id FROM phantasi_note_docs
-            WHERE image LIKE $1 OR content_md LIKE $1
-            LIMIT 8
-            "#,
-            [format!("%{needle}%").into()],
+            sql,
+            [payload.into()],
         ))
-        .await;
-    if let Ok(rows) = notes {
-        if !rows.is_empty() {
-            refs.push("notes".into());
+        .await?;
+    let mut found = std::collections::HashSet::new();
+    for row in rows {
+        if let Ok(url) = row.try_get::<String>("", "url") {
+            found.insert(url);
         }
     }
-    let items = db
-        .query_all_raw(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Postgres,
-            r#"
-            SELECT id FROM phantasi_items
-            WHERE image LIKE $1 OR content_md LIKE $1 OR content LIKE $1
-            LIMIT 8
-            "#,
-            [format!("%{needle}%").into()],
-        ))
-        .await;
-    if let Ok(rows) = items {
-        if !rows.is_empty() {
-            refs.push("articles".into());
-        }
+    Ok(found)
+}
+
+async fn media_references_batch(
+    db: &DatabaseConnection,
+    urls: &[String],
+) -> Result<HashMap<String, Vec<String>>, DbErr> {
+    let mut patterns = Vec::new();
+    let mut pattern_to_url = HashMap::new();
+    for url in urls {
+        let pattern = like_contains_pattern(url);
+        pattern_to_url.insert(pattern.clone(), url.clone());
+        patterns.push(pattern);
     }
-    let configs = db
-        .query_all_raw(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Postgres,
-            r#"
-            SELECT key FROM configurations
-            WHERE value::text LIKE $1
-            LIMIT 4
-            "#,
-            [format!("%{needle}%").into()],
-        ))
-        .await;
-    if let Ok(rows) = configs {
-        if !rows.is_empty() {
-            refs.push("site".into());
+    let notes = urls_matching(
+        db,
+        r#"
+        SELECT pat AS url
+        FROM json_array_elements_text($1::json) AS pat
+        WHERE EXISTS (
+            SELECT 1 FROM phantasi_note_docs
+            WHERE image LIKE pat ESCAPE '\' OR content_md LIKE pat ESCAPE '\'
+        )
+        "#,
+        &patterns,
+    )
+    .await?;
+    let articles = urls_matching(
+        db,
+        r#"
+        SELECT pat AS url
+        FROM json_array_elements_text($1::json) AS pat
+        WHERE EXISTS (
+            SELECT 1 FROM phantasi_items
+            WHERE image LIKE pat ESCAPE '\'
+               OR content_md LIKE pat ESCAPE '\'
+               OR content LIKE pat ESCAPE '\'
+        )
+        "#,
+        &patterns,
+    )
+    .await?;
+    let site = urls_matching(
+        db,
+        r#"
+        SELECT pat AS url
+        FROM json_array_elements_text($1::json) AS pat
+        WHERE EXISTS (
+            SELECT 1 FROM configurations
+            WHERE value::text LIKE pat ESCAPE '\'
+        )
+        "#,
+        &patterns,
+    )
+    .await?;
+    let mut refs: HashMap<String, Vec<String>> = HashMap::new();
+    for (pattern, url) in pattern_to_url {
+        let mut kinds = Vec::new();
+        if notes.contains(&pattern) {
+            kinds.push("notes".into());
         }
+        if articles.contains(&pattern) {
+            kinds.push("articles".into());
+        }
+        if site.contains(&pattern) {
+            kinds.push("site".into());
+        }
+        refs.insert(url, kinds);
     }
     Ok(refs)
+}
+
+async fn media_references(db: &DatabaseConnection, url: &str) -> Result<Vec<String>, DbErr> {
+    let map = media_references_batch(db, std::slice::from_ref(&url.to_string())).await?;
+    Ok(map.get(url).cloned().unwrap_or_default())
 }
 
 fn to_view(row: media_assets::Model, references: Vec<String>) -> MediaAssetView {
@@ -387,6 +461,47 @@ mod tests {
     fn store_bytes_only_registers_new_writes() {
         assert!(super::should_register_store_bytes(true));
         assert!(!super::should_register_store_bytes(false));
+    }
+
+    #[test]
+    fn list_does_not_scan_disk_and_batches_references() {
+        let src = include_str!("media_catalog.rs");
+        let list = src
+            .split("pub async fn list_assets")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_asset").next())
+            .expect("list_assets");
+        assert!(
+            !list.contains("backfill_federation"),
+            "list must not mix catalog reads with disk backfill"
+        );
+        assert!(list.contains("media_references_batch"));
+        let backfill = src
+            .split("pub async fn backfill_federation")
+            .nth(1)
+            .and_then(|rest| rest.split("fn mime_from_name").next())
+            .expect("backfill");
+        assert!(!backfill.contains("let _ = register"));
+        assert!(backfill.contains("ErrorKind::NotFound"));
+    }
+
+    #[test]
+    fn reference_query_errors_block_delete() {
+        let src = include_str!("media_catalog.rs");
+        let body = src
+            .split("async fn media_references_batch")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn media_references(").next())
+            .expect("media_references_batch");
+        assert!(
+            !body.contains("if let Ok("),
+            "reference lookup failures must not look like zero references"
+        );
+        assert_eq!(
+            body.matches(".await?;").count(),
+            3,
+            "notes/articles/site lookups must propagate query errors"
+        );
     }
 
     #[test]

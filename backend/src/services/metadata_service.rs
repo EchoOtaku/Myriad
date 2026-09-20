@@ -4,7 +4,8 @@ use crate::services::activity_event_service::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -40,54 +41,30 @@ impl MetadataService {
             estimated_size
         );
         let data_to_save = raw_data.clone();
-
-        // 查找是否已存在该平台的元数据
+        let txn = self.db.begin().await?;
         let existing = platform_metadata::Entity::find()
             .filter(platform_metadata::Column::UserId.eq(user_id))
             .filter(platform_metadata::Column::PlatformName.eq(platform_name))
             .order_by_desc(platform_metadata::Column::FetchedAt)
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         let now = Utc::now().naive_utc();
-
-        match existing {
+        let (metadata_id, ingest) = match existing {
             Some(old_metadata) => {
-                // 检测数据变化（使用原始数据检测）
-                let changed_fields = self.detect_changes(&old_metadata.raw_data, &raw_data);
-
-                if changed_fields.is_empty() {
-                    tracing::info!("   No changes detected, skipping save");
-                    return Ok(old_metadata.id);
-                }
-
-                tracing::info!("   Detected {} field changes", changed_fields.len());
-
-                // 更新现有记录（完整 `raw_data` 克隆）
-                let mut active_model: platform_metadata::ActiveModel = old_metadata.clone().into();
-                active_model.raw_data = Set(data_to_save.clone());
-                active_model.fetched_at = Set(now);
-                active_model.updated_at = Set(now);
-
-                let updated = active_model.update(&self.db).await?;
-                let metadata_id = updated.id;
-
-                // 记录变化历史
-                self.record_metadata_change(
-                    metadata_id,
+                self.update_existing_metadata(
+                    &txn,
+                    old_metadata,
                     user_id,
                     platform_name,
-                    changed_fields,
-                    Some(old_metadata.raw_data),
                     raw_data,
+                    data_to_save,
+                    now,
                 )
-                .await?;
-
-                tracing::info!("✅ Platform metadata updated (id: {})", metadata_id);
-                Ok(metadata_id)
+                .await?
             }
             None => {
-                // 创建新记录（完整 `raw_data` 克隆）
+                txn.execute_unprepared("SAVEPOINT metadata_insert").await?;
                 let new_metadata = platform_metadata::ActiveModel {
                     user_id: Set(user_id),
                     platform_name: Set(platform_name.to_string()),
@@ -97,29 +74,104 @@ impl MetadataService {
                     updated_at: Set(now),
                     ..Default::default()
                 };
-
-                let inserted = new_metadata.insert(&self.db).await?;
-                let metadata_id = inserted.id;
-
-                // 初次导入是基线，不是数百个子字段各自“发生变化”。
-                let all_fields: Vec<String> = raw_data
-                    .as_object()
-                    .map(|object| object.keys().cloned().collect())
-                    .unwrap_or_default();
-                self.record_metadata_change(
-                    metadata_id,
+                match new_metadata.insert(&txn).await {
+                    Ok(inserted) => {
+                        txn.execute_unprepared("RELEASE SAVEPOINT metadata_insert")
+                            .await?;
+                        let all_fields: Vec<String> = raw_data
+                            .as_object()
+                            .map(|object| object.keys().cloned().collect())
+                            .unwrap_or_default();
+                        let ingest = self
+                            .record_metadata_change(
+                                &txn,
+                                inserted.id,
+                                user_id,
+                                platform_name,
+                                all_fields,
+                                None,
+                                data_to_save,
+                            )
+                            .await?;
+                        tracing::info!(
+                            "✅ New platform metadata created (id: {})",
+                            inserted.id
+                        );
+                        (inserted.id, Some(ingest))
+                    }
+                    Err(err) if is_unique_metadata(&err) => {
+                        txn.execute_unprepared("ROLLBACK TO SAVEPOINT metadata_insert")
+                            .await?;
+                        let old_metadata = platform_metadata::Entity::find()
+                            .filter(platform_metadata::Column::UserId.eq(user_id))
+                            .filter(platform_metadata::Column::PlatformName.eq(platform_name))
+                            .one(&txn)
+                            .await?
+                            .ok_or("unique metadata conflict without a row")?;
+                        self.update_existing_metadata(
+                            &txn,
+                            old_metadata,
+                            user_id,
+                            platform_name,
+                            raw_data,
+                            data_to_save,
+                            now,
+                        )
+                        .await?
+                    }
+                    Err(err) => return Err(err.into()),
+                }
+            }
+        };
+        txn.commit().await?;
+        if let Some(ingest) = ingest {
+            if ingest.imported {
+                crate::services::agent::merope::spawn_diary(user_id, ingest.summary);
+            } else if ingest.high_value {
+                crate::services::agent::merope::spawn_ingest(
                     user_id,
-                    platform_name,
-                    all_fields,
-                    None,
-                    data_to_save,
-                )
-                .await?;
-
-                tracing::info!("✅ New platform metadata created (id: {})", metadata_id);
-                Ok(metadata_id)
+                    "agent.merope.platform_activity",
+                    ingest.summary,
+                );
             }
         }
+        Ok(metadata_id)
+    }
+
+    async fn update_existing_metadata<C: ConnectionTrait>(
+        &self,
+        db: &C,
+        old_metadata: platform_metadata::Model,
+        user_id: i32,
+        platform_name: &str,
+        raw_data: Value,
+        data_to_save: Value,
+        now: chrono::NaiveDateTime,
+    ) -> Result<(i32, Option<RecordedIngest>), Box<dyn std::error::Error>> {
+        let changed_fields = self.detect_changes(&old_metadata.raw_data, &raw_data);
+        if changed_fields.is_empty() {
+            tracing::info!("   No changes detected, skipping save");
+            return Ok((old_metadata.id, None));
+        }
+        tracing::info!("   Detected {} field changes", changed_fields.len());
+        let mut active_model: platform_metadata::ActiveModel = old_metadata.clone().into();
+        active_model.raw_data = Set(data_to_save);
+        active_model.fetched_at = Set(now);
+        active_model.updated_at = Set(now);
+        let updated = active_model.update(db).await?;
+        let ingest = self
+            .record_metadata_change(
+                db,
+                updated.id,
+                user_id,
+                platform_name,
+                changed_fields,
+                Some(old_metadata.raw_data),
+                raw_data,
+            )
+            .await?;
+        tracing::info!("✅ Platform metadata updated (id: {})", updated.id);
+        Ok((updated.id, Some(ingest)))
     }
 
     /// 检测两个JSON对象之间的变化
@@ -258,15 +310,16 @@ impl MetadataService {
     }
 
     /// 记录元数据变化历史。`< 50KB` 存完整 JSON；`>= 50KB` 只存变化摘要。完整库仍在 `platform_metadata`。
-    async fn record_metadata_change(
+    async fn record_metadata_change<C: ConnectionTrait>(
         &self,
+        db: &C,
         metadata_id: i32,
         user_id: i32,
         platform_name: &str,
         changed_fields: Vec<String>,
         old_data: Option<Value>,
         new_data: Value,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<RecordedIngest, Box<dyn std::error::Error>> {
         // 输入体积开关：>= 此值只存摘要
         const MAX_SUMMARY_SIZE: usize = 50_000;
 
@@ -313,10 +366,13 @@ impl MetadataService {
             ..Default::default()
         };
 
-        let inserted_history = history.insert(&self.db).await?;
+        let inserted_history = history.insert(db).await?;
         let activity_summary = platform_activity_summary(platform_name, &activity);
-        let ingest_imported = activity.event_type == "imported";
-        let ingest_high_value = activity.importance >= 80 && activity.event_type != "suppressed";
+        let ingest = RecordedIngest {
+            imported: activity.event_type == "imported",
+            high_value: activity.importance >= 80 && activity.event_type != "suppressed",
+            summary: activity_summary,
+        };
 
         let activity_event = activity_events::ActiveModel {
             metadata_history_id: Set(inserted_history.id),
@@ -332,32 +388,12 @@ impl MetadataService {
             created_at: Set(now),
             ..Default::default()
         };
-        match activity_event.insert(&self.db).await {
-            Err(error) => {
-                // 原始快照和审计历史已成功；activity_event 失败只记 warn。
-                tracing::warn!(
-                    "Failed to persist normalized activity event for history {}: {}",
-                    inserted_history.id,
-                    error
-                );
-            }
-            _ => {
-                if ingest_imported {
-                    crate::services::agent::merope::spawn_diary(user_id, activity_summary);
-                } else if ingest_high_value {
-                    crate::services::agent::merope::spawn_ingest(
-                        user_id,
-                        "agent.merope.platform_activity",
-                        activity_summary,
-                    );
-                }
-            }
-        }
+        activity_event.insert(db).await?;
         tracing::info!(
             "✅ Metadata change history recorded (summary mode: {})",
             new_data_size >= MAX_SUMMARY_SIZE
         );
-        Ok(())
+        Ok(ingest)
     }
 
     /// 估算 JSON 数据的大小（不进行实际序列化，避免OOM）
@@ -615,6 +651,17 @@ impl MetadataService {
     }
 }
 
+struct RecordedIngest {
+    imported: bool,
+    high_value: bool,
+    summary: String,
+}
+
+fn is_unique_metadata(err: &DbErr) -> bool {
+    let s = err.to_string().to_lowercase();
+    s.contains("duplicate key") || s.contains("unique constraint") || s.contains("23505")
+}
+
 fn platform_activity_summary(platform: &str, activity: &ActivityPayload) -> String {
     let label = platform_label(platform);
     if activity.event_type == "imported" {
@@ -630,5 +677,26 @@ fn platform_activity_summary(platform: &str, activity: &ActivityPayload) -> Stri
         format!("{label}: {}", activity.title)
     } else {
         format!("{label}: {}", heads.join(", "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn save_platform_metadata_commits_snapshot_and_history_together() {
+        let src = include_str!("metadata_service.rs");
+        let save = src
+            .split("pub async fn save_platform_metadata")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn update_existing_metadata").next())
+            .expect("save_platform_metadata");
+        assert!(save.contains("self.db.begin()"));
+        assert!(save.contains("SAVEPOINT metadata_insert"));
+        assert!(save.contains("ROLLBACK TO SAVEPOINT metadata_insert"));
+        assert!(save.contains("txn.commit()"));
+        assert!(
+            save.find("txn.commit()").unwrap() < save.find("spawn_diary").unwrap(),
+            "diary side effects must wait until snapshot+history commit"
+        );
     }
 }

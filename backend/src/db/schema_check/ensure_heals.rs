@@ -222,14 +222,37 @@ BEGIN
           AND indrelid = 'federation_channels'::regclass
           AND indisunique AND indisvalid
     ) THEN
+        IF EXISTS (
+            SELECT 1
+            FROM federation_channels a
+            JOIN federation_channels b
+              ON a.user_id = b.user_id
+             AND a.remote_actor_id = b.remote_actor_id
+             AND a.channel_type = b.channel_type
+             AND a.channel_id <> b.channel_id
+             AND a.status IN ('pending', 'accepted', 'active')
+             AND b.status IN ('pending', 'accepted', 'active')
+        ) THEN
+            RAISE EXCEPTION
+                'active channel relationship collision across different channel_id; refusing unique index';
+        END IF;
         DELETE FROM federation_channels a
         USING federation_channels b
         WHERE a.user_id = b.user_id
           AND a.remote_actor_id = b.remote_actor_id
           AND a.channel_type = b.channel_type
+          AND a.channel_id = b.channel_id
           AND a.status IN ('pending', 'accepted', 'active')
           AND b.status IN ('pending', 'accepted', 'active')
-          AND a.id > b.id;
+          AND (
+                COALESCE(a.last_activity_at, a.created_at)
+                < COALESCE(b.last_activity_at, b.created_at)
+             OR (
+                    COALESCE(a.last_activity_at, a.created_at)
+                    IS NOT DISTINCT FROM COALESCE(b.last_activity_at, b.created_at)
+                AND a.id < b.id
+             )
+          );
         CREATE UNIQUE INDEX idx_channels_active_relationship
             ON federation_channels (user_id, remote_actor_id, channel_type)
             WHERE status IN ('pending', 'accepted', 'active');
@@ -270,9 +293,7 @@ END $$;
 
 /// One current snapshot per `(user_id, platform_name)`. Collapse duplicates
 /// before CREATE UNIQUE so existing rows cannot fail the index.
-pub(crate) async fn ensure_platform_metadata_unique(
-    db: &DatabaseConnection,
-) -> Result<(), DbErr> {
+pub(crate) async fn ensure_platform_metadata_unique(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
 DO $$
@@ -283,11 +304,44 @@ BEGIN
           AND indrelid = 'platform_metadata'::regclass
           AND indisunique AND indisvalid
     ) THEN
-        DELETE FROM platform_metadata a
-        USING platform_metadata b
-        WHERE a.user_id = b.user_id
-          AND a.platform_name = b.platform_name
-          AND a.id > b.id;
+        WITH ranked AS (
+            SELECT id, user_id, platform_name,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY user_id, platform_name
+                       ORDER BY fetched_at DESC NULLS LAST,
+                                updated_at DESC NULLS LAST,
+                                id DESC
+                   ) AS rn
+            FROM platform_metadata
+        ),
+        loser AS (
+            SELECT r.id AS lose_id, w.id AS keep_id
+            FROM ranked r
+            JOIN ranked w
+              ON w.user_id = r.user_id
+             AND w.platform_name = r.platform_name
+             AND w.rn = 1
+            WHERE r.rn > 1
+        )
+        UPDATE metadata_history h
+           SET metadata_id = l.keep_id
+          FROM loser l
+         WHERE h.metadata_id = l.lose_id;
+
+        DELETE FROM platform_metadata
+         WHERE id IN (
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY user_id, platform_name
+                           ORDER BY fetched_at DESC NULLS LAST,
+                                    updated_at DESC NULLS LAST,
+                                    id DESC
+                       ) AS rn
+                FROM platform_metadata
+            ) ranked
+            WHERE rn > 1
+         );
         CREATE UNIQUE INDEX idx_platform_metadata_user_platform
             ON platform_metadata (user_id, platform_name);
     END IF;
@@ -732,7 +786,8 @@ BEGIN
           INTO current_bytes
           FROM tapp_storage
          WHERE user_id = NEW.user_id
-           AND tapp_id = NEW.tapp_id;
+           AND tapp_id = NEW.tapp_id
+           AND key <> NEW.key;
     END IF;
 
     projected_bytes := current_bytes
@@ -1023,10 +1078,46 @@ BEGIN
         WHERE indexrelid = to_regclass('idx_rsshub_instances_global_url')
           AND indisunique AND indisvalid
     ) THEN
-        DELETE FROM rsshub_instances a
-        USING rsshub_instances b
-        WHERE a.user_id IS NULL AND b.user_id IS NULL
-          AND a.url = b.url AND a.id > b.id;
+        WITH ranked AS (
+            SELECT id, url,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY url
+                       ORDER BY CASE health_status
+                                    WHEN 'healthy' THEN 0
+                                    WHEN 'degraded' THEN 1
+                                    WHEN 'unknown' THEN 2
+                                    ELSE 3
+                                END,
+                                last_health_check DESC NULLS LAST,
+                                updated_at DESC NULLS LAST,
+                                id DESC
+                   ) AS rn
+            FROM rsshub_instances
+            WHERE user_id IS NULL
+        ),
+        loser AS (
+            SELECT r.id AS lose_id, w.id AS keep_id
+            FROM ranked r
+            JOIN ranked w ON w.url = r.url AND w.rn = 1
+            WHERE r.rn > 1
+        ),
+        merged AS (
+            UPDATE rsshub_instances w
+               SET total_requests = w.total_requests + s.add_total,
+                   success_requests = w.success_requests + s.add_success
+              FROM (
+                    SELECT l.keep_id,
+                           SUM(a.total_requests)::int AS add_total,
+                           SUM(a.success_requests)::int AS add_success
+                      FROM loser l
+                      JOIN rsshub_instances a ON a.id = l.lose_id
+                     GROUP BY l.keep_id
+                   ) s
+             WHERE w.id = s.keep_id
+         RETURNING w.id
+        )
+        DELETE FROM rsshub_instances
+         WHERE id IN (SELECT lose_id FROM loser);
         CREATE UNIQUE INDEX idx_rsshub_instances_global_url
             ON rsshub_instances (url) WHERE user_id IS NULL;
     END IF;
@@ -1095,9 +1186,24 @@ BEGIN
         WHERE indexrelid = to_regclass('idx_tapp_shortcuts_owner_chord')
           AND indisunique AND indisvalid
     ) THEN
+        IF EXISTS (
+            SELECT 1
+            FROM tapp_storage a
+            JOIN tapp_storage b
+              ON a.user_id = b.user_id
+             AND a.key <> b.key
+             AND starts_with(a.key, '_shortcut:')
+             AND starts_with(b.key, '_shortcut:')
+             AND a.value->>'keys' IS NOT NULL
+             AND a.value->>'keys' = b.value->>'keys'
+        ) THEN
+            RAISE EXCEPTION
+                'shortcut chord collision across different bindings; refusing unique index';
+        END IF;
         DELETE FROM tapp_storage a
         USING tapp_storage b
         WHERE a.user_id = b.user_id
+          AND a.key = b.key
           AND starts_with(a.key, '_shortcut:')
           AND starts_with(b.key, '_shortcut:')
           AND a.value->>'keys' IS NOT NULL

@@ -17,75 +17,74 @@ pub(crate) async fn get_stats(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let (user_id, is_admin) = get_phantasi_viewer(&headers, &db).await?;
 
-    let totals_sql = if is_admin {
-        "SELECT COUNT(*)::int AS total_sources, COALESCE(SUM(item_count), 0)::int AS total_items FROM phantasi_sources"
+    let visible_sources = if is_admin {
+        "phantasi_sources"
     } else {
-        "SELECT COUNT(*)::int AS total_sources, COALESCE(SUM(item_count), 0)::int AS total_items FROM phantasi_sources WHERE admin_only = FALSE"
+        "phantasi_sources WHERE admin_only = FALSE"
     };
-    let totals = db
-        .query_one_raw(Statement::from_string(
-            DatabaseBackend::Postgres,
-            totals_sql.to_string(),
-        ))
-        .await
-        .map_err(|error| phantasi_store_http("count sources", error))?
-        .ok_or_else(|| phantasi_store_http("count sources", "empty totals"))?;
-    let total_sources: i32 = totals
-        .try_get("", "total_sources")
-        .map_err(|error| phantasi_store_http("read source count", error))?;
-    let total_items: i32 = totals
-        .try_get("", "total_items")
-        .map_err(|error| phantasi_store_http("read item count", error))?;
-
-    let (total_unread, starred_count) = if let Some(uid) = user_id {
-        let unread_sql = if is_admin {
-            "SELECT COUNT(*)::int AS unread_count \
-             FROM phantasi_items i \
+    let row = if let Some(uid) = user_id {
+        let unread = if is_admin {
+            "SELECT COUNT(*)::int FROM phantasi_items i \
              WHERE NOT EXISTS ( \
                SELECT 1 FROM phantasi_user_states s \
                WHERE s.item_id = i.id AND s.user_id = $1 AND s.is_read = TRUE \
              )"
         } else {
-            "SELECT COUNT(*)::int AS unread_count \
-             FROM phantasi_items i \
+            "SELECT COUNT(*)::int FROM phantasi_items i \
              INNER JOIN phantasi_sources src ON src.id = i.source_id AND src.admin_only = FALSE \
              WHERE NOT EXISTS ( \
                SELECT 1 FROM phantasi_user_states s \
                WHERE s.item_id = i.id AND s.user_id = $1 AND s.is_read = TRUE \
              )"
         };
-        let (unread_row, starred) = tokio::try_join!(
-            db.query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                unread_sql,
-                [uid.into()],
-            )),
-            db.query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                if is_admin {
-                    "SELECT COUNT(*)::int AS starred_count \
-                     FROM phantasi_user_states s \
-                     INNER JOIN phantasi_items i ON i.id = s.item_id \
-                     WHERE s.user_id = $1 AND s.is_starred = TRUE"
-                } else {
-                    "SELECT 0::int AS starred_count"
-                },
-                [uid.into()],
-            )),
-        )
-        .map_err(|error| phantasi_store_http("count reading stats", error))?;
-        let unread: i32 = unread_row
-            .ok_or_else(|| phantasi_store_http("count unread", "empty unread"))?
-            .try_get("", "unread_count")
-            .map_err(|error| phantasi_store_http("read unread count", error))?;
-        let starred: i64 = starred
-            .ok_or_else(|| phantasi_store_http("count starred", "empty starred"))?
-            .try_get("", "starred_count")
-            .map_err(|error| phantasi_store_http("read starred count", error))?;
-        (unread, starred)
+        let starred = if is_admin {
+            "SELECT COUNT(*)::int FROM phantasi_user_states s \
+             INNER JOIN phantasi_items i ON i.id = s.item_id \
+             WHERE s.user_id = $1 AND s.is_starred = TRUE"
+        } else {
+            "SELECT 0"
+        };
+        db.query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            format!(
+                "SELECT \
+                    (SELECT COUNT(*)::int FROM {visible_sources}) AS total_sources, \
+                    (SELECT COALESCE(SUM(item_count), 0)::int FROM {visible_sources}) AS total_items, \
+                    ({unread}) AS unread_count, \
+                    ({starred}) AS starred_count"
+            ),
+            [uid.into()],
+        ))
+        .await
+        .map_err(|error| phantasi_store_http("count reading stats", error))?
+        .ok_or_else(|| phantasi_store_http("count reading stats", "empty stats"))?
     } else {
-        (0, 0)
+        db.query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(
+                "SELECT \
+                    (SELECT COUNT(*)::int FROM {visible_sources}) AS total_sources, \
+                    (SELECT COALESCE(SUM(item_count), 0)::int FROM {visible_sources}) AS total_items, \
+                    0::int AS unread_count, \
+                    0::int AS starred_count"
+            ),
+        ))
+        .await
+        .map_err(|error| phantasi_store_http("count sources", error))?
+        .ok_or_else(|| phantasi_store_http("count sources", "empty totals"))?
     };
+    let total_sources: i32 = row
+        .try_get("", "total_sources")
+        .map_err(|error| phantasi_store_http("read source count", error))?;
+    let total_items: i32 = row
+        .try_get("", "total_items")
+        .map_err(|error| phantasi_store_http("read item count", error))?;
+    let total_unread: i32 = row
+        .try_get("", "unread_count")
+        .map_err(|error| phantasi_store_http("read unread count", error))?;
+    let starred_count: i32 = row
+        .try_get("", "starred_count")
+        .map_err(|error| phantasi_store_http("read starred count", error))?;
 
     Ok(Json(json!({
         "success": true,
@@ -132,16 +131,13 @@ mod journal_audit_contracts {
             "unread count must join visible sources"
         );
         assert!(
-            stats.contains("SELECT 0::int AS starred_count"),
-            "non-admin stats must not expose leftover starred counts"
-        );
-        assert!(
-            stats.contains("phantasi_store_http(\"count sources\""),
+            stats.contains("phantasi_store_http(\"count sources\"")
+                || stats.contains("phantasi_store_http(\"count reading stats\""),
             "get_stats must not turn store failures into zeros"
         );
         assert!(
-            stats.contains("try_join!"),
-            "get_stats unread/starred must fail the request together"
+            !stats.contains("try_join!"),
+            "totals/unread/starred must be one snapshot, not parallel round trips"
         );
         assert!(
             !stats.contains(".ok()\n        .flatten()"),

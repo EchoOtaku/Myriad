@@ -935,7 +935,8 @@ BEGIN
           INTO current_bytes
           FROM tapp_storage
          WHERE user_id = NEW.user_id
-           AND tapp_id = NEW.tapp_id;
+           AND tapp_id = NEW.tapp_id
+           AND key <> NEW.key;
     END IF;
 
     projected_bytes := current_bytes

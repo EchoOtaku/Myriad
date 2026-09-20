@@ -116,7 +116,11 @@ async fn save_to_database(
     config_service: &crate::services::config_service::ConfigService,
     config: &ConfigResponse,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let updates = collect_database_updates(config)
+    let vendor_snapshot = crate::GLOBAL_DYNAMIC_CONFIG
+        .read()
+        .await
+        .effective_vendor_sources();
+    let updates = collect_database_updates_with_vendor(config, Ok(vendor_snapshot))
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
     config_service.update_configs(updates).await?;
     Ok(())
@@ -140,19 +144,6 @@ fn vendor_json_is_agora(value: &serde_json::Value) -> bool {
         || preset.eq_ignore_ascii_case("agora")
         || slug == "agora"
         || slug.starts_with("agora-")
-}
-
-fn existing_vendor_sources() -> Result<Vec<crate::config::AiVendorSource>, String> {
-    crate::GLOBAL_DYNAMIC_CONFIG
-        .try_read()
-        .map(|guard| guard.effective_vendor_sources())
-        .map_err(|_| {
-            "vendor secrets are locked; refusing to save masked credentials as empty".to_string()
-        })
-}
-
-fn merge_vendor_source_secrets(incoming: serde_json::Value) -> Result<serde_json::Value, String> {
-    merge_vendor_source_secrets_with(incoming, existing_vendor_sources())
 }
 
 fn merge_vendor_source_secrets_with(
@@ -187,21 +178,46 @@ fn merge_vendor_source_secrets_with(
             .as_deref()
             .is_some_and(is_masked_secret_value)
         {
-            source.api_key = previous.and_then(|item| item.api_key.clone());
+            source.api_key = Some(previous.and_then(|item| item.api_key.clone()).ok_or_else(
+                || {
+                    format!(
+                        "masked api_key for slug {} has no stored secret to keep",
+                        source.slug
+                    )
+                },
+            )?);
         }
         if source
             .secret_id
             .as_deref()
             .is_some_and(is_masked_secret_value)
         {
-            source.secret_id = previous.and_then(|item| item.secret_id.clone());
+            source.secret_id = Some(
+                previous
+                    .and_then(|item| item.secret_id.clone())
+                    .ok_or_else(|| {
+                        format!(
+                            "masked secret_id for slug {} has no stored secret to keep",
+                            source.slug
+                        )
+                    })?,
+            );
         }
         if source
             .secret_key
             .as_deref()
             .is_some_and(is_masked_secret_value)
         {
-            source.secret_key = previous.and_then(|item| item.secret_key.clone());
+            source.secret_key = Some(
+                previous
+                    .and_then(|item| item.secret_key.clone())
+                    .ok_or_else(|| {
+                        format!(
+                            "masked secret_key for slug {} has no stored secret to keep",
+                            source.slug
+                        )
+                    })?,
+            );
         }
     }
     serde_json::to_value(sources).map_err(|error| error.to_string())
@@ -209,6 +225,13 @@ fn merge_vendor_source_secrets_with(
 
 pub(crate) fn collect_database_updates(
     config: &ConfigResponse,
+) -> Result<std::collections::HashMap<String, Value>, String> {
+    collect_database_updates_with_vendor(config, Ok(Vec::new()))
+}
+
+pub(crate) fn collect_database_updates_with_vendor(
+    config: &ConfigResponse,
+    vendor_existing: Result<Vec<crate::config::AiVendorSource>, String>,
 ) -> Result<std::collections::HashMap<String, Value>, String> {
     use serde_json::Value as JsonValue;
     use std::collections::HashMap;
@@ -549,7 +572,13 @@ pub(crate) fn collect_database_updates(
                 if !parsed.is_array() {
                     return Err("ai_vendor_sources must be a JSON array".to_string());
                 }
-                let parsed = merge_vendor_source_secrets(parsed)?;
+                let parsed = merge_vendor_source_secrets_with(
+                    parsed,
+                    vendor_existing
+                        .as_ref()
+                        .map(|sources| sources.clone())
+                        .map_err(|error| error.clone()),
+                )?;
                 ("ai_vendor_sources", parsed)
             }
             _ => continue,
@@ -1161,6 +1190,19 @@ mod tests {
     }
 
     #[test]
+    fn collect_database_updates_does_not_take_the_config_lock() {
+        let src = include_str!("save.rs");
+        let collect = src
+            .split("pub(crate) fn collect_database_updates(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) fn collect_database_updates_with_vendor").next())
+            .expect("collect_database_updates");
+        assert!(!collect.contains("try_read"));
+        assert!(!collect.contains("GLOBAL_DYNAMIC_CONFIG"));
+        assert!(collect.contains("Ok(Vec::new())"));
+    }
+
+    #[test]
     fn invalid_vendor_source_json_is_rejected_not_saved_as_empty_array() {
         let err =
             collect_database_updates(&vendor_field("not-json")).expect_err("must fail closed");
@@ -1224,5 +1266,19 @@ mod tests {
         assert_eq!(merged[0]["api_key"], json!("sk-keep"));
         assert_eq!(merged[0]["secret_id"], json!("sid-keep"));
         assert_eq!(merged[0]["secret_key"], json!("skey-keep"));
+    }
+
+    #[test]
+    fn masked_vendor_secrets_without_stored_value_are_input_errors() {
+        let incoming = json!([{
+            "slug": "openai",
+            "kind": "openai",
+            "display_name": "OpenAI",
+            "enabled": true,
+            "api_key": "••••••••"
+        }]);
+        let err = merge_vendor_source_secrets_with(incoming, Ok(Vec::new()))
+            .expect_err("mask with no stored secret must not become empty");
+        assert!(err.contains("no stored secret"), "{err}");
     }
 }

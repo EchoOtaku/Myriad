@@ -288,6 +288,7 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     ensure_phantasi_note_authors_table(db).await?;
     ensure_phantasi_source_applications_table(db).await?;
     ensure_media_assets_table(db).await?;
+    crate::services::media_catalog::backfill_federation(db).await?;
     ensure_phantasi_note_source_unique(db).await?;
     ensure_rsshub_global_url_unique(db).await?;
     ensure_phantasi_application_pending_unique(db).await?;

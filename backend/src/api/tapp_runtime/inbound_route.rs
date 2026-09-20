@@ -39,6 +39,10 @@ fn credential_http_error(error: TappCredentialError) -> HttpError {
             myriad_error::AppError::new(StatusCode::BAD_REQUEST, error.code())
                 .with_message(error.message()),
         ),
+        TappCredentialError::QuotaExceeded => HttpError(
+            myriad_error::AppError::new(StatusCode::PAYLOAD_TOO_LARGE, error.code())
+                .with_message(error.message()),
+        ),
         TappCredentialError::Encryption | TappCredentialError::Database => HttpError(
             myriad_error::AppError::new(StatusCode::INTERNAL_SERVER_ERROR, error.code())
                 .with_message(error.message()),

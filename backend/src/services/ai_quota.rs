@@ -364,16 +364,18 @@ fn increment_quota_sql(touch: bool) -> &'static str {
     if touch {
         r#"
                 UPDATE tapp_quota_usage
-                SET used = GREATEST(0, used + $4), updated_at = NOW()
+                SET used = used + $4, updated_at = NOW()
                 WHERE user_id = $1 AND tapp_id = $2 AND quota_type = $3
                   AND period_start = $5::timestamptz
+                  AND used + $4 >= 0
             "#
     } else {
         r#"
                 UPDATE tapp_quota_usage
-                SET used = GREATEST(0, used + $4)
+                SET used = used + $4
                 WHERE user_id = $1 AND tapp_id = $2 AND quota_type = $3
                   AND period_start = $5::timestamptz
+                  AND used + $4 >= 0
             "#
     }
 }
@@ -387,22 +389,28 @@ async fn increment_row<C: ConnectionTrait>(
     touch: bool,
     period_start: DateTime<Utc>,
 ) -> Result<(), AiQuotaError> {
-    db.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        increment_quota_sql(touch),
-        vec![
-            SeaValue::Int(Some(subject_id)),
-            SeaValue::String(Some(tapp_id.to_string())),
-            SeaValue::String(Some(quota_type.to_string())),
-            SeaValue::Int(Some(amount)),
-            SeaValue::String(Some(period_start.to_rfc3339())),
-        ],
-    ))
-    .await
-    .map_err(|error| {
-        tracing::error!(error = %error, "[TAPP] Failed to update AI quota row");
-        ledger_error("Failed to update AI quota ledger")
-    })?;
+    let updated = db
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            increment_quota_sql(touch),
+            vec![
+                SeaValue::Int(Some(subject_id)),
+                SeaValue::String(Some(tapp_id.to_string())),
+                SeaValue::String(Some(quota_type.to_string())),
+                SeaValue::Int(Some(amount)),
+                SeaValue::String(Some(period_start.to_rfc3339())),
+            ],
+        ))
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, "[TAPP] Failed to update AI quota row");
+            ledger_error("Failed to update AI quota ledger")
+        })?;
+    if updated.rows_affected() != 1 {
+        return Err(ledger_error(
+            "AI quota ledger row was not updated for the reserved period",
+        ));
+    }
     Ok(())
 }
 
@@ -601,9 +609,13 @@ pub async fn settle_ai_quota(
     let actual = i32::try_from(actual_tokens).unwrap_or(i32::MAX).max(0);
     let delta = (i64::from(actual) - i64::from(reservation.reserved_tokens))
         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+    let txn = db
+        .begin()
+        .await
+        .map_err(|_| ledger_error("Failed to start AI quota settle"))?;
     for bucket in &reservation.buckets {
         increment_row(
-            db,
+            &txn,
             bucket.subject_id,
             &bucket.ledger_tapp_id,
             &bucket.tokens_type,
@@ -613,6 +625,9 @@ pub async fn settle_ai_quota(
         )
         .await?;
     }
+    txn.commit()
+        .await
+        .map_err(|_| ledger_error("Failed to commit AI quota settle"))?;
     Ok(())
 }
 
@@ -623,9 +638,13 @@ pub async fn release_ai_token_reservation(
     if reservation.unlimited || reservation.reserved_tokens == 0 {
         return Ok(());
     }
+    let txn = db
+        .begin()
+        .await
+        .map_err(|_| ledger_error("Failed to start AI quota release"))?;
     for bucket in &reservation.buckets {
         increment_row(
-            db,
+            &txn,
             bucket.subject_id,
             &bucket.ledger_tapp_id,
             &bucket.tokens_type,
@@ -635,6 +654,9 @@ pub async fn release_ai_token_reservation(
         )
         .await?;
     }
+    txn.commit()
+        .await
+        .map_err(|_| ledger_error("Failed to commit AI quota release"))?;
     Ok(())
 }
 
@@ -969,6 +991,14 @@ mod tests {
             "settle/release must use the reserved period bind"
         );
         assert!(
+            sql.contains("used + $4 >= 0"),
+            "ledger updates must not clamp underflow into a fake success"
+        );
+        assert!(
+            !sql.contains("GREATEST"),
+            "GREATEST would hide a missing or over-released reservation"
+        );
+        assert!(
             !sql.contains("date_trunc('day', NOW())"),
             "recomputing today would lose a reservation that crossed midnight"
         );
@@ -985,5 +1015,25 @@ mod tests {
         };
         assert_eq!(bucket.period_start, yesterday);
         assert_ne!(bucket.period_start.date_naive(), chrono::Utc::now().date_naive());
+    }
+
+    #[test]
+    fn settle_and_release_commit_every_bucket_together() {
+        let src = include_str!("ai_quota.rs");
+        for (name, next) in [
+            ("pub async fn settle_ai_quota", "pub async fn release_ai_token_reservation"),
+            (
+                "pub async fn release_ai_token_reservation",
+                "pub async fn rollback_ai_quota_reservation",
+            ),
+        ] {
+            let body = src
+                .split(name)
+                .nth(1)
+                .and_then(|rest| rest.split(next).next())
+                .expect(name);
+            assert!(body.contains(".begin()"), "{name} must share a transaction");
+            assert!(body.contains("txn.commit()"), "{name} must commit all buckets together");
+        }
     }
 }

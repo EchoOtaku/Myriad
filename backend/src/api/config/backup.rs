@@ -155,7 +155,11 @@ fn merge_settings_backup_entries(
 
     // v1 部署可能从环境变量取值。快照里有、备份行里没有的键在这里补上；
     // 下线键不补。`collect_database_updates` 只发出快照 bag 里实际存在的字段。
-    for (key, value) in collect_database_updates(&backup.effective_config).unwrap_or_default() {
+    let extra_updates = collect_database_updates(&backup.effective_config).unwrap_or_else(|error| {
+        tracing::error!(%error, "settings backup could not project effective_config");
+        std::collections::HashMap::new()
+    });
+    for (key, value) in extra_updates {
         let Some(descriptor) = live_setting_descriptor(&key) else {
             continue;
         };
@@ -385,7 +389,11 @@ pub async fn export_settings(
         .iter()
         .map(|entry| entry.key.clone())
         .collect();
-    for (key, value) in collect_database_updates(&effective_config).unwrap_or_default() {
+    let extra_updates = collect_database_updates(&effective_config).unwrap_or_else(|error| {
+        tracing::error!(%error, "settings export could not project effective_config");
+        std::collections::HashMap::new()
+    });
+    for (key, value) in extra_updates {
         let Some(descriptor) = live_setting_descriptor(&key) else {
             continue;
         };

@@ -151,6 +151,7 @@ pub(super) async fn install_tapp(
     ensure_tapp_install_allowed(&db, user_id).await?;
     let role = current_user_role(&claims, &db).await;
     let is_current_admin = role == UserRole::Admin;
+    let install_permit = acquire_install_permit().await?;
     let InstallTappRequest {
         source,
         manifest: request_manifest,
@@ -238,6 +239,7 @@ pub(super) async fn install_tapp(
         package,
         permissions,
         false,
+        Some(install_permit),
     )
     .await?;
     if from_store {
@@ -282,9 +284,12 @@ async fn install_prepared_package(
     package: PreparedTappPackage,
     permissions: Option<Vec<String>>,
     overwrite: bool,
+    install_permit: Option<OwnedSemaphorePermit>,
 ) -> Result<Json<ApiResponse<TappListItem>>, HttpError> {
-    // Bound concurrent installs early so overload fails 503 without staging work.
-    let _install_permit = acquire_install_permit().await?;
+    let _install_permit = match install_permit {
+        Some(permit) => permit,
+        None => acquire_install_permit().await?,
+    };
     super::store_policy::ensure_permissions_allowed(&package.manifest.permissions).await?;
     package.validate_for_http(None).map_err(api_response_err)?;
     let manifest = package.manifest.clone();
@@ -670,6 +675,7 @@ pub(super) async fn install_tapp_file(
     ensure_tapp_install_allowed(&db, user_id).await?;
     let role = current_user_role(&claims, &db).await;
     let is_current_admin = role == UserRole::Admin;
+    let install_permit = acquire_install_permit().await?;
     // 读取上传的文件
     let mut file_data: Option<Vec<u8>> = None;
     let mut permissions: Option<Vec<String>> = None;
@@ -727,6 +733,7 @@ pub(super) async fn install_tapp_file(
         package,
         permissions,
         options.overwrite,
+        Some(install_permit),
     )
     .await
 }
@@ -784,6 +791,7 @@ pub(super) async fn update_tapp(
         .map_err(|_| api_http_error(StatusCode::UNAUTHORIZED, "Invalid user"))?;
     ensure_tapp_install_allowed(&db, user_id).await?;
     let role = current_user_role(&claims, &db).await;
+    let _update_permit = acquire_install_permit().await?;
     validate_tapp_id(&tapp_id).map_err(|error| api_http_error(StatusCode::BAD_REQUEST, error))?;
     let admin_id = get_admin_user_id(&db).await?;
     let target_owner_id = canonical_installation_owner_id(role, user_id, admin_id);
@@ -1094,5 +1102,27 @@ mod tests {
         assert_eq!(body["details"]["installedVersion"], "1.0.0");
         assert_eq!(body["details"]["incomingVersion"], "2.0.0");
         assert_eq!(body["details"]["newPermissions"], json!(["ai:generate"]));
+    }
+
+    #[test]
+    fn install_permit_is_taken_before_archive_or_store_work() {
+        let src = include_str!("installation.rs");
+        let install = src
+            .split("pub(super) async fn install_tapp(")
+            .nth(1)
+            .and_then(|rest| rest.split("fn install_conflict_error").next())
+            .expect("install_tapp");
+        let permit = install.find("acquire_install_permit").expect("permit");
+        assert!(permit < install.find("fetch_from_store").expect("store fetch"));
+        assert!(permit < install.find("from_resources").expect("direct package"));
+
+        let file = src
+            .split("pub(super) async fn install_tapp_file(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(super) struct UpdateTappRequest").next())
+            .expect("install_tapp_file");
+        let file_permit = file.find("acquire_install_permit").expect("file permit");
+        assert!(file_permit < file.find("next_field").expect("multipart"));
+        assert!(file_permit < file.find("package_from_archive").expect("zip parse"));
     }
 }

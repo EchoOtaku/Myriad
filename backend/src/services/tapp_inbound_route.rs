@@ -196,16 +196,16 @@ pub fn timestamp_in_window(timestamp: i64, now: i64, max_skew_secs: u32) -> bool
     now.abs_diff(timestamp) <= u64::from(max_skew_secs)
 }
 
-/// Keep the nonce until the signed timestamp can no longer pass the skew window.
+/// Exclusive expiry: the nonce stays live while `now < expires_at`.
 ///
-/// A request dated `now + maxSkew` is still accepted until `now + 2*maxSkew`.
-/// TTL of only `now + maxSkew` would drop the nonce while that timestamp is
-/// valid, opening a replay window. Past timestamps still expire at `now + maxSkew`
-/// so a request at `now - maxSkew` is not immediately reusable.
+/// `timestamp_in_window` accepts the last integer second `timestamp ± skew`.
+/// Registry cleanup deletes when `expires_at <= now`, so the stored deadline
+/// must be one second past that last accepted wall time.
 pub fn nonce_expires_at(now: i64, timestamp: i64, max_skew_secs: u32) -> i64 {
     timestamp
         .max(now)
         .saturating_add(i64::from(max_skew_secs))
+        .saturating_add(1)
 }
 
 pub fn over_matches_method(over: TappRouteVerifyOver, method: &str) -> bool {
@@ -618,8 +618,12 @@ mod tests {
     fn nonce_ttl_covers_future_timestamp_window() {
         let now = 1_770_000_000_i64;
         let skew = 300_u32;
-        assert_eq!(nonce_expires_at(now, now - i64::from(skew), skew), now + 300);
-        assert_eq!(nonce_expires_at(now, now + i64::from(skew), skew), now + 600);
+        assert_eq!(nonce_expires_at(now, now - i64::from(skew), skew), now + 301);
+        assert_eq!(nonce_expires_at(now, now + i64::from(skew), skew), now + 601);
+        let last_accepted = now + i64::from(skew);
+        assert!(timestamp_in_window(now, last_accepted, skew));
+        assert!(last_accepted < nonce_expires_at(now, now, skew));
+        assert!(!timestamp_in_window(now, last_accepted + 1, skew));
         assert!(over_matches_method(
             TappRouteVerifyOver::CanonicalQuery,
             "GET"

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Datelike, Local, Timelike, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// Distinguishes a missing HEARTBEAT.md (empty task set) from I/O or parse faults.
 #[derive(Debug)]
@@ -131,6 +131,8 @@ pub struct HeartbeatManager {
     body: RwLock<String>,
     /// 上次加载/写入时文件的 mtime，用于检测外部修改并自动热加载
     loaded_mtime: RwLock<Option<std::time::SystemTime>>,
+    /// Serializes mutate → durable write → publish so memory never precedes disk.
+    commit: Mutex<()>,
 }
 
 impl HeartbeatManager {
@@ -147,6 +149,7 @@ impl HeartbeatManager {
             config_path,
             body: RwLock::new(body),
             loaded_mtime: RwLock::new(mtime),
+            commit: Mutex::new(()),
         };
 
         tracing::info!("[Heartbeat] Loaded {} tasks", count);
@@ -212,50 +215,62 @@ impl HeartbeatManager {
         Ok((config.tasks, body))
     }
 
-    /// 将当前任务配置写回 HEARTBEAT.md（原子写入，保留正文）
-    async fn persist(&self) -> Result<(), String> {
-        let yaml = {
-            let tasks = self.tasks.read().await;
-            let view = PersistConfig {
-                tasks: tasks
-                    .iter()
-                    .map(|t| PersistTask {
-                        id: &t.id,
-                        name: &t.name,
-                        schedule: &t.schedule,
-                        action: &t.action,
-                        enabled: t.enabled,
-                    })
-                    .collect(),
-            };
-            serde_yaml::to_string(&view)
-                .map_err(|error| format!("Failed to persist HEARTBEAT.md: {error}"))?
+    async fn write_heartbeat_file(&self, tasks: &[HeartbeatTask], body: &str) -> Result<(), String> {
+        let view = PersistConfig {
+            tasks: tasks
+                .iter()
+                .map(|t| PersistTask {
+                    id: &t.id,
+                    name: &t.name,
+                    schedule: &t.schedule,
+                    action: &t.action,
+                    enabled: t.enabled,
+                })
+                .collect(),
         };
-        let body = self.body.read().await.clone();
-        let content = format!("---\n{}---\n\n{}", yaml, body);
-
-        let tmp_path = self.config_path.with_extension("md.tmp");
-        tokio::fs::write(&tmp_path, &content)
-            .await
+        let yaml = serde_yaml::to_string(&view)
             .map_err(|error| format!("Failed to persist HEARTBEAT.md: {error}"))?;
+        let content = format!("---\n{yaml}---\n\n{body}");
+        let tmp_path = self.config_path.with_file_name(format!(
+            ".{}.tmp-{:x}",
+            self.config_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("HEARTBEAT.md"),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        {
+            use tokio::io::AsyncWriteExt;
+            let mut file = tokio::fs::File::create(&tmp_path).await.map_err(|error| {
+                format!("Failed to persist HEARTBEAT.md: {error}")
+            })?;
+            file.write_all(content.as_bytes()).await.map_err(|error| {
+                format!("Failed to persist HEARTBEAT.md: {error}")
+            })?;
+            file.sync_all().await.map_err(|error| {
+                format!("Failed to persist HEARTBEAT.md: {error}")
+            })?;
+        }
         if let Err(error) = tokio::fs::rename(&tmp_path, &self.config_path).await {
             let _ = tokio::fs::remove_file(&tmp_path).await;
             return Err(format!("Failed to persist HEARTBEAT.md: {error}"));
         }
-        *self.loaded_mtime.write().await = Self::file_mtime(&self.config_path).await;
+        if let Some(parent) = self.config_path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
         Ok(())
     }
 
-    async fn persist_or_restore(&self) -> Result<(), String> {
-        if let Err(error) = self.persist().await {
-            if let Err(reload_error) = self.reload().await {
-                tracing::error!(
-                    %reload_error,
-                    "[Heartbeat] persist failed and reload failed; in-memory tasks may be dirty"
-                );
-            }
-            return Err(error);
-        }
+    async fn install_tasks(&self, tasks: Vec<HeartbeatTask>) -> Result<(), String> {
+        let body = self.body.read().await.clone();
+        self.write_heartbeat_file(&tasks, &body).await?;
+        *self.tasks.write().await = tasks;
+        *self.loaded_mtime.write().await = Self::file_mtime(&self.config_path).await;
         Ok(())
     }
 
@@ -270,23 +285,21 @@ impl HeartbeatManager {
         if is_reserved_heartbeat_task(task_id) {
             return Err(reserved_heartbeat_error().to_string());
         }
-        // 先同步磁盘上的最新配置，再在其上应用 toggle，防止覆盖外部修改
+        let _commit = self.commit.lock().await;
         self.maybe_reload_if_changed().await;
-        let new_state = {
-            let mut tasks = self.tasks.write().await;
-            let task = tasks
-                .iter_mut()
-                .find(|t| t.id == task_id)
-                .ok_or_else(|| format!("Task '{task_id}' not found"))?;
-            task.enabled = !task.enabled;
-            task.enabled
-        };
+        let mut tasks = self.tasks.read().await.clone();
+        let task = tasks
+            .iter_mut()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| format!("Task '{task_id}' not found"))?;
+        task.enabled = !task.enabled;
+        let new_state = task.enabled;
+        self.install_tasks(tasks).await?;
         tracing::info!(
             "[Heartbeat] Task '{}' toggled to {}",
             task_id,
             if new_state { "enabled" } else { "disabled" }
         );
-        self.persist_or_restore().await?;
         Ok(new_state)
     }
 
@@ -302,6 +315,7 @@ impl HeartbeatManager {
         if is_reserved_heartbeat_task(task_id) {
             return Err(reserved_heartbeat_error().to_string());
         }
+        let _commit = self.commit.lock().await;
         self.maybe_reload_if_changed().await;
         if let Some(ref s) = schedule {
             if !is_valid_cron_expr(s) {
@@ -316,31 +330,29 @@ impl HeartbeatManager {
                 return Err("action must not be empty".to_string());
             }
         }
-        let updated = {
-            let mut tasks = self.tasks.write().await;
-            let task = tasks
-                .iter_mut()
-                .find(|t| t.id == task_id)
-                .ok_or_else(|| format!("Task '{}' not found", task_id))?;
-            if let Some(n) = name {
-                let n = n.trim().to_string();
-                if n.is_empty() {
-                    return Err("name must not be empty".to_string());
-                }
-                task.name = n;
+        let mut tasks = self.tasks.read().await.clone();
+        let task = tasks
+            .iter_mut()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| format!("Task '{}' not found", task_id))?;
+        if let Some(n) = name {
+            let n = n.trim().to_string();
+            if n.is_empty() {
+                return Err("name must not be empty".to_string());
             }
-            if let Some(s) = schedule {
-                task.schedule = s.trim().to_string();
-            }
-            if let Some(a) = action {
-                task.action = a;
-            }
-            if let Some(e) = enabled {
-                task.enabled = e;
-            }
-            task.clone()
-        };
-        self.persist_or_restore().await?;
+            task.name = n;
+        }
+        if let Some(s) = schedule {
+            task.schedule = s.trim().to_string();
+        }
+        if let Some(a) = action {
+            task.action = a;
+        }
+        if let Some(e) = enabled {
+            task.enabled = e;
+        }
+        let updated = task.clone();
+        self.install_tasks(tasks).await?;
         tracing::info!(task_id = %task_id, "[Heartbeat] Task updated");
         Ok(updated)
     }
@@ -358,6 +370,7 @@ impl HeartbeatManager {
         action: String,
         enabled: bool,
     ) -> Result<HeartbeatTask, String> {
+        let _commit = self.commit.lock().await;
         self.maybe_reload_if_changed().await;
 
         let name = name.trim().to_string();
@@ -376,8 +389,8 @@ impl HeartbeatManager {
             ));
         }
 
+        let mut tasks = self.tasks.read().await.clone();
         let task = {
-            let mut tasks = self.tasks.write().await;
             let requested_id = id
                 .as_ref()
                 .map(|s| s.trim().to_string())
@@ -412,7 +425,7 @@ impl HeartbeatManager {
             task
         };
 
-        self.persist_or_restore().await?;
+        self.install_tasks(tasks).await?;
         tracing::info!(task_id = %task.id, "[Heartbeat] Task created");
         Ok(task)
     }
@@ -430,6 +443,7 @@ impl HeartbeatManager {
     ///
     /// `schedule = None` disables the task if it exists (does not delete it).
     pub async fn upsert_seo_review_task(&self, schedule: Option<&str>) -> Result<(), String> {
+        let _commit = self.commit.lock().await;
         self.maybe_reload_if_changed().await;
         if let Some(cron) = schedule {
             if !is_valid_cron_expr(cron) {
@@ -439,8 +453,8 @@ impl HeartbeatManager {
                 ));
             }
         }
+        let mut tasks = self.tasks.read().await.clone();
         {
-            let mut tasks = self.tasks.write().await;
             if let Some(task) = tasks.iter_mut().find(|t| t.id == SEO_REVIEW_TASK_ID) {
                 if let Some(cron) = schedule {
                     task.schedule = cron.to_string();
@@ -463,7 +477,7 @@ impl HeartbeatManager {
                 });
             }
         }
-        self.persist_or_restore().await?;
+        self.install_tasks(tasks).await?;
         Ok(())
     }
 
@@ -472,17 +486,15 @@ impl HeartbeatManager {
         if is_reserved_heartbeat_task(task_id) {
             return Err(reserved_heartbeat_error().to_string());
         }
+        let _commit = self.commit.lock().await;
         self.maybe_reload_if_changed().await;
-        let removed = {
-            let mut tasks = self.tasks.write().await;
-            let before = tasks.len();
-            tasks.retain(|t| t.id != task_id);
-            before != tasks.len()
-        };
-        if !removed {
+        let mut tasks = self.tasks.read().await.clone();
+        let before = tasks.len();
+        tasks.retain(|t| t.id != task_id);
+        if before == tasks.len() {
             return Err(format!("Task '{}' not found", task_id));
         }
-        self.persist_or_restore().await?;
+        self.install_tasks(tasks).await?;
         tracing::info!(task_id = %task_id, "[Heartbeat] Task deleted");
         Ok(())
     }
@@ -871,6 +883,19 @@ mod tests {
 
     fn local(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> DateTime<Local> {
         Local.with_ymd_and_hms(y, mo, d, h, mi, 0).unwrap()
+    }
+
+    #[test]
+    fn heartbeat_persist_syncs_before_rename() {
+        let src = include_str!("heartbeat.rs");
+        let write = src
+            .split("async fn write_heartbeat_file")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn install_tasks").next())
+            .expect("write_heartbeat_file");
+        assert!(write.contains("sync_all"));
+        assert!(write.contains("rename"));
+        assert!(write.find("sync_all").unwrap() < write.find("rename").unwrap());
     }
 
     #[test]

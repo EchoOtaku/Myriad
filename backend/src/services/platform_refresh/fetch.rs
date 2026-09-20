@@ -35,6 +35,19 @@ fn has_cfg(v: &Option<String>) -> bool {
     v.as_ref().is_some_and(|s| !s.trim().is_empty())
 }
 
+pub const PLATFORM_IDS: &[&str] = &[
+    "github", "bilibili", "steam", "youtube", "netease", "bangumi", "x", "discord", "mal",
+    "xbox", "psn",
+];
+
+pub fn configured_platform_ids(config: &DynamicConfig) -> Vec<&'static str> {
+    PLATFORM_IDS
+        .iter()
+        .copied()
+        .filter(|platform| is_platform_configured(config, platform))
+        .collect()
+}
+
 /// Fetch/refresh needs configured credentials. Does not read `*_enabled`
 /// (that flag also gates report generation, public cards, Agent connection, Steam presence).
 pub(super) fn is_platform_configured(config: &DynamicConfig, p: &str) -> bool {

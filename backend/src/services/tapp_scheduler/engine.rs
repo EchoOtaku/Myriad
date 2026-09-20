@@ -5,8 +5,8 @@ use cron::Schedule;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, FromQueryResult,
+    QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
 use serde_json::json;
@@ -103,20 +103,12 @@ impl TappSchedulerEngine {
         // 避免历史记录永久停在 running。
         Self::expire_stale_frontend_executions(db, now).await?;
 
-        // 查找所有到期的启用任务
-        let due_tasks = tapp_scheduled_tasks::Entity::find()
-            .filter(tapp_scheduled_tasks::Column::Enabled.eq(true))
-            .filter(tapp_scheduled_tasks::Column::NextRunAt.lte(now))
-            .order_by_asc(tapp_scheduled_tasks::Column::NextRunAt)
-            .all(db)
-            .await
-            .map_err(|error| scheduler_store_failed("query due tasks", error))?;
-
-        tracing::debug!("[TappScheduler] Found {} due tasks", due_tasks.len());
-
-        for task in due_tasks {
-            let Some(task) = Self::claim_due_task(db, task, now).await? else {
-                continue;
+        // Freeze who is due this round. Claim one at a time so a long first
+        // run cannot start later leases from this same timestamp.
+        let due_cutoff = now;
+        loop {
+            let Some(task) = Self::claim_next_due_task(db, due_cutoff).await? else {
+                break;
             };
             // 检查是否有错过的执行需要补偿
             let missed_count = Self::calculate_missed_executions(&task, now);
@@ -182,40 +174,44 @@ impl TappSchedulerEngine {
         Ok(())
     }
 
-    /// Atomically claim one due row. `next_run_at` doubles as a recovery lease:
-    /// another replica cannot run the same occurrence, while a crashed worker
-    /// makes the task eligible again after the lease expires.
-    async fn claim_due_task(
+    /// Claim the next due row for this round. `next_run_at` doubles as a
+    /// recovery lease: another replica cannot run the same occurrence, while a
+    /// crashed worker makes the task eligible again after the lease expires.
+    ///
+    /// `due_cutoff` is the tick's due set. The lease itself starts at claim time
+    /// so a long earlier task does not eat later tasks' recovery window.
+    async fn claim_next_due_task(
         db: &DatabaseConnection,
-        candidate: tapp_scheduled_tasks::Model,
-        now: DateTime<Utc>,
+        due_cutoff: DateTime<Utc>,
     ) -> Result<Option<tapp_scheduled_tasks::Model>, String> {
+        let claim_now = Utc::now();
         let txn = db
             .begin()
             .await
             .map_err(|error| scheduler_store_failed("begin claim", error))?;
-        let current = tapp_scheduled_tasks::Entity::find_by_id(candidate.id)
-            .lock_exclusive()
-            .one(&txn)
-            .await
-            .map_err(|error| scheduler_store_failed("lock due task", error))?;
+        let current = tapp_scheduled_tasks::Model::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT * FROM tapp_scheduled_tasks
+               WHERE enabled = TRUE
+                 AND next_run_at IS NOT NULL
+                 AND next_run_at <= $1
+               ORDER BY next_run_at ASC
+               LIMIT 1
+               FOR UPDATE SKIP LOCKED"#,
+            [due_cutoff.into()],
+        ))
+        .one(&txn)
+        .await
+        .map_err(|error| scheduler_store_failed("lock due task", error))?;
         let Some(current) = current else {
             txn.rollback().await.ok();
             return Ok(None);
         };
-        let is_due = current.enabled
-            && current
-                .next_run_at
-                .is_some_and(|next| next.with_timezone(&Utc) <= now);
-        if !is_due {
-            txn.rollback().await.ok();
-            return Ok(None);
-        }
 
-        let lease_duration = Self::recovery_lease_duration(&current, now);
+        let lease_duration = Self::recovery_lease_duration(&current, due_cutoff);
         let mut active: tapp_scheduled_tasks::ActiveModel = current.clone().into();
-        active.next_run_at = Set(Some((now + lease_duration).into()));
-        active.updated_at = Set(now.into());
+        active.next_run_at = Set(Some((claim_now + lease_duration).into()));
+        active.updated_at = Set(claim_now.into());
         active
             .update(&txn)
             .await
@@ -2001,5 +1997,32 @@ impl TappSchedulerEngine {
             .ok_or_else(|| format!("Task {} not found", task_id))?;
 
         Self::execute_task(&self.db, &task, false, 0, true).await
+    }
+}
+
+#[cfg(test)]
+mod claim_contract_tests {
+    #[test]
+    fn tick_claims_one_due_row_at_claim_time() {
+        let src = include_str!("engine.rs");
+        let tick = src
+            .split("async fn tick(")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn claim_next_due_task").next())
+            .expect("tick");
+        assert!(tick.contains("due_cutoff"));
+        assert!(
+            !tick.contains(".all(db)"),
+            "tick must not materialize every due task before claiming"
+        );
+        let claim = src
+            .split("async fn claim_next_due_task")
+            .nth(1)
+            .and_then(|rest| rest.split("fn recovery_lease_duration").next())
+            .expect("claim");
+        assert!(claim.contains("FOR UPDATE SKIP LOCKED"));
+        assert!(claim.contains("claim_now"));
+        assert!(claim.contains("claim_now + lease_duration"));
+        assert!(claim.contains("due_cutoff"));
     }
 }
