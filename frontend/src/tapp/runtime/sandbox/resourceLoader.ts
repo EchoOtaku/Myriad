@@ -1,5 +1,6 @@
+import type { TappResourceMode, TappResources } from '../../services/TappPackageResourceApi'
 import type { TappInstance } from '../../types'
-import * as TappApiService from '../../services/TappApiService'
+import { getTappResources } from '../../services/TappPackageResourceApi'
 import { BoundedResourceCache } from '../resourceBounds'
 import { generateOnDemandTailwindCSS } from './styles'
 
@@ -84,7 +85,7 @@ export class TappResourceLoader {
 
   private coreCache = new BoundedResourceCache<CoreResources>(30, 4 * 1024 * 1024)
 
-  private rawResourceCache = new BoundedResourceCache<TappApiService.TappResources>(30, 8 * 1024 * 1024)
+  private rawResourceCache = new BoundedResourceCache<TappResources>(30, 8 * 1024 * 1024)
 
   private widgetCssCache = new BoundedResourceCache<string>(60, 2 * 1024 * 1024)
 
@@ -366,9 +367,9 @@ export class TappResourceLoader {
 
   private async fetchRawResources(
     tappId: string,
-    mode: TappApiService.TappResourceMode = 'full',
+    mode: TappResourceMode = 'full',
     widgetId?: string,
-  ): Promise<TappApiService.TappResources> {
+  ): Promise<TappResources> {
     const generation = this.generationFor(tappId)
     const cacheKey = `${tappId}:${mode}:${widgetId || ''}`
     const cached = getCachedEntry(this.rawResourceCache, cacheKey)
@@ -378,7 +379,7 @@ export class TappResourceLoader {
       `raw:${cacheKey}:${generation}`,
       async () => {
         // 契约不符时让 409 抛出，不换路把不受支持的包送进沙箱。
-        const resources = await TappApiService.getTappResources(tappId, {
+        const resources = await getTappResources(tappId, {
           mode,
           widgetId,
         })

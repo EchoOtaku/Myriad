@@ -10,7 +10,9 @@ import type {
   WidgetRegistration,
 } from '../types'
 import { getDynamicContentProvider } from '../../services/DynamicContentProvider'
-import * as TappApiService from '../services/TappApiService'
+import { installFromCode, uninstallTapp } from '../services/TappInstallationApi'
+import { getTapp, listTappDetails, startTapp, stopTapp } from '../services/TappLifecycleApi'
+import { getAllWidgets, registerTappWidget, unregisterTappWidget } from '../services/TappWidgetApi'
 import { getResourceLoader } from './sandbox/resourceLoader'
 import { TappPermissionController } from './TappPermission'
 
@@ -152,8 +154,8 @@ export class TappRuntime {
     return this.deduplicator.dedupe('sync', async () => {
       try {
         const [details, backendWidgets] = await Promise.all([
-          TappApiService.listTappDetails(),
-          TappApiService.getAllWidgets(),
+          listTappDetails(),
+          getAllWidgets(),
         ])
         const previousTapps = this.installedTapps
         const permissionChanges: TappInstance[] = []
@@ -312,8 +314,8 @@ export class TappRuntime {
       throw new Error(`Tapp ${manifest.id} is already installed`)
     }
 
-    const result = await TappApiService.installFromCode(manifest, code)
-    const detail = await TappApiService.getTapp(result.id)
+    const result = await installFromCode(manifest, code)
+    const detail = await getTapp(result.id)
 
     const userRole = (detail.user_role as 'guest' | 'user' | 'admin') || 'guest'
 
@@ -361,7 +363,7 @@ export class TappRuntime {
     try {
       await this.stopTapp(tappId)
 
-      await TappApiService.uninstallTapp(tappId, options)
+      await uninstallTapp(tappId, options)
 
       for (const [widgetId, widget] of this.registeredWidgets) {
         if (widget.tappId === tappId) {
@@ -416,7 +418,7 @@ export class TappRuntime {
 
       const persistsLifecycle = this.persistsLifecycle(instance)
       if (persistsLifecycle) {
-        await TappApiService.startTapp(tappId)
+        await startTapp(tappId)
         instance.installationStatus = 'running'
       } else {
         this.sessionRunningTapps.add(tappId)
@@ -506,7 +508,7 @@ export class TappRuntime {
       }
 
       if (this.persistsLifecycle(instance)) {
-        await TappApiService.stopTapp(tappId)
+        await stopTapp(tappId)
         instance.installationStatus = 'installed'
       } else {
         this.sessionRunningTapps.delete(tappId)
@@ -568,7 +570,7 @@ export class TappRuntime {
       return existing
     }
 
-    await TappApiService.registerTappWidget(
+    await registerTappWidget(
       tappId,
       config as WidgetRegistration,
       runtimeGrant,
@@ -609,7 +611,7 @@ export class TappRuntime {
       )
     }
 
-    await TappApiService.unregisterTappWidget(tappId, widgetId, runtimeGrant)
+    await unregisterTappWidget(tappId, widgetId, runtimeGrant)
 
     this.registeredWidgets.delete(fullId)
 
