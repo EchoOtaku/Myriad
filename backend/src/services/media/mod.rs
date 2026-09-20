@@ -433,7 +433,7 @@ mod tests {
                 &db,
                 ctx,
                 NewMediaBytes {
-                    bytes: png,
+                    bytes: png.clone(),
                     claimed_mime: "image/png".into(),
                     filename: "shot.png".into(),
                     max_bytes: 1024 * 1024,
@@ -474,8 +474,104 @@ mod tests {
         })
         .await
         .expect("clear reference");
+        let store = service.store();
+        let owner = MediaActor::admin(1).unwrap();
+        let stranger = MediaActor::user(8).unwrap();
+        match resolve_authenticated_content(&db, store, created.id, &owner)
+            .await
+            .expect("owner read")
+        {
+            ServeOutcome::File(file) => {
+                assert_eq!(file.mime, "image/png");
+                assert_eq!(file.cache_control, NO_STORE);
+                let bytes = tokio::fs::read(&file.path)
+                    .await
+                    .expect("read private bytes");
+                assert_eq!(bytes, png);
+            }
+            other => panic!("expected private file, got {other:?}"),
+        }
+        assert!(matches!(
+            resolve_authenticated_content(&db, store, created.id, &stranger)
+                .await
+                .expect("stranger read"),
+            ServeOutcome::NotFound { no_store: true }
+        ));
+        assert!(created.public_path.is_none());
+        assert!(matches!(
+            resolve_public_asset(&db, store, created.public_id, "shot.png")
+                .await
+                .expect("public while private"),
+            ServeOutcome::NotFound { no_store: true }
+        ));
+
+        let published = service.publish(&db, created.id).await.expect("publish");
+        assert_eq!(published.exposure, MediaExposure::Public);
+        assert!(published.public_path.is_some());
+        let public_name = published
+            .public_path
+            .as_deref()
+            .and_then(|path| path.rsplit('/').next())
+            .expect("public filename");
+        match resolve_public_asset(&db, store, published.public_id, public_name)
+            .await
+            .expect("public read")
+        {
+            ServeOutcome::File(file) => {
+                assert_eq!(file.cache_control, super::serve::PUBLIC_CACHE_CONTROL)
+            }
+            other => panic!("expected public file, got {other:?}"),
+        }
+        assert!(matches!(
+            resolve_public_asset(&db, store, published.public_id, "../secret.png")
+                .await
+                .expect("traversal"),
+            ServeOutcome::NotFound { no_store: true }
+        ));
+
+        db.transaction(|txn| {
+            Box::pin(async move {
+                replace_for_consumer(
+                    txn,
+                    "note_published",
+                    "9",
+                    &[NewReference {
+                        asset_id,
+                        slot: "body:0".into(),
+                        requires_public: true,
+                        expires_at: None,
+                    }],
+                )
+                .await
+            })
+        })
+        .await
+        .expect("bind public reference");
+        assert_eq!(
+            service
+                .unpublish(&db, created.id)
+                .await
+                .expect_err("public in use"),
+            MediaError::PublicInUse
+        );
+        db.transaction(|txn| {
+            Box::pin(async move { replace_for_consumer(txn, "note_published", "9", &[]).await })
+        })
+        .await
+        .expect("clear public reference");
+        let unpublished = service.unpublish(&db, created.id).await.expect("unpublish");
+        assert_eq!(unpublished.exposure, MediaExposure::Private);
+        assert!(unpublished.first_published_at.is_some());
+        assert!(unpublished.public_path.is_none());
+
         let outcome = service.delete(&db, created.id).await.expect("delete");
         assert_eq!(outcome, DeleteOutcome::Deleted);
+        assert!(matches!(
+            resolve_public_asset(&db, store, created.public_id, public_name)
+                .await
+                .expect("deleted public"),
+            ServeOutcome::NotFound { no_store: true }
+        ));
         let _ = tokio::fs::remove_dir_all(root).await;
     }
 
