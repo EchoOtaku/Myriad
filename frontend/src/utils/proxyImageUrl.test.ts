@@ -81,12 +81,22 @@ describe('proxyImageUrl', () => {
         {
           cover:
             'https://cdn.cloudflare.steamstatic.com/steam/apps/1/header.jpg',
+          title: 'https://i0.hdslb.com/bfs/face/as-title.jpg',
+          url: 'https://i0.hdslb.com/bfs/archive/page',
         },
       ],
       name: 'keep',
     })
     assert.match(String(out.avatar), /\/api\/proxy\/image/)
     assert.match(String(out.library_items[0].cover), /\/api\/proxy\/image/)
+    assert.equal(
+      out.library_items[0].title,
+      'https://i0.hdslb.com/bfs/face/as-title.jpg',
+    )
+    assert.equal(
+      out.library_items[0].url,
+      'https://i0.hdslb.com/bfs/archive/page',
+    )
     assert.equal(out.name, 'keep')
   })
 })

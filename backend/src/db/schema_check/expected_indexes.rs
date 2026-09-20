@@ -435,6 +435,82 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["kind".into()],
             is_unique: false,
         },
+        IndexDef {
+            name: "idx_media_assets_public_id".into(),
+            table: "media_assets".into(),
+            columns: vec!["public_id".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_media_assets_storage_key".into(),
+            table: "media_assets".into(),
+            columns: vec!["storage_key".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_media_assets_owner_created".into(),
+            table: "media_assets".into(),
+            columns: vec![
+                "scope".into(),
+                "owner_user_id".into(),
+                "created_at".into(),
+                "id".into(),
+            ],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_media_assets_state_since".into(),
+            table: "media_assets".into(),
+            columns: vec!["state".into(), "state_since".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_media_assets_source_created".into(),
+            table: "media_assets".into(),
+            columns: vec!["source".into(), "created_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_media_references_slot".into(),
+            table: "media_references".into(),
+            columns: vec![
+                "asset_id".into(),
+                "consumer_type".into(),
+                "consumer_id".into(),
+                "slot".into(),
+            ],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_media_references_consumer".into(),
+            table: "media_references".into(),
+            columns: vec!["consumer_type".into(), "consumer_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_media_url_aliases_local_path".into(),
+            table: "media_url_aliases".into(),
+            columns: vec!["local_path".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_media_url_aliases_asset".into(),
+            table: "media_url_aliases".into(),
+            columns: vec!["asset_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_media_migration_jobs_source".into(),
+            table: "media_migration_jobs".into(),
+            columns: vec!["source_kind".into(), "source_key".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_media_migration_jobs_copy_state".into(),
+            table: "media_migration_jobs".into(),
+            columns: vec!["copy_state".into(), "id".into()],
+            is_unique: false,
+        },
         // rsshub_instances 索引
         IndexDef {
             name: "idx_rsshub_instances_user_url".into(),

@@ -1,14 +1,14 @@
 //! Author timeline inserts and published-list field extraction.
 
 use axum::{Json, http::StatusCode};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
 use super::types::PublishedAttachment;
 use crate::federation::types::db_err;
 
 /// Insert Create into the author's local timeline so published local content appears immediately.
 pub(super) async fn insert_author_timeline(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     user_id: i32,
     activity_id: &str,
     activity_type: &str,

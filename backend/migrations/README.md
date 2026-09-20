@@ -66,7 +66,8 @@ Recent tables:
 | phantasi_note_docs | `003` | `ensure_phantasi_note_docs_table` + TableDef |
 | phantasi_note_authors | `003` | `ensure_phantasi_note_authors_table` + TableDef |
 | phantasi_source_applications | `003` | `ensure_phantasi_source_applications_table` + TableDef |
-| media_assets | `003` | `ensure_media_assets_table` + TableDef |
+| media_assets | `003` / `media_asset_model.sql` | `ensure_media_assets_table` + TableDef |
+| media_references / media_url_aliases / media_migration_jobs | `003` / `media_asset_model.sql` | `ensure_media_assets_table` + TableDef |
 | note editor history | `003` / `note_editor.sql` | `ensure_note_editor_history` + TableDef |
 
 Older DBs that already applied a pre-feature migration version get tables via

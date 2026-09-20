@@ -771,13 +771,19 @@ pub async fn open_transfer_file(
     let path = resolve_transfer_path(transfer_id, &filename, local_path.as_deref())
         .map_err(bad_request)?;
 
-    let meta = fs::metadata(&path).await.map_err(|_| {
+    let file = fs::File::open(&path).await.map_err(|_| {
         (
             StatusCode::NOT_FOUND,
             Json(json!({
                 "error": "Transfer file missing on disk",
                 "transfer_id": transfer_id,
             })),
+        )
+    })?;
+    let meta = file.metadata().await.map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(AppError::public_json("Transfer file missing on disk")),
         )
     })?;
     if !meta.is_file() {
@@ -799,7 +805,7 @@ pub async fn open_transfer_file(
         filename: safe_filename(&filename),
         mime_type,
         file_size,
-        path,
+        file,
     })
 }
 

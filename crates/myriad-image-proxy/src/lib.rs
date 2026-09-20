@@ -138,24 +138,51 @@ pub fn proxy_image_url(url: &str) -> String {
     }
 }
 
-/// 递归改写 JSON 中所有字符串字段（`proxy_image_url` 对非热链恒等）。
-/// 用于报告 `card_visuals` / library 等出口，避免各平台手写散点。
+/// Object keys that hold display media, not page links or titles.
+const MEDIA_URL_KEYS: &[&str] = &[
+    "avatar",
+    "cover",
+    "icon",
+    "icon_url",
+    "image",
+    "image_url",
+    "thumbnail",
+    "thumb",
+    "poster",
+    "banner",
+    "artwork",
+    "photo",
+    "picture",
+    "src",
+];
+
+fn is_media_url_key(key: &str) -> bool {
+    MEDIA_URL_KEYS
+        .iter()
+        .any(|known| key.eq_ignore_ascii_case(known))
+}
+
+/// Rewrite known media URL fields only (`proxy_image_url` is identity otherwise).
+/// Titles, page `url`s, and other strings are left alone even if they look like CDN hosts.
 pub fn normalize_json_media_urls(value: &mut Value) {
     match value {
-        Value::String(s) => {
-            let next = proxy_image_url(s);
-            if next != *s {
-                *s = next;
-            }
-        }
         Value::Array(items) => {
             for item in items {
                 normalize_json_media_urls(item);
             }
         }
         Value::Object(map) => {
-            for (_k, v) in map.iter_mut() {
-                normalize_json_media_urls(v);
+            for (key, child) in map.iter_mut() {
+                if let Value::String(s) = child {
+                    if is_media_url_key(key) {
+                        let next = proxy_image_url(s);
+                        if next != *s {
+                            *s = next;
+                        }
+                    }
+                } else {
+                    normalize_json_media_urls(child);
+                }
             }
         }
         _ => {}
@@ -284,7 +311,11 @@ mod proxy_image_url_tests {
         let mut v = json!({
             "avatar": "https://i0.hdslb.com/bfs/face/a.jpg",
             "library_items": [
-                { "cover": "https://cdn.cloudflare.steamstatic.com/steam/apps/1/header.jpg", "title": "G" }
+                {
+                    "cover": "https://cdn.cloudflare.steamstatic.com/steam/apps/1/header.jpg",
+                    "title": "https://i0.hdslb.com/bfs/face/as-title.jpg",
+                    "url": "https://i0.hdslb.com/bfs/archive/page"
+                }
             ],
             "name": "keep"
         });
@@ -300,6 +331,14 @@ mod proxy_image_url_tests {
                 .as_str()
                 .unwrap()
                 .starts_with("/api/proxy/image")
+        );
+        assert_eq!(
+            v["library_items"][0]["title"],
+            "https://i0.hdslb.com/bfs/face/as-title.jpg"
+        );
+        assert_eq!(
+            v["library_items"][0]["url"],
+            "https://i0.hdslb.com/bfs/archive/page"
         );
         assert_eq!(v["name"], "keep");
     }

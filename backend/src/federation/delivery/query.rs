@@ -475,85 +475,89 @@ pub(crate) fn is_user_cancelled_delivery_error(error_message: Option<&str>) -> b
 ///
 /// Skips rows whose `error_message` indicates user cancel (`cancelled:…`).
 /// Transient / peer failures and suite-seeded dead letters still requeue.
+fn delivery_store_failed(
+    error: impl std::fmt::Display,
+) -> (axum::http::StatusCode, serde_json::Value) {
+    tracing::error!("DB error: {error}");
+    (
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        json!({"error": "Database error", "code": "database_error"}),
+    )
+}
+
+/// Dead-letter rows that were not intentionally cancelled (trimmed, case-insensitive).
+const RETRYABLE_DEAD_ERROR_SQL: &str = r#"(
+    error_message IS NULL
+    OR btrim(error_message) = ''
+    OR btrim(error_message) NOT ILIKE 'cancelled:%'
+)"#;
+
 pub async fn retry_all_dead_for_user(
     db: &DatabaseConnection,
     user_id: i32,
     limit: i64,
 ) -> Result<serde_json::Value, (axum::http::StatusCode, serde_json::Value)> {
-    use axum::http::StatusCode;
-
     let limit = limit.clamp(1, 100);
     // Over-fetch so skipping cancelled rows still fills the limit.
     let select_cap = (limit * 3).clamp(1, 300);
-    let id_rows = db
-        .query_all_raw(Statement::from_sql_and_values(
+    let sql = format!(
+        r#"
+WITH ranked AS (
+    SELECT dq.id, dq.error_message, dq.created_at
+    FROM federation_delivery_queue dq
+    JOIN federation_activities a ON a.id = dq.activity_id
+    WHERE a.user_id = $1 AND dq.status = 'dead'
+    ORDER BY dq.created_at DESC
+    LIMIT $2
+),
+eligible AS (
+    SELECT id FROM ranked
+    WHERE {RETRYABLE_DEAD_ERROR_SQL}
+    ORDER BY created_at DESC
+    LIMIT $3
+),
+updated AS (
+    UPDATE federation_delivery_queue q
+    SET status = 'pending',
+        attempts = 0,
+        error_message = NULL,
+        next_retry_at = NOW(),
+        last_attempt_at = NULL,
+        lease_token = NULL,
+        lease_expires_at = NULL
+    FROM eligible
+    WHERE q.id = eligible.id
+      AND q.status = 'dead'
+      AND (
+        q.error_message IS NULL
+        OR btrim(q.error_message) = ''
+        OR btrim(q.error_message) NOT ILIKE 'cancelled:%'
+      )
+    RETURNING q.id
+)
+SELECT
+    (SELECT COUNT(*)::bigint FROM updated) AS retried,
+    (SELECT COUNT(*)::bigint FROM ranked
+        WHERE error_message IS NOT NULL
+          AND btrim(error_message) <> ''
+          AND btrim(error_message) ILIKE 'cancelled:%') AS skipped_cancelled
+"#
+    );
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT dq.id, dq.error_message
-               FROM federation_delivery_queue dq
-               JOIN federation_activities a ON a.id = dq.activity_id
-               WHERE a.user_id = $1 AND dq.status = 'dead'
-               ORDER BY dq.created_at DESC
-               LIMIT $2"#,
-            [user_id.into(), select_cap.into()],
+            sql,
+            [user_id.into(), select_cap.into(), limit.into()],
         ))
         .await
-        .map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, {
-                tracing::error!("DB error: {e}");
-                json!({"error": "Database error", "code": "database_error"})
-            })
-        })?;
-
-    let mut retried = 0u64;
-    let mut skipped_cancelled = 0u64;
-    for r in id_rows {
-        if retried >= limit as u64 {
-            break;
-        }
-        let Ok(id) = r.try_get::<i32>("", "id") else {
-            continue;
-        };
-        // Nullable column: prefer Option, fall back to String (driver variance).
-        let err_msg = r
-            .try_get::<Option<String>>("", "error_message")
-            .ok()
-            .flatten()
-            .or_else(|| r.try_get::<String>("", "error_message").ok());
-        if is_user_cancelled_delivery_error(err_msg.as_deref()) {
-            skipped_cancelled += 1;
-            continue;
-        }
-        // Defense-in-depth: SQL re-asserts no `cancelled:` prefix so a race that
-        // wrote user-cancel after SELECT still cannot be bulk-retried.
-        match db
-            .execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"UPDATE federation_delivery_queue
-                   SET status = 'pending',
-                       attempts = 0,
-                       error_message = NULL,
-                       next_retry_at = NOW(),
-                       last_attempt_at = NULL,
-                       lease_token = NULL,
-                       lease_expires_at = NULL
-                   WHERE id = $1
-                     AND status = 'dead'
-                     AND (
-                       error_message IS NULL
-                       OR TRIM(error_message) = ''
-                       OR error_message NOT ILIKE 'cancelled:%'
-                     )"#,
-                [id.into()],
-            ))
-            .await
-        {
-            Ok(res) => retried += res.rows_affected(),
-            Err(e) => {
-                tracing::warn!("retry_all_dead item {} failed: {}", id, e);
-            }
-        }
-    }
-
+        .map_err(delivery_store_failed)?
+        .ok_or_else(|| delivery_store_failed("retry_all_dead produced no row"))?;
+    let retried: i64 = row
+        .try_get("", "retried")
+        .map_err(delivery_store_failed)?;
+    let skipped_cancelled: i64 = row
+        .try_get("", "skipped_cancelled")
+        .map_err(delivery_store_failed)?;
     Ok(json!({
         "success": true,
         "retried": retried,
@@ -569,55 +573,41 @@ pub async fn cancel_all_pending_for_user(
     user_id: i32,
     limit: i64,
 ) -> Result<serde_json::Value, (axum::http::StatusCode, serde_json::Value)> {
-    use axum::http::StatusCode;
-
     let limit = limit.clamp(1, 200);
-    let id_rows = db
-        .query_all_raw(Statement::from_sql_and_values(
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT dq.id
-               FROM federation_delivery_queue dq
-               JOIN federation_activities a ON a.id = dq.activity_id
-               WHERE a.user_id = $1 AND dq.status IN ('pending', 'delivering')
-               ORDER BY dq.created_at DESC
-               LIMIT $2"#,
+            r#"
+WITH candidates AS (
+    SELECT dq.id
+    FROM federation_delivery_queue dq
+    JOIN federation_activities a ON a.id = dq.activity_id
+    WHERE a.user_id = $1 AND dq.status IN ('pending', 'delivering')
+    ORDER BY dq.created_at DESC
+    LIMIT $2
+),
+updated AS (
+    UPDATE federation_delivery_queue q
+    SET status = 'dead',
+        error_message = 'cancelled: by user',
+        last_attempt_at = NOW(),
+        next_retry_at = NULL,
+        lease_token = NULL,
+        lease_expires_at = NULL
+    FROM candidates
+    WHERE q.id = candidates.id AND q.status IN ('pending', 'delivering')
+    RETURNING q.id
+)
+SELECT COUNT(*)::bigint AS cancelled FROM updated
+"#,
             [user_id.into(), limit.into()],
         ))
         .await
-        .map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, {
-                tracing::error!("DB error: {e}");
-                json!({"error": "Database error", "code": "database_error"})
-            })
-        })?;
-
-    let mut cancelled = 0u64;
-    for r in id_rows {
-        let Ok(id) = r.try_get::<i32>("", "id") else {
-            continue;
-        };
-        match db
-            .execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"UPDATE federation_delivery_queue
-                   SET status = 'dead',
-                       error_message = 'cancelled: by user',
-                       last_attempt_at = NOW(),
-                       next_retry_at = NULL,
-                       lease_token = NULL,
-                       lease_expires_at = NULL
-                   WHERE id = $1 AND status IN ('pending', 'delivering')"#,
-                [id.into()],
-            ))
-            .await
-        {
-            Ok(res) => cancelled += res.rows_affected(),
-            Err(e) => {
-                tracing::warn!("cancel_all_pending item {} failed: {}", id, e);
-            }
-        }
-    }
-
+        .map_err(delivery_store_failed)?
+        .ok_or_else(|| delivery_store_failed("cancel_all_pending produced no row"))?;
+    let cancelled: i64 = row
+        .try_get("", "cancelled")
+        .map_err(delivery_store_failed)?;
     Ok(json!({
         "success": true,
         "cancelled": cancelled,
@@ -875,3 +865,29 @@ pub async fn purge_dead_for_user(
     }))
 }
 use myriad_error::AppError;
+
+#[cfg(test)]
+mod bulk_delivery_sql_tests {
+    #[test]
+    fn bulk_retry_and_cancel_are_bounded_ctes_with_trimmed_cancel() {
+        let src = include_str!("query.rs");
+        let retry = src
+            .split("pub async fn retry_all_dead_for_user")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn cancel_all_pending_for_user").next())
+            .expect("retry_all_dead_for_user");
+        assert!(retry.contains("WITH ranked AS"));
+        assert!(retry.contains("btrim(error_message)"));
+        assert!(retry.contains("btrim(q.error_message)"));
+        assert!(retry.contains("lease_token = NULL"));
+        assert!(!retry.contains("retry_all_dead item"));
+        let cancel = src
+            .split("pub async fn cancel_all_pending_for_user")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) fn is_resource_teardown_activity_type").next())
+            .expect("cancel_all_pending_for_user");
+        assert!(cancel.contains("WITH candidates AS"));
+        assert!(cancel.contains("lease_token = NULL"));
+        assert!(!cancel.contains("cancel_all_pending item"));
+    }
+}

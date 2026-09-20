@@ -141,7 +141,7 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
     let m = st.state.read_maintenance()?;
     let job = st.state.read_current_job()?;
     let channel = st.worker.effective_channel();
-    let update_mode = st.worker.effective_mode();
+    let update_mode = st.worker.effective_mode()?;
 
     // Trust explicit tri-state only — no fuzzy tag-string fallbacks.
     let update_available = u
@@ -496,12 +496,22 @@ fn confirm_risk_present(body: &UpdateBody, headers: &axum::http::HeaderMap) -> b
         .is_some_and(|s| s.eq_ignore_ascii_case("true") || s == "1")
 }
 
+fn reject_unsupported_skip_versions(allow_skip_versions: bool) -> Result<(), ApiError> {
+    if allow_skip_versions {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "allow_skip_versions is not supported".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn update(
     State(st): State<ApiState>,
     headers: axum::http::HeaderMap,
     Json(body): Json<UpdateBody>,
 ) -> Result<Json<Value>, ApiError> {
-    let _ = body.allow_skip_versions;
+    reject_unsupported_skip_versions(body.allow_skip_versions)?;
     // Soft gate: high-risk flags need an explicit confirm. Happy-path upgrades unchanged.
     let confirmed = confirm_risk_present(&body, &headers);
     if risk_flags_set(&body) && !confirmed {
@@ -514,7 +524,7 @@ async fn update(
     }
     let mode = match body.mode.as_deref() {
         Some(s) => s.parse::<UpdateMode>().map_err(ApiError::from)?,
-        None => st.worker.effective_mode(),
+        None => st.worker.effective_mode()?,
     };
     let raw = body.target_commit.or(body.target_version).ok_or_else(|| {
         ApiError(
@@ -1244,5 +1254,21 @@ mod tests {
             axum::http::HeaderValue::from_static("true"),
         );
         assert!(confirm_risk_present(&via_header, &headers));
+    }
+
+    #[test]
+    fn skip_versions_true_is_rejected_not_ignored() {
+        assert!(super::reject_unsupported_skip_versions(false).is_ok());
+        let err = super::reject_unsupported_skip_versions(true).expect_err("must reject");
+        assert_eq!(err.0, axum::http::StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("not supported"));
+        let src = include_str!("routes.rs");
+        let update = src
+            .split("async fn update(")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn").next())
+            .expect("update");
+        assert!(update.contains("reject_unsupported_skip_versions"));
+        assert!(!update.contains("let _ = body.allow_skip_versions"));
     }
 }

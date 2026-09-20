@@ -27,18 +27,24 @@ pub struct UpdaterClient {
 }
 
 #[derive(Debug)]
+enum MutateAuth {
+    Gateway(HeaderValue),
+    DirectToken(HeaderValue),
+}
+
+#[derive(Debug)]
 struct Inner {
     base_url: String,
-    /// Shared secret for updater-gateway (`X-Updater-Gateway-Secret`).
-    gateway_secret: Option<String>,
-    /// Optional direct-updater token (legacy/dev). Prefer gateway secret in production.
-    token: Option<String>,
+    auth: Option<MutateAuth>,
+    /// Secret/token was set but is not a valid HTTP header value.
+    credentials_invalid: bool,
     http: Client,
 }
 
 #[derive(Debug)]
 pub enum UpdaterClientError {
     NotConfigured,
+    InvalidCredentials,
     /// Upstream non-2xx. Stored body is redacted; HTTP adapter forwards status, not the body.
     Upstream(StatusCode, String),
     Transport(String),
@@ -49,6 +55,9 @@ impl std::fmt::Display for UpdaterClientError {
         // Never echo UPDATE_TOKEN / JWT_SECRET / etc. into logs or JSON error bodies.
         match self {
             Self::NotConfigured => f.write_str("updater not configured (set MYRIAD_UPDATER_URL)"),
+            Self::InvalidCredentials => {
+                f.write_str("updater credentials are not a valid HTTP header value")
+            }
             Self::Upstream(s, body) => {
                 write!(f, "upstream {s}: {}", redact_secrets(body))
             }
@@ -65,6 +74,7 @@ impl UpdaterClientError {
     pub fn status(&self) -> StatusCode {
         match self {
             Self::NotConfigured => StatusCode::SERVICE_UNAVAILABLE,
+            Self::InvalidCredentials => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Upstream(s, _) => *s,
             Self::Transport(_) => StatusCode::BAD_GATEWAY,
         }
@@ -76,6 +86,9 @@ impl UpdaterClientError {
             Self::NotConfigured => {
                 AppError::service_unavailable("updater not configured (set MYRIAD_UPDATER_URL)")
             }
+            Self::InvalidCredentials => AppError::internal(
+                "updater credentials are not a valid HTTP header value",
+            ),
             Self::Upstream(status, body) => {
                 tracing::error!(%status, body = %redact_secrets(&body), "updater upstream failed");
                 AppError::from_status_u16(status.as_u16(), format!("updater upstream {status}"))
@@ -118,20 +131,33 @@ impl UpdaterClient {
             .build()
             .ok()?;
 
+        let (auth, credentials_invalid) = match parse_mutate_auth(gateway_secret, token) {
+            Ok(auth) => (auth, false),
+            Err(()) => {
+                tracing::error!(
+                    "UPDATER_GATEWAY_SECRET or UPDATE_TOKEN is not a valid HTTP header value"
+                );
+                (None, true)
+            }
+        };
+
         Some(Self {
             inner: Arc::new(Inner {
                 base_url: base_url.trim_end_matches('/').to_string(),
-                gateway_secret,
-                token,
+                auth,
+                credentials_invalid,
                 http,
             }),
         })
     }
 
-    /// True when the client can authenticate mutative calls: gateway secret (prod) or
-    /// direct UPDATE_TOKEN (legacy).
+    /// True when mutative calls have a validated gateway secret or direct token.
     pub fn can_mutate(&self) -> bool {
-        self.inner.gateway_secret.is_some() || self.inner.token.is_some()
+        self.inner.auth.is_some()
+    }
+
+    pub fn credentials_invalid(&self) -> bool {
+        self.inner.credentials_invalid
     }
 
     pub fn base_url(&self) -> &str {
@@ -198,21 +224,17 @@ impl UpdaterClient {
         let mut headers = HeaderMap::new();
         // Production hop: gateway secret. Do NOT send UPDATE_TOKEN toward the gateway
         // (gateway rejects client-supplied X-Update-Token and injects its own).
-        if let Some(s) = &self.inner.gateway_secret {
-            match HeaderValue::from_str(s) {
-                Ok(v) => {
-                    headers.insert("X-Updater-Gateway-Secret", v);
-                }
-                Err(_) => return Err(UpdaterClientError::NotConfigured),
+        match &self.inner.auth {
+            Some(MutateAuth::Gateway(value)) => {
+                headers.insert("X-Updater-Gateway-Secret", value.clone());
             }
-        } else if let Some(t) = &self.inner.token {
-            // Legacy direct-to-updater only when no gateway secret is configured.
-            match HeaderValue::from_str(t) {
-                Ok(v) => {
-                    headers.insert("X-Update-Token", v);
-                }
-                Err(_) => return Err(UpdaterClientError::NotConfigured),
+            Some(MutateAuth::DirectToken(value)) => {
+                headers.insert("X-Update-Token", value.clone());
             }
+            None if self.inner.credentials_invalid => {
+                return Err(UpdaterClientError::InvalidCredentials);
+            }
+            None => {}
         }
         if let Some(k) = idempotency_key {
             if let Ok(v) = HeaderValue::from_str(k) {
@@ -275,6 +297,25 @@ impl UpdaterClient {
     }
 }
 
+fn sensitive_header(raw: &str) -> Result<HeaderValue, ()> {
+    let mut value = HeaderValue::from_str(raw).map_err(|_| ())?;
+    value.set_sensitive(true);
+    Ok(value)
+}
+
+fn parse_mutate_auth(
+    gateway_secret: Option<String>,
+    token: Option<String>,
+) -> Result<Option<MutateAuth>, ()> {
+    if let Some(secret) = gateway_secret {
+        return Ok(Some(MutateAuth::Gateway(sensitive_header(&secret)?)));
+    }
+    if let Some(token) = token {
+        return Ok(Some(MutateAuth::DirectToken(sensitive_header(&token)?)));
+    }
+    Ok(None)
+}
+
 fn default_container_updater_url() -> Option<String> {
     let production = std::env::var("ENVIRONMENT")
         .map(|v| v.eq_ignore_ascii_case("production"))
@@ -312,6 +353,27 @@ mod tests {
         let json = e.to_json().to_string();
         assert!(!json.contains("supersecrettoken99"), "leaked: {json}");
         assert!(json.contains("transport"), "{json}");
+    }
+
+    #[test]
+    fn parse_mutate_auth_rejects_invalid_header_and_does_not_claim_mutate() {
+        assert!(parse_mutate_auth(None, None).unwrap().is_none());
+        assert!(parse_mutate_auth(Some("ok-secret-without-ctl".into()), None)
+            .unwrap()
+            .is_some());
+        assert!(parse_mutate_auth(Some("bad\nsecret".into()), None).is_err());
+        assert!(
+            parse_mutate_auth(Some("bad\nsecret".into()), Some("fallback-token".into()))
+                .is_err(),
+            "invalid gateway secret must not fall back to UPDATE_TOKEN"
+        );
+    }
+
+    #[test]
+    fn into_app_error_invalid_credentials_is_not_not_configured() {
+        let e = UpdaterClientError::InvalidCredentials.into_app_error();
+        assert_eq!(e.status_u16(), 500);
+        assert!(!e.error_label().contains("not configured"));
     }
 
     #[test]

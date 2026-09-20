@@ -62,7 +62,7 @@ pub async fn get_tapp_analytics_summary(
     let role = current_tapp_user_role(&db, &claims).await;
     if role != UserRole::Admin {
         // Guests / users: visitor-card aggregates only — never pages/referrers/etc.
-        return Ok(Json(visitor_card_tapp_payload(&db).await));
+        return Ok(Json(visitor_card_tapp_payload(&db).await?));
     }
 
     let (status, Json(mut body)) = crate::api::analytics::build_analytics_summary(&db, q).await;
@@ -104,12 +104,14 @@ pub async fn get_tapp_analytics_visitor(
         })));
     }
 
-    Ok(Json(visitor_card_tapp_payload(&db).await))
+    Ok(Json(visitor_card_tapp_payload(&db).await?))
 }
 
 /// Shared visitor-card envelope for Tapp (no ordinals / counted flags).
-async fn visitor_card_tapp_payload(db: &DatabaseConnection) -> Value {
-    let mut body = crate::api::analytics::visitor_card_aggregate(db).await;
+async fn visitor_card_tapp_payload(db: &DatabaseConnection) -> Result<Value, HttpError> {
+    let mut body = crate::api::analytics::visitor_card_aggregate(db)
+        .await
+        .map_err(|(status, body)| HttpError::from((status, body)))?;
     if let Some(obj) = body.as_object_mut() {
         obj.insert("success".into(), json!(true));
         obj.insert("enabled".into(), json!(true));
@@ -119,5 +121,5 @@ async fn visitor_card_tapp_payload(db: &DatabaseConnection) -> Value {
         obj.remove("your_ordinal_today");
         obj.remove("counted");
     }
-    body
+    Ok(body)
 }

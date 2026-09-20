@@ -185,6 +185,12 @@ fn require() -> Result<&'static UpdaterClient, Box<Response>> {
 
 fn require_mutate() -> Result<&'static UpdaterClient, Box<Response>> {
     let c = require()?;
+    if c.credentials_invalid() {
+        return Err(Box::new(
+            crate::error::HttpError(AppError::from(UpdaterClientError::InvalidCredentials))
+                .into_response(),
+        ));
+    }
     if !c.can_mutate() {
         return Err(Box::new(auth_missing()));
     }
@@ -475,6 +481,16 @@ pub async fn trigger_update(headers: HeaderMap, Json(body): Json<UpdateBody>) ->
         )
             .into_response();
     }
+    if body.allow_skip_versions {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "allow_skip_versions is not supported",
+                "code": "allow_skip_versions_unsupported",
+            })),
+        )
+            .into_response();
+    }
     log_admin_actor("update", &headers);
     let idem = headers
         .get("Idempotency-Key")
@@ -651,6 +667,10 @@ pub async fn process_logs() -> Response {
         }
         return *require_mutate().expect_err("missing updater client must fail");
     };
+    if c.credentials_invalid() {
+        return crate::error::HttpError(AppError::from(UpdaterClientError::InvalidCredentials))
+            .into_response();
+    }
     if !c.can_mutate() {
         return auth_missing();
     }

@@ -1,6 +1,7 @@
 //! Federation media upload, MIME classification, and attachment URL checks.
 
 use axum::{Json, http::StatusCode};
+use myriad_error::AppError;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +21,7 @@ pub async fn store_federation_media(
         .unwrap_or(mime)
         .trim()
         .to_ascii_lowercase();
-    let attachment_type = classify_media_mime(&mime).ok_or_else(|| {
+    let kind = stored_media_kind(&mime).ok_or_else(|| {
         (
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Json(json!({
@@ -29,6 +30,7 @@ pub async fn store_federation_media(
             })),
         )
     })?;
+    let attachment_type = kind.attachment_type;
 
     let max = if attachment_type == "Image" {
         crate::federation::limits::note_image_limit()
@@ -51,29 +53,8 @@ pub async fn store_federation_media(
         ));
     }
 
-    let ext_raw = extension_for_mime(&mime)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            Path::new(filename)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("bin")
-                .to_ascii_lowercase()
-        });
-    // Sanitize extension
-    let ext: String = ext_raw
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .take(8)
-        .collect();
-    let ext = if ext.is_empty() {
-        "bin".to_string()
-    } else {
-        ext
-    };
-
     let media_id = uuid::Uuid::new_v4();
-    let stored_name = format!("{}.{}", media_id, ext);
+    let stored_name = format!("{}.{}", media_id, kind.extension);
     let dir = federation_media_dir(user_id);
     tokio::fs::create_dir_all(&dir).await.map_err(|e| {
         tracing::error!("Failed to create media dir: {}", e);
@@ -127,25 +108,51 @@ fn federation_media_dir(user_id: i32) -> PathBuf {
     federation_media_root().join(user_id.to_string())
 }
 
+struct StoredMediaKind {
+    attachment_type: &'static str,
+    extension: &'static str,
+}
+
+fn stored_media_kind(mime: &str) -> Option<StoredMediaKind> {
+    Some(match mime {
+        "image/jpeg" => StoredMediaKind {
+            attachment_type: "Image",
+            extension: "jpg",
+        },
+        "image/png" => StoredMediaKind {
+            attachment_type: "Image",
+            extension: "png",
+        },
+        "image/gif" => StoredMediaKind {
+            attachment_type: "Image",
+            extension: "gif",
+        },
+        "image/webp" => StoredMediaKind {
+            attachment_type: "Image",
+            extension: "webp",
+        },
+        "video/mp4" => StoredMediaKind {
+            attachment_type: "Video",
+            extension: "mp4",
+        },
+        "video/webm" => StoredMediaKind {
+            attachment_type: "Video",
+            extension: "webm",
+        },
+        "video/quicktime" => StoredMediaKind {
+            attachment_type: "Video",
+            extension: "mov",
+        },
+        _ => return None,
+    })
+}
+
 pub(super) fn classify_media_mime(mime: &str) -> Option<&'static str> {
-    match mime {
-        "image/jpeg" | "image/png" | "image/gif" | "image/webp" => Some("Image"),
-        "video/mp4" | "video/webm" | "video/quicktime" => Some("Video"),
-        _ => None,
-    }
+    stored_media_kind(mime).map(|kind| kind.attachment_type)
 }
 
 fn extension_for_mime(mime: &str) -> Option<&'static str> {
-    match mime {
-        "image/jpeg" => Some("jpg"),
-        "image/png" => Some("png"),
-        "image/gif" => Some("gif"),
-        "image/webp" => Some("webp"),
-        "video/mp4" => Some("mp4"),
-        "video/webm" => Some("webm"),
-        "video/quicktime" => Some("mov"),
-        _ => None,
-    }
+    stored_media_kind(mime).map(|kind| kind.extension)
 }
 
 /// Human-readable reason if `url` is not a valid local federation media URL for this user.
@@ -329,5 +336,20 @@ mod tests {
         );
         assert!(attachment_url_rejection_reason(base, 7, "").is_some());
     }
+
+    #[test]
+    fn stored_media_uses_mime_extension_not_filename() {
+        let src = include_str!("media.rs");
+        let store = src
+            .split("pub async fn store_federation_media")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn federation_media_root").next())
+            .expect("store_federation_media");
+        assert!(store.contains("kind.extension"));
+        assert!(!store.contains("unwrap_or(\"bin\")"));
+        assert!(!store.contains(".extension()"));
+        assert_eq!(extension_for_mime("image/jpeg"), Some("jpg"));
+        assert_eq!(classify_media_mime("image/jpeg"), Some("Image"));
+        assert!(stored_media_kind("application/pdf").is_none());
+    }
 }
-use myriad_error::AppError;

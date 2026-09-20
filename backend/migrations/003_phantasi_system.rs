@@ -956,19 +956,6 @@ CREATE INDEX IF NOT EXISTS idx_phantasi_note_authors_user
 INSERT INTO phantasi_note_authors (doc_id, user_id, role)
 SELECT id, user_id, 'owner' FROM phantasi_note_docs
 ON CONFLICT (doc_id, user_id) DO NOTHING;
-CREATE TABLE IF NOT EXISTS media_assets (
-    id SERIAL PRIMARY KEY,
-    kind VARCHAR NOT NULL,
-    url TEXT NOT NULL,
-    mime TEXT NOT NULL,
-    name TEXT NOT NULL DEFAULT '',
-    size BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_media_assets_url
-    ON media_assets (url);
-CREATE INDEX IF NOT EXISTS idx_media_assets_kind
-    ON media_assets (kind);
 CREATE TABLE IF NOT EXISTS phantasi_source_applications (
     id SERIAL PRIMARY KEY,
     kind VARCHAR NOT NULL DEFAULT 'friend',
@@ -1014,6 +1001,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_phantasi_source_applications_pending_feed
         manager
             .get_connection()
             .execute_unprepared(include_str!("note_editor.sql"))
+            .await?;
+
+        manager
+            .get_connection()
+            .execute_unprepared(include_str!("media_asset_model.sql"))
             .await?;
 
         // 与 schema_check::ensure_phantasi_state_revision /
@@ -1065,7 +1057,7 @@ CREATE TRIGGER phantasi_content_revision BEFORE UPDATE ON phantasi_items FOR EAC
         manager
             .get_connection()
             .execute_unprepared(
-                "DROP TABLE IF EXISTS phantasi_source_applications; DROP TABLE IF EXISTS media_assets; DROP TABLE IF EXISTS phantasi_note_authors; DROP TABLE IF EXISTS phantasi_note_docs",
+                "DROP TABLE IF EXISTS phantasi_source_applications; DROP TABLE IF EXISTS media_migration_jobs; DROP TABLE IF EXISTS media_url_aliases; DROP TABLE IF EXISTS media_references; DROP TABLE IF EXISTS media_assets; DROP TABLE IF EXISTS phantasi_note_authors; DROP TABLE IF EXISTS phantasi_note_docs",
             )
             .await?;
 

@@ -293,7 +293,6 @@ impl Agent {
             let mut store = executor::TASK_STORE.write().await;
             store.store(user_id, task_state.clone());
         }
-        executor::persist_task_async(user_id, task_state.clone());
 
         // 发送 SSE 事件（仅 streaming 路径有 progress_tx）
         if let Some(tx) = progress_tx {

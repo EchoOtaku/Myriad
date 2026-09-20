@@ -1,7 +1,7 @@
 //! Publish, unpublish, and list local federation content.
 
 use axum::{Json, http::StatusCode};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::json;
 
 use super::ap_object::{
@@ -83,23 +83,6 @@ pub async fn publish_content(
         id.to_string()
     };
 
-    // 检查是否已发布
-    let existing = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT id FROM federation_published_content WHERE content_type = $1 AND content_id = $2",
-            [content_type.into(), content_id.clone().into()],
-        ))
-        .await
-        .map_err(db_err)?;
-
-    if existing.is_some() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(AppError::public_json("Content already published")),
-        ));
-    }
-
     // 获取内容为 AP 对象
     let ap_object = build_ap_object(
         db,
@@ -137,9 +120,37 @@ pub async fn publish_content(
     // still carries ActivityStreams type (Article/Application/Collection).
     let object_type = content_type.to_string();
 
-    // 存入 federation_activities
+    let txn = db.begin().await.map_err(db_err)?;
+    // Unique (content_type, content_id) is the concurrency boundary. Insert the
+    // published row first so a conflict cannot leave an orphan Create activity.
+    match txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_published_content
+                   (user_id, content_type, content_id, activity_id, visibility, published_at)
+               VALUES ($1, $2, $3, $4, $5, NOW())"#,
+            [
+                user_id.into(),
+                content_type.into(),
+                content_id.clone().into(),
+                activity_id.clone().into(),
+                visibility.into(),
+            ],
+        ))
+        .await
+    {
+        Ok(_) => {}
+        Err(error) if is_unique_violation(&error) => {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(AppError::public_json("Content already published")),
+            ));
+        }
+        Err(error) => return Err(db_err(error)),
+    }
+
     let act_db_id = insert_local_activity(
-        db,
+        &txn,
         user_id,
         &activity_id,
         "Create",
@@ -149,26 +160,8 @@ pub async fn publish_content(
     .await
     .map_err(db_err)?;
 
-    // 存入 federation_published_content
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"INSERT INTO federation_published_content
-               (user_id, content_type, content_id, activity_id, visibility, published_at)
-           VALUES ($1, $2, $3, $4, $5, NOW())"#,
-        [
-            user_id.into(),
-            content_type.into(),
-            content_id.clone().into(),
-            activity_id.clone().into(),
-            visibility.into(),
-        ],
-    ))
-    .await
-    .map_err(db_err)?;
-
-    // Note / 本地发帖：立即出现在作者时间线
     insert_author_timeline(
-        db,
+        &txn,
         user_id,
         &activity_id,
         "Create",
@@ -176,6 +169,7 @@ pub async fn publish_content(
         &activity_json,
     )
     .await?;
+    txn.commit().await.map_err(db_err)?;
 
     // Best-effort fan-out: enqueue deliveries; never fail the publish on queue errors.
     // Direct 走 ExplicitRecipientsOnly —— 没有收件人就一个 inbox 都不投。
@@ -579,6 +573,23 @@ mod tests {
             unique_unpublish_row(vec![1, 2]).unwrap_err(),
             UnpublishLookupError::Ambiguous
         );
+    }
+
+    #[test]
+    fn publish_uses_one_transaction_and_unique_conflict_as_409() {
+        let src = include_str!("publish.rs");
+        let publish = src
+            .split("pub async fn publish_content")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn create_note").next())
+            .expect("publish_content");
+        assert!(publish.contains("db.begin()"));
+        assert!(publish.contains("is_unique_violation"));
+        assert!(publish.contains("Content already published"));
+        assert!(publish.contains("txn.commit()"));
+        assert!(!publish.contains(
+            "SELECT id FROM federation_published_content WHERE content_type"
+        ));
     }
 
     #[test]

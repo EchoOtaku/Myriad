@@ -32,6 +32,8 @@ pub struct DataPaths {
     pub cache_images: PathBuf,
     /// Optional widget custom fonts (default: "data/site/widget-fonts")
     pub widget_fonts: PathBuf,
+    /// Persistent media files (default: "data/media"). Not cache.
+    pub media: PathBuf,
 }
 
 impl DataPaths {
@@ -50,6 +52,7 @@ impl DataPaths {
             cache_raw: cache_root.join("raw"),
             cache_images: cache_root.join("images"),
             widget_fonts: root.join("site/widget-fonts"),
+            media: root.join("media"),
             root,
             cache: cache_root,
         }
@@ -164,6 +167,8 @@ fn verify_storage_layout_writable(data_paths: &DataPaths) -> io::Result<()> {
     verify_directory_writable(&data_paths.cache)?;
     verify_directory_writable(&data_paths.tapps)?;
     verify_directory_writable(&data_paths.widget_fonts)?;
+    verify_directory_writable(&data_paths.media)?;
+    verify_directory_writable(&data_paths.media.join("tmp"))?;
 
     let entries = fs::read_dir(&data_paths.tapps)
         .map_err(|error| storage_error("list Tapp owner directories", &data_paths.tapps, error))?;
@@ -220,6 +225,7 @@ mod tests {
         assert_eq!(paths.cache_raw, PathBuf::from("cache/raw"));
         assert_eq!(paths.cache_images, PathBuf::from("cache/images"));
         assert_eq!(paths.widget_fonts, PathBuf::from("data/site/widget-fonts"));
+        assert_eq!(paths.media, PathBuf::from("data/media"));
     }
 
     #[test]
@@ -255,6 +261,7 @@ mod tests {
             cache_raw: base.join("cache/raw"),
             cache_images: base.join("cache/images"),
             widget_fonts: base.join("data/site/widget-fonts"),
+            media: base.join("data/media"),
         };
         fs::create_dir_all(data_paths.tapps.join("1")).unwrap();
         fs::create_dir_all(data_paths.tapps.join("not-an-owner")).unwrap();
@@ -267,15 +274,13 @@ mod tests {
                 .to_string_lossy()
                 .contains("write-probe")
         }));
-        assert!(
-            fs::read_dir(data_paths.tapps.join("1"))
+        assert!(fs::read_dir(data_paths.tapps.join("1"))
+            .unwrap()
+            .all(|entry| !entry
                 .unwrap()
-                .all(|entry| !entry
-                    .unwrap()
-                    .file_name()
-                    .to_string_lossy()
-                    .contains("write-probe"))
-        );
+                .file_name()
+                .to_string_lossy()
+                .contains("write-probe")));
 
         fs::remove_dir_all(base).unwrap();
     }
@@ -300,6 +305,7 @@ mod tests {
             cache_raw: base.join("cache/raw"),
             cache_images: base.join("cache/images"),
             widget_fonts: data_file.join("site/widget-fonts"),
+            media: data_file.join("media"),
         };
 
         let error = verify_storage_layout_writable(&data_paths).unwrap_err();
@@ -332,6 +338,7 @@ mod tests {
             cache_raw: base.join("cache/raw"),
             cache_images: base.join("cache/images"),
             widget_fonts: base.join("data/site/widget-fonts"),
+            media: base.join("data/media"),
         };
         fs::create_dir_all(&data_paths.tapps).unwrap();
         fs::create_dir_all(&outside).unwrap();

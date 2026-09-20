@@ -140,7 +140,7 @@ async fn wait_for_guarded_handoff_outcome(
 /// Prefer a strictly verified release manifest, then use Docker Hub immutable
 /// tags when GitHub is unavailable (for example, a private source repository).
 async fn resolve_self_update_target(worker: &Worker) -> Result<SelfUpdateTarget> {
-    if worker.effective_mode() != UpdateMode::Commit {
+    if worker.effective_mode()? != UpdateMode::Commit {
         match try_self_update_from_github(worker).await {
             Ok(Some(target)) => return Ok(target),
             Ok(None) => {
@@ -255,7 +255,7 @@ async fn resolve_self_update_via_dockerhub(worker: &Worker) -> Result<SelfUpdate
         .dockerhub_client()?
         .list_immutable_tags(&repo, 25)
         .await?;
-    let prefer_release = worker.effective_mode() == UpdateMode::Release;
+    let prefer_release = worker.effective_mode()? == UpdateMode::Release;
 
     let selected = crate::release::select_component_tip(&tags, prefer_release)
         .ok_or_else(|| {

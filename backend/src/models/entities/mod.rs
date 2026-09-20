@@ -22,6 +22,9 @@ pub mod tapp_task_executions;
 
 // Phantasi 阅读系统实体
 pub mod media_assets;
+pub mod media_migration_jobs;
+pub mod media_references;
+pub mod media_url_aliases;
 pub mod phantasi_annotations;
 pub mod phantasi_categories;
 pub mod phantasi_comments;

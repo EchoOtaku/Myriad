@@ -1396,47 +1396,67 @@ pub(crate) async fn count_distinct_site(
     db: &DatabaseConnection,
     from: NaiveDate,
     to: NaiveDate,
-) -> i64 {
-    db.query_one_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
+) -> Result<i64, String> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
 SELECT COUNT(DISTINCT visitor_hash)::bigint AS n
 FROM analytics_visitor_seen
 WHERE day >= $1 AND day <= $2 AND path = $3
 "#,
-        [
-            SeaValue::from(from),
-            SeaValue::from(to),
-            SeaValue::from(SITE_PATH.to_string()),
-        ],
-    ))
-    .await
-    .ok()
-    .flatten()
-    .and_then(|r| r.try_get::<i64>("", "n").ok())
-    .unwrap_or(0)
+            [
+                SeaValue::from(from),
+                SeaValue::from(to),
+                SeaValue::from(SITE_PATH.to_string()),
+            ],
+        ))
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "analytics distinct count produced no row".to_string())?;
+    row.try_get("", "n").map_err(|error| error.to_string())
 }
 
 /// Pageviews in `[from, to]` excluding the site-wide rollup path.
-pub(crate) async fn sum_page_views(db: &DatabaseConnection, from: NaiveDate, to: NaiveDate) -> i64 {
-    db.query_one_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
+pub(crate) async fn sum_page_views(
+    db: &DatabaseConnection,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<i64, String> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
 SELECT COALESCE(SUM(views), 0)::bigint AS n
 FROM analytics_page_daily
 WHERE day >= $1 AND day <= $2 AND path <> $3
 "#,
-        [
-            SeaValue::from(from),
-            SeaValue::from(to),
-            SeaValue::from(SITE_PATH.to_string()),
-        ],
-    ))
-    .await
-    .ok()
-    .flatten()
-    .and_then(|r| r.try_get::<i64>("", "n").ok())
-    .unwrap_or(0)
+            [
+                SeaValue::from(from),
+                SeaValue::from(to),
+                SeaValue::from(SITE_PATH.to_string()),
+            ],
+        ))
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "analytics pageview sum produced no row".to_string())?;
+    row.try_get("", "n").map_err(|error| error.to_string())
+}
+
+pub(crate) async fn sum_all_time_page_views(db: &DatabaseConnection) -> Result<i64, String> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+SELECT COALESCE(SUM(views), 0)::bigint AS views
+FROM analytics_page_daily WHERE path <> $1
+"#,
+            [SeaValue::from(SITE_PATH.to_string())],
+        ))
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "analytics all-time views produced no row".to_string())?;
+    row.try_get("", "views").map_err(|error| error.to_string())
 }
 
 /// Percent change for 环比 tiles. `None` when previous is 0 and current > 0
@@ -1486,5 +1506,26 @@ mod compare_tests {
         assert_eq!(compare_range_kind(7), "week");
         assert_eq!(compare_range_kind(30), "month");
         assert_eq!(compare_range_kind(14), "period");
+    }
+
+    #[test]
+    fn summary_and_visitor_card_propagate_query_errors() {
+        let src = include_str!("admin_api.rs");
+        let summary = src
+            .split("pub(crate) async fn build_analytics_summary")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) fn vid_from_query").next())
+            .expect("build_analytics_summary");
+        assert!(summary.contains("analytics_rows!(db.query_all_raw"));
+        assert!(summary.contains("analytics_count!"));
+        assert!(!summary.contains(".ok()\n        .flatten()"));
+        let card = src
+            .split("pub(crate) async fn visitor_card_aggregate")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_visitor_card").next())
+            .expect("visitor_card_aggregate");
+        assert!(card.contains("analytics_rows_try!"));
+        assert!(card.contains("analytics_count_try!"));
+        assert!(card.contains("Result<Value, (StatusCode, Json<Value>)"));
     }
 }

@@ -115,6 +115,7 @@ pub mod feishu_work; // Feishu p2p send adapter + Work entry
 pub mod feishu_ws; // Feishu pbbp2 Frame + WSS session
 pub mod icon_service;
 pub mod image_cache; // e.g. Notion temporary URLs
+pub mod media;
 pub mod media_catalog;
 pub mod note_authors;
 pub mod note_publish;

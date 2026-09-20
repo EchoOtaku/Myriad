@@ -62,6 +62,9 @@ fn test_folded_extension_tables_in_expected_schema() {
         "phantasi_note_authors",
         "phantasi_source_applications",
         "media_assets",
+        "media_references",
+        "media_url_aliases",
+        "media_migration_jobs",
         // 006
         "user_identities",
     ] {
@@ -146,6 +149,10 @@ fn test_folded_extension_tables_in_expected_schema() {
         "idx_user_identities_user",
         "idx_user_identities_provider_email",
         "idx_platform_metadata_user_platform",
+        "idx_media_assets_public_id",
+        "idx_media_references_slot",
+        "idx_media_url_aliases_local_path",
+        "idx_media_migration_jobs_source",
     ] {
         assert!(
             idx_names.contains(&required),
@@ -196,10 +203,50 @@ fn uniqueness_heals_are_invoked_and_partial() {
         "idx_rsshub_instances_global_url",
         "idx_phantasi_source_applications_pending_site",
         "idx_tapp_shortcuts_owner_chord",
+        "idx_media_assets_producer_key",
     ] {
         assert!(
             !names.contains(&partial),
             "{partial} is partial unique and must not go through generic index DDL"
+        );
+    }
+}
+
+#[test]
+fn media_asset_model_is_in_expected_schema_and_shared_sql() {
+    let heals = include_str!("ensure_heals.rs");
+    let migration = include_str!("../../../migrations/003_phantasi_system.rs");
+    let sql = include_str!("../../../migrations/media_asset_model.sql");
+    assert!(heals.contains("media_asset_model.sql"));
+    assert!(migration.contains("media_asset_model.sql"));
+    assert!(sql.contains("idx_media_assets_producer_key"));
+    assert!(sql.contains("NULLS NOT DISTINCT"));
+    assert!(sql.contains("ON DELETE RESTRICT"));
+    assert!(sql.contains("ON DELETE SET NULL"));
+    assert!(!sql.contains("ON DELETE CASCADE"));
+
+    let tables = get_expected_schema();
+    let assets = tables
+        .iter()
+        .find(|t| t.name == "media_assets")
+        .expect("media_assets");
+    for col in [
+        "public_id",
+        "scope",
+        "owner_user_id",
+        "storage_key",
+        "state",
+        "exposure",
+        "source",
+        "checksum_sha256",
+        "write_token",
+        "write_lease_until",
+        "producer_key",
+        "references_complete",
+    ] {
+        assert!(
+            assets.columns.iter().any(|c| c.name == col),
+            "media_assets missing column {col}"
         );
     }
 }

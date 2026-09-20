@@ -163,6 +163,18 @@ mod tapp_permission_payload_tests {
         assert_eq!(payload.user_perm_federation_room, Some(true));
         assert_eq!(payload.user_perm_phantasi_comment_write, Some(true));
     }
+
+    #[test]
+    fn empty_permission_payload_does_not_write_forced_false() {
+        let src = include_str!("permissions_oauth.rs");
+        let update = src
+            .split("pub async fn update_permissions")
+            .nth(1)
+            .and_then(|rest| rest.split("if updates.is_empty()").next())
+            .expect("update_permissions");
+        assert!(!update.contains("json!(false)"));
+        assert!(src.contains("No permission settings provided"));
+    }
 }
 
 pub async fn update_permissions(
@@ -199,8 +211,6 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_3d_generate {
         updates.insert("user_perm_3d_generate".to_string(), json!(v));
     }
-    // report:write 为 privileged：保存强制 false
-    updates.insert("user_perm_report_write".to_string(), json!(false));
     if let Some(v) = payload.user_perm_network_fetch {
         updates.insert("user_perm_network_fetch".to_string(), json!(v));
     }
@@ -241,7 +251,7 @@ pub async fn update_permissions(
         updates.insert("user_perm_phantasi_comment_write".to_string(), json!(v));
     }
 
-    // 游客权限。需要持久登录主体的能力不接收请求字段，保存时强制关闭。
+    // 游客权限。需要持久登录主体的能力不接收请求字段；授予路径硬拒绝，GET 输出只读派生为 false。
     if let Some(v) = payload.guest_perm_ai_generate {
         updates.insert("guest_perm_ai_generate".to_string(), json!(v));
     }
@@ -260,34 +270,18 @@ pub async fn update_permissions(
     if let Some(v) = payload.guest_perm_3d_generate {
         updates.insert("guest_perm_3d_generate".to_string(), json!(v));
     }
-    // report:write 为 privileged：保存强制 false
-    updates.insert("guest_perm_report_write".to_string(), json!(false));
     if let Some(v) = payload.guest_perm_network_fetch {
         updates.insert("guest_perm_network_fetch".to_string(), json!(v));
     }
     if let Some(v) = payload.guest_perm_media_control {
         updates.insert("guest_perm_media_control".to_string(), json!(v));
     }
-    updates.insert("guest_perm_component_theme".to_string(), json!(false));
-    updates.insert("guest_perm_shortcut_register".to_string(), json!(false));
     if let Some(v) = payload.guest_perm_event_publish {
         updates.insert("guest_perm_event_publish".to_string(), json!(v));
     }
-    updates.insert("guest_perm_scheduler_register".to_string(), json!(false));
-    updates.insert("guest_perm_speech_tts".to_string(), json!(false));
-    updates.insert("guest_perm_speech_asr".to_string(), json!(false));
-    // phantasi:commentWrite 路由要求持久登录主体：游客一律强制关闭
-    updates.insert(
-        "guest_perm_phantasi_comment_write".to_string(),
-        json!(false),
-    );
     if let Some(v) = payload.guest_perm_storage_write {
         updates.insert("guest_perm_storage_write".to_string(), json!(v));
     }
-    // federation 写路由全部要求持久登录主体（AuthedClaims）：游客下放强制 false。
-    updates.insert("guest_perm_federation_post".to_string(), json!(false));
-    updates.insert("guest_perm_federation_channel".to_string(), json!(false));
-    updates.insert("guest_perm_federation_room".to_string(), json!(false));
 
     // AI 使用限额配置
     if let Some(v) = payload.user_ai_daily_calls {

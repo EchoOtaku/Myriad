@@ -87,18 +87,41 @@ export function proxyImageUrlOr(
   return proxyImageUrl(url) ?? fallback
 }
 
+const MEDIA_URL_KEYS = new Set([
+  'avatar',
+  'cover',
+  'icon',
+  'icon_url',
+  'image',
+  'image_url',
+  'thumbnail',
+  'thumb',
+  'poster',
+  'banner',
+  'artwork',
+  'photo',
+  'picture',
+  'src',
+])
+
+function isMediaUrlKey(key: string): boolean {
+  return MEDIA_URL_KEYS.has(key.toLowerCase())
+}
+
+/** Rewrite known media URL fields only. Titles and page links stay original. */
 export function normalizeJsonMediaUrls<T>(value: T): T {
   if (value == null) return value
-  if (typeof value === 'string') {
-    return (proxyImageUrl(value) ?? value) as T
-  }
   if (Array.isArray(value)) {
     return value.map((item) => normalizeJsonMediaUrls(item)) as T
   }
   if (typeof value === 'object') {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = normalizeJsonMediaUrls(v)
+      if (typeof v === 'string' && isMediaUrlKey(k)) {
+        out[k] = proxyImageUrl(v) ?? v
+      } else {
+        out[k] = normalizeJsonMediaUrls(v)
+      }
     }
     return out as T
   }

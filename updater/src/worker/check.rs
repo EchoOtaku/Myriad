@@ -46,7 +46,7 @@ impl Worker {
         if la.mode != install_mode {
             return Ok(None);
         }
-        let effective = self.effective_mode();
+        let effective = self.effective_mode()?;
         let prefs_allow = match effective {
             // Release-channel prefs only auto-install release tips.
             UpdateMode::Release => install_mode == UpdateMode::Release,
@@ -164,7 +164,7 @@ impl Worker {
         // the canonical check and must refresh status(). Only a genuinely different
         // preview request is kept out of the shared availability cache.
         let saved_channel = self.effective_channel();
-        let saved_mode = self.effective_mode();
+        let saved_mode = self.effective_mode()?;
         let (channel, mode, persist_cache) =
             resolve_check_request(&saved_channel, saved_mode, channel_override, mode_override);
         match mode {

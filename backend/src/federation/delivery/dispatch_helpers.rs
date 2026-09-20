@@ -392,6 +392,7 @@ fn bulk_retry_skip_matrix_cancelled_vs_real_dead() {
     // Documents retry_all_dead_for_user skip branch without DB.
     let cases: &[(&str, bool)] = &[
         ("cancelled: by user", true),
+        ("  cancelled: by user", true),
         ("cancelled: pending cleared", true),
         ("suite seeded dead", false),
         ("Key decryption failed", false),

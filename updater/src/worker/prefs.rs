@@ -97,12 +97,8 @@ impl Worker {
             .unwrap_or_else(|| self.config.channel.to_string())
     }
 
-    pub fn effective_mode(&self) -> UpdateMode {
-        self.state
-            .read_updater()
-            .ok()
-            .map(|s| s.update_mode)
-            .unwrap_or(UpdateMode::Release)
+    pub fn effective_mode(&self) -> Result<UpdateMode> {
+        Ok(self.state.read_updater()?.update_mode)
     }
 
     /// Effective periodic check interval: prefs when set, else `CHECK_INTERVAL_SECS` env.
@@ -290,10 +286,6 @@ impl Worker {
             validate_channel_for_mode(&st.channel, m)?;
             st.update_mode = m;
             channel_or_mode_changed = true;
-            if let Ok(mut env) = crate::env_file::EnvFile::load(&self.cli.env_file) {
-                let _ = env.set("UPDATE_MODE", m.as_str());
-                let _ = env.save();
-            }
         }
         if let Some(interval) = check_interval_secs {
             match interval {
@@ -404,5 +396,26 @@ impl Worker {
             prefs.snapshot_limit
         ))?;
         Ok(prefs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn effective_mode_does_not_guess_release_on_read_error() {
+        let src = include_str!("prefs.rs");
+        let mode = src
+            .split("pub fn effective_mode")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn effective_check_interval_secs").next())
+            .expect("effective_mode");
+        assert!(mode.contains("read_updater()?"));
+        assert!(!mode.contains("unwrap_or(UpdateMode::Release)"));
+        let set = src
+            .split("pub(crate) async fn handle_set_prefs")
+            .nth(1)
+            .and_then(|rest| rest.split("self.state.write_updater").next())
+            .expect("handle_set_prefs");
+        assert!(!set.contains("UPDATE_MODE"));
     }
 }

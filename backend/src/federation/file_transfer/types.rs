@@ -1,7 +1,6 @@
 //! File-transfer request/response DTOs.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 // 请求/响应类型
 
@@ -66,11 +65,10 @@ pub struct TransferDetail {
     pub completed_at: Option<String>,
 }
 
-/// Resolved on-disk file for a completed transfer the user is allowed to read.
-#[derive(Debug)]
+/// Opened on-disk file for a completed transfer the user is allowed to read.
 pub struct TransferFileContent {
     pub filename: String,
     pub mime_type: String,
     pub file_size: u64,
-    pub path: PathBuf,
+    pub file: tokio::fs::File,
 }

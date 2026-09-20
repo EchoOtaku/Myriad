@@ -197,18 +197,11 @@ async fn federation_download_transfer(
     );
 
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, std::io::Error>>(4);
-    let disk_path = file.path.clone();
+    let mut disk = file.file;
     tokio::spawn(async move {
-        let mut f = match tokio::fs::File::open(&disk_path).await {
-            Ok(f) => f,
-            Err(e) => {
-                let _ = tx.send(Err(e)).await;
-                return;
-            }
-        };
         let mut buf = vec![0u8; 64 * 1024];
         loop {
-            match f.read(&mut buf).await {
+            match disk.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
                     if tx.send(Ok(buf[..n].to_vec())).await.is_err() {
@@ -723,5 +716,26 @@ mod query_parse_tests {
         let production = src.split("#[cfg(test)]").next().expect("production");
         assert!(production.contains("require_user_id"));
         assert!(!production.contains("claims.sub.parse().unwrap_or(0)"));
+    }
+
+    #[test]
+    fn download_opens_the_file_before_http_ok() {
+        let src = include_str!("rooms_and_router.rs");
+        let download = src
+            .split("async fn federation_download_transfer")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn federation_upload_chunk").next())
+            .expect("federation_download_transfer");
+        assert!(download.contains("open_transfer_file"));
+        assert!(!download.contains("File::open"));
+        assert!(download.contains("file.file"));
+        let open = include_str!("../../federation/file_transfer/http.rs");
+        let opener = open
+            .split("pub async fn open_transfer_file")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_transfer").next())
+            .expect("open_transfer_file");
+        assert!(opener.contains("File::open"));
+        assert!(opener.contains("file.metadata()"));
     }
 }

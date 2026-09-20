@@ -103,9 +103,8 @@ pub async fn restore_waiting_runs_after_boot(db: &DatabaseConnection) {
             task.pending_question = None;
             {
                 let mut store = crate::services::agent::executor::TASK_STORE.write().await;
-                store.store(user_id, task.clone());
+                store.store(user_id, task);
             }
-            crate::services::agent::executor::persist_task_async(user_id, task);
             if let Some(db) = &ledger_db {
                 advance_intention_work(
                     db,
@@ -595,9 +594,8 @@ pub(crate) async fn spawn_restored_wait_loop(
                             {
                                 let mut store =
                                     crate::services::agent::executor::TASK_STORE.write().await;
-                                store.store(user_id, t.clone());
+                                store.store(user_id, t);
                             }
-                            crate::services::agent::executor::persist_task_async(user_id, t);
                         }
                         break;
                     }
@@ -846,5 +844,29 @@ mod tests {
             "message": "办完了",
             "task": { "taskId": "t1", "status": "completed" }
         })));
+    }
+
+    #[test]
+    fn recipe_store_is_the_only_persist_on_waiting_timeout() {
+        let boot = include_str!("boot.rs")
+            .split("pub async fn restore_waiting_runs_after_boot")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("restore_waiting_runs_after_boot");
+        assert!(!boot.contains("persist_task_async"));
+        let confirmation = include_str!("../../services/agent/confirmation_and_tasks/confirmation.rs");
+        let wait = confirmation
+            .split("store.store(user_id, task_state.clone())")
+            .nth(1)
+            .and_then(|rest| rest.split("if let Some(tx) = progress_tx").next())
+            .expect("confirmation store");
+        assert!(!wait.contains("persist_task_async"));
+        let store = include_str!("../../services/agent/executor/task_store.rs");
+        let store_fn = store
+            .split("pub fn store(&mut self, user_id: i32, task: TaskState)")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn get(").next())
+            .expect("TaskStore::store");
+        assert!(store_fn.contains("save_task_to_db_at"));
     }
 }

@@ -525,9 +525,6 @@ pub struct VerifiedState {
     code_verifier: String,
     /// Keep used-nonce until remaining `exp` plus 60s grace.
     remaining_ttl: Duration,
-    /// Snapshot of "nonce already in used map" at verify time (hint only).
-    #[allow(dead_code)]
-    already_used: bool,
 }
 
 impl VerifiedState {
@@ -547,12 +544,6 @@ impl VerifiedState {
     /// OIDC `nonce` expected in id_token — same high-entropy value as browser_tx.
     pub fn oidc_nonce(&self) -> &str {
         &self.browser_tx
-    }
-
-    /// True if the nonce was already marked used when this state was verified.
-    #[cfg(test)]
-    pub fn already_used(&self) -> bool {
-        self.already_used
     }
 
     /// Mark the nonce one-shot used and return [`ConsumeOutcome`].
@@ -660,17 +651,11 @@ pub async fn verify_state(token: &str) -> Result<VerifiedState, ConsumeStateErro
 
     let stored = payload_to_stored(payload)?;
 
-    let already_used = {
-        let nonces = USED_NONCES.read().await;
-        nonces.contains(&browser_tx)
-    };
-
     Ok(VerifiedState {
         stored,
         browser_tx,
         code_verifier,
         remaining_ttl,
-        already_used,
     })
 }
 
@@ -782,20 +767,19 @@ mod tests {
 
         let peeked = verify_state(&issued.token).await.expect("verify");
         assert_eq!(peeked.browser_tx(), issued.browser_tx);
-        assert!(!peeked.already_used());
 
         // Second verify still Fresh-eligible (nonce not burned).
         let peeked2 = verify_state(&issued.token).await.expect("verify again");
-        assert!(!peeked2.already_used());
+        assert_eq!(peeked2.browser_tx(), issued.browser_tx);
 
         let first = peeked.mark_used().await;
         assert!(!first.is_replay());
 
-        // After mark_used, verify reports already_used and mark yields Replay.
+        // After mark_used, a later mark_used is Replay. verify itself does not
+        // consult the used map — cookie binding still happens on a valid HMAC.
         let peeked3 = verify_state(&issued.token)
             .await
             .expect("verify after mark");
-        assert!(peeked3.already_used());
         assert!(peeked3.mark_used().await.is_replay());
     }
 

@@ -778,16 +778,6 @@ fn authorize_gateway_caller(
     peer: Option<SocketAddr>,
 ) -> Result<(), Response> {
     let source = gateway_source_key(peer);
-    if gateway_is_blocked(&source) {
-        return Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            axum::Json(serde_json::json!({
-                "message": "too many invalid gateway secret attempts; try again later"
-            })),
-        )
-            .into_response());
-    }
-
     let provided = headers
         .get(HEADER_GATEWAY_SECRET)
         .and_then(|v| v.to_str().ok());
@@ -796,44 +786,39 @@ fn authorize_gateway_caller(
             gateway_clear_failures(&source);
             Ok(())
         }
-        Some(_) => {
-            let blocked = gateway_record_failure(&source);
-            Err(if blocked {
-                (
-                    StatusCode::TOO_MANY_REQUESTS,
-                    axum::Json(serde_json::json!({
-                        "message": "too many invalid gateway secret attempts; try again later"
-                    })),
-                )
-                    .into_response()
-            } else {
-                (
-                    StatusCode::UNAUTHORIZED,
-                    axum::Json(serde_json::json!({"message": "invalid gateway secret"})),
-                )
-                    .into_response()
-            })
-        }
-        None => {
-            let blocked = gateway_record_failure(&source);
-            Err(if blocked {
-                (
-                    StatusCode::TOO_MANY_REQUESTS,
-                    axum::Json(serde_json::json!({
-                        "message": "too many invalid gateway secret attempts; try again later"
-                    })),
-                )
-                    .into_response()
-            } else {
-                (
-                    StatusCode::UNAUTHORIZED,
-                    axum::Json(serde_json::json!({
-                        "message": "missing X-Updater-Gateway-Secret"
-                    })),
-                )
-                    .into_response()
-            })
-        }
+        Some(_) => Err(gateway_reject_invalid_secret(&source, "invalid gateway secret")),
+        None => Err(gateway_reject_invalid_secret(
+            &source,
+            "missing X-Updater-Gateway-Secret",
+        )),
+    }
+}
+
+fn gateway_reject_invalid_secret(source: &str, unauthorized_message: &str) -> Response {
+    if gateway_is_blocked(source) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({
+                "message": "too many invalid gateway secret attempts; try again later"
+            })),
+        )
+            .into_response();
+    }
+    let blocked = gateway_record_failure(source);
+    if blocked {
+        (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({
+                "message": "too many invalid gateway secret attempts; try again later"
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({ "message": unauthorized_message })),
+        )
+            .into_response()
     }
 }
 
@@ -844,10 +829,13 @@ fn gateway_source_key(peer: Option<SocketAddr>) -> String {
     }
 }
 
+const MAX_GATEWAY_LIMITER_KEYS: usize = 1024;
+
 fn gateway_record_failure(key: &str) -> bool {
     let mut map = GATEWAY_LIMITER.lock().unwrap();
-    let entry = map.entry(key.to_string()).or_default();
     let now = Instant::now();
+    gateway_gc_limiter(&mut map, now);
+    let entry = map.entry(key.to_string()).or_default();
     entry.0.retain(|t| now.duration_since(*t) < FAILURE_WINDOW);
     entry.0.push(now);
     if entry.0.len() as u32 > MAX_FAILED_PER_MIN {
@@ -855,6 +843,27 @@ fn gateway_record_failure(key: &str) -> bool {
         true
     } else {
         false
+    }
+}
+
+fn gateway_gc_limiter(map: &mut HashMap<String, GatewayLimiterEntry>, now: Instant) {
+    map.retain(|_, (times, until)| {
+        if until.is_some_and(|block_until| now < block_until) {
+            return true;
+        }
+        times.iter().any(|t| now.duration_since(*t) < FAILURE_WINDOW)
+    });
+    if map.len() > MAX_GATEWAY_LIMITER_KEYS {
+        let overflow = map.len() - MAX_GATEWAY_LIMITER_KEYS;
+        let drop_keys: Vec<String> = map
+            .iter()
+            .filter(|(_, (_, until))| until.is_none_or(|block_until| now >= block_until))
+            .take(overflow)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in drop_keys {
+            map.remove(&key);
+        }
     }
 }
 
@@ -1083,6 +1092,36 @@ mod tests {
             StatusCode::UNAUTHORIZED,
             "XFF must not be the limiter key"
         );
+    }
+
+    #[test]
+    fn correct_secret_passes_even_when_peer_is_blocked() {
+        let secret = "abcdefghijklmnopqrstuvwxyz012345";
+        let peer: SocketAddr = "198.51.100.40:1".parse().unwrap();
+        let mut bad = HeaderMap::new();
+        bad.insert(
+            HEADER_GATEWAY_SECRET,
+            HeaderValue::from_static("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
+        );
+        let mut blocked = false;
+        for _ in 0..=MAX_FAILED_PER_MIN {
+            let err = authorize_gateway_caller(&bad, secret, Some(peer)).unwrap_err();
+            if err.status() == StatusCode::TOO_MANY_REQUESTS {
+                blocked = true;
+            }
+        }
+        assert!(blocked);
+        let mut good = HeaderMap::new();
+        good.insert(
+            HEADER_GATEWAY_SECRET,
+            HeaderValue::from_static("abcdefghijklmnopqrstuvwxyz012345"),
+        );
+        assert!(
+            authorize_gateway_caller(&good, secret, Some(peer)).is_ok(),
+            "a correct secret must not inherit a block from prior failures"
+        );
+        let err = authorize_gateway_caller(&bad, secret, Some(peer)).unwrap_err();
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

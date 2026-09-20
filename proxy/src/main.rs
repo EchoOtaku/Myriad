@@ -1,15 +1,17 @@
 //! Myriad maintenance-aware reverse proxy.
 //!
 //! Behaviour:
-//!  - Reads /state/maintenance.json (best-effort; missing/corrupt = inactive).
+//!  - Reads /state/maintenance.json. Missing file = inactive (rescue path).
+//!    Unreadable or corrupt files fail closed (serve maintenance) instead of
+//!    forwarding as if the site were idle.
 //!  - When `active=true`, all non-allowlisted requests are served the embedded maintenance page.
 //!  - Otherwise, forwards to backend/frontend over plain HTTP via internal docker network DNS.
 //!  - Response bodies are **streamed** (no full-buffer collect) to keep memory/TTFB low.
 //!  - `/healthz` (proxy itself) always returns 200.
 //!  - `/_updater/*` can forward to the updater service when explicitly enabled for rescue.
 //!
-//! Fail-open: if the state file disappears, requests are forwarded normally. The proxy
-//! is the user's only rescue path, so it MUST NOT trap traffic by accident.
+//! Missing state file: forward normally so the proxy stays a rescue path.
+//! Unreadable/corrupt state: fail closed and serve the maintenance page.
 
 use std::collections::HashSet;
 use std::convert::Infallible;
@@ -1196,16 +1198,38 @@ async fn read_maintenance_cached(state: &AppState) -> MaintenanceFile {
     {
         return cache.value.clone();
     }
-    let value = read_maintenance_from_disk(&state.state_path).await;
+    let value = match read_maintenance_from_disk(&state.state_path).await {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                path = %state.state_path.display(),
+                "maintenance state unreadable"
+            );
+            if cache.value.active {
+                cache.value.clone()
+            } else {
+                MaintenanceFile {
+                    active: true,
+                    ..MaintenanceFile::default()
+                }
+            }
+        }
+    };
     cache.loaded_at = Some(Instant::now());
     cache.value = value.clone();
     value
 }
 
-async fn read_maintenance_from_disk(path: &PathBuf) -> MaintenanceFile {
+async fn read_maintenance_from_disk(path: &PathBuf) -> std::io::Result<MaintenanceFile> {
     match tokio::fs::read(path).await {
-        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
-        Err(_) => MaintenanceFile::default(),
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, error)
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(MaintenanceFile::default())
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -2303,5 +2327,35 @@ mod tests {
         );
         value["persona_http_isolated"] = json!("false");
         assert_eq!(backend_isolated(&value, "persona_http_isolated"), None);
+    }
+
+    #[tokio::test]
+    async fn missing_maintenance_file_is_inactive() {
+        let path = std::env::temp_dir().join(format!(
+            "myriad-proxy-maint-missing-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let got = super::read_maintenance_from_disk(&path).await.unwrap();
+        assert!(!got.active);
+    }
+
+    #[tokio::test]
+    async fn corrupt_maintenance_file_is_not_treated_as_inactive() {
+        let path = std::env::temp_dir().join(format!(
+            "myriad-proxy-maint-corrupt-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        tokio::fs::write(&path, b"{not-json").await.unwrap();
+        let err = super::read_maintenance_from_disk(&path)
+            .await
+            .expect_err("corrupt file must not look missing");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        let _ = tokio::fs::remove_file(&path).await;
     }
 }

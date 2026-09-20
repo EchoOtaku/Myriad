@@ -459,7 +459,7 @@ async fn resolve_proxy_via_dockerhub(
         tag
     } else {
         // List proxy tags first. App `latest_available` may not exist on proxy repo.
-        let prefer_release = worker.effective_mode() == UpdateMode::Release;
+        let prefer_release = worker.effective_mode()? == UpdateMode::Release;
         let tags = worker
             .dockerhub_client()?
             .list_immutable_tags(&repo, 25)
