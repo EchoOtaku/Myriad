@@ -55,6 +55,8 @@ test('widget entrance uses one native timeline for transform and opacity', async
 }
       await new Promise(requestAnimationFrame)
     }
+    // Capture promises before the owner cancels finished animations during cleanup.
+    const completed = animations.map(animation => animation.finished)
     const native = animations.map((animation) => ({
       keys: Object.keys((animation.effect as KeyframeEffect).getKeyframes()[0]),
       duration: animation.effect!.getTiming().duration,
@@ -70,8 +72,13 @@ test('widget entrance uses one native timeline for transform and opacity', async
         y: transform.f,
         opacity: Number(css.opacity),
       })
-      if (css.opacity === '1' && Math.abs(transform.a - 1) < 0.00001) break
+      if (animations.every(animation => animation.playState === 'finished')) break
     }
+    // Near-one rounded CSS values do not prove the native animation has finished.
+    await Promise.all(completed)
+    const finalCss = getComputedStyle(element)
+    const finalTransform = new DOMMatrixReadOnly(finalCss.transform)
+    frames.push({ scale: finalTransform.a, y: finalTransform.f, opacity: Number(finalCss.opacity) })
     return { native, frames }
   })
   expect(
