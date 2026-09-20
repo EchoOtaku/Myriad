@@ -167,6 +167,8 @@ async function localizedFailure() {
 }
 
 async function relativeSourceFailure() {
+  localStorage.setItem('locale', 'en-US')
+  await loadLocale('en-US')
   try {
     const bytes = writePsd(fixture('ordinary'), { generateThumbnail: false })
     await prepareRigPsdImport(

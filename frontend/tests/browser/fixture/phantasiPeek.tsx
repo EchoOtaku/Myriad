@@ -6,7 +6,7 @@ import PhantasiFeeds from '../../../src/components/phantasi/skin/PhantasiFeeds'
 import { PhantasiPeekAir, readPeekFace, subscribePeekFace } from '../../../src/components/phantasi/ui/PhantasiPeekAir'
 import { PhantasiSearch } from '../../../src/components/phantasi/ui/PhantasiSearch'
 import { usePeekSession } from '../../../src/components/phantasi/ui/usePeekSession'
-import { I18nProvider } from '../../../src/contexts/I18nContext'
+import { I18nNamespace, I18nProvider } from '../../../src/contexts/I18nContext'
 import '../../../src/styles/tailwind.css'
 import '../../../src/styles/spa-document.css'
 import '../../../src/styles/theme.css'
@@ -43,4 +43,4 @@ function Harness() {
     </div>
   </div>
 }
-createRoot(document.getElementById('root')!).render(<StrictMode><I18nProvider><Harness /></I18nProvider></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode><I18nProvider><I18nNamespace names={['phantasi']}><Harness /></I18nNamespace></I18nProvider></StrictMode>)

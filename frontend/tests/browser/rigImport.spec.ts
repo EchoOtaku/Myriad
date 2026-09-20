@@ -410,6 +410,8 @@ test('relative source assets resolve against the page and preserve fetch errors'
     (window as any).rigImportTest.relativeSourceFailure(),
   )
   expect(requests).toEqual(['/assets/master.png'])
+  expect(typeof result.expected).toBe('string')
+  expect(result.expected.length).toBeGreaterThan(0)
   expect(result.error).toBe(result.expected)
 })
 

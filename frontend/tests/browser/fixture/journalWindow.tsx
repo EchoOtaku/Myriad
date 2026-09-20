@@ -6,7 +6,7 @@ import {
 } from '../../../src/components/phantasi/logic/fixtures'
 import PhantasiList from '../../../src/components/phantasi/skin/PhantasiList'
 import PhantasiNotes from '../../../src/components/phantasi/skin/PhantasiNotes'
-import { I18nProvider } from '../../../src/contexts/I18nContext'
+import { I18nNamespace, I18nProvider } from '../../../src/contexts/I18nContext'
 import '../../../src/styles/tailwind.css'
 import '../../../src/styles/spa-document.css'
 import '../../../src/styles/theme.css'
@@ -114,8 +114,8 @@ export function mountJournal(mode: 'list' | 'notes', count: number) {
     )
   }
   createRoot(document.getElementById('root')!).render(
-    <I18nProvider>
+    <I18nProvider><I18nNamespace names={['phantasi']}>
       <Harness />
-    </I18nProvider>,
+    </I18nNamespace></I18nProvider>,
   )
 }

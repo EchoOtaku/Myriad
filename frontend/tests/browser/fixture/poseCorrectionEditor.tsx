@@ -2,7 +2,7 @@ import type { PoseCorrection } from '../../../src/features/merope/anime25drig/po
 import type { Anime25DPlayback } from '../../../src/features/merope/anime25drig/types'
 import type { RigCharacterHandle } from '../../../src/features/merope/rig/RigCharacter'
 import { createRoot } from 'react-dom/client'
-import { I18nProvider } from '../../../src/contexts/I18nContext'
+import { I18nNamespace, I18nProvider } from '../../../src/contexts/I18nContext'
 import { WORKBENCH_DRIVER } from '../../../src/features/merope/anime25drig/driver'
 import { PoseCorrectionEditor } from '../../../src/features/merope/anime25drig/PoseCorrectionEditor'
 import { saveLocale } from '../../../src/i18n'
@@ -23,14 +23,14 @@ export async function mountPoseEditor() {
     previewPoseCorrections: (value: PoseCorrection[] | null) => calls.push(structuredClone(value)),
   } as unknown as RigCharacterHandle }
   const render = (key: string) => root.render(
-<I18nProvider><PoseCorrectionEditor
+<I18nProvider><I18nNamespace names={['merope']}><PoseCorrectionEditor
   key={key}
   playback={playback}
   characterRef={characterRef}
   driver={{ ...WORKBENCH_DRIVER, angleX: 0.8, angleY: -0.6 }}
   onDriver={() => {}}
   onSave={async value => { saves.push(structuredClone(value)) }}
-              /></I18nProvider>,
+                                                /></I18nNamespace></I18nProvider>,
 )
   render('first-outfit')
   return { calls, saves, render, unmount: () => root.unmount() }

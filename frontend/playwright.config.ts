@@ -5,6 +5,7 @@ const port = Number(process.env.MYRIAD_BROWSER_TEST_PORT || 4179)
 
 export default defineConfig({
   testDir: './tests/browser',
+  outputDir: `test-results/browser-${port}`,
   testMatch: '*.spec.ts',
   timeout: 25_000,
   workers: 1,

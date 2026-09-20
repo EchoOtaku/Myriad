@@ -1,6 +1,9 @@
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
+
+const port = Number(process.env.MYRIAD_BROWSER_TEST_PORT || 4179)
 
 // Test-only entrypoints cannot become production pages. No backend proxy:
 // every service request in this harness must be explicitly mocked by the test.
@@ -10,7 +13,7 @@ export default defineConfig({
   publicDir: fileURLToPath(new URL('../../public', import.meta.url)),
   // A concurrent Vite dev server must not replace this runner's optimized
   // React modules mid-test (two dispatcher instances cause invalid hook calls).
-  cacheDir: fileURLToPath(new URL('../../node_modules/.vite/browser-tests', import.meta.url)),
+  cacheDir: fileURLToPath(new URL(`../../node_modules/.vite/browser-tests-${port}`, import.meta.url)),
   optimizeDeps: {
     include: ['react', 'react-dom/client', 'react/jsx-runtime', 'lucide-react'],
   },
@@ -34,7 +37,7 @@ export default defineConfig({
     // navigate a GPU replay away midway through its assertions.
     hmr: false,
     host: '127.0.0.1',
-    port: 4179,
+    port,
     strictPort: true,
     fs: { allow: [fileURLToPath(new URL('../..', import.meta.url))] },
   },

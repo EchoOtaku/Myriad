@@ -4,7 +4,7 @@ import { NoteBlockBar } from '../../../src/components/phantasi/notes/NoteEditorC
 import { anchorInContainer } from '../../../src/components/phantasi/notes/noteSelection'
 import { markdownToVisualHtml, setImageAlt, setImageLink, setImageSrc } from '../../../src/components/phantasi/notes/noteVisual'
 import { useNoteVisual } from '../../../src/components/phantasi/notes/useNoteVisual'
-import { I18nProvider } from '../../../src/contexts/I18nContext'
+import { I18nNamespace, I18nProvider } from '../../../src/contexts/I18nContext'
 import '../../../src/styles/tailwind.css'
 import '../../../src/styles/theme.css'
 import '../../../src/styles/overrides.css'
@@ -87,4 +87,4 @@ function Harness() {
     </div>
   </div>
 }
-createRoot(document.getElementById('root')!).render(<I18nProvider><Harness /></I18nProvider>)
+createRoot(document.getElementById('root')!).render(<I18nProvider><I18nNamespace names={['phantasi']}><Harness /></I18nNamespace></I18nProvider>)
