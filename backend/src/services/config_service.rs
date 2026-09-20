@@ -857,7 +857,9 @@ impl ConfigService {
 
         // 控制面板小组件配置
         if let Some(v) = map.get("control_panel_layout") {
-            if let Some(s) = v.as_str() {
+            if v.is_null() {
+                config.control_panel_layout = None;
+            } else if let Some(s) = v.as_str() {
                 config.control_panel_layout = Some(s.to_string());
             } else {
                 config.control_panel_layout = Some(v.to_string());
@@ -2011,6 +2013,32 @@ mod tests {
             ..DynamicConfig::default()
         };
         assert!(!no_pro.merope_speech_enabled_resolved());
+    }
+
+    #[test]
+    fn parses_control_panel_layout_from_database_config() {
+        let missing = ConfigService::parse_config(HashMap::new());
+        assert_eq!(missing.control_panel_layout, None);
+
+        for (value, expected) in [
+            (json!(null), None),
+            (json!([]), Some("[]".to_string())),
+            (json!("[]"), Some("[]".to_string())),
+            (
+                json!([{ "id": "cp-weather" }]),
+                Some("[{\"id\":\"cp-weather\"}]".to_string()),
+            ),
+            (
+                json!("[{\"id\":\"cp-weather\"}]"),
+                Some("[{\"id\":\"cp-weather\"}]".to_string()),
+            ),
+        ] {
+            let config = ConfigService::parse_config(HashMap::from([(
+                "control_panel_layout".into(),
+                value,
+            )]));
+            assert_eq!(config.control_panel_layout, expected);
+        }
     }
 
     #[test]

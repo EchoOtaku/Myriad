@@ -18,9 +18,12 @@ export function decodeWidgetLayout(data: Record<string, unknown>) {
   if (typeof data.control_panel_layout === 'string' && data.control_panel_layout) {
     try {
       const parsed = JSON.parse(data.control_panel_layout)
-      if (!Array.isArray(parsed)) throw new Error('Control panel layout must be an array')
-      // Preserve unknown TAPP types and overflow; registry/packing only affect presentation.
-      widgets = parsed
+      // Older servers serialized an unset database value as the string "null".
+      if (parsed !== null) {
+        if (!Array.isArray(parsed)) throw new Error('Control panel layout must be an array')
+        // Preserve unknown TAPP types and overflow; registry/packing only affect presentation.
+        widgets = parsed
+      }
     } catch (caught) {
       error = caught
     }

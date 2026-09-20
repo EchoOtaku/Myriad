@@ -2,6 +2,27 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { decodeWidgetLayout, initialWidgetLayout, widgetLayoutReducer } from './widgetLayoutState'
 
+test('unset layouts including legacy serialized null preserve defaults without an error', () => {
+  for (const layout of [undefined, null, '', 'null', ' \n null \t']) {
+    const decoded = decodeWidgetLayout({ control_panel_layout: layout, control_panel_rows: 1 })
+    assert.equal(decoded.error, undefined)
+    assert.equal(decoded.widgets, undefined)
+    const initial = initialWidgetLayout()
+    const state = widgetLayoutReducer(initial, { type: 'loaded', ...decoded })
+    assert.equal(state.widgets, initial.widgets)
+    assert.equal(state.rows, 1)
+  }
+})
+
+test('non-null non-array layouts still report invalid configuration', () => {
+  for (const layout of ['{}', 'false', '0', '"null"']) {
+    const decoded = decodeWidgetLayout({ control_panel_layout: layout })
+    assert.ok(decoded.error instanceof Error)
+    assert.equal(decoded.error.message, 'Control panel layout must be an array')
+    assert.equal(decoded.widgets, undefined)
+  }
+})
+
 test('persisted empty layout stays empty rather than restoring defaults', () => {
   const decoded = decodeWidgetLayout({ control_panel_layout: '[]', control_panel_rows: 1 })
   const state = widgetLayoutReducer(initialWidgetLayout(), { type: 'loaded', ...decoded })
