@@ -10,6 +10,7 @@
 mod access;
 mod assets;
 mod error;
+mod legacy;
 mod migration;
 mod recovery;
 mod references;
@@ -20,7 +21,10 @@ mod validate;
 
 pub use access::{can_manage, can_read};
 pub use error::MediaError;
-pub use migration::{MigrationJobInput, upsert_job};
+pub use legacy::{LegacyClass, LegacyPaths};
+pub use migration::{
+    MigrationBatch, MigrationJobInput, MigrationStats, migrate_catalog_batch, upsert_job,
+};
 pub use recovery::{RecoverPlan, plan_recovery};
 pub use references::{NewReference, active_count, parse_consumer_type, replace_for_consumer};
 pub use store::MediaStore;
@@ -134,6 +138,17 @@ impl MediaService {
         recovery::recover_expired(&self.store, db, limit, WRITE_LEASE_SECS).await
     }
 
+    pub async fn migrate_legacy_catalog_batch(
+        &self,
+        db: &DatabaseConnection,
+        paths: &LegacyPaths,
+        allowed_origins: &[String],
+        after_id: i32,
+        limit: u32,
+    ) -> Result<MigrationBatch, MediaError> {
+        migrate_catalog_batch(&self.store, db, paths, allowed_origins, after_id, limit).await
+    }
+
     pub async fn delete(
         &self,
         db: &DatabaseConnection,
@@ -221,6 +236,7 @@ mod tests {
             include_str!("access.rs"),
             include_str!("assets.rs"),
             include_str!("error.rs"),
+            include_str!("legacy.rs"),
             include_str!("migration.rs"),
             include_str!("recovery.rs"),
             include_str!("references.rs"),

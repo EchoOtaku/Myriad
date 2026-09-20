@@ -74,6 +74,46 @@ pub fn registered_local_path(raw: &str) -> Option<String> {
     Some(path.to_string())
 }
 
+/// Extract a local alias path only when `raw` is path-only or its origin is allowlisted.
+/// Foreign origins are rejected even if the pathname looks like a local media URL.
+pub fn alias_local_path(raw: &str, allowed_origins: &[String]) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.contains("://") {
+        let origin = origin_of(trimmed)?;
+        if !allowed_origins
+            .iter()
+            .any(|allowed| same_origin(allowed, &origin))
+        {
+            return None;
+        }
+    }
+    registered_local_path(trimmed)
+}
+
+fn origin_of(raw: &str) -> Option<String> {
+    let parsed = url::Url::parse(raw).ok()?;
+    if parsed.cannot_be_a_base() {
+        return None;
+    }
+    let host = parsed.host_str()?.to_ascii_lowercase();
+    match parsed.port() {
+        Some(port) => Some(format!("{}://{}:{port}", parsed.scheme(), host)),
+        None => Some(format!("{}://{}", parsed.scheme(), host)),
+    }
+}
+
+fn same_origin(allowed: &str, origin: &str) -> bool {
+    origin_of(allowed)
+        .or_else(|| {
+            let trimmed = allowed.trim().trim_end_matches('/');
+            (!trimmed.is_empty()).then(|| trimmed.to_ascii_lowercase())
+        })
+        .is_some_and(|allowed| allowed == origin)
+}
+
 pub fn filename_for_mime(name: &str, mime: &str, public_id: Uuid) -> Result<String, MediaError> {
     let ext =
         extension_for_mime(mime).ok_or_else(|| MediaError::invalid("Unsupported media type"))?;
@@ -140,8 +180,6 @@ mod tests {
             Some("/media/federation/1/a.jpg".into())
         );
         assert!(registered_local_path("https://other.site/media/federation/1/a.jpg").is_some());
-        // Origin checks belong to the alias service; this helper only extracts a
-        // pathname shape and still rejects traversal / queries-as-identity.
         assert_eq!(
             registered_local_path("/media/federation/1/a.jpg?track=1"),
             Some("/media/federation/1/a.jpg".into())
@@ -149,6 +187,27 @@ mod tests {
         assert!(registered_local_path("/media/federation/../secret").is_none());
         assert!(registered_local_path("/tmp/x.png").is_none());
         assert!(registered_local_path("").is_none());
+    }
+
+    #[test]
+    fn alias_paths_require_an_allowlisted_origin() {
+        let allowed = ["https://site.example".to_string()];
+        assert_eq!(
+            alias_local_path(
+                "https://site.example/media/federation/1/a.jpg?utm=1",
+                &allowed
+            ),
+            Some("/media/federation/1/a.jpg".into())
+        );
+        assert!(
+            alias_local_path("https://other.site/media/federation/1/a.jpg", &allowed).is_none()
+        );
+        assert_eq!(
+            alias_local_path("/media/federation/1/a.jpg", &allowed),
+            Some("/media/federation/1/a.jpg".into())
+        );
+        assert!(alias_local_path("/media/federation/1/%2e%2e/secret", &[]).is_some());
+        assert!(alias_local_path("/media/federation/../secret", &[]).is_none());
     }
 
     #[test]
