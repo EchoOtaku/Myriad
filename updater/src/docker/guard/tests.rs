@@ -28,8 +28,8 @@ use super::validate::{
     validate_endpoint_settings, validate_image_pull,
 };
 use super::{
-    GuardConfig, GuardState, MAX_CONCURRENT_LOG_READS, SELF_UPDATE_GATE,
-    TRUSTED_GUARD_REPOSITORY, strip_api_version,
+    GuardConfig, GuardState, MAX_CONCURRENT_LOG_READS, SELF_UPDATE_GATE, TRUSTED_GUARD_REPOSITORY,
+    strip_api_version,
 };
 
 fn state() -> GuardState {
@@ -865,9 +865,8 @@ fn exec_and_unknown_mutations_are_denied() {
 
 #[test]
 fn initializer_logs_remain_project_scoped_read_only_access() {
-    let request = Uri::from_static(
-        "/v1.51/containers/init-container-id/logs?stdout=1&stderr=1&tail=10000",
-    );
+    let request =
+        Uri::from_static("/v1.51/containers/init-container-id/logs?stdout=1&stderr=1&tail=10000");
     assert_eq!(
         classify_request(&state(), &Method::GET, &request, &Bytes::new()).unwrap(),
         Decision::ProjectContainerLogs("init-container-id".into())
@@ -1053,7 +1052,13 @@ fn builtin_fallback_network_name_is_accepted() {
     for service in ["backend", "federation-worker", "persona-worker"] {
         assert!(authorize_guard_network_attachment(service, "1panel-network", &s.config).is_ok());
     }
-    for service in ["frontend", "proxy", "postgres", "updater", "updater-gateway"] {
+    for service in [
+        "frontend",
+        "proxy",
+        "postgres",
+        "updater",
+        "updater-gateway",
+    ] {
         assert!(
             authorize_guard_network_attachment(service, "1panel-network", &s.config).is_err(),
             "{service}"
@@ -1427,6 +1432,7 @@ fn federation_worker_has_fixed_role_and_resource_boundary() {
             "federation_media",
             "/app/data/federation_media",
         ),
+        ("myriad_backend_data", "media", "/app/data/media"),
         ("myriad_backend_cache", "images", "/tmp/cache/images"),
     ] {
         let mount = json!({"Type":"volume", "Source":source, "Target":target,

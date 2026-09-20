@@ -36,26 +36,16 @@ const FEDERATION_PATH_PREFIXES: &[&str] = &[
     "/phantasi/articles/",
 ];
 
-/// Exact paths (mount `/media/federation`; children are `FEDERATION_NESTED_PREFIXES`).
+/// Exact paths owned by federation (site media lives on the web process).
 const FEDERATION_EXACT_PATHS: &[&str] = &[
     "/.well-known/webfinger",
     "/.well-known/nodeinfo",
     "/nodeinfo/2.1",
     "/inbox",
-    "/media/federation",
 ];
-
-/// Prefixes matched with no minimum remainder (the nested media service).
-const FEDERATION_NESTED_PREFIXES: &[&str] = &["/media/federation/"];
 
 pub(crate) fn is_federation_path(path: &str) -> bool {
     if FEDERATION_EXACT_PATHS.contains(&path) {
-        return true;
-    }
-    if FEDERATION_NESTED_PREFIXES
-        .iter()
-        .any(|prefix| path.starts_with(prefix))
-    {
         return true;
     }
     FEDERATION_PATH_PREFIXES
@@ -141,10 +131,18 @@ mod tests {
             "/tapps/1",
             "/library/1",
             "/phantasi/articles/1",
-            "/media/federation",
-            "/media/federation/2026/pic.png",
         ] {
             assert!(is_federation_path(path), "{path} must be gated");
+        }
+        for path in [
+            "/media/federation",
+            "/media/federation/2026/pic.png",
+            "/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.png",
+        ] {
+            assert!(
+                !is_federation_path(path),
+                "{path} is site media and must stay on the web process"
+            );
         }
     }
 

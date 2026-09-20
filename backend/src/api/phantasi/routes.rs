@@ -209,16 +209,8 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
                 ))
                 .service(ServeDir::new(&paths().phantasi_icons)),
         )
-        // 图片缓存服务（Notion 临时 URL 等）
-        .nest_service(
-            "/image-cache",
-            tower::ServiceBuilder::new()
-                .layer(SetResponseHeaderLayer::if_not_present(
-                    header::CACHE_CONTROL,
-                    header::HeaderValue::from_static("public, max-age=604800, immutable"),
-                ))
-                .service(ServeDir::new(&paths().cache_images)),
-        )
+        // 图片缓存：已迁 alias 走持久媒体服务；未命中才读 cache。
+        .merge(crate::api::media_public::image_cache_routes())
         // Tapp 运行时携带 Grant 头时做服务端归因与权限强制；宿主 UI 请求不受影响
         .route_layer(from_fn_with_state(
             app_state.clone(),
@@ -228,15 +220,7 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
 
 /// Leftover `/api/brew/image-cache/*` URLs from pre-rename persona assets.
 pub fn legacy_brew_image_cache_routes() -> Router<crate::state::AppState> {
-    Router::<crate::state::AppState>::new().nest_service(
-        "/image-cache",
-        tower::ServiceBuilder::new()
-            .layer(SetResponseHeaderLayer::if_not_present(
-                header::CACHE_CONTROL,
-                header::HeaderValue::from_static("public, max-age=604800, immutable"),
-            ))
-            .service(ServeDir::new(&paths().cache_images)),
-    )
+    crate::api::media_public::brew_image_cache_routes()
 }
 
 #[cfg(test)]

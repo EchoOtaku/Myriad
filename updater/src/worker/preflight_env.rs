@@ -249,9 +249,9 @@ fn check_federation_http_storage(config: &serde_json::Value) -> Result<()> {
                 .and_then(serde_json::Value::as_str)
                 .is_none_or(str::is_empty)
     });
-    if mounts.len() != 4 || !data_root {
+    if mounts.len() != 5 || !data_root {
         return Err(UpdaterError::Precondition(
-            "federation HTTP requires the read-only backend_data root and exactly three fixed writable subpaths".into(),
+            "federation HTTP requires the read-only backend_data root and exactly four fixed writable subpaths".into(),
         ));
     }
     for (source, target, subpath) in [
@@ -261,6 +261,7 @@ fn check_federation_http_storage(config: &serde_json::Value) -> Result<()> {
             "/app/data/federation_media",
             "federation_media",
         ),
+        ("backend_data", "/app/data/media", "media"),
         ("backend_cache", "/tmp/cache/images", "images"),
     ] {
         if !mounts.iter().any(|mount| {
@@ -315,10 +316,7 @@ fn check_manageable_tag_vars(worker: &Worker) -> Result<()> {
     let mut refs_tag = false;
     for f in &files {
         let s = std::fs::read_to_string(f).map_err(|error| {
-            UpdaterError::Precondition(format!(
-                "cannot read compose file {}: {error}",
-                f.display()
-            ))
+            UpdaterError::Precondition(format!("cannot read compose file {}: {error}", f.display()))
         })?;
         if s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG") {
             refs_tag = true;
@@ -689,6 +687,7 @@ mod tests {
                 "federation_media",
                 "/app/data/federation_media",
             ),
+            ("backend_data", "media", "/app/data/media"),
             ("backend_cache", "images", "/tmp/cache/images"),
         ] {
             mounts.push(json!({"type":"volume", "source":source, "target":target,
@@ -710,7 +709,7 @@ mod tests {
                 json!("other_data"),
             ),
             (
-                "/services/federation-worker/volumes/3/volume/nocopy",
+                "/services/federation-worker/volumes/4/volume/nocopy",
                 json!(false),
             ),
         ] {

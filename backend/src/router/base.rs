@@ -486,6 +486,7 @@ pub(super) fn build_base_api_router(
             "/api/home/widget-fonts/{file}",
             get(api::widget_fonts::get_widget_font),
         )
+        .merge(api::media_public::public_media_routes())
 }
 
 #[cfg(test)]
@@ -527,5 +528,16 @@ mod config_mode_route_tests {
             "allowlist must cover registered oauth login/callback, not only /providers"
         );
         assert!(body.contains("/ready"), "allowlist must cover /ready");
+    }
+
+    #[test]
+    fn web_base_router_serves_site_media() {
+        let src = include_str!("base.rs");
+        let start = src.find("fn build_base_api_router").expect("base api fn");
+        let body = &src[start..];
+        assert!(
+            body.contains("public_media_routes"),
+            "web process must serve /media/federation and /media/assets"
+        );
     }
 }

@@ -530,26 +530,21 @@ fn is_persona_path(path: &str) -> bool {
 fn is_federation_path(path: &str) -> bool {
     matches!(
         path,
-        "/.well-known/webfinger"
-            | "/.well-known/nodeinfo"
-            | "/nodeinfo/2.1"
-            | "/inbox"
-            | "/media/federation"
-    ) || path.starts_with("/media/federation/")
-        || [
-            "/api/federation/",
-            "/api/admin/federation/",
-            "/api/tapp/federation/",
-            "/users/",
-            "/activities/",
-            "/notes/",
-            "/reports/",
-            "/tapps/",
-            "/library/",
-            "/phantasi/articles/",
-        ]
-        .iter()
-        .any(|prefix| path.len() > prefix.len() && path.starts_with(prefix))
+        "/.well-known/webfinger" | "/.well-known/nodeinfo" | "/nodeinfo/2.1" | "/inbox"
+    ) || [
+        "/api/federation/",
+        "/api/admin/federation/",
+        "/api/tapp/federation/",
+        "/users/",
+        "/activities/",
+        "/notes/",
+        "/reports/",
+        "/tapps/",
+        "/library/",
+        "/phantasi/articles/",
+    ]
+    .iter()
+    .any(|prefix| path.len() > prefix.len() && path.starts_with(prefix))
 }
 
 /// RFC 6455 handshake detection: `Connection: upgrade` + `Upgrade: websocket`.
@@ -782,9 +777,10 @@ fn is_backend_path_for(path: &str, user_agent: &str, query: &str) -> bool {
         || path == "/inbox"
         // Actor, outbox, followers, following, per-user inbox, avatar
         || path.starts_with("/users/")
-        // Note attachment media (Image/Video) under data/federation_media.
-        // Absolute URLs: /media/federation/{userId}/{filename} — must not hit SPA.
+        // Site media is served by the web process, including historical federation
+        // attachment URLs. Must not hit SPA or the federation worker.
         || path.starts_with("/media/federation/")
+        || path.starts_with("/media/assets/")
 }
 
 fn bad_gateway(err: anyhow::Error) -> Response {
@@ -1223,9 +1219,8 @@ async fn read_maintenance_cached(state: &AppState) -> MaintenanceFile {
 
 async fn read_maintenance_from_disk(path: &PathBuf) -> std::io::Result<MaintenanceFile> {
     match tokio::fs::read(path).await {
-        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, error)
-        }),
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             Ok(MaintenanceFile::default())
         }
@@ -1365,9 +1360,14 @@ mod tests {
             "/tapps/id",
             "/library/id",
             "/phantasi/articles/id",
-            "/media/federation/file",
         ] {
             assert!(is_federation_path(path), "missing {path}");
+        }
+        for path in ["/media/federation/file", "/media/assets/id/a.png"] {
+            assert!(
+                !is_federation_path(path),
+                "site media must not go to the federation worker: {path}"
+            );
         }
         for path in [
             "/",
@@ -1748,6 +1748,10 @@ mod tests {
             browser
         ));
         assert!(is_backend_path("/media/federation/42/uuid.mp4", browser));
+        assert!(is_backend_path(
+            "/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.png",
+            browser
+        ));
 
         // Must stay on SPA / ACME / non-backend
         assert!(!is_backend_path("/", browser));

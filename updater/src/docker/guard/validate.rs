@@ -697,6 +697,7 @@ fn validate_mount(
                 || (source == data
                     && subpath == Some("federation_media")
                     && target == "/app/data/federation_media")
+                || (source == data && subpath == Some("media") && target == "/app/data/media")
                 || (source == cache && subpath == Some("images") && target == "/tmp/cache/images");
         let allowed = service == "federation-worker"
             && kind == "volume"

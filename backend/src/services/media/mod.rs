@@ -14,6 +14,7 @@ mod legacy;
 mod migration;
 mod recovery;
 mod references;
+pub(crate) mod serve;
 mod store;
 mod types;
 mod urls;
@@ -34,6 +35,9 @@ pub use types::{
 };
 pub use urls::{content_path, public_path, registered_local_path, storage_key};
 pub use validate::{ValidatedPayload, allowed_media_mimes, validate_bytes};
+pub use serve::{
+    FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, resolve_public_asset,
+};
 
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use uuid::Uuid;
@@ -240,6 +244,7 @@ mod tests {
             include_str!("migration.rs"),
             include_str!("recovery.rs"),
             include_str!("references.rs"),
+            include_str!("serve.rs"),
             include_str!("store.rs"),
             include_str!("types.rs"),
             include_str!("urls.rs"),

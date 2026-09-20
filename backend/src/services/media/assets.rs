@@ -229,6 +229,16 @@ pub async fn find_by_id(
     Ok(media_assets::Entity::find_by_id(id).one(db).await?)
 }
 
+pub async fn find_by_public_id(
+    db: &impl ConnectionTrait,
+    public_id: Uuid,
+) -> Result<Option<media_assets::Model>, MediaError> {
+    Ok(media_assets::Entity::find()
+        .filter(media_assets::Column::PublicId.eq(public_id))
+        .one(db)
+        .await?)
+}
+
 pub fn to_domain(row: media_assets::Model, usage_count: i64) -> Result<MediaAsset, MediaError> {
     let public_id = row
         .public_id

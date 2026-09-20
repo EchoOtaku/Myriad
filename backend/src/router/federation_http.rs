@@ -65,18 +65,6 @@ pub(crate) fn build_federation_router(
                 ))
                 .service(ServeDir::new(&services::data_paths::paths().cache_images)),
         )
-        // Public federation media (Note attachments Image/Video) — URLs embedded in AP.
-        // Intentionally unauthenticated GET so remote instances can fetch media during
-        // federation. Must stay outside session/auth middleware.
-        .nest_service(
-            "/media/federation",
-            tower::ServiceBuilder::new()
-                .layer(SetResponseHeaderLayer::if_not_present(
-                    axum::http::header::CACHE_CONTROL,
-                    axum::http::HeaderValue::from_static("public, max-age=604800"),
-                ))
-                .service(ServeDir::new(federation::content::federation_media_root())),
-        )
         .route(
             "/users/{username}/outbox",
             get(federation::outbox::get_outbox),
@@ -183,5 +171,14 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn federation_worker_does_not_serve_site_media() {
+        let src = include_str!("federation_http.rs");
+        assert!(!src.contains(concat!("/media", "/federation")));
+        assert!(!src.contains(concat!("federation_media", "_root")));
+        let base = include_str!("base.rs");
+        assert!(base.contains("public_media_routes"));
     }
 }
