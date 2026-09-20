@@ -168,12 +168,6 @@ export function TappStore({
   }, [runtime])
 
   useEffect(() => {
-    if (!hasChecked && hasSessionHint()) {
-      checkAuth()
-    }
-  }, [hasChecked, checkAuth])
-
-  useEffect(() => {
     let mounted = true
 
     const initLoad = async () => {

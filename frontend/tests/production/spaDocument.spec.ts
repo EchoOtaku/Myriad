@@ -110,3 +110,30 @@ test('offers visible recovery if both the chosen and fallback locale fail', asyn
   await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
   await expect(page.locator('#page-loader')).toHaveAttribute('aria-busy', 'false')
 })
+
+test('home shares the provider session probe while the first response is pending', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('myriad_session_hint', 'true'))
+  let probes = 0
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/auth/me') {
+      probes++
+      await gate
+      return route.fulfill({ json: { authenticated: true, id: 1, username: 'reader', is_admin: false } })
+    }
+    return route.fulfill({ json: path === '/api/setup/status' ? { is_setup_required: false } : { success: true, data: [], items: [], installations: [] } })
+  })
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('#app-root')).toHaveClass(/app-ready/)
+    expect(probes).toBe(1)
+    const response = page.waitForResponse('**/api/auth/me')
+    release()
+    await response
+    // Allow state effects and any incorrectly queued second probe to execute.
+    await page.waitForTimeout(500)
+    expect(probes).toBe(1)
+  } finally { release() }
+})

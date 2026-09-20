@@ -59,7 +59,6 @@ import { notifyRecentActivityUpdated } from '../utils/recentActivity'
 import { REPORT_PLATFORM_IDS } from '../utils/reportCardVisuals'
 import { reportUserFacingError } from '../utils/reportError'
 import { invalidateLatestReportCache } from '../utils/requestDedup'
-import { hasSessionHint } from '../utils/sessionDetection'
 import { showToast } from '../utils/toastManager'
 import { userFacingError } from '../utils/userFacingError'
 import { pickReportHook } from './reports/reportsDynamicStatus'
@@ -727,15 +726,8 @@ export default function Reports() {
     isAdmin: authIsAdmin,
     isAuthenticated,
     hasChecked,
-    checkAuth,
     user,
   } = useAuth()
-
-  useEffect(() => {
-    if (!hasChecked && hasSessionHint()) {
-      checkAuth()
-    }
-  }, [hasChecked, checkAuth])
 
   useEffect(() => {
     let cancelled = false

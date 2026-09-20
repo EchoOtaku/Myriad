@@ -75,7 +75,6 @@ import { stickerCropForSlot } from '../utils/homeStickerCrop'
 import { stickerAspectKey } from '../utils/homeStickerSize'
 import { buildHomePageSeo } from '../utils/modulePageSeo'
 import { getUIConfigDeduped } from '../utils/requestDedup'
-import { hasSessionHint } from '../utils/sessionDetection'
 import {
   showError,
   showStickyToast,
@@ -100,7 +99,7 @@ function readHomeEditTourDockPose() {
 }
 
 export default function Home() {
-  const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth()
+  const { isAuthenticated, hasChecked, isAdmin } = useAuth()
   const { t, format } = useI18n()
   const isPageReady = usePageReady()
   // Same viewportBands as WidgetGrid (phone≤767 / desktop≥1078).
@@ -248,12 +247,6 @@ export default function Home() {
     t.home.exitEditConfirm,
   )
   const showHomeAdminActions = Boolean(isAdmin && isDesktopBand)
-
-  useEffect(() => {
-    if (!hasChecked && hasSessionHint()) {
-      checkAuth()
-    }
-  }, [hasChecked, checkAuth])
 
   // Refresh the server CSRF token after authentication.
   useEffect(() => {

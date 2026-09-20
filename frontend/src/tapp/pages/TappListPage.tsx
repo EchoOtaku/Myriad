@@ -73,7 +73,7 @@ export function TappListPage() {
   const navigate = useNavigate()
   const { t, locale, format } = useI18n()
   const { isMobile } = useBreakpoints()
-  const { isAdmin, isAuthenticated, hasChecked, checkAuth } = useAuth()
+  const { isAdmin, isAuthenticated, hasChecked } = useAuth()
   const animConfig = useAnimationLevel()
   const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
   const moduleOpenToAll = canAccessModuleVisibility(
@@ -292,10 +292,6 @@ export function TappListPage() {
   useEffect(() => {
     let mounted = true
 
-    if (!hasChecked && hasSessionHint()) {
-      checkAuth()
-    }
-
     const initLoad = async () => {
       await runtime.waitForSync()
       if (mounted) {
@@ -320,7 +316,7 @@ export function TappListPage() {
       unsubStopped()
       unsubSyncComplete()
     }
-  }, [loadTapps, runtime, hasChecked, checkAuth])
+  }, [loadTapps, runtime])
 
   const handleStart = async (tappId: string) => {
     try {
