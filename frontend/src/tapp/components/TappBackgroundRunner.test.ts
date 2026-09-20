@@ -29,7 +29,7 @@ test(`background runner admits four successful instances serially after ${failed
     clearBackgroundResidents: () => {},
     registerBackgroundResidentStopHandler: (handler: (tappId: string) => void) => { stopResident = handler; return () => { stopResident = undefined } },
     loadCoreResources: async (tapp: { id: string }) => { calls.push(tapp.id); if (tapp.id === '0') await first.promise; if (Number(tapp.id) < failed) throw new Error('fixture package unavailable'); return { modules: {} } },
-    TappPageSandbox: () => null,
+    lazy: () => () => null, Suspense: React.Suspense,
   }
   const runner = compileFunction(`${script}; return TappBackgroundRunner;`, Object.keys(dependencies))(...Object.values(dependencies))
   runner()

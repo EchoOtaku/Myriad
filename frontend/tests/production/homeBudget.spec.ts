@@ -82,7 +82,7 @@ test('production home downloads and retained resources stay bounded', async ({ p
   })
   expect(errors).toEqual([])
   expect([...assets.keys()].some(url => /\/Home-[^/]+\.js/.test(url))).toBe(true)
-  expect(homeGzipBytes).toBeLessThan(1_250_000)
+  expect(homeGzipBytes).toBeLessThan(510_000)
   expect(gzipBytes).toBeLessThan(1_500_000)
   expect(metrics.interaction).toBeLessThan(1000)
   expect(metrics.sockets).toBeLessThanOrEqual(2)
@@ -97,6 +97,34 @@ test('production home downloads and retained resources stay bounded', async ({ p
       task.start >= metrics.navStartedAt && task.start < metrics.navEndedAt)
     .map((task: { duration: number }) => task.duration)
   expect(Math.max(0, ...duringNav)).toBeLessThan(400)
+})
+
+test('empty home does not load sandboxes after background startup and route warming', async ({ page }) => {
+  const scripts: string[] = []
+  const apiPaths = new Set<string>()
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  page.on('request', request => {
+    if (/\.js(?:\?|$)/.test(request.url())) scripts.push(request.url())
+  })
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname
+    apiPaths.add(path)
+    let data: unknown = { success: true, data: [], items: [], sources: [], installations: [] }
+    if (path === '/api/setup/status') data = { is_setup_required: false }
+    if (path === '/api/auth/me') data = { authenticated: false }
+    if (path === '/api/config/ui') data = { dashboard_layout_mode: 'standard' }
+    return route.fulfill({ json: data })
+  })
+  await page.goto('/')
+  await expect(page.locator('.home-shell__inner')).toBeVisible()
+  // Observe actual delayed imports, so a shorter delay cannot make this pass.
+  await expect.poll(() => scripts.some(url => /\/TappBackgroundRunner-[^/]+\.js/.test(url)), { timeout: 15000 }).toBe(true)
+  await expect.poll(() => scripts.some(url => /\/TappStorePage-[^/]+\.js/.test(url)), { timeout: 20000 }).toBe(true)
+  await page.waitForTimeout(500)
+  expect([...apiPaths].some(path => path.startsWith('/api/tapps'))).toBe(true)
+  expect(scripts.filter(url => /\/(?:TappWidgetSandbox|TappPageSandbox|agentApi)-[^/]+\.js/.test(url))).toEqual([])
+  expect(errors).toEqual([])
 })
 
 test('scrolling does not cancel an in-progress component transition', async ({ page }) => {

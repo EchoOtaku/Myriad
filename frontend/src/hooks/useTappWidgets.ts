@@ -37,13 +37,13 @@ function TappDefaultSkeleton({ accent }: { accent?: string }) {
   )
 }
 
-type TappRuntimeModule = typeof import('../tapp/runtime')
+type TappRuntimeModule = typeof import('../tapp/runtime/TappRuntime')
 
 // runtime 模块级缓存，多个调用方只加载一次。
 let runtimeModulePromise: Promise<TappRuntimeModule> | null = null
 
 function loadTappRuntimeModule(): Promise<TappRuntimeModule> {
-  runtimeModulePromise ||= import('../tapp/runtime')
+  runtimeModulePromise ||= import('../tapp/runtime/TappRuntime')
   return runtimeModulePromise
 }
 

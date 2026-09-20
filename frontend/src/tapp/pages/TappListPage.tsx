@@ -34,6 +34,7 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { isWebKit } from '../../utils/platformDetect'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
@@ -51,8 +52,7 @@ import {
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
-import { getTappRuntime } from '../runtime'
-import { isWebKit } from '../runtime/TappPageSandbox'
+import { getTappRuntime } from '../runtime/TappRuntime'
 import { listTappDetails } from '../services/TappLifecycleApi'
 import {
   fetchTappListCardSizes,

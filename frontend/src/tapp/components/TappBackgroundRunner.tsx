@@ -1,13 +1,14 @@
 import type { TappCodeStructure, TappInstance } from '../types'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { getTappRuntime } from '../runtime'
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   clearBackgroundResidents,
   publishBackgroundResidents,
   registerBackgroundResidentStopHandler,
 } from '../runtime/backgroundResidentStore'
 import { loadCoreResources } from '../runtime/sandbox/resourceLoader'
-import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { getTappRuntime } from '../runtime/TappRuntime'
+
+const TappPageSandbox = lazy(() => import('../runtime/TappPageSandbox').then(module => ({ default: module.TappPageSandbox })))
 
 export const TappBackgroundRunner: React.FC = () => {
   const disabledRef = useRef(new Set<string>())
@@ -156,26 +157,28 @@ export const TappBackgroundRunner: React.FC = () => {
       className="fixed top-0 left-0 w-0 h-0 overflow-hidden invisible pointer-events-none"
       aria-hidden="true"
     >
-      {backgroundTapps.map((tapp) => {
-        const code = tappCodes.get(tapp.id)
-        if (!code) return null
+      <Suspense fallback={null}>
+        {backgroundTapps.map((tapp) => {
+          const code = tappCodes.get(tapp.id)
+          if (!code) return null
 
-        return (
-          <TappPageSandbox
-            key={`${tapp.id}:${tapp.manifest.version}`}
-            tappInstance={tapp}
-            code={code}
-            headless
-            onError={(error) => {
-              console.error(
-                `[TappBackgroundRunner] Tapp ${tapp.id} error:`,
-                error,
-              )
-            }}
-            className="w-px h-px"
-          />
-        )
-      })}
+          return (
+            <TappPageSandbox
+              key={`${tapp.id}:${tapp.manifest.version}`}
+              tappInstance={tapp}
+              code={code}
+              headless
+              onError={(error) => {
+                console.error(
+                  `[TappBackgroundRunner] Tapp ${tapp.id} error:`,
+                  error,
+                )
+              }}
+              className="w-px h-px"
+            />
+          )
+        })}
+      </Suspense>
     </div>
   )
 }

@@ -160,7 +160,7 @@ function GlobalAgentWindowHandler() {
   useEffect(() => {
     let cancelled = false
     let unregister: (() => void) | undefined
-    void import('./services/agent').then(
+    void import('./services/agent/frontendActions').then(
       ({ registerActionHandler, unregisterActionHandler }) => {
         if (cancelled) return
         const handler = async (action: {

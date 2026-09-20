@@ -33,9 +33,9 @@ import {
 } from '../constants/hostPanels'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
-import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { getTappRuntime } from '../runtime/TappRuntime'
 import { tappHasPage } from '../utils/manifestLayers'
 import { resolveManifestText } from '../utils/manifestLocale'
 import {
