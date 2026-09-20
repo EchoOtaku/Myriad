@@ -54,3 +54,22 @@ test('live appends and repeated earlier pages keep the mounted window bounded', 
   await expect(rows).toHaveCount(80)
   await expect(page.locator('[data-message-id="120"]')).toBeAttached()
 })
+
+test('a second wheel gesture before the next animation frame still reveals older history', async ({ page }) => {
+  // Hold the layout guard open to reproduce rapid input deterministically.
+  await page.addInitScript(() => {
+    window.requestAnimationFrame = () => 1
+    window.cancelAnimationFrame = () => {}
+  })
+  const fixture = `/@fs${fileURLToPath(new URL('./fixture/agentHistory.tsx', import.meta.url))}`
+  await page.route('**/agent-history-probe', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><div id="root"></div>' }))
+  await page.goto('/agent-history-probe')
+  await page.evaluate(async fixture => (await import(fixture)).mountAgentHistory(200), fixture)
+  const rows = page.locator('[data-message-id]')
+  await expect(rows.first()).toHaveAttribute('data-message-id', '160')
+  await rows.last().dispatchEvent('wheel', { deltaY: -3800 })
+  await expect(rows.first()).toHaveAttribute('data-message-id', '120')
+  await rows.first().dispatchEvent('wheel', { deltaY: -4000 })
+  await expect(rows.first()).toHaveAttribute('data-message-id', '80')
+  await expect(rows).toHaveCount(80)
+})

@@ -40,8 +40,10 @@ export function useConversationHistory(ids: readonly string[]) {
     })
     return () => cancelAnimationFrame(frame)
   }, [identity, start])
-  const onNearStart = useCallback(() => {
-    if (pending.current || start === 0) return
+  const onNearStart = useCallback((userInitiated = false) => {
+    // Layout notifications may still describe the previous page, but a new
+    // gesture after commit must not be swallowed by the two-frame guard.
+    if ((pending.current && !userInitiated) || start === 0) return
     pending.current = true
     setWindow({
       identity,

@@ -37,7 +37,7 @@ export function useConversationPan(
   enabled: boolean,
   resetKey: unknown,
   cardSelector = '.agent-panel-message',
-  onNearStart?: () => void,
+  onNearStart?: (userInitiated?: boolean) => void,
 ): void {
   const nearStartRef = useRef(onNearStart)
   nearStartRef.current = onNearStart
@@ -208,13 +208,13 @@ export function useConversationPan(
       }
     }
 
-    const writeTransform = () => {
+    const writeTransform = (userInitiated = false) => {
       const max = maxScroll()
       writeCap(max)
       track.style.transform = max > 0 ? `translate3d(0, ${-current}px, 0)` : ''
       // pinned-bottom current can still be < 72; that is not "scrolled to top"
       if (max > 0 && !nearBottom && current <= CONVERSATION_LOAD_MORE_PX) {
-        nearStartRef.current?.()
+        nearStartRef.current?.(userInitiated)
       }
     }
 
@@ -309,7 +309,7 @@ export function useConversationPan(
       current = target
       nearBottom = max - target <= CONVERSATION_NEAR_BOTTOM_PX
       track.style.willChange = 'transform'
-      writeTransform()
+      writeTransform(true)
       scheduleExit()
     }
 
@@ -341,7 +341,7 @@ export function useConversationPan(
         CONVERSATION_NEAR_BOTTOM_PX
       samples.push({ t: event.timeStamp, x: target })
       if (samples.length > 12) samples.shift()
-      writeTransform()
+      writeTransform(true)
       scheduleExit()
     }
 
