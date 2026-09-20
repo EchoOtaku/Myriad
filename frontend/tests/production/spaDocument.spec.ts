@@ -61,3 +61,52 @@ test('no-JavaScript document exposes the fallback and hides the loading screen',
     await expect(page.locator('#page-loader')).toBeHidden()
   } finally { await context.close() }
 })
+
+test('keeps the document loader and defers background startup until the route commits', async ({ page }) => {
+  const backgroundRequests: string[] = []
+  page.on('request', request => {
+    if (/\/TappBackgroundRunner-[^/]+\.js$/.test(request.url())) backgroundRequests.push(request.url())
+  })
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname
+    return route.fulfill({ json: path === '/api/setup/status' ? { is_setup_required: false } : path === '/api/auth/me' ? { authenticated: false } : { success: true, data: [], items: [], installations: [] } })
+  })
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let requested!: () => void
+  const routeRequested = new Promise<void>(resolve => { requested = resolve })
+  await page.route('**/assets/Home-*.js', async route => {
+    requested()
+    await gate
+    await route.continue()
+  })
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await routeRequested
+    // Exceed the background host's three-second delay as well as the loader frames.
+    await page.waitForTimeout(4200)
+    expect(backgroundRequests).toEqual([])
+    await expect(page.locator('#page-loader')).toHaveAttribute('aria-busy', 'true')
+    await expect(page.locator('#app-root')).not.toHaveClass(/app-ready/)
+    release()
+    await expect(page.locator('#app-root')).toHaveClass(/app-ready/)
+    await expect(page.locator('#page-loader')).toHaveAttribute('aria-busy', 'false')
+  } finally { release() }
+})
+
+test('reveals route recovery when the initial page module fails', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ json: { is_setup_required: false, authenticated: false, data: [] } }))
+  await page.route('**/assets/Home-*.js', route => route.abort())
+  await page.goto('/')
+  await expect(page.locator('#app-root')).toHaveClass(/app-ready/)
+  await expect(page.locator('[role="alert"]').first()).toBeVisible()
+  await expect(page.locator('#page-loader')).toHaveAttribute('aria-busy', 'false')
+})
+
+test('offers visible recovery if both the chosen and fallback locale fail', async ({ page }) => {
+  await page.route(/\/assets\/(?:zh-CN|en-US)-[^/]+\.js$/, route => route.abort())
+  await page.addInitScript(() => localStorage.setItem('locale', 'zh-CN'))
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+  await expect(page.locator('#page-loader')).toHaveAttribute('aria-busy', 'false')
+})

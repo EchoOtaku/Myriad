@@ -74,6 +74,24 @@ class PageLoader {
   }
 }
 
+let pageLoader: PageLoader | undefined
+const readyListeners = new Set<() => void>()
+
+export const isDocumentReady = () => pageLoader?.isReady() ?? false
+
+export function subscribeDocumentReady(listener: () => void): () => void {
+  readyListeners.add(listener)
+  return () => {
+    readyListeners.delete(listener)
+  }
+}
+
+export function markDocumentReady(): void {
+  if (isDocumentReady()) return
+  pageLoader?.markAppReady()
+  for (const listener of readyListeners) listener()
+}
+
 export function initPageLoader() {
-  ;(window as any).pageLoader = new PageLoader()
+  pageLoader = new PageLoader()
 }

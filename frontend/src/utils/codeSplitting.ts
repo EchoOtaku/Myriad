@@ -5,47 +5,68 @@ import { yieldToMain } from './yieldToMain'
 export function lazyWithPreload<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ) {
-  const Component = lazy(factory)
-
-  ;(Component as any).preload = factory
-
-  return Component
+  let pending: Promise<{ default: T }> | undefined
+  const preload = () => {
+    pending ??= Promise.resolve()
+      .then(factory)
+      .catch((error) => {
+        // Speculative failures must not poison a later navigation attempt.
+        pending = undefined
+        throw error
+      })
+    return pending
+  }
+  return Object.assign(lazy(preload), { preload })
 }
 
-export function preloadRoutes(routes: string[]): void {
+function canPrefetch() {
   const connection = (
     navigator as Navigator & {
       connection?: { saveData?: boolean; effectiveType?: string }
     }
   ).connection
+  return (
+    !connection?.saveData &&
+    connection?.effectiveType !== 'slow-2g' &&
+    connection?.effectiveType !== '2g'
+  )
+}
 
-  if (
-    connection?.saveData ||
-    connection?.effectiveType === 'slow-2g' ||
-    connection?.effectiveType === '2g'
-  ) {
-    return
-  }
+/** Cancel queued work; an import already in flight is shared and cannot be aborted. */
+export function preloadRoutes(routes: readonly string[]): () => void {
+  if (!canPrefetch()) return () => {}
 
+  let cancelled = false
   const run = async () => {
-    for (const route of routes) {
+    for (const route of new Set(routes)) {
+      if (cancelled || !canPrefetch()) return
       const component = routeComponents[route as keyof typeof routeComponents]
-      if (component && (component as any).preload) {
-        await (component as any).preload()
-        await yieldToMain()
+      if (!component) continue
+      try {
+        await component.preload()
+      } catch {
+        // Optional warming must never surface an unhandled rejection.
+        // Navigation retains its own error boundary and can retry the import.
       }
+      if (!cancelled) await yieldToMain()
     }
   }
 
-  // No requestIdleCallback: fall back to macrotask or hover prefetch never runs.
   if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => {
+    const id = window.requestIdleCallback(() => {
       void run()
     })
-  } else {
-    setTimeout(() => {
-      void run()
-    }, 0)
+    return () => {
+      cancelled = true
+      window.cancelIdleCallback(id)
+    }
+  }
+  const id = setTimeout(() => {
+    void run()
+  }, 0)
+  return () => {
+    cancelled = true
+    clearTimeout(id)
   }
 }
 
@@ -68,10 +89,10 @@ export const routeComponents = {
 
 export const CRITICAL_PRELOAD_ROUTES = ['library', 'tapp', 'tappStore'] as const
 
-export function preloadCriticalRoutes(): void {
-  preloadRoutes(Iterator.from(CRITICAL_PRELOAD_ROUTES).toArray())
+export function preloadCriticalRoutes(): () => void {
+  return preloadRoutes(CRITICAL_PRELOAD_ROUTES)
 }
 
-export function preloadTappRoutes(): void {
-  preloadRoutes(['tapp', 'tappStore', 'tappDetail', 'tappRun'])
+export function preloadTappRoutes(): () => void {
+  return preloadRoutes(['tapp', 'tappStore', 'tappDetail', 'tappRun'])
 }

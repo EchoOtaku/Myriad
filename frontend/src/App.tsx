@@ -4,7 +4,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import React, { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -15,6 +15,7 @@ import {
 } from 'react-router-dom'
 import { AgentSessionHost } from './components/agent-panel/AgentSessionHost'
 import CustomScrollbar from './components/CustomScrollbar'
+import { DocumentReady } from './components/DocumentReady'
 import { RenderErrorBoundary } from './components/RenderErrorBoundary'
 import RouteLoader from './components/RouteLoader'
 import { AgentGlobalActions } from './contexts/AgentGlobalActions'
@@ -41,6 +42,7 @@ import {
   canUseAgent,
   useModuleVisibilityPreferences,
 } from './utils/moduleVisibility'
+import { isDocumentReady, subscribeDocumentReady } from './utils/pageLoader'
 import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
@@ -72,6 +74,10 @@ const TappStore = lazy(() => import('./tapp/pages/TappStorePage.tsx'))
 const TappPlayground = lazy(
   () => import('./tapp/pages/TappPlaygroundPage.tsx'),
 )
+
+const PerformanceMonitor = import.meta.env.DEV
+  ? lazy(() => import('./components/PerformanceMonitor'))
+  : () => null
 
 const AgentPanel = lazy(() => import('./components/agent-panel/AgentPanel'))
 const AgentEngine = lazy(() => import('./components/agent-panel/AgentEngine'))
@@ -294,7 +300,11 @@ function AgentAccessGate({ children }: { children: React.ReactNode }) {
 
 /** fallback null：PageLoader 与页面数据态已覆盖等待，不要再加路由级 spinner。 */
 function SuspensePage({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={null}>{children}</Suspense>
+  return (
+    <Suspense fallback={null}>
+      <DocumentReady>{children}</DocumentReady>
+    </Suspense>
+  )
 }
 
 function NamespacedPage({
@@ -320,26 +330,28 @@ function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
       source="route"
       resetKey={location.pathname}
       fallback={({ error, reset }) => (
-        <div
-          role="alert"
-          className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center"
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {t.errors.pageRenderFailed}
-          </p>
-          {import.meta.env.DEV && error ? (
-            <p className="max-w-lg truncate font-mono text-xs text-gray-400">
-              {error.message}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-lg bg-black/5 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-black/10 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/15"
+        <DocumentReady>
+          <div
+            role="alert"
+            className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center"
           >
-            {t.common.retry}
-          </button>
-        </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {t.errors.pageRenderFailed}
+            </p>
+            {import.meta.env.DEV && error ? (
+              <p className="max-w-lg truncate font-mono text-xs text-gray-400">
+                {error.message}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={reset}
+              className="rounded-lg bg-black/5 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-black/10 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/15"
+            >
+              {t.common.retry}
+            </button>
+          </div>
+        </DocumentReady>
       )}
     >
       {children}
@@ -665,11 +677,11 @@ function AppRoutes() {
 }
 
 export function App() {
-  const [_isLayoutReady, setIsLayoutReady] = useState(false)
-
+  const documentReady = useSyncExternalStore(subscribeDocumentReady, isDocumentReady, () => false)
   // 后台 Tapp 宿主延后到首屏+入场之后：会拉起整套 runtime，不与首屏抢主线程。
   const [backgroundTappsReady, setBackgroundTappsReady] = useState(false)
   useEffect(() => {
+    if (!documentReady) return
     let idleId: number | null = null
     const start = () => setBackgroundTappsReady(true)
     const timerId = window.setTimeout(() => {
@@ -685,34 +697,21 @@ export function App() {
         cancelIdleCallback(idleId)
       }
     }
-  }, [])
-
-  useEffect(() => {
-    let innerRafId: number | null = null
-    const rafId = requestAnimationFrame(() => {
-      innerRafId = requestAnimationFrame(() => {
-        setIsLayoutReady(true)
-
-        if ((window as any).pageLoader) {
-          ;(window as any).pageLoader.markAppReady()
-        }
-      })
-    })
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      if (innerRafId !== null) cancelAnimationFrame(innerRafId)
-    }
-  }, [])
+  }, [documentReady])
 
   // 只预取资料库 / Tapp，不预取 Config。8s：过早会与首屏抢主线程。
   useEffect(() => {
+    if (!documentReady) return
+    let cancelPrefetch: (() => void) | undefined
     const timer = setTimeout(() => {
-      preloadCriticalRoutes()
+      cancelPrefetch = preloadCriticalRoutes()
     }, 8000)
 
-    return () => clearTimeout(timer)
-  }, [])
+    return () => {
+      clearTimeout(timer)
+      cancelPrefetch?.()
+    }
+  }, [documentReady])
 
   return (
     <BrowserRouter>
@@ -755,9 +754,7 @@ export function App() {
                     </AppLayout>
                     {import.meta.env.DEV && (
                       <Suspense fallback={null}>
-                        {React.createElement(
-                          lazy(() => import('./components/PerformanceMonitor')),
-                        )}
+                        <PerformanceMonitor />
                       </Suspense>
                     )}
                   </ReadingListProvider>

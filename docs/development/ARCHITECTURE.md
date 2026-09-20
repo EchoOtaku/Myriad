@@ -48,6 +48,20 @@ host HTTP_PORT
 | Crates | `crates/` | Shared libs (error, outbound, image-proxy, tapp-*, …) |
 | Shared | `shared/` | Cross-component static assets (e.g. image proxy host list) |
 
+## Frontend startup
+
+`frontend/src/main.tsx` initializes the document runtime and mounts React inside
+an application error boundary. `DocumentReady` reveals the document when the
+initial route commits, including its own data-loading UI, or when a recovery UI
+commits. This is not a guarantee that every widget or network request has finished.
+Missing route modules and unavailable locale catalogs must expose recovery rather
+than leave the document hidden behind its loading screen.
+
+Background TAPP startup and speculative route warming begin after this document
+signal. Their pending timers and idle callbacks are cancelled on unmount; route
+warming shares imports and contains speculative failures. These scheduling rules
+do not alter the TAPP authorization or instance destruction rules.
+
 ## Backend surfaces (high level)
 
 - **Platforms / profiles**：GitHub、Bilibili、Steam、网易云、YouTube、Bangumi、Discord、X、MAL、Xbox、PSN 等同步与资料库

@@ -13,6 +13,7 @@ import React, {
   useMemo,
   useState,
 } from 'react'
+import { DocumentReady, StartupFailure } from '../components/DocumentReady'
 import { formatMessage, getDefaultLocale, htmlLang, saveLocale } from '../i18n'
 import {
   getCachedShellLocale,
@@ -24,7 +25,6 @@ import {
   readShellNamespace,
 } from '../i18n/loadLocale'
 import { persistLocaleToAccount } from '../i18n/localeAccount'
-import { currentCopy } from '../i18n/localeCopy'
 
 // Begin the request while the rest of the app initializes, instead of waiting
 // for the provider's first effect. The provider handles failure and retries.
@@ -105,12 +105,14 @@ export class LocaleNamespaceBoundary extends React.Component<NamespaceBoundaryPr
   render() {
     if (!this.state.error) return this.props.children
     return (
-      <div role="alert" className="p-6 text-center">
-        <p>{this.props.copy.errors.localeLoadFailed}</p>
-        <button type="button" disabled={this.state.retrying} onClick={this.retry}>
-          {this.state.retrying ? this.props.copy.common.loading : this.props.copy.common.retry}
-        </button>
-      </div>
+      <DocumentReady>
+        <div role="alert" className="p-6 text-center">
+          <p>{this.props.copy.errors.localeLoadFailed}</p>
+          <button type="button" disabled={this.state.retrying} onClick={this.retry}>
+            {this.state.retrying ? this.props.copy.common.loading : this.props.copy.common.retry}
+          </button>
+        </div>
+      </DocumentReady>
     )
   }
 }
@@ -118,6 +120,7 @@ export class LocaleNamespaceBoundary extends React.Component<NamespaceBoundaryPr
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const [bootFailed, setBootFailed] = useState(false)
   const [locale, setLocaleState] = useState<Locale>(getDefaultLocale)
   // Swap locale and t together so the UI never shows the wrong language.
   const [bundle, setBundle] = useState<LocaleBundle | null>(() => {
@@ -131,24 +134,28 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (bundle?.locale === locale) return
 
-    loadShellLocale(locale)
-      .then((t) => {
+    const load = async () => {
+      try {
+        const t = await loadShellLocale(locale)
+        if (!cancelled) setBundle({ locale, t: asShellCopy(t) })
+      } catch (error) {
         if (cancelled) return
-        setBundle({ locale, t: asShellCopy(t) })
-      })
-      .catch((err) => {
-        console.error('[I18n] Failed to load locale:', locale, err)
-        if (locale !== 'en-US') {
+        console.error('[I18n] Failed to load locale:', locale, error)
+        try {
+          if (locale === 'en-US') throw error
+          const t = await loadShellLocale('en-US')
+          if (cancelled) return
+          setLocaleState('en-US')
+          setBundle({ locale: 'en-US', t: asShellCopy(t) })
           void import('../utils/toastManager').then(({ showError }) => {
-            showError(currentCopy().errors.localeLoadFailed)
-          })
-          loadShellLocale('en-US').then((t) => {
-            if (cancelled) return
-            setLocaleState('en-US')
-            setBundle({ locale: 'en-US', t: asShellCopy(t) })
-          })
+            if (!cancelled) showError(t.errors.localeLoadFailed)
+          }).catch(() => {})
+        } catch {
+          if (!cancelled) setBootFailed(true)
         }
-      })
+      }
+    }
+    void load()
 
     return () => {
       cancelled = true
@@ -201,7 +208,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Do not mount children until the first bundle is ready.
   if (!value) {
-    return null
+    return bootFailed ? <StartupFailure /> : null
   }
 
   return (
