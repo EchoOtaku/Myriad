@@ -292,16 +292,7 @@ pub async fn advance_media_migration(
     Json(request): Json<MediaMigrationRequest>,
 ) -> Result<Json<Value>, HttpError> {
     require_admin(&headers, &db).await?;
-    let mut origins = vec![crate::oauth_url_builder::SiteConfig::get_base_url().await];
-    let config = crate::GLOBAL_CONFIG.read().await;
-    origins.extend(
-        config
-            .base_url
-            .iter()
-            .chain(config.frontend_url.iter())
-            .cloned(),
-    );
-    drop(config);
+    let origins = crate::services::media::upgrade::configured_origins().await;
     let store = MediaStore::new(paths().media.clone());
     let legacy = crate::services::media::LegacyPaths::from_data_paths(paths());
     let progress =

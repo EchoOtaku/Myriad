@@ -36,3 +36,42 @@ pub(super) async fn retry_deletions(
     }
     Ok(())
 }
+
+/// Owned by the process lifecycle; never awaited by database/schema startup.
+pub fn start_upgrade_worker() -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async {
+        loop {
+            // Give initialization time to connect the DB. No elapsed-time test
+            // marks the migration complete; its durable cursor is authoritative.
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            let Ok(db) = crate::services::tapp_registry::database() else {
+                continue;
+            };
+            let service = MediaService::from_data_paths(crate::services::data_paths::paths());
+            let legacy = super::LegacyPaths::from_data_paths(crate::services::data_paths::paths());
+            let origins = super::upgrade::configured_origins().await;
+            match super::upgrade::automatic_step(
+                &db,
+                service.store(),
+                &legacy,
+                &origins,
+                chrono::Utc::now().timestamp(),
+            )
+            .await
+            {
+                Ok(Some(progress)) if progress.complete => {
+                    tracing::info!(scanned = progress.scanned, "media upgrade completed")
+                }
+                Ok(Some(progress)) if progress.error.is_some() => tracing::warn!(
+                    error = ?progress.error, source = ?progress.error_source, next_retry_at = ?progress.next_retry_at,
+                    "media upgrade will retry automatically"),
+                Ok(_) => {}
+                Err(error) => {
+                    // Disconnected/uninitialized DB cannot persist its backoff yet.
+                    tracing::warn!(%error, "media upgrade unavailable; retrying later");
+                    tokio::time::sleep(std::time::Duration::from_secs(55)).await;
+                }
+            }
+        }
+    })
+}

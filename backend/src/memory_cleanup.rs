@@ -1,23 +1,33 @@
 //! Process-owned reclamation, including workers that never receive HTTP requests.
 use std::time::Duration;
 
-pub(crate) struct MemoryCleanup(tokio::task::JoinHandle<()>);
+pub(crate) struct MemoryCleanup(
+    tokio::task::JoinHandle<()>,
+    Option<tokio::task::JoinHandle<()>>,
+);
 
 impl Drop for MemoryCleanup {
     fn drop(&mut self) {
         self.0.abort();
+        if let Some(upgrade) = &self.1 {
+            upgrade.abort();
+        }
     }
 }
 
-pub(crate) fn start() -> MemoryCleanup {
-    MemoryCleanup(tokio::spawn(async {
+pub(crate) fn start(automatic_media_upgrade: bool) -> MemoryCleanup {
+    let cleanup = tokio::spawn(async {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
             reclaim().await;
         }
-    }))
+    });
+    MemoryCleanup(
+        cleanup,
+        automatic_media_upgrade.then(crate::services::media::start_upgrade_worker),
+    )
 }
 
 async fn reclaim() {

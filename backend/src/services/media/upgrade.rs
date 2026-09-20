@@ -1,4 +1,4 @@
-//! Explicit, resumable media upgrade. Each admin request commits one bounded batch.
+//! Automatic, resumable media upgrade with an optional admin retry endpoint.
 //! No schema-startup I/O and no filesystem crawl: only catalogued or cited files.
 use super::{LegacyPaths, MediaError, MediaStore, cite, migration};
 use crate::models::entities::{media_assets, media_migration_jobs};
@@ -49,6 +49,11 @@ pub struct UpgradeProgress {
     pub error: Option<String>,
     #[serde(default)]
     pub error_source: Option<String>,
+    #[serde(default)]
+    pub consecutive_failures: u32,
+    /// Unix seconds; shared by all replicas and retained across restarts.
+    #[serde(default)]
+    pub next_retry_at: Option<i64>,
 }
 
 pub async fn status(db: &impl ConnectionTrait) -> Result<UpgradeProgress, MediaError> {
@@ -99,20 +104,76 @@ pub async fn advance(
     origins: &[String],
     restart: bool,
 ) -> Result<UpgradeProgress, MediaError> {
+    advance_inner(
+        db,
+        store,
+        paths,
+        origins,
+        Some(restart),
+        chrono::Utc::now().timestamp(),
+    )
+    .await?
+    .ok_or(MediaError::StoreFailed)
+}
+
+pub async fn configured_origins() -> Vec<String> {
+    let mut origins = vec![crate::oauth_url_builder::SiteConfig::get_base_url().await];
+    let config = crate::GLOBAL_CONFIG.read().await;
+    origins.extend(
+        config
+            .base_url
+            .iter()
+            .chain(config.frontend_url.iter())
+            .cloned(),
+    );
+    origins
+}
+
+/// One background tick. Busy, backed-off and completed jobs perform no work.
+pub(super) async fn automatic_step(
+    db: &DatabaseConnection,
+    store: &MediaStore,
+    paths: &LegacyPaths,
+    origins: &[String],
+    now: i64,
+) -> Result<Option<UpgradeProgress>, MediaError> {
+    advance_inner(db, store, paths, origins, None, now).await
+}
+
+async fn advance_inner(
+    db: &DatabaseConnection,
+    store: &MediaStore,
+    paths: &LegacyPaths,
+    origins: &[String],
+    manual: Option<bool>,
+    now: i64,
+) -> Result<Option<UpgradeProgress>, MediaError> {
     let txn = db.begin().await?;
-    // Serializes admin requests on all replicas, including the first request.
-    txn.execute_raw(Statement::from_string(
-        DatabaseBackend::Postgres,
-        "SELECT pg_advisory_xact_lock(hashtextextended('media:upgrade:v2', 0))",
-    ))
-    .await?;
+    if manual.is_none() {
+        let row = txn.query_one_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "SELECT pg_try_advisory_xact_lock(hashtextextended('media:upgrade:v2', 0)) AS acquired")).await?
+            .ok_or(MediaError::StoreFailed)?;
+        if !row.try_get::<bool>("", "acquired")? {
+            return Ok(None);
+        }
+    } else {
+        txn.execute_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended('media:upgrade:v2', 0))",
+        ))
+        .await?;
+    }
+    let restart = manual == Some(true);
     let mut progress = if restart {
         UpgradeProgress::default()
     } else {
         status(&txn).await?
     };
     if progress.complete {
-        return Ok(progress);
+        return Ok(manual.map(|_| progress));
+    }
+    if manual.is_none() && progress.next_retry_at.is_some_and(|at| at > now) {
+        return Ok(None);
     }
     progress.error = None;
     progress.error_source = None;
@@ -121,7 +182,11 @@ pub async fn advance(
     let batch = txn.begin().await?;
     let result = advance_on(&batch, store, paths, origins, &mut progress).await;
     match result {
-        Ok(()) => batch.commit().await?,
+        Ok(()) => {
+            batch.commit().await?;
+            progress.consecutive_failures = 0;
+            progress.next_retry_at = None;
+        }
         Err(error) => {
             batch.rollback().await?;
             let failed_source = progress.error_source.clone();
@@ -132,11 +197,16 @@ pub async fn advance(
             };
             progress.error_source = failed_source;
             progress.error = Some(error.code().to_string());
+            progress.consecutive_failures = progress.consecutive_failures.saturating_add(1);
+            let delay = (60_i64
+                * (1_i64 << progress.consecutive_failures.saturating_sub(1).min(6)))
+            .min(3600);
+            progress.next_retry_at = Some(now.saturating_add(delay));
         }
     }
     save(&txn, &progress).await?;
     txn.commit().await?;
-    Ok(progress)
+    Ok(Some(progress))
 }
 
 async fn advance_on(
@@ -174,6 +244,8 @@ async fn advance_on(
             [progress.after.clone().into(), (BATCH as i64).into()],
         ))
         .await?;
+    let started = std::time::Instant::now();
+    let mut processed = 0;
     for row in &rows {
         let cursor: String = row.try_get("", "cursor")?;
         let payload: Value = row.try_get("", "payload")?;
@@ -207,8 +279,14 @@ async fn advance_on(
         progress.error_source = None;
         progress.after = cursor;
         progress.scanned += 1;
+        processed += 1;
+        // Yield only between records: cancelling a slow copy and rolling back
+        // the entire batch would retry the same large files forever.
+        if started.elapsed() >= std::time::Duration::from_secs(20) {
+            break;
+        }
     }
-    if rows.len() < BATCH as usize {
+    if processed == rows.len() && rows.len() < BATCH as usize {
         progress.phase += 1;
         progress.after.clear();
     }

@@ -411,3 +411,110 @@ async fn postgres_channel_reference_failure_never_admits_run() {
     assert_eq!(active_count(&f.db, image.id).await.unwrap(), 0);
     f.close().await;
 }
+
+#[tokio::test]
+async fn postgres_automatic_upgrade_starts_retries_resumes_and_stops() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let paths = LegacyPaths {
+        federation_root: f.service.store().root().join("old"),
+        cache_images: f.service.store().root().join("cache"),
+    };
+    f.db.execute_unprepared("INSERT INTO media_assets(kind,url,mime,name,size) VALUES ('upload','/media/federation/1/automatic.png','image/png','automatic.png',0)").await.unwrap();
+    let now = chrono::Utc::now().timestamp();
+    // A second replica must return immediately while an admin/worker owns the job.
+    let lock = f.db.begin().await.unwrap();
+    lock.execute_unprepared(
+        "SELECT pg_advisory_xact_lock(hashtextextended('media:upgrade:v2', 0))",
+    )
+    .await
+    .unwrap();
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now)
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .is_none()
+    );
+    lock.rollback().await.unwrap();
+    // No admin request creates or advances this job.
+    let mut progress = upgrade::UpgradeProgress::default();
+    for _ in 0..40 {
+        progress = upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now)
+            .await
+            .unwrap()
+            .unwrap();
+        if progress.error.is_some() {
+            break;
+        }
+    }
+    assert_eq!(progress.error.as_deref(), Some("MEDIA_MISSING"));
+    assert_eq!(progress.consecutive_failures, 1);
+    assert_eq!(progress.next_retry_at, Some(now + 60));
+    let cursor = (
+        progress.pass,
+        progress.phase,
+        progress.after.clone(),
+        progress.scanned,
+    );
+    assert!(
+        upgrade::automatic_step(&f.db, f.service.store(), &paths, &[], now + 59)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // A new handle reads durable backoff and cursor, as a restarted process would.
+    let resumed = MediaStore::new(f.service.store().root().to_path_buf());
+    let second = upgrade::automatic_step(&f.db, &resumed, &paths, &[], now + 60)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (
+            second.pass,
+            second.phase,
+            second.after.clone(),
+            second.scanned
+        ),
+        cursor
+    );
+    assert_eq!(second.consecutive_failures, 2);
+    assert_eq!(second.next_retry_at, Some(now + 180));
+    tokio::fs::create_dir_all(paths.federation_root.join("1"))
+        .await
+        .unwrap();
+    tokio::fs::write(paths.federation_root.join("1/automatic.png"), png())
+        .await
+        .unwrap();
+    for _ in 0..40 {
+        progress = upgrade::automatic_step(&f.db, &resumed, &paths, &[], now + 180)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(progress.error.is_none());
+        assert_eq!(progress.consecutive_failures, 0);
+        if progress.complete {
+            break;
+        }
+    }
+    assert!(progress.complete);
+    assert!(
+        upgrade::automatic_step(&f.db, &resumed, &paths, &[], now + 3600)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        upgrade::status(&f.db).await.unwrap().scanned,
+        progress.scanned
+    );
+    assert!(
+        paths.federation_root.join("1/automatic.png").exists(),
+        "source is retained"
+    );
+    f.close().await;
+}

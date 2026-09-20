@@ -195,7 +195,10 @@ async fn main() -> anyhow::Result<()> {
         role == runtime_role::RuntimeRole::PersonaWorker,
         Ordering::Release,
     );
-    let _memory_cleanup = memory_cleanup::start();
+    let _memory_cleanup = memory_cleanup::start(matches!(
+        role,
+        runtime_role::RuntimeRole::Web | runtime_role::RuntimeRole::All
+    ));
     if role == runtime_role::RuntimeRole::PersonaWorker {
         return persona::worker::run().await;
     }

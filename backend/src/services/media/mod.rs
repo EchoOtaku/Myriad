@@ -35,7 +35,7 @@ pub use cite::{
 };
 pub use error::MediaError;
 pub use legacy::{LegacyClass, LegacyPaths};
-pub use maintenance::maintain;
+pub use maintenance::{maintain, start_upgrade_worker};
 pub use migration::{
     MigrationBatch, MigrationJobInput, MigrationStats, migrate_catalog_batch, upsert_job,
 };
