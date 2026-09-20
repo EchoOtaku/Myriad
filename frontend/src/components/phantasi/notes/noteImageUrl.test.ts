@@ -24,6 +24,10 @@ describe('displayImageUrl', () => {
       'http://localhost:3000/media/federation/1/a.jpg',
     )
     assert.equal(displayImageUrl('/media/federation/1/a.jpg', api), 'http://localhost:3000/media/federation/1/a.jpg')
+    assert.equal(
+      displayImageUrl('/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.jpg', api),
+      'http://localhost:3000/media/assets/3f2a1b4c-5d6e-7f80-91a2-b3c4d5e6f708/a.jpg',
+    )
     assert.equal(displayImageUrl('/api/x.png?v=2', api), 'http://localhost:3000/api/x.png?v=2')
   })
 

@@ -1,4 +1,6 @@
-//! 管理员媒体目录：列出 / 上传 / 删除。联邦旧上传路径仍可写，并登记进目录。
+//! 管理员媒体目录：列出 / 上传 / 删除。工作台上传走平台资产服务。
+//!
+//! 隐私阶段未完成：站点工作台新上传仍公开，避免编辑器只能消费公开 URL。
 
 use axum::{
     Json,
@@ -7,15 +9,17 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use sea_orm::DatabaseConnection;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::extract::AuthedClaims;
-use crate::federation::content::store_federation_media;
 use crate::middleware::auth::verify_current_admin_from_headers;
-use crate::services::media_catalog::{
-    MediaKind, RegisterMedia, delete_asset, list_assets, register,
+use crate::services::data_paths::paths;
+use crate::services::media::{
+    MediaActor, MediaContext, MediaExposure, MediaService, MediaSource, NewMediaBytes,
 };
+use crate::services::media_catalog::{delete_asset, list_assets};
+use crate::services::memory_profile::{note_image_limit, note_video_limit};
 use myriad_error::AppError;
 
 fn media_http(status: StatusCode, error: impl Into<String>) -> HttpError {
@@ -27,6 +31,35 @@ async fn require_admin(headers: &HeaderMap, db: &DatabaseConnection) -> Result<(
         .await
         .map(|_| ())
         .map_err(|(status, body)| HttpError::from((status, body)))
+}
+
+fn upload_budget(mime: &str) -> usize {
+    if mime.trim().to_ascii_lowercase().starts_with("video/") {
+        note_video_limit()
+    } else {
+        note_image_limit()
+    }
+}
+
+fn catalog_item(asset: &crate::services::media::MediaAsset) -> Value {
+    json!({
+        "id": asset.id,
+        "public_id": asset.public_id,
+        "kind": asset.kind,
+        "url": asset.catalog_url(),
+        "content_path": asset.content_path,
+        "public_path": asset.public_path,
+        "mime": asset.mime,
+        "name": asset.name,
+        "size": asset.size,
+        "source": asset.source.as_str(),
+        "state": asset.state.as_str(),
+        "exposure": asset.exposure.as_str(),
+        "created_at": asset.created_at.timestamp_millis(),
+        "references": [],
+        "references_complete": asset.references_complete,
+        "derived_from_id": asset.derived_from_id,
+    })
 }
 
 /// GET /api/media
@@ -55,36 +88,25 @@ pub async fn upload_media(
         .parse()
         .map_err(|_| media_http(StatusCode::UNAUTHORIZED, "Invalid user ID"))?;
     let (filename, mime, bytes) = read_file_field(multipart).await?;
-    let stored = store_federation_media(user_id, &filename, &mime, &bytes)
+    let actor = MediaActor::admin(user_id).map_err(|err| HttpError(err.into()))?;
+    let created = MediaService::from_data_paths(paths())
+        .create_from_bytes(
+            &db,
+            MediaContext::site(actor, MediaSource::Upload),
+            NewMediaBytes {
+                max_bytes: upload_budget(&mime),
+                bytes: bytes.to_vec(),
+                claimed_mime: mime,
+                filename,
+                derived_from_id: None,
+                exposure: MediaExposure::Public,
+            },
+        )
         .await
-        .map_err(HttpError::from)?;
-    let row = register(
-        &db,
-        RegisterMedia {
-            kind: MediaKind::Upload,
-            url: stored.url,
-            mime: stored.media_type,
-            name: stored.name,
-            size: stored.size as i64,
-        },
-    )
-    .await
-    .map_err(|err| {
-        tracing::error!(%err, "register uploaded media");
-        media_http(StatusCode::INTERNAL_SERVER_ERROR, "Failed to store media")
-    })?;
+        .map_err(|err| HttpError(err.into()))?;
     Ok(Json(json!({
         "success": true,
-        "item": crate::services::media_catalog::MediaAssetView {
-            id: row.id,
-            kind: row.kind,
-            url: row.url,
-            mime: row.mime,
-            name: row.name,
-            size: row.size,
-            created_at: row.created_at.timestamp_millis(),
-            references: vec![],
-        },
+        "item": catalog_item(&created),
     })))
 }
 
@@ -146,5 +168,12 @@ mod tests {
     #[test]
     fn catalog_api_does_not_index_cache_image() {
         assert!(!catalogs_cache_image());
+    }
+
+    #[test]
+    fn journal_upload_does_not_call_federation_store() {
+        let src = include_str!("media.rs");
+        assert!(!src.contains(concat!("store_federation", "_media")));
+        assert!(src.contains("MediaService"));
     }
 }

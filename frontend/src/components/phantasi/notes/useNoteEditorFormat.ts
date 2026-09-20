@@ -5,7 +5,7 @@ import type { InlineLink } from './noteDraft'
 import type { NoteInsertMenuState, TableAlign } from './NoteEditorChrome'
 import type { SelectionAnchor } from './noteSelection'
 import { useCallback, useEffect } from 'react'
-import { federationApi } from '../../../services/federationApi'
+import { uploadMedia } from '../../../services/mediaApi'
 import * as phantasiApi from '../../../services/phantasiApi'
 import { userFacingError } from '../../../utils/userFacingError'
 import { showNoteNotice } from '../phantasiNotice'
@@ -117,9 +117,7 @@ export function useNoteEditorFormat(host: {
     async (file: File, as: 'body' | 'cover' | 'replace') => {
       setUploading(true)
       try {
-        const uploaded = await federationApi.uploadMedia(file, {
-          filename: file.name,
-        })
+        const uploaded = await uploadMedia(file)
         if (as === 'cover') {
           setCover(uploaded.url)
         } else if (as === 'replace') {

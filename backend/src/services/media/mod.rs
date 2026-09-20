@@ -10,7 +10,7 @@
 mod access;
 mod assets;
 mod error;
-mod legacy;
+pub(crate) mod legacy;
 mod migration;
 mod recovery;
 mod references;
@@ -28,6 +28,7 @@ pub use migration::{
 };
 pub use recovery::{RecoverPlan, plan_recovery};
 pub use references::{NewReference, active_count, parse_consumer_type, replace_for_consumer};
+pub use serve::{FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, resolve_public_asset};
 pub use store::MediaStore;
 pub use types::{
     DeleteOutcome, MediaActor, MediaAsset, MediaContext, MediaExposure, MediaScope, MediaSource,
@@ -35,9 +36,6 @@ pub use types::{
 };
 pub use urls::{content_path, public_path, registered_local_path, storage_key};
 pub use validate::{ValidatedPayload, allowed_media_mimes, validate_bytes};
-pub use serve::{
-    FileServe, NO_STORE, ServeOutcome, resolve_alias_or_legacy, resolve_public_asset,
-};
 
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use uuid::Uuid;
@@ -86,6 +84,7 @@ impl MediaService {
             &payload,
             &input.filename,
             input.derived_from_id,
+            input.exposure,
             write_token,
             WRITE_LEASE_SECS,
         )
@@ -336,6 +335,7 @@ mod tests {
                     filename: "shot.png".into(),
                     max_bytes: 1024 * 1024,
                     derived_from_id: None,
+                    exposure: MediaExposure::Private,
                 },
             )
             .await

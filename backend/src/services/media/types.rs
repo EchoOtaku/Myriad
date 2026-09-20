@@ -230,6 +230,8 @@ pub struct NewMediaBytes {
     pub filename: String,
     pub max_bytes: usize,
     pub derived_from_id: Option<i32>,
+    /// Workbench/journal stay public until the privacy stage lands.
+    pub exposure: MediaExposure,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -255,6 +257,14 @@ pub struct MediaAsset {
     pub height: Option<i32>,
     pub derived_from_id: Option<i32>,
     pub first_published_at: Option<DateTime<Utc>>,
+}
+
+impl MediaAsset {
+    pub fn catalog_url(&self) -> String {
+        self.public_path
+            .clone()
+            .unwrap_or_else(|| self.content_path.clone())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

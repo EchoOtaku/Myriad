@@ -15,6 +15,13 @@ export interface MediaAsset {
   size: number
   created_at: number
   references: string[]
+  public_id?: string
+  content_path?: string | null
+  public_path?: string | null
+  state?: string
+  exposure?: string
+  source?: string
+  derived_from_id?: number | null
 }
 
 // Validate the response without changing the catalog path or asset identity.

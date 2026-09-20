@@ -1,7 +1,7 @@
 /**
  * 正文里图片的「显示地址」。Markdown 里存的是上传时拿到的地址（带站点公开域名），
  * 但浏览器此刻连的可能是别的 origin（开发机、内网、域名还没切过去）。
- * 本站自己托管的媒体（/media/federation、/api/…）一律改成走当前 API origin；
+ * 本站自己托管的媒体（/media/assets、/media/federation、/api/…）一律改成走当前 API origin；
  * 外站图按热链名单决定要不要代理。Markdown 里的原地址不动。
  */
 
@@ -9,7 +9,7 @@ import { API_URL } from '../../../config'
 import { proxyImageUrl } from '../../../utils/proxyImageUrl'
 import { emptyNoteWidgetText, stampNoteWidgetNotProse } from './noteWidgetHtml'
 
-const SELF_HOSTED_PREFIXES = ['/media/federation/', '/api/']
+const SELF_HOSTED_PREFIXES = ['/media/assets/', '/media/federation/', '/api/']
 
 export function displayImageUrl(src: string, apiUrl: string = API_URL): string {
   const raw = src.trim()

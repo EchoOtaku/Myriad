@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { afterEach, it, mock } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { displayImageUrl } from '../components/phantasi/notes/noteImageUrl'
 import { apiService } from './api'
 import { listMedia, saveMediaEdit, uploadMedia } from './mediaApi'
@@ -49,4 +52,13 @@ it('upload retains the response asset and sends file contents in multipart', asy
     return { ok: true, json: async () => ({ success: true, item: asset }) } as Response
   })
   assert.equal(await uploadMedia(file), asset)
+})
+
+it('journal editor uploads through mediaApi, not federationApi', () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../components/phantasi/notes/useNoteEditorFormat.ts'),
+    'utf8',
+  )
+  assert.match(src, /uploadMedia\(file\)/)
+  assert.doesNotMatch(src, /federationApi/)
 })

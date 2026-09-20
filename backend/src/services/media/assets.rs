@@ -37,6 +37,7 @@ pub async fn insert_staging(
     payload: &ValidatedPayload,
     filename: &str,
     derived_from_id: Option<i32>,
+    exposure: MediaExposure,
     write_token: Uuid,
     lease_secs: i64,
 ) -> Result<media_assets::Model, MediaError> {
@@ -46,6 +47,7 @@ pub async fn insert_staging(
     let name = filename_for_mime(filename, &payload.mime, public_id)?;
     let now = Utc::now().fixed_offset();
     let lease = now + chrono::Duration::seconds(lease_secs);
+    let published = (exposure == MediaExposure::Public).then_some(now);
     let row = media_assets::ActiveModel {
         kind: Set(ctx.source.catalog_kind().to_string()),
         url: Set(staging_url(public_id)),
@@ -59,8 +61,8 @@ pub async fn insert_staging(
         created_by: Set(ctx.created_by()),
         storage_key: Set(Some(key)),
         state: Set(Some(MediaState::Staging.as_str().to_string())),
-        exposure: Set(Some(MediaExposure::Private.as_str().to_string())),
-        first_published_at: Set(None),
+        exposure: Set(Some(exposure.as_str().to_string())),
+        first_published_at: Set(published),
         source: Set(Some(ctx.source.as_str().to_string())),
         derived_from_id: Set(derived_from_id),
         checksum_sha256: Set(Some(payload.checksum_sha256.clone())),

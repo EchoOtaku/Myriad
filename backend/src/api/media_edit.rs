@@ -5,7 +5,17 @@ mod tests {
     use super::*;
     #[test]
     fn reference_paths_cannot_escape_federation_storage() {
-        assert!(federation_reference_path("/media/federation/1/picture.png").is_some());
+        let paths = crate::services::media::LegacyPaths {
+            federation_root: std::path::PathBuf::from("/data/federation_media"),
+            cache_images: std::path::PathBuf::from("/cache/images"),
+        };
+        assert!(
+            crate::services::media::legacy::legacy_disk_path(
+                &paths,
+                "/media/federation/1/picture.png"
+            )
+            .is_some()
+        );
         for path in [
             "/media/federation/../secret",
             "/media/federation/1/../../secret",
@@ -13,8 +23,17 @@ mod tests {
             "/media/federation/1/%2e%2e",
             "/media/federation/1/a/b",
         ] {
-            assert!(federation_reference_path(path).is_none(), "{path}");
+            assert!(
+                crate::services::media::legacy::legacy_disk_path(&paths, path).is_none(),
+                "{path}"
+            );
         }
+    }
+
+    #[test]
+    fn save_edit_does_not_call_federation_store() {
+        let src = include_str!("media_edit.rs");
+        assert!(!src.contains(concat!("store_federation", "_media")));
     }
     #[test]
     fn image_validation_rejects_spoofed_and_truncated_payloads() {
@@ -39,8 +58,12 @@ mod tests {
 
 use crate::models::entities::media_assets;
 use crate::services::{
+    data_paths::paths,
     image_generation::{self, ImageReference},
-    media_catalog::{self, MediaKind, RegisterMedia},
+    media::{
+        LegacyPaths, MediaActor, MediaContext, MediaExposure, MediaService, MediaSource,
+        MediaStore, NewMediaBytes, legacy::legacy_disk_path,
+    },
 };
 use crate::{GLOBAL_DYNAMIC_CONFIG, error::HttpError, extract::AuthedClaims};
 use axum::{
@@ -53,7 +76,6 @@ use myriad_error::AppError;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::path::PathBuf;
 
 static EDIT_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
 const MAX_BYTES: usize = 10 * 1024 * 1024;
@@ -84,26 +106,6 @@ fn validate_edit_request(prompt: &str, width: u32, height: u32) -> Result<(), Ht
         )));
     }
     Ok(())
-}
-
-fn federation_reference_path(url: &str) -> Option<PathBuf> {
-    let rest = url.strip_prefix("/media/federation/")?;
-    let (owner, filename) = rest.split_once('/')?;
-    if owner.is_empty()
-        || !owner.bytes().all(|c| c.is_ascii_digit())
-        || filename.is_empty()
-        || filename.starts_with('.')
-        || !filename
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'.')
-    {
-        return None;
-    }
-    Some(
-        crate::federation::content::federation_media_root()
-            .join(owner)
-            .join(filename),
-    )
 }
 
 async fn editable_asset(
@@ -162,19 +164,30 @@ fn validate_candidate(bytes: &[u8], mime: &str) -> Result<(), HttpError> {
     validate_image(bytes, mime)
 }
 
+async fn read_file_capped(path: std::path::PathBuf) -> Result<Vec<u8>, HttpError> {
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| HttpError(AppError::not_found("Source image is missing")))?;
+    if metadata.len() > MAX_BYTES as u64 {
+        return Err(HttpError(AppError::bad_request(
+            "Reference image is too large",
+        )));
+    }
+    tokio::fs::read(path)
+        .await
+        .map_err(|_| HttpError(AppError::not_found("Source image is missing")))
+}
+
 async fn read_reference(asset: &media_assets::Model) -> Result<ImageReference, HttpError> {
-    let bytes = if let Some(path) = federation_reference_path(&asset.url) {
-        let metadata = tokio::fs::metadata(&path)
-            .await
+    let store = MediaStore::new(paths().media.clone());
+    let bytes = if let Some(key) = asset.storage_key.as_deref() {
+        let path = store
+            .final_path(key)
             .map_err(|_| HttpError(AppError::not_found("Source image is missing")))?;
-        if metadata.len() > MAX_BYTES as u64 {
-            return Err(HttpError(AppError::bad_request(
-                "Reference image is too large",
-            )));
-        }
-        tokio::fs::read(path)
-            .await
-            .map_err(|_| HttpError(AppError::not_found("Source image is missing")))?
+        read_file_capped(path).await?
+    } else if let Some(path) = legacy_disk_path(&LegacyPaths::from_data_paths(paths()), &asset.url)
+    {
+        read_file_capped(path).await?
     } else {
         crate::services::image_cache::ImageCacheService::new()
             .read_local_public_url(&asset.url)
@@ -272,37 +285,44 @@ pub async fn save_edit(
         "{}-edited.{ext}",
         stem.chars().take(160).collect::<String>()
     );
-    let stored = crate::federation::content::store_federation_media(user_id, &name, mime, &bytes)
-        .await
-        .map_err(HttpError::from)?;
-    let result = media_catalog::register(
-        &db,
-        RegisterMedia {
-            kind: if input.generated {
-                MediaKind::Generated
-            } else {
-                MediaKind::Upload
-            },
-            url: stored.url.clone(),
-            mime: mime.into(),
-            name,
-            size: bytes.len() as i64,
-        },
-    )
-    .await;
-    let row = match result {
-        Ok(row) => row,
-        Err(_) => {
-            // The upload path is unique; roll it back if catalog insertion fails.
-            if let Some(path) = media_catalog::canonical_media_url(&stored.url)
-                .and_then(|url| federation_reference_path(&url))
-            {
-                let _ = tokio::fs::remove_file(path).await;
-            }
-            return Err(HttpError(AppError::internal("Failed to save edited image")));
-        }
+    let actor = MediaActor::admin(user_id).map_err(|err| HttpError(err.into()))?;
+    let source_kind = if input.generated {
+        MediaSource::Generated
+    } else {
+        MediaSource::Upload
     };
-    Ok(Json(
-        json!({ "item": media_catalog::MediaAssetView { id: row.id, kind: row.kind, url: row.url, mime: row.mime, name: row.name, size: row.size, created_at: row.created_at.timestamp_millis(), references: vec![] } }),
-    ))
+    let created = MediaService::from_data_paths(paths())
+        .create_from_bytes(
+            &db,
+            MediaContext::site(actor, source_kind),
+            NewMediaBytes {
+                bytes,
+                claimed_mime: mime.to_string(),
+                filename: name,
+                max_bytes: MAX_EDIT_BYTES,
+                derived_from_id: Some(source.id),
+                exposure: MediaExposure::Public,
+            },
+        )
+        .await
+        .map_err(|err| HttpError(err.into()))?;
+    Ok(Json(json!({
+        "item": {
+            "id": created.id,
+            "public_id": created.public_id,
+            "kind": created.kind,
+            "url": created.catalog_url(),
+            "content_path": created.content_path,
+            "public_path": created.public_path,
+            "mime": created.mime,
+            "name": created.name,
+            "size": created.size,
+            "source": created.source.as_str(),
+            "state": created.state.as_str(),
+            "exposure": created.exposure.as_str(),
+            "created_at": created.created_at.timestamp_millis(),
+            "references": [],
+            "derived_from_id": created.derived_from_id,
+        }
+    })))
 }
