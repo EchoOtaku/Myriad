@@ -725,7 +725,6 @@ export default function Reports() {
   const {
     isAdmin: authIsAdmin,
     isAuthenticated,
-    hasChecked,
     user,
   } = useAuth()
 
