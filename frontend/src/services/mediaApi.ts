@@ -1,4 +1,3 @@
-import { resolveMediaPointer } from '../components/phantasi/logic/mediaPointer'
 import { API_URL } from '../config'
 import { currentCopy } from '../i18n/localeCopy'
 import { getCSRFToken } from '../utils/csrf'
@@ -18,16 +17,22 @@ export interface MediaAsset {
   references: string[]
 }
 
+// Validate the response without changing the catalog path or asset identity.
+function validateMediaAsset(item: MediaAsset): void {
+  if (!item || !Number.isInteger(item.id) || item.id <= 0 ||
+      typeof item.url !== 'string' || !item.url.trim()) {
+    throw new Error('Invalid media response')
+  }
+}
+
 export async function listMedia(signal?: AbortSignal): Promise<MediaAsset[]> {
   const data = await apiService.get<{ success: boolean; items: MediaAsset[] }>(
     '/media',
     { signal },
   )
-  return data.items.flatMap((item) => {
-    const pointer = resolveMediaPointer(item)
-    if (!pointer) return []
-    return [{ ...item, id: pointer.id, url: pointer.url }]
-  })
+  if (!Array.isArray(data.items)) throw new Error('Invalid media response')
+  data.items.forEach(validateMediaAsset)
+  return data.items
 }
 
 export async function deleteMedia(id: number): Promise<void> {
@@ -62,16 +67,8 @@ export async function uploadMedia(
     )
   }
   const data = (await response.json()) as { success: boolean; item: MediaAsset }
-  const pointer = resolveMediaPointer(data.item)
-  if (!pointer) {
-    throw new Error(
-      userFacingError(
-        'Media upload returned no file pointer',
-        currentCopy().errors.mediaUploadFailed,
-      ),
-    )
-  }
-  return { ...data.item, id: pointer.id, url: pointer.url }
+  validateMediaAsset(data.item)
+  return data.item
 }
 
 export async function previewMediaEdit(id: number, prompt: string, width: number, height: number, signal?: AbortSignal): Promise<string> {
@@ -81,5 +78,6 @@ export async function previewMediaEdit(id: number, prompt: string, width: number
 
 export async function saveMediaEdit(id: number, image: string, generated: boolean): Promise<MediaAsset> {
   const data = await apiService.post<{ item: MediaAsset }>(`/media/${id}/edits`, { image, generated })
+  validateMediaAsset(data.item)
   return data.item
 }

@@ -110,58 +110,49 @@ pub fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::
 /// 优化：添加错误容错和大文件分块写入
 pub fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::Error>> {
     let raw_dir = crate::services::data_paths::raw_cache_dir();
-    if !raw_dir.exists() {
-        fs::create_dir_all(&raw_dir)?;
-    }
-
-    if let Some(obj) = all_data.as_object() {
-        for (platform, data) in obj {
-            // 保存所有平台的数据，不仅仅是主要平台
-            let file_path = raw_dir.join(format!("{}.json", platform));
-
-            // 优化：先写入临时文件，然后原子性重命名，避免写入中断导致文件损坏
-            let temp_path = raw_dir.join(format!("{}.json.tmp", platform));
-
-            match std::fs::File::create(&temp_path) {
-                Ok(file) => {
-                    // 使用更大的缓冲区处理大文件（512KB）
-                    let mut writer = std::io::BufWriter::with_capacity(524288, file);
-
-                    match serde_json::to_writer(&mut writer, data) {
-                        Ok(_) => {
-                            use std::io::Write;
-                            if let Err(e) = writer.flush() {
-                                tracing::warn!("⚠️ Failed to flush {} data: {}", platform, e);
-                                // 继续处理其他平台
-                                continue;
-                            }
-
-                            commit_cache_temp_file(&temp_path, &file_path).map_err(|e| {
-                                tracing::error!(
-                                    "❌ Failed to atomically replace cache for {}: {}",
-                                    platform,
-                                    e
-                                );
-                                e
-                            })?;
-
-                            tracing::info!("💾 Saved raw data for {} to {:?}", platform, file_path);
-                        }
-                        Err(e) => {
-                            tracing::error!("❌ Failed to serialize {} data: {}", platform, e);
-                            let _ = std::fs::remove_file(&temp_path);
-                            // 继续处理其他平台，不返回错误
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to create temp file for {}: {}", platform, e);
-                    // 继续处理其他平台
-                }
+    fs::create_dir_all(&raw_dir)?;
+    let Some(obj) = all_data.as_object() else {
+        return Ok(());
+    };
+    let mut errors = Vec::new();
+    for (platform, data) in obj {
+        match write_one_raw_platform(&raw_dir, platform, data) {
+            Ok(()) => tracing::info!(platform = %platform, "saved raw platform cache"),
+            Err(error) => {
+                tracing::error!(platform = %platform, %error, "failed to save raw platform cache");
+                errors.push(format!("{platform}: {error}"));
             }
         }
     }
+    if !errors.is_empty() {
+        return Err(format!("failed to save raw platform cache: {}", errors.join("; ")).into());
+    }
     Ok(())
+}
+
+fn write_one_raw_platform(
+    raw_dir: &Path,
+    platform: &str,
+    data: &Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file_path = raw_dir.join(format!("{platform}.json"));
+    let temp_path = raw_dir.join(format!(
+        "{platform}.{}.json.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let written = (|| {
+        let file = std::fs::File::create(&temp_path)?;
+        let mut writer = std::io::BufWriter::with_capacity(524288, file);
+        serde_json::to_writer(&mut writer, data)?;
+        use std::io::Write;
+        writer.flush()?;
+        commit_cache_temp_file(&temp_path, &file_path)?;
+        Ok(())
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+    written
 }
 
 /// Same-directory tmp + rename. Rename failure is an error, never a copy overlay.
@@ -243,6 +234,19 @@ mod atomic_replace_tests {
             "a missing required platform is not fresh"
         );
         assert!(!required_platforms_are_fresh(&files, &[], now));
+    }
+
+    #[test]
+    fn raw_save_uses_unique_temp_and_reports_partial_failure() {
+        let src = include_str!("cache.rs");
+        let save = src
+            .split("pub fn save_split_raw_data")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn commit_cache_temp_file").next())
+            .expect("save_split_raw_data");
+        assert!(save.contains("uuid::Uuid::new_v4"));
+        assert!(save.contains("failed to save raw platform cache"));
+        assert!(!save.contains("继续处理其他平台"));
     }
 
     #[test]

@@ -249,9 +249,7 @@ pub(crate) async fn start_unified_server(
             check_interval.tick().await;
 
             if api::system::is_config_reload_requested() {
-                tracing::info!(
-                    "🔄 Configuration reload detected - attempting to reconnect database"
-                );
+                tracing::info!("🔄 Configuration reload detected");
                 api::system::reset_config_reload_flag();
 
                 // Reload .env (cwd), then durable DATA_DIR/site_public.env last so
@@ -268,6 +266,8 @@ pub(crate) async fn start_unified_server(
 
                 match AppConfig::from_env() {
                     Ok(new_config) => {
+                        let previous_database_url =
+                            GLOBAL_CONFIG.read().await.database_url.clone();
                         // Update global config FIRST for hot-reload
                         *GLOBAL_CONFIG.write().await = new_config.clone();
                         tracing::info!(
@@ -279,7 +279,34 @@ pub(crate) async fn start_unified_server(
                             crate::middleware::cors_runtime::set_cors_origins_csv(&cors);
                         }
 
-                        if !new_config.database_url.is_empty() {
+                        let reconnect =
+                            api::system::database_target_changed(
+                                &previous_database_url,
+                                &new_config.database_url,
+                            );
+                        if !reconnect {
+                            tracing::info!(
+                                "♻️ Database target unchanged; skipping reconnect"
+                            );
+                            if let Ok(db) = services::tapp_registry::database() {
+                                let config_service = ConfigService::new(db);
+                                match config_service.load_config().await {
+                                    Ok(dynamic_config) => {
+                                        *GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
+                                        tracing::info!(
+                                            "✅ Dynamic configuration reloaded from database"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "⚠️  Failed to reload dynamic config: {}",
+                                            e
+                                        );
+                                    }
+                                }
+                                services::oauth::registry::REGISTRY.reload().await;
+                            }
+                        } else {
                             match db::connection::establish_connection(&new_config.database_url)
                                 .await
                             {
@@ -345,8 +372,6 @@ pub(crate) async fn start_unified_server(
                                     tracing::info!("🔧 Staying in configuration mode");
                                 }
                             }
-                        } else {
-                            tracing::warn!("⚠️  DATABASE_URL still empty after reload");
                         }
                     }
                     Err(e) => {

@@ -95,6 +95,36 @@ mod tests {
     }
 
     #[test]
+    fn execute_parse_rejects_non_array_and_oversize() {
+        assert!(parse_backend_action_wrappers(&None).unwrap().is_empty());
+        assert_eq!(
+            parse_backend_action_wrappers(&Some(json!({ "type": "storage.get" })))
+                .unwrap_err(),
+            "backendActions must be an array"
+        );
+        let too_many = (0..=MAX_SCHEDULER_BACKEND_ACTIONS)
+            .map(|index| {
+                json!({
+                    "action": "storage.set",
+                    "key": format!("key{index}"),
+                    "value": index,
+                })
+            })
+            .collect::<Vec<_>>();
+        assert!(parse_backend_action_wrappers(&Some(json!(too_many))).is_err());
+        let engine = include_str!("engine.rs");
+        let attempt = engine
+            .split("let (mut status, mut error, wrappers, authority)")
+            .nth(1)
+            .and_then(|rest| rest.split("ExecutionTarget::Frontend").next())
+            .expect("execute attempt");
+        assert!(attempt.contains("parse_backend_action_wrappers"));
+        assert!(attempt.contains("validate_task_execution_permissions"));
+        assert!(attempt.contains("execute_backend_actions"));
+        assert!(!attempt.contains("actions_json.clone()"));
+    }
+
+    #[test]
     fn scheduled_ai_requires_matching_manifest_declaration() {
         let (_normalized, wrappers) = normalize_backend_actions_parsed(Some(json!([{
             "type": "ai.generate",

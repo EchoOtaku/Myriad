@@ -239,14 +239,15 @@ pub async fn set_instance_trust_level(
     db: &DatabaseConnection,
     domain: &str,
     level: TrustLevel,
-) -> Result<(), sea_orm::DbErr> {
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"UPDATE federation_instances SET trust_level = $2 WHERE domain = $1"#,
-        [domain.into(), (level as i16).into()],
-    ))
-    .await?;
-    Ok(())
+) -> Result<u64, sea_orm::DbErr> {
+    let result = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_instances SET trust_level = $2 WHERE domain = $1"#,
+            [domain.into(), (level as i16).into()],
+        ))
+        .await?;
+    Ok(result.rows_affected())
 }
 
 /// 确保实例至少被记录为 Discovered
@@ -745,30 +746,7 @@ pub async fn update_instance_trust(
     level: i16,
 ) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
     let trust_level = TrustLevel::from_i16(level);
-
-    // 验证实例存在
-    let exists = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT domain FROM federation_instances WHERE domain = $1",
-            [domain.into()],
-        ))
-        .await
-        .map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, {
-                tracing::error!("DB error: {}", e);
-                json!({"error": "Database error", "code": "database_error"})
-            })
-        })?;
-
-    if exists.is_none() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            AppError::not_found(format!("Instance {} not found", domain)).to_json(),
-        ));
-    }
-
-    set_instance_trust_level(db, domain, trust_level)
+    let updated = set_instance_trust_level(db, domain, trust_level)
         .await
         .map_err(|e| {
             (StatusCode::INTERNAL_SERVER_ERROR, {
@@ -776,6 +754,12 @@ pub async fn update_instance_trust(
                 json!({"error": "Database error", "code": "database_error"})
             })
         })?;
+    if updated == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            AppError::not_found(format!("Instance {domain} not found")).to_json(),
+        ));
+    }
 
     Ok(json!({
         "success": true,
@@ -791,21 +775,31 @@ pub async fn toggle_instance_block(
     domain: &str,
     block: bool,
 ) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
-    // 先确保实例存在
-    let _ = ensure_instance_discovered(db, domain).await;
-
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "UPDATE federation_instances SET is_blocked = $2 WHERE domain = $1",
-        [domain.into(), block.into()],
-    ))
-    .await
-    .map_err(|e| {
+    ensure_instance_discovered(db, domain).await.map_err(|e| {
         (StatusCode::INTERNAL_SERVER_ERROR, {
             tracing::error!("DB error: {}", e);
             json!({"error": "Database error", "code": "database_error"})
         })
     })?;
+    let updated = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE federation_instances SET is_blocked = $2 WHERE domain = $1",
+            [domain.into(), block.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, {
+                tracing::error!("DB error: {}", e);
+                json!({"error": "Database error", "code": "database_error"})
+            })
+        })?;
+    if updated.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            AppError::not_found(format!("Instance {domain} not found")).to_json(),
+        ));
+    }
 
     let action = if block { "blocked" } else { "unblocked" };
     tracing::info!("[Trust] Instance {} {}", domain, action);
@@ -1496,6 +1490,25 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.is_unavailable(), "{err:?}");
+    }
+
+    #[test]
+    fn update_instance_trust_requires_a_written_row() {
+        let src = include_str!("trust.rs");
+        let body = src
+            .split("pub async fn update_instance_trust")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn toggle_instance_block").next())
+            .expect("update_instance_trust");
+        assert!(body.contains("updated == 0"));
+        assert!(!body.contains("SELECT domain FROM federation_instances"));
+        let block = src
+            .split("pub async fn toggle_instance_block")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn list_instances").next())
+            .expect("toggle_instance_block");
+        assert!(block.contains("rows_affected() == 0"));
+        assert!(!block.contains("let _ = ensure_instance_discovered"));
     }
 
     #[test]

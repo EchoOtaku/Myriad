@@ -1411,6 +1411,11 @@ describe('userFacingError', () => {
     const configSave = userFacingError(
       new ApiError('Failed to save', 500, 'config_save_failed'),
     )
+    const configInvalid = userFacingError(
+      new ApiError('ai_vendor_sources must be an array', 400, 'config_invalid'),
+    )
+    assert.match(configInvalid, /ai_vendor_sources must be an array/)
+    assert.notEqual(configInvalid, configSave)
     const configLoad = userFacingError('Failed to load config')
     const media = userFacingError(
       new ApiError('Invalid action', 400, 'media_action_invalid'),

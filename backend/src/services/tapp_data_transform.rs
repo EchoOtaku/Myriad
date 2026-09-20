@@ -7,14 +7,14 @@
 pub use myriad_tapp_rules::{
     DataTransformError, MAX_MAP_OPERATIONS, MAX_PIPELINE_STEPS, MapOp, ProcessStep, apply_map_op,
     apply_pipeline, apply_process_step, items_from_agent_input, items_from_value,
-    parse_pipeline_steps, parse_pipeline_steps_lenient,
+    parse_pipeline_steps, parse_pipeline_value,
 };
 
 #[cfg(test)]
 mod tests {
     use super::{
         DataTransformError, MAX_PIPELINE_STEPS, items_from_agent_input, items_from_value,
-        parse_pipeline_steps, parse_pipeline_steps_lenient,
+        parse_pipeline_steps, parse_pipeline_value,
     };
     use serde_json::json;
 
@@ -46,9 +46,10 @@ mod tests {
             DataTransformError::InvalidStep
         );
         assert_eq!(
-            parse_pipeline_steps_lenient(&[json!({ "type": "unknown_noop" })]).unwrap_err(),
-            DataTransformError::InvalidStep
+            parse_pipeline_value(Some(&json!({ "type": "filter" }))).unwrap_err(),
+            DataTransformError::InvalidPipeline
         );
+        assert!(parse_pipeline_value(None).unwrap().is_empty());
 
         let too_many = (0..=MAX_PIPELINE_STEPS)
             .map(|_| json!({ "type": "limit", "count": 1 }))

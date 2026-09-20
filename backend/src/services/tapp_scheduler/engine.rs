@@ -451,35 +451,38 @@ impl TappSchedulerEngine {
             .map_err(|error| scheduler_store_failed("create execution", error))?;
 
         let mut result: Option<serde_json::Value> = None;
-        let authority = Self::validate_task_execution_permissions(db, task).await;
-        let mut error = authority.as_ref().err().cloned();
-        let mut status = if error.is_some() {
-            ExecutionStatus::Failed
-        } else {
-            ExecutionStatus::Success
-        };
         let mut awaiting_frontend = false;
         let start_time = std::time::Instant::now();
+        let (mut status, mut error, wrappers, authority) =
+            match parse_backend_action_wrappers(&task.backend_actions) {
+                Err(error) => (ExecutionStatus::Failed, Some(error), Vec::new(), None),
+                Ok(wrappers) => {
+                    match Self::validate_task_execution_permissions(db, task, &wrappers).await {
+                        Ok(authority) => {
+                            (ExecutionStatus::Success, None, wrappers, Some(authority))
+                        }
+                        Err(error) => (ExecutionStatus::Failed, Some(error), wrappers, None),
+                    }
+                }
+            };
 
         // 根据执行目标处理
         match task.execution_target {
             ExecutionTarget::Backend | ExecutionTarget::Both => {
                 // 执行后端操作
-                if status == ExecutionStatus::Success {
-                    if let Some(actions) = &task.backend_actions {
-                        match Self::execute_backend_actions(
-                            db,
-                            task,
-                            actions,
-                            authority.as_ref().expect("validated authority"),
-                        )
-                        .await
-                        {
-                            Ok(r) => result = Some(r),
-                            Err(e) => {
-                                error = Some(e);
-                                status = ExecutionStatus::Failed;
-                            }
+                if status == ExecutionStatus::Success && task.backend_actions.is_some() {
+                    match Self::execute_backend_actions(
+                        db,
+                        task,
+                        &wrappers,
+                        authority.as_ref().expect("validated authority"),
+                    )
+                    .await
+                    {
+                        Ok(r) => result = Some(r),
+                        Err(e) => {
+                            error = Some(e);
+                            status = ExecutionStatus::Failed;
                         }
                     }
                 }
@@ -903,6 +906,7 @@ SELECT EXISTS (
     async fn validate_task_execution_permissions(
         db: &DatabaseConnection,
         task: &tapp_scheduled_tasks::Model,
+        wrappers: &[BackendActionWrapper],
     ) -> Result<ScheduledExecutionAuthority, String> {
         let row = db
             .query_one_raw(Statement::from_sql_and_values(
@@ -941,9 +945,8 @@ SELECT EXISTS (
             return Err("Global scheduler task requires current administrator access".to_string());
         }
 
-        let wrappers = parse_backend_action_wrappers(&task.backend_actions)?;
         let mut required = vec![TappPermission::SchedulerRegister];
-        required.extend(backend_action_permissions_of(&wrappers));
+        required.extend(backend_action_permissions_of(wrappers));
 
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
         for permission in &required {
@@ -986,7 +989,7 @@ SELECT EXISTS (
                 ));
             }
         }
-        let ai_model_tier = validate_backend_action_declarations_of(&tapp.manifest, &wrappers)?;
+        let ai_model_tier = validate_backend_action_declarations_of(&tapp.manifest, wrappers)?;
         Ok(ScheduledExecutionAuthority {
             role,
             owner_id: tapp.user_id,
@@ -998,21 +1001,9 @@ SELECT EXISTS (
     async fn execute_backend_actions(
         db: &DatabaseConnection,
         task: &tapp_scheduled_tasks::Model,
-        actions_json: &serde_json::Value,
+        action_wrappers: &[BackendActionWrapper],
         authority: &ScheduledExecutionAuthority,
     ) -> Result<serde_json::Value, String> {
-        let action_wrappers: Vec<BackendActionWrapper> =
-            serde_json::from_value(actions_json.clone()).map_err(|error| {
-                tracing::error!(%error, "Invalid backend actions");
-                "Invalid backend actions".to_string()
-            })?;
-
-        if action_wrappers.len() > MAX_SCHEDULER_BACKEND_ACTIONS {
-            return Err(format!(
-                "Backend action pipeline exceeds the maximum of {MAX_SCHEDULER_BACKEND_ACTIONS}"
-            ));
-        }
-
         // 结果上下文：存储命名结果
         let mut context: HashMap<String, serde_json::Value> = HashMap::new();
         // 特殊变量：上一个操作的结果

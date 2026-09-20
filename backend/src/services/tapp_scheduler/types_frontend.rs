@@ -104,18 +104,26 @@ pub fn normalize_backend_actions_parsed(
 pub fn parse_backend_action_wrappers(
     actions: &Option<serde_json::Value>,
 ) -> Result<Vec<BackendActionWrapper>, String> {
-    let Some(serde_json::Value::Array(actions)) = actions else {
-        return Ok(Vec::new());
-    };
-    actions
-        .iter()
-        .map(|value| {
-            serde_json::from_value(value.clone()).map_err(|error| {
-                tracing::error!(%error, "invalid backend action");
-                "Invalid backend action".to_string()
-            })
-        })
-        .collect()
+    match actions {
+        None => Ok(Vec::new()),
+        Some(serde_json::Value::Array(items)) => {
+            if items.len() > MAX_SCHEDULER_BACKEND_ACTIONS {
+                return Err(format!(
+                    "backendActions exceeds the maximum of {MAX_SCHEDULER_BACKEND_ACTIONS}"
+                ));
+            }
+            items
+                .iter()
+                .map(|value| {
+                    serde_json::from_value(value.clone()).map_err(|error| {
+                        tracing::error!(%error, "invalid backend action");
+                        "Invalid backend action".to_string()
+                    })
+                })
+                .collect()
+        }
+        Some(_) => Err("backendActions must be an array".to_string()),
+    }
 }
 
 pub fn backend_action_permissions_of(wrappers: &[BackendActionWrapper]) -> Vec<TappPermission> {

@@ -360,6 +360,7 @@
   "dndScheduleIncomplete": "시작과 끝을 둘 다 채우거나, 둘 다 비우세요.",
   "e2eKeyFailed": "종단간 키를 처리하지 못했어요.",
   "configSaveFailed": "사이트 설정을 저장하지 못했어요.",
+  "configInvalid": "사이트 설정 값이 올바르지 않아요.",
   "dashboardLayoutSaveFailed": "홈 레이아웃을 저장하지 못했어요.",
   "dashboardTitleSaveFailed": "홈 제목을 저장하지 못했어요.",
   "customPlatformsSaveFailed": "사용자 지정 소셜 플랫폼을 저장하지 못했어요.",

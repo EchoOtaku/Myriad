@@ -360,6 +360,7 @@
   "dndScheduleIncomplete": "開始と終了を両方指定するか、両方空にしてください。",
   "e2eKeyFailed": "エンドツーエンド鍵を処理できませんでした。",
   "configSaveFailed": "サイト設定を保存できませんでした。",
+  "configInvalid": "サイト設定の内容が正しくありません。",
   "dashboardLayoutSaveFailed": "ホームのレイアウトを保存できませんでした。",
   "dashboardTitleSaveFailed": "ホームのタイトルを保存できませんでした。",
   "customPlatformsSaveFailed": "カスタム SNS を保存できませんでした。",

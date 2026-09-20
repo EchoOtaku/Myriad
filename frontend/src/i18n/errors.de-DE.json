@@ -360,6 +360,7 @@
   "dndScheduleIncomplete": "Setzen Sie Beginn und Ende, oder leeren Sie beides.",
   "e2eKeyFailed": "Der Ende-zu-Ende-Schlüssel konnte nicht verarbeitet werden.",
   "configSaveFailed": "Die Site-Einstellungen konnten nicht gespeichert werden.",
+  "configInvalid": "Diese Site-Einstellung ist ungültig.",
   "dashboardLayoutSaveFailed": "Das Startseitenlayout konnte nicht gespeichert werden.",
   "dashboardTitleSaveFailed": "Der Startseitentitel konnte nicht gespeichert werden.",
   "customPlatformsSaveFailed": "Eigene soziale Plattformen konnten nicht gespeichert werden.",

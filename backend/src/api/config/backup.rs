@@ -629,14 +629,16 @@ pub async fn restore_settings(
         );
     }
 
-    crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+    if let Err(error) = crate::api::system::publish_env_app_config().await {
+        tracing::warn!(%error, "failed to publish AppConfig after settings restore");
+    }
 
     (
         StatusCode::OK,
         Json(json!({
             "success": true,
             "message": "Settings restored successfully",
-            "requires_reload": true,
+            "requires_reload": false,
             "preview": preview
         })),
     )

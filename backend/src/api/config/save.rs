@@ -24,17 +24,28 @@ pub async fn update_config(
 
     // 1. 保存到数据库
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
-    if let Err(e) = save_to_database(&config_service, &payload).await {
-        tracing::error!("Failed to save configuration to database: {}", e);
-        return Err(HttpError::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "success": false,
-                "error": "Failed to save configuration",
-                "code": "config_save_failed",
-                "message": "Failed to save configuration"
-            })),
-        )));
+    match save_to_database(&config_service, &payload).await {
+        Ok(()) => {}
+        Err(ConfigPersistError::Invalid(message)) => {
+            tracing::warn!(%message, "rejected invalid configuration");
+            return Err(HttpError(
+                myriad_error::AppError::bad_request("Invalid configuration")
+                    .with_code("config_invalid")
+                    .with_message(message),
+            ));
+        }
+        Err(ConfigPersistError::Store(error)) => {
+            tracing::error!(%error, "Failed to save configuration to database");
+            return Err(HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "error": "Failed to save configuration",
+                    "code": "config_save_failed",
+                    "message": "Failed to save configuration"
+                })),
+            )));
+        }
     }
     tracing::info!("✅ Configuration saved to database");
 
@@ -101,28 +112,29 @@ pub async fn update_config(
         )));
     }
 
-    // 5. 触发配置重载标志(虽然数据库连接可能不变,但确保其他服务知道配置已更新)
-    crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
-
-    tracing::info!(
-        "🔄 Configuration reload flag set - changes will be picked up within 2-3 seconds"
-    );
-
     Ok(Json(body))
+}
+
+enum ConfigPersistError {
+    Invalid(String),
+    Store(String),
 }
 
 /// 保存配置到数据库
 async fn save_to_database(
     config_service: &crate::services::config_service::ConfigService,
     config: &ConfigResponse,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), ConfigPersistError> {
     let vendor_snapshot = crate::GLOBAL_DYNAMIC_CONFIG
         .read()
         .await
         .effective_vendor_sources();
     let updates = collect_database_updates_with_vendor(config, Ok(vendor_snapshot))
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
-    config_service.update_configs(updates).await?;
+        .map_err(ConfigPersistError::Invalid)?;
+    config_service
+        .update_configs(updates)
+        .await
+        .map_err(|error| ConfigPersistError::Store(error.to_string()))?;
     Ok(())
 }
 
@@ -1111,12 +1123,9 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         unsafe { std::env::remove_var(key) };
     }
 
-    // 触发配置重载标志(虽然数据库连接可能不变,但确保其他服务知道配置已更新)
-    crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
-
-    tracing::info!(
-        "🔄 Configuration reload flag set - changes will be picked up within 2-3 seconds"
-    );
+    if let Err(error) = crate::api::system::publish_env_app_config().await {
+        tracing::warn!(%error, "failed to publish AppConfig after deploy env save");
+    }
 
     Ok(())
 }
@@ -1187,6 +1196,26 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn invalid_config_save_is_bad_request_not_storage_failure() {
+        let src = include_str!("save.rs");
+        let update = src
+            .split("pub async fn update_config")
+            .nth(1)
+            .and_then(|rest| rest.split("enum ConfigPersistError").next())
+            .expect("update_config");
+        assert!(update.contains("config_invalid"));
+        assert!(update.contains("bad_request"));
+        assert!(update.contains("config_save_failed"));
+        let persist = src
+            .split("async fn save_to_database")
+            .nth(1)
+            .and_then(|rest| rest.split("fn vendor_json_is_agora").next())
+            .expect("save_to_database");
+        assert!(persist.contains("ConfigPersistError::Invalid"));
+        assert!(!persist.contains("ErrorKind::InvalidInput"));
     }
 
     #[test]

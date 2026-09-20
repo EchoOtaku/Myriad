@@ -360,6 +360,7 @@
   "dndScheduleIncomplete": "Set both start and end, or clear both.",
   "e2eKeyFailed": "Could not process the end-to-end key.",
   "configSaveFailed": "Could not save site settings.",
+  "configInvalid": "That site setting is not valid.",
   "dashboardLayoutSaveFailed": "Could not save the home layout.",
   "dashboardTitleSaveFailed": "Could not save the home title.",
   "customPlatformsSaveFailed": "Could not save custom social platforms.",

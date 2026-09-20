@@ -644,7 +644,7 @@ async fn fallback_transcribe_bytes(
             .speech_to_text(audio, &filename, mime, &resolved.stt_model, language)
             .await
             .map_err(|e| openai_message(&e));
-        return (Some(SpeechProviderKind::OpenAi), model, result);
+        return (Some(resolved.kind), model, result);
     }
     if let Ok(resolved) = fallback_gemini_stt().await {
         let model = resolved.stt_model.clone();
@@ -670,6 +670,7 @@ async fn fallback_transcribe_bytes(
 struct FallbackOpenAiStt {
     client: OpenAiCompatibleSpeech,
     stt_model: String,
+    kind: SpeechProviderKind,
 }
 
 async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
@@ -683,7 +684,7 @@ async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
             )
             && config.resolve_source_credential(item).api_key.is_some()
     });
-    let (api_key, base_url, stt_model, referer) = if let Some(source) = source {
+    let (api_key, base_url, stt_model, referer, kind) = if let Some(source) = source {
         let kind = SpeechProviderKind::parse(&source.kind);
         let key = config
             .resolve_source_credential(source)
@@ -700,6 +701,7 @@ async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
                 },
                 DEFAULT_OPENROUTER_STT_MODEL.to_string(),
                 config.base_url.clone(),
+                SpeechProviderKind::OpenRouter,
             )
         } else {
             (
@@ -711,6 +713,7 @@ async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
                 },
                 DEFAULT_OPENAI_STT_MODEL.to_string(),
                 None,
+                SpeechProviderKind::OpenAi,
             )
         }
     } else if let Some(key) = config.shared_openai_api_key() {
@@ -719,6 +722,7 @@ async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
             config.shared_openai_base_url(),
             DEFAULT_OPENAI_STT_MODEL.to_string(),
             None,
+            SpeechProviderKind::OpenAi,
         )
     } else if let Some(key) = config.shared_openrouter_api_key() {
         (
@@ -726,6 +730,7 @@ async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
             OPENROUTER_SPEECH_BASE_URL.to_string(),
             DEFAULT_OPENROUTER_STT_MODEL.to_string(),
             config.base_url.clone(),
+            SpeechProviderKind::OpenRouter,
         )
     } else {
         return Err(OpenAiSpeechError::ApiKeyNotConfigured);
@@ -733,7 +738,11 @@ async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
     drop(config);
     let proxy = ProxyConfig::from_dynamic_config().await;
     let client = OpenAiCompatibleSpeech::new(api_key, base_url, &proxy, referer)?;
-    Ok(FallbackOpenAiStt { client, stt_model })
+    Ok(FallbackOpenAiStt {
+        client,
+        stt_model,
+        kind,
+    })
 }
 
 async fn fallback_gemini_stt() -> Result<ResolvedGeminiSpeech, GeminiMediaError> {
@@ -987,6 +996,13 @@ mod tests {
         assert_eq!(
             stt_ledger_provider(
                 SpeechProviderKind::MiniMax,
+                Some(SpeechProviderKind::OpenRouter)
+            ),
+            "openrouter"
+        );
+        assert_eq!(
+            stt_ledger_provider(
+                SpeechProviderKind::MiniMax,
                 Some(SpeechProviderKind::Gemini)
             ),
             "gemini"
@@ -1006,6 +1022,25 @@ mod tests {
             stt_ledger_provider(SpeechProviderKind::Tencent, None),
             "tencent"
         );
+    }
+
+    #[test]
+    fn openai_compatible_fallback_keeps_executed_kind() {
+        let src = include_str!("speech_runtime.rs");
+        let fallback = src
+            .split("async fn fallback_transcribe_bytes")
+            .nth(1)
+            .and_then(|rest| rest.split("struct FallbackOpenAiStt").next())
+            .expect("fallback_transcribe_bytes");
+        assert!(fallback.contains("resolved.kind"));
+        assert!(!fallback.contains("Some(SpeechProviderKind::OpenAi)"));
+        let resolve = src
+            .split("async fn fallback_openai_stt")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn fallback_gemini_stt").next())
+            .expect("fallback_openai_stt");
+        assert!(resolve.contains("kind,"));
+        assert!(resolve.contains("SpeechProviderKind::OpenRouter"));
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub enum DataTransformError {
     TooManySteps,
     TooManyMapOps,
     InvalidStep,
+    InvalidPipeline,
 }
 
 impl DataTransformError {
@@ -21,6 +22,7 @@ impl DataTransformError {
             Self::TooManySteps => "TRANSFORM_TOO_MANY_STEPS",
             Self::TooManyMapOps => "TRANSFORM_TOO_MANY_MAP_OPS",
             Self::InvalidStep => "TRANSFORM_INVALID_STEP",
+            Self::InvalidPipeline => "TRANSFORM_INVALID_PIPELINE",
         }
     }
 
@@ -29,6 +31,7 @@ impl DataTransformError {
             Self::TooManySteps => "Too many pipeline steps (max 20)",
             Self::TooManyMapOps => "Too many map operations (max 50)",
             Self::InvalidStep => "Invalid pipeline step",
+            Self::InvalidPipeline => "pipeline must be an array",
         }
     }
 
@@ -459,11 +462,15 @@ pub fn parse_pipeline_steps(
     Ok(steps)
 }
 
-/// Historical name for [`parse_pipeline_steps`]. The boundary is strict.
-pub fn parse_pipeline_steps_lenient(
-    pipeline: &[Value],
+/// `None` is a legal empty pipeline. A present non-array is invalid.
+pub fn parse_pipeline_value(
+    pipeline: Option<&Value>,
 ) -> Result<Vec<ProcessStep>, DataTransformError> {
-    parse_pipeline_steps(pipeline)
+    match pipeline {
+        None => Ok(Vec::new()),
+        Some(Value::Array(steps)) => parse_pipeline_steps(steps),
+        Some(_) => Err(DataTransformError::InvalidPipeline),
+    }
 }
 
 #[cfg(test)]
@@ -488,6 +495,9 @@ mod tests {
         assert_eq!(invalid.code(), "TRANSFORM_INVALID_STEP");
         assert_eq!(invalid.message(), "Invalid pipeline step");
         assert_eq!(invalid.status_hint(), 400);
+        let shape = DataTransformError::InvalidPipeline;
+        assert_eq!(shape.code(), "TRANSFORM_INVALID_PIPELINE");
+        assert_eq!(shape.message(), "pipeline must be an array");
     }
 
     #[test]
@@ -645,9 +655,11 @@ mod tests {
             DataTransformError::InvalidStep
         );
         assert_eq!(
-            parse_pipeline_steps_lenient(&[json!({ "type": "unknown_noop" })]).unwrap_err(),
-            DataTransformError::InvalidStep
+            parse_pipeline_value(Some(&json!({ "type": "filter" }))).unwrap_err(),
+            DataTransformError::InvalidPipeline
         );
+        assert!(parse_pipeline_value(None).unwrap().is_empty());
+        assert!(parse_pipeline_value(Some(&json!([]))).unwrap().is_empty());
 
         let too_many = (0..=MAX_PIPELINE_STEPS)
             .map(|_| json!({ "type": "limit", "count": 1 }))

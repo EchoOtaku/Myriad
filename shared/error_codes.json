@@ -116,6 +116,7 @@
     "Explicit consent is required": "consent_required",
     "YouTube upstream failed": "youtube_upstream_failed",
     "Invalid MCP config": "mcp_config_invalid",
+    "Invalid configuration": "config_invalid",
     "Realtime session is unavailable": "realtime_session_unavailable",
     "Provider slug is required": "oauth_slug_required",
     "Invalid action": "media_action_invalid",

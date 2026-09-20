@@ -12,7 +12,7 @@ use crate::services::agent::types::*;
 use chrono::Utc;
 use once_cell::sync::Lazy;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
 };
 use serde_json::json;
@@ -500,105 +500,95 @@ pub(crate) async fn save_task_on_at(
 ) -> Result<(), String> {
     let status_str = task_status_to_db_str(&task.status);
     let persist_at: chrono::DateTime<chrono::FixedOffset> = persist_at.into();
-
-    // 检查任务是否已存在（使用 id 字段，它存储的是 task_id）
-    let existing = agent_tasks::Entity::find_by_id(&task.task_id)
-        .one(db)
+    let total_steps = task
+        .recipe
+        .as_ref()
+        .map(|recipe| recipe.steps.len())
+        .unwrap_or(task.step_results.len())
+        .max(1) as i32;
+    let session_id = session_id_from_lane_id(task.lane_id.as_deref());
+    let written = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO agent_tasks (
+    id, user_id, recipe_id, status, current_step, total_steps,
+    step_results, execution_context, recipe, pending_question, progress,
+    error, session_id, lane_id, started_at, completed_at, updated_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11,
+    $12, $13, $14, $15, $16, $17
+)
+ON CONFLICT (id) DO UPDATE SET
+    status = EXCLUDED.status,
+    current_step = EXCLUDED.current_step,
+    total_steps = EXCLUDED.total_steps,
+    step_results = EXCLUDED.step_results,
+    execution_context = EXCLUDED.execution_context,
+    recipe = EXCLUDED.recipe,
+    pending_question = EXCLUDED.pending_question,
+    progress = EXCLUDED.progress,
+    error = EXCLUDED.error,
+    session_id = COALESCE(EXCLUDED.session_id, agent_tasks.session_id),
+    lane_id = EXCLUDED.lane_id,
+    completed_at = EXCLUDED.completed_at,
+    updated_at = EXCLUDED.updated_at
+WHERE agent_tasks.updated_at < EXCLUDED.updated_at
+  AND agent_tasks.user_id = EXCLUDED.user_id
+RETURNING id
+"#,
+            [
+                task.task_id.clone().into(),
+                user_id.into(),
+                task.recipe_id.clone().into(),
+                status_str.to_string().into(),
+                (task.current_step as i32).into(),
+                total_steps.into(),
+                json!(task.step_results).into(),
+                task.execution_context.as_ref().map(|c| json!(c)).into(),
+                task.recipe.as_ref().map(|recipe| json!(recipe)).into(),
+                task.pending_question.as_ref().map(|q| json!(q)).into(),
+                (task.progress as i16).into(),
+                task.error.clone().into(),
+                session_id.clone().into(),
+                task.lane_id.clone().into(),
+                Into::<chrono::DateTime<chrono::FixedOffset>>::into(task.started_at).into(),
+                task.completed_at
+                    .map(Into::<chrono::DateTime<chrono::FixedOffset>>::into)
+                    .into(),
+                persist_at.into(),
+            ],
+        ))
         .await
         .map_err(|e| {
-            tracing::error!("Failed to load task: {e}");
-            "Failed to load task".to_string()
+            tracing::error!("Failed to persist task: {e}");
+            "Failed to persist task".to_string()
         })?;
-
-    if let Some(existing_task) = existing {
-        if recipe_persist_is_stale(existing_task.updated_at.with_timezone(&Utc), persist_at.with_timezone(&Utc))
-        {
-            return Ok(());
-        }
-        // 更新现有任务
-        let mut active_model: agent_tasks::ActiveModel = existing_task.into();
-        active_model.status = Set(status_str.to_string());
-        active_model.updated_at = Set(persist_at);
-        active_model.current_step = Set(task.current_step as i32);
-        active_model.total_steps = Set(Some(
-            task.recipe
-                .as_ref()
-                .map(|recipe| recipe.steps.len())
-                .unwrap_or(task.step_results.len())
-                .max(1) as i32,
-        ));
-        active_model.step_results = Set(json!(task.step_results));
-        active_model.completed_at = Set(task.completed_at.map(|t| t.into()));
-        active_model.error = Set(task.error.clone());
-        active_model.progress = Set(task.progress as i16);
-        active_model.pending_question = Set(task.pending_question.as_ref().map(|q| json!(q)));
-        active_model.execution_context = Set(task.execution_context.as_ref().map(|c| json!(c)));
-        active_model.recipe = Set(task.recipe.as_ref().map(|recipe| json!(recipe)));
-        active_model.lane_id = Set(task.lane_id.clone());
-        if let Some(sid) = session_id_from_lane_id(task.lane_id.as_deref()) {
-            active_model.session_id = Set(Some(sid));
-        }
-
-        let updated = agent_tasks::Entity::update_many()
-            .set(active_model)
-            .filter(agent_tasks::Column::Id.eq(&task.task_id))
-            .filter(agent_tasks::Column::UpdatedAt.lt(persist_at))
-            .exec(db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to update task: {e}");
-                "Failed to update task".to_string()
-            })?;
-        if updated.rows_affected == 0 {
-            return Ok(());
-        }
-    } else {
-        // 创建新任务
-        let session_id = session_id_from_lane_id(task.lane_id.as_deref());
-        let new_task = agent_tasks::ActiveModel {
-            id: Set(task.task_id.clone()),
-            user_id: Set(user_id),
-            recipe_id: Set(task.recipe_id.clone()),
-            status: Set(status_str.to_string()),
-            current_step: Set(task.current_step as i32),
-            step_results: Set(json!(task.step_results)),
-            started_at: Set(task.started_at.into()),
-            completed_at: Set(task.completed_at.map(|t| t.into())),
-            error: Set(task.error.clone()),
-            progress: Set(task.progress as i16),
-            pending_question: Set(task.pending_question.as_ref().map(|q| json!(q))),
-            execution_context: Set(task.execution_context.as_ref().map(|c| json!(c))),
-            recipe: Set(task.recipe.as_ref().map(|recipe| json!(recipe))),
-            original_request: Set(None),
-            updated_at: Set(persist_at),
-            session_id: Set(session_id),
-            lane_id: Set(task.lane_id.clone()),
-            name: Set(None),
-            total_steps: Set(Some(
-                task.recipe
-                    .as_ref()
-                    .map(|r| r.steps.len())
-                    .unwrap_or(task.step_results.len())
-                    .max(1) as i32,
-            )),
-        };
-
-        if let Err(e) = new_task.insert(db).await {
-            let lower = e.to_string().to_ascii_lowercase();
-            if lower.contains("23505") || lower.contains("duplicate key") {
-                return Box::pin(save_task_on_at(
-                    db,
-                    user_id,
-                    task,
-                    persist_at.with_timezone(&Utc),
-                ))
-                .await;
-            }
-            tracing::error!("Failed to create task: {e}");
-            return Err("Failed to create task".to_string());
-        }
+    if written.is_some() {
+        return Ok(());
     }
-
+    let existing = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT user_id FROM agent_tasks WHERE id = $1",
+            [task.task_id.clone().into()],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to load task after persist: {e}");
+            "Failed to persist task".to_string()
+        })?;
+    let Some(existing) = existing else {
+        return Err("Failed to persist task".into());
+    };
+    let owner: i32 = existing.try_get("", "user_id").map_err(|e| {
+        tracing::error!("Failed to decode task owner: {e}");
+        "Failed to persist task".to_string()
+    })?;
+    if owner != user_id {
+        return Err("Failed to persist task".into());
+    }
     Ok(())
 }
 
@@ -1085,6 +1075,21 @@ mod tests {
         };
         let err = task_model_to_state(&model).expect_err("unknown status must fail closed");
         assert!(err.contains("unknown agent task status"));
+    }
+
+    #[test]
+    fn recipe_persist_uses_conditional_upsert() {
+        let src = include_str!("task_store.rs");
+        let persist = src
+            .split("pub(crate) async fn save_task_on_at")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn persist_task_async").next())
+            .expect("save_task_on_at");
+        assert!(persist.contains("ON CONFLICT (id) DO UPDATE"));
+        assert!(persist.contains("updated_at < EXCLUDED.updated_at"));
+        assert!(persist.contains("user_id = EXCLUDED.user_id"));
+        assert!(!persist.contains("duplicate key"));
+        assert!(!persist.contains("Box::pin"));
     }
 
     #[test]

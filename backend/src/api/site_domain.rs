@@ -403,8 +403,6 @@ fn write_and_reload_env(content: &str) -> Result<(), String> {
     if let Ok(cors) = std::env::var("CORS_ORIGINS") {
         crate::middleware::cors_runtime::set_cors_origins_csv(&cors);
     }
-
-    crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 
@@ -533,6 +531,9 @@ pub async fn change_site_domain(
                 "code": "config_file_permission",
             })),
         );
+    }
+    if let Err(error) = crate::api::system::publish_env_app_config().await {
+        tracing::warn!(%error, "failed to publish AppConfig after site domain change");
     }
 
     // 3) Persist merged CORS in DB after env rewrite (cors_value known).

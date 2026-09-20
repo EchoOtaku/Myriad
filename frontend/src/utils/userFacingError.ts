@@ -997,6 +997,13 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return classified(t.e2eKeyFailed, raw, hint)
   }
+  if (code === 'config_invalid') {
+    return joinParts(
+      t.configInvalid,
+      usefulExtra(raw, t.configInvalid),
+      usefulExtra(hint, t.configInvalid),
+    )
+  }
   if (code === 'config_save_failed') {
     return classified(t.configSaveFailed, raw, hint)
   }

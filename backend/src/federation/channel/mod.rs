@@ -1,18 +1,19 @@
-//! Federation DM channels: early activity buffer, CRUD, accept, and E2E key exchange.
+//! Federation DM channels: CRUD, accept, and E2E key exchange.
 //!
-//! - `buffer`: ChannelMessage / KeyExchange that arrive before the channel row
 //! - `types`: request/response structs
 //! - `crud`: local Channel CRUD and send/get messages
-//! - `inbox`: inbound ChannelOpen / Message / Close and early-activity flush
+//! - `inbox`: inbound ChannelOpen / Message / Close
 //! - `e2e`: JWT-sealed session, key exchange, accept
+//!
+//! Activities that arrive before the channel row exist fail closed so the peer
+//! retries. Receipt + message_id idempotency is the durable path; there is no
+//! in-memory early-activity buffer.
 
-mod buffer;
 mod crud;
 mod e2e;
 mod inbox;
 mod types;
 
-pub(crate) use buffer::{EARLY_MSG_MAX_PER_CHANNEL, buffer_early_channel_activity};
 pub use crud::*;
 pub use e2e::*;
 pub use inbox::*;
@@ -21,10 +22,14 @@ pub use types::*;
 #[cfg(test)]
 mod split_contract_tests {
     #[test]
-    fn buffer_owns_early_activity_not_crud() {
-        let src = include_str!("buffer.rs");
-        assert!(src.contains("buffer_early_channel_activity"));
-        assert!(!src.contains("fn create_channel"));
+    fn early_activities_retry_without_volatile_buffer() {
+        let inbox = include_str!("inbox.rs");
+        let e2e = include_str!("e2e.rs");
+        assert!(inbox.contains("retry after ChannelOpen"));
+        assert!(e2e.contains("retry after ChannelOpen"));
+        assert!(!inbox.contains("buffer_early"));
+        assert!(!e2e.contains("buffer_early"));
+        assert!(!inbox.contains("flush_early_channel_messages"));
     }
 
     #[test]

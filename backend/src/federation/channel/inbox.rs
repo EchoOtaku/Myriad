@@ -1,48 +1,10 @@
-//! Inbound ChannelOpen / ChannelMessage / ChannelClose and early-activity flush.
+//! Inbound ChannelOpen / ChannelMessage / ChannelClose.
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::json;
 
 use crate::federation::types::*;
 
-use super::buffer::{buffer_early_channel_message, take_early_channel_activities};
-use super::e2e::{handle_key_exchange, load_e2e_session};
-
-async fn flush_early_channel_messages(
-    db: &impl ConnectionTrait,
-    channel_id: &str,
-) -> Result<(), String> {
-    let items = take_early_channel_activities(channel_id);
-    if items.is_empty() {
-        return Ok(());
-    }
-    tracing::info!(
-        "[Channel] Flushing {} buffered activit(y/ies) for {}",
-        items.len(),
-        channel_id
-    );
-    for m in items {
-        let ty = m
-            .activity
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let result = if ty == "myriad:KeyExchange" || ty == "KeyExchange" {
-            handle_key_exchange(db, &m.actor_url, &m.activity).await
-        } else {
-            handle_channel_message(db, &m.actor_url, &m.activity).await
-        };
-        result.map_err(|e| {
-            tracing::warn!(
-                "[Channel] Failed to apply buffered {} for {}: {}",
-                ty,
-                channel_id,
-                e
-            );
-            e
-        })?;
-    }
-    Ok(())
-}
+use super::e2e::load_e2e_session;
 
 // Inbox 处理（远程 Channel 事件）
 
@@ -187,9 +149,6 @@ pub async fn handle_channel_open(
         actor_url_str
     );
 
-    // ChannelMessage / KeyExchange may have raced ahead of ChannelOpen — flush buffer now.
-    flush_early_channel_messages(db, channel_id).await?;
-
     Ok(())
 }
 
@@ -232,22 +191,13 @@ pub async fn handle_channel_message(
             .is_some();
 
         if !channel_exists {
-            // Fast path: buffer for flush on ChannelOpen. Always fail (no 202) so
-            // the remote retries — covers process restart before open, and buffer
-            // full / mutex poison. Duplicates are idempotent via message_id.
-            let buffered = buffer_early_channel_message(channel_id, actor_url_str, activity);
-            if buffered {
-                tracing::info!(
-                    "[Channel] Buffered early message for {} from {} (channel not yet present); signaling retry",
-                    channel_id,
-                    actor_url_str
-                );
-            } else {
-                tracing::warn!(
-                    "[Channel] Early-message buffer full for {}; signaling retry",
-                    channel_id
-                );
-            }
+            // ChannelOpen may still be in flight. Fail (no 202) so the remote
+            // retries; duplicates are idempotent via message_id.
+            tracing::info!(
+                channel_id,
+                actor = actor_url_str,
+                "[Channel] Channel not yet present; signaling retry"
+            );
             return Err(format!(
                 "Channel {} not yet present; retry after ChannelOpen",
                 channel_id

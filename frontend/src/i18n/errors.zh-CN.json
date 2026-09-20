@@ -360,6 +360,7 @@
   "dndScheduleIncomplete": "开始和结束时间要一起填，或者一起留空。",
   "e2eKeyFailed": "端到端密钥没能处理。",
   "configSaveFailed": "站点配置没能保存。",
+  "configInvalid": "站点配置内容无效。",
   "dashboardLayoutSaveFailed": "首页布局没能保存。",
   "dashboardTitleSaveFailed": "首页标题没能保存。",
   "customPlatformsSaveFailed": "自定义社交平台没能保存。",

@@ -2,6 +2,7 @@
 
 use axum::{
     Json,
+    body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
 };
@@ -61,9 +62,9 @@ pub async fn upload_media(
         &db,
         RegisterMedia {
             kind: MediaKind::Upload,
-            url: stored.url.clone(),
-            mime: stored.media_type.clone(),
-            name: stored.name.clone(),
+            url: stored.url,
+            mime: stored.media_type,
+            name: stored.name,
             size: stored.size as i64,
         },
     )
@@ -111,7 +112,7 @@ pub async fn delete_media(
 
 async fn read_file_field(
     mut multipart: axum::extract::Multipart,
-) -> Result<(String, String, Vec<u8>), HttpError> {
+) -> Result<(String, String, Bytes), HttpError> {
     let mut file_bytes = None;
     let mut filename = "upload.bin".to_string();
     let mut mime = "application/octet-stream".to_string();
@@ -129,8 +130,7 @@ async fn read_file_field(
             field
                 .bytes()
                 .await
-                .map_err(|_| media_http(StatusCode::BAD_REQUEST, "Failed to read file field"))?
-                .to_vec(),
+                .map_err(|_| media_http(StatusCode::BAD_REQUEST, "Failed to read file field"))?,
         );
         break;
     }

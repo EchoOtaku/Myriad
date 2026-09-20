@@ -5,7 +5,6 @@ use serde_json::json;
 
 use crate::federation::types::*;
 
-use super::buffer::buffer_early_channel_activity;
 use super::types::E2eKeyExchangeResponse;
 
 // E2E helpers
@@ -94,14 +93,11 @@ pub async fn handle_key_exchange(
                 .map_err(|e| e.to_string())?
                 .is_some();
             if !channel_exists {
-                let buffered = buffer_early_channel_activity(channel_id, actor_url_str, activity);
-                if buffered {
-                    tracing::info!(
-                        "[Channel] Buffered early KeyExchange for {} from {} (channel not yet present)",
-                        channel_id,
-                        actor_url_str
-                    );
-                }
+                tracing::info!(
+                    channel_id,
+                    actor = actor_url_str,
+                    "[Channel] Channel not yet present for KeyExchange; signaling retry"
+                );
                 return Err(format!(
                     "Channel {} not yet present; retry after ChannelOpen",
                     channel_id

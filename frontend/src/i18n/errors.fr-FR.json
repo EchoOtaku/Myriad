@@ -360,6 +360,7 @@
   "dndScheduleIncomplete": "Définissez le début et la fin, ou videz les deux.",
   "e2eKeyFailed": "Impossible de traiter la clé de bout en bout.",
   "configSaveFailed": "Impossible d’enregistrer les paramètres du site.",
+  "configInvalid": "Ce paramètre du site n’est pas valide.",
   "dashboardLayoutSaveFailed": "Impossible d’enregistrer la disposition d’accueil.",
   "dashboardTitleSaveFailed": "Impossible d’enregistrer le titre d’accueil.",
   "customPlatformsSaveFailed": "Impossible d’enregistrer les plateformes sociales personnalisées.",

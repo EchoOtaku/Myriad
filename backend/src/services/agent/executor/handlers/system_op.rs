@@ -24,7 +24,7 @@ use crate::services::image_cache::ImageCacheService;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::phantasi_scheduler::get_phantasi_scheduler;
 use crate::services::tapp_data_transform::{
-    DataTransformError, apply_pipeline, items_from_agent_input, parse_pipeline_steps,
+    DataTransformError, apply_pipeline, items_from_agent_input, parse_pipeline_value,
 };
 use crate::services::tapp_ownership::verify_tapp_ownership;
 use crate::services::tapp_scheduler::{
@@ -64,15 +64,10 @@ pub async fn execute(
 
 async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value, String> {
     let input = params.get("input").cloned().unwrap_or(json!([]));
-    let pipeline_json = params
-        .get("pipeline")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let steps = parse_pipeline_steps(&pipeline_json).map_err(|err| match err {
+    let steps = parse_pipeline_value(params.get("pipeline")).map_err(|err| match err {
         DataTransformError::TooManySteps => "Too many pipeline steps".to_string(),
         DataTransformError::InvalidStep => "Invalid pipeline step".to_string(),
+        DataTransformError::InvalidPipeline => "pipeline must be an array".to_string(),
         other => other.message().to_string(),
     })?;
     let items = apply_pipeline(items_from_agent_input(input), steps).map_err(|err| match err {
