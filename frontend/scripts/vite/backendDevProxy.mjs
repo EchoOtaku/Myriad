@@ -286,8 +286,9 @@ function isBackendDevProxyPath(urlPath, userAgent) {
     path === '/nodeinfo/2.1' ||
     path === '/inbox' ||
     path.startsWith('/users/') ||
-    // Federation Note attachment media (must match proxy is_backend_path).
-    path.startsWith('/media/federation/')
+    // Public site media, including migrated uploads, portraits and stickers.
+    path.startsWith('/media/federation/') ||
+    path.startsWith('/media/assets/')
   )
 }
 

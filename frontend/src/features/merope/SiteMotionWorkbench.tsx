@@ -1357,6 +1357,17 @@ export default function SiteMotionWorkbench({
             onError={reportMeropeError}
             onUploaded={async (url) => {
               reportMeropeError('')
+              await loadFace()
+              const saved = await agentService.getPersona()
+              setPersonaSnapshot(saved)
+              const identity = visualIdentityFromProfile(saved?.visualProfile)
+              const wardrobe = hydrateWardrobe(saved?.visualProfile, identity, saved?.portraitAssetId)
+              setWardrobeItems(wardrobe.items)
+              setActiveOutfitId(wardrobe.activeId)
+              setStickerAvatarUrl(null)
+              invalidatePublicConfigCache()
+              void refreshPersonaStickerAvatar()
+              notifyAvatarChanged()
               try {
                 await applyVisualFromPortrait(url)
               } catch {

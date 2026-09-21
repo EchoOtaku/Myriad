@@ -864,6 +864,8 @@ html.dark .merope-wardrobe {
 }
 
 .merope-wardrobe__drawer {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
   gap: 12px;
   padding: 14px 14px 16px;
@@ -883,7 +885,9 @@ html.dark .merope-wardrobe {
 }
 
 .merope-wardrobe__families {
+  min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 0 -4px;
   padding: 2px 4px 6px;

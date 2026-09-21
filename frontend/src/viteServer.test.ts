@@ -1,5 +1,6 @@
 import type { AddressInfo } from 'node:net'
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { once } from 'node:events'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer as httpServer } from 'node:http'
@@ -16,7 +17,15 @@ import { spaFallbackPlugin } from '../scripts/vite/spaFallback.mjs'
 it('Vite serves deep links while backend routing precedes stamping and history fallback', async () => {
   const root = await mkdtemp(join(tmpdir(), 'myriad-vite-contract-'))
   let releaseStream = () => {}
+  const mediaPath = '/media/assets/11111111-1111-4111-8111-111111111111/sticker.png'
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6wAAAABJRU5ErkJggg==', 'base64')
   const backend = httpServer((req, res) => {
+    if (req.url?.startsWith('/media/assets/')) {
+      res.statusCode = req.url.startsWith(mediaPath) ? 200 : 404
+      res.setHeader('Content-Type', 'image/png')
+      res.end(req.method === 'HEAD' || res.statusCode === 404 ? undefined : png)
+      return
+    }
     if (req.url === '/api/config/metadata') {
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({ site_title: 'Fixture Brand', site_description: 'Fixture description' }))
@@ -64,6 +73,14 @@ it('Vite serves deep links while backend routing precedes stamping and history f
     for (const path of ['/api/example', '/robots.txt', '/sitemap.xml', '/journal/notes.xml', '/.well-known/webfinger', '/media/federation/example']) {
       assert.equal(await (await fetch(origin + path)).text(), `backend:${path}`)
     }
+    const media = await fetch(`${origin}${mediaPath}?version=1`)
+    assert.equal(media.status, 200)
+    assert.equal(media.headers.get('content-type'), 'image/png')
+    assert.deepEqual(Buffer.from(await media.arrayBuffer()), png)
+    const head = await fetch(origin + mediaPath, { method: 'HEAD' })
+    assert.equal(head.status, 200)
+    assert.equal((await head.arrayBuffer()).byteLength, 0)
+    assert.equal((await fetch(`${origin}/media/assets/missing/photo.png`)).status, 404)
     const crawler = { accept: 'text/html', 'user-agent': 'Googlebot' }
     assert.equal(await (await fetch(`${origin}/journal/articles/12`, { headers: crawler })).text(), 'backend:/journal/articles/12')
     assert.match(await (await fetch(`${origin}/journal/articles/12?_spa=1`, { headers: crawler })).text(), /id="app-root"/)

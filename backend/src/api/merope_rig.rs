@@ -124,7 +124,11 @@ fn portrait_generation_provider_error(error: image_generation::ImageGenerationEr
     let code = image_generation::image_generation_failure_code(&error);
     tracing::error!(%error, code, "site portrait generation failed");
     (
-        StatusCode::BAD_GATEWAY,
+        if code == "image_provider_rejected" {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::BAD_GATEWAY
+        },
         Json(json!({ "error": error.to_string(), "code": code })),
     )
 }
@@ -1259,6 +1263,28 @@ fn sanitize_portrait_adjustment(raw: Option<&str>) -> ApiResult<Option<String>> 
     Ok(Some(text.to_string()))
 }
 
+/// Keep the worn outfit's picture in sync even when optional visual analysis fails.
+fn bind_uploaded_portrait(profile: &mut Value, portrait: &str) {
+    myriad_merope::detach_active_outfit_rig(profile);
+    let Some(active) = profile
+        .get("activeOutfitId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    if let Some(items) = profile.get_mut("wardrobe").and_then(Value::as_array_mut) {
+        for item in items {
+            if item.get("id").and_then(Value::as_str) == Some(active.as_str()) {
+                if let Some(item) = item.as_object_mut() {
+                    item.insert("portraitAssetId".into(), json!(portrait));
+                }
+                break;
+            }
+        }
+    }
+}
+
 pub async fn upload_portrait(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1344,12 +1370,23 @@ pub async fn upload_portrait(
                 return Err(internal_error(error.to_string()));
             }
         };
+    let visual_profile = merope::get_persona_on(&transaction)
+        .await
+        .map_err(internal_error)?
+        .and_then(|persona| persona.visual_profile)
+        .map(|mut profile| {
+            bind_uploaded_portrait(&mut profile, &public_url);
+            profile
+        });
     if let Err(error) = merope::upsert_persona_on(
         &transaction,
         name,
         personality,
         merope::PortraitUpdate::Set(public_url.clone()),
         merope::PersonaContractUpdate {
+            visual_profile: visual_profile
+                .map(merope::JsonDocumentUpdate::Set)
+                .unwrap_or(merope::JsonDocumentUpdate::Keep),
             portrait_generation: merope::JsonDocumentUpdate::Clear,
             ..Default::default()
         },
@@ -1359,10 +1396,6 @@ pub async fn upload_portrait(
     {
         let _ = transaction.rollback().await;
         return Err(internal_error(error));
-    }
-    if let Err(error) = detach_worn_outfit_rig(&transaction, user_id).await {
-        let _ = transaction.rollback().await;
-        return Err(error);
     }
     let cleared_asset = match merope_rig::persist_active_asset(&transaction, None).await {
         Ok(asset_id) => asset_id,
@@ -1748,7 +1781,11 @@ fn sticker_avatar_provider_error(error: image_generation::ImageGenerationError) 
     let code = image_generation::image_generation_failure_code(&error);
     tracing::error!(%error, code, "sticker avatar generation failed");
     (
-        StatusCode::BAD_GATEWAY,
+        if code == "image_provider_rejected" {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::BAD_GATEWAY
+        },
         Json(json!({ "error": error.to_string(), "code": code })),
     )
 }
@@ -2050,6 +2087,30 @@ mod rig_invalidation_tests {
 mod portrait_contract_tests {
     use super::*;
     use sha2::Digest;
+
+    #[test]
+    fn uploaded_portrait_updates_only_the_worn_outfit_and_drops_old_provenance() {
+        let mut profile = json!({
+            "activeOutfitId": "stage",
+            "wardrobe": [
+                {"id": "default", "portraitAssetId": "/old-default.png", "rigAssetId": "keep"},
+                {"id": "stage", "portraitAssetId": "/old-stage.png", "rigAssetId": "old", "generationFingerprint": "old"}
+            ]
+        });
+        let original = profile["wardrobe"][0].clone();
+        bind_uploaded_portrait(&mut profile, "/media/assets/id/portrait.png");
+        assert_eq!(profile["wardrobe"][0], original);
+        assert_eq!(
+            profile["wardrobe"][1]["portraitAssetId"],
+            "/media/assets/id/portrait.png"
+        );
+        assert!(profile["wardrobe"][1].get("rigAssetId").is_none());
+        assert!(
+            profile["wardrobe"][1]
+                .get("generationFingerprint")
+                .is_none()
+        );
+    }
 
     #[test]
     fn active_reader_uses_one_persona_snapshot_not_the_configuration_mirror() {

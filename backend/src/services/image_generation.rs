@@ -296,8 +296,8 @@ pub async fn generate_image_with_references(
             "image prompt must contain 1 to {MAX_PROMPT_CHARS} characters"
         )));
     }
-    let width = width.clamp(256, 2048);
-    let height = height.clamp(256, 2048);
+    let (width, height) =
+        provider_dimensions(config, width.clamp(256, 2048), height.clamp(256, 2048));
     let (input_tokens, output_tokens) =
         crate::services::ai_cost_ledger::estimate_image_tokens(prompt, width, height);
     crate::services::analyzer::request_budget::charge_units(
@@ -615,6 +615,7 @@ fn request_parts_with_background(
     reference_data_urls: &[&str],
     background: Option<ImageBackground>,
 ) -> Result<(String, Value), ImageGenerationError> {
+    let (width, height) = provider_dimensions(config, width, height);
     let size = format!("{width}x{height}");
     let options = request_options(config, background);
     match config.provider.as_str() {
@@ -673,7 +674,7 @@ fn request_parts_with_background(
             // models without group-image support (e.g. Seedream 5.0 pro). We always
             // request a single image, so never send it.
             body.insert("watermark".to_string(), json!(false));
-            body.insert("stream".to_string(), json!(false));
+            // Non-streaming is the default; do not send optional streaming controls.
             if !reference_data_urls.is_empty() {
                 body.insert("image".to_string(), json!(reference_data_urls));
             }
@@ -773,6 +774,30 @@ fn default_background(model: &str) -> ImageBackground {
 
 fn is_gpt_image_model(model: &str) -> bool {
     is_gpt_image_1(model) || is_gpt_image_2(model)
+}
+
+/// Ark's minimum is a total pixel count, not a minimum side length.
+/// https://docs.byteplus.com/en/docs/ModelArk/1541523
+fn provider_dimensions(config: &ImageGenerationConfig, width: u32, height: u32) -> (u32, u32) {
+    let width = width.max(1);
+    let height = height.max(1);
+    if !matches!(config.provider.as_str(), "volcengine" | "ark" | "seedream") {
+        return (width, height);
+    }
+    let model = config.model.to_ascii_lowercase();
+    // Opaque ep-* endpoints use the intersection supported by 4.0, 4.5 and 5.0.
+    let min_pixels = if model.contains("seedream-4-0") || model.contains("seedream-5-0-pro") {
+        921_600.0
+    } else {
+        3_686_400.0
+    };
+    let scale = (min_pixels / (f64::from(width) * f64::from(height)))
+        .sqrt()
+        .max(1.0);
+    (
+        (f64::from(width) * scale).ceil() as u32,
+        (f64::from(height) * scale).ceil() as u32,
+    )
 }
 
 fn image_size_param(config: &ImageGenerationConfig, width: u32, height: u32) -> String {
@@ -1443,11 +1468,55 @@ mod tests {
             assert_eq!(body["size"], "1024x1024");
             assert_eq!(body["response_format"], "url");
             assert_eq!(body["watermark"], false);
-            assert_eq!(body["stream"], false);
+            assert!(body.get("stream").is_none());
             assert!(
                 body.get("sequential_image_generation").is_none(),
                 "Seedream 5.0 pro rejects sequential_image_generation; default is already disabled"
             );
+        }
+    }
+
+    #[test]
+    fn ark_sizes_cover_portraits_avatars_and_small_stickers() {
+        for model in [
+            "doubao-seedream-5-0-pro-260628",
+            "doubao-seedream-5-0-lite-260128",
+            "doubao-seedream-4-5-251128",
+            "ep-custom",
+        ] {
+            let config = ImageGenerationConfig {
+                provider: "volcengine".into(),
+                model: model.into(),
+                api_key: "secret".into(),
+                base_url: "https://example.com".into(),
+            };
+            for (width, height) in [
+                (1024, 1024),
+                (1152, 1536),
+                (256, 256),
+                (2048, 256),
+                (256, 2048),
+            ] {
+                let (_, body) =
+                    request_parts_with_background(&config, "portrait", width, height, &[], None)
+                        .unwrap();
+                let (w, h) = body["size"].as_str().unwrap().split_once('x').unwrap();
+                let (w, h) = (w.parse::<u32>().unwrap(), h.parse::<u32>().unwrap());
+                let min = if model.contains("5-0-pro") {
+                    921_600
+                } else {
+                    3_686_400
+                };
+                assert!((min..=4_624_220).contains(&(w * h)), "{model}: {w}x{h}");
+                assert!(
+                    (f64::from(w) * f64::from(height) / (f64::from(h) * f64::from(width)) - 1.0)
+                        .abs()
+                        < 0.005
+                );
+                // Request building and response fallback must agree on dimensions.
+                assert_eq!((w, h), provider_dimensions(&config, width, height));
+                assert_eq!((w, h), provider_dimensions(&config, w, h));
+            }
         }
     }
 

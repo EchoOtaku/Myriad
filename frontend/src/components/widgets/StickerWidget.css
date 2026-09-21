@@ -24,6 +24,7 @@
 
 .sticker-widget__frame.has-crop {
   overflow: hidden;
+  border-radius: 1rem;
 }
 
 .sticker-widget__image {
