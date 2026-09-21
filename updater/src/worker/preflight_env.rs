@@ -249,12 +249,7 @@ fn check_federation_http_storage(config: &serde_json::Value) -> Result<()> {
                 .and_then(serde_json::Value::as_str)
                 .is_none_or(str::is_empty)
     });
-    if mounts.len() != 5 || !data_root {
-        return Err(UpdaterError::Precondition(
-            "federation HTTP requires the read-only backend_data root and exactly four fixed writable subpaths".into(),
-        ));
-    }
-    for (source, target, subpath) in [
+    let required = [
         ("backend_data", "/app/data/federation", "federation"),
         (
             "backend_data",
@@ -263,25 +258,54 @@ fn check_federation_http_storage(config: &serde_json::Value) -> Result<()> {
         ),
         ("backend_data", "/app/data/media", "media"),
         ("backend_cache", "/tmp/cache/images", "images"),
-    ] {
-        if !mounts.iter().any(|mount| {
-            mount["type"] == "volume"
-                && mount["source"] == source
-                && mount["target"] == target
-                && mount
-                    .pointer("/volume/subpath")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(subpath)
-                && mount
-                    .pointer("/volume/nocopy")
-                    .and_then(serde_json::Value::as_bool)
-                    == Some(true)
-                && mount.get("read_only").and_then(serde_json::Value::as_bool) != Some(true)
-        }) {
-            return Err(UpdaterError::Precondition(format!(
-                "federation HTTP requires the fixed writable {source}/{subpath} subpath at {target}; migrate Compose before upgrading"
-            )));
-        }
+    ];
+    let missing = required
+        .iter()
+        .filter(|(source, target, subpath)| {
+            !mounts.iter().any(|mount| {
+                mount["type"] == "volume"
+                    && mount["source"] == *source
+                    && mount["target"] == *target
+                    && mount
+                        .pointer("/volume/subpath")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(*subpath)
+                    && mount
+                        .pointer("/volume/nocopy")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true)
+                    && mount.get("read_only").and_then(serde_json::Value::as_bool) != Some(true)
+            })
+        })
+        .map(|(source, target, subpath)| format!("{source}/{subpath} at {target}"))
+        .collect::<Vec<_>>();
+
+    // Keep this check strict: an extra mount is not harmless for the read-only
+    // worker boundary, and docker-guard applies the same fixed allowlist later.
+    // Report the exact mismatch instead of making operators guess which of the
+    // four subpaths an older panel-generated Compose file omitted.
+    let mut problems = Vec::new();
+    if !data_root {
+        problems.push("read-only backend_data root at /app/data".to_string());
+    }
+    if !missing.is_empty() {
+        problems.push(format!(
+            "missing writable subpath(s): {}",
+            missing.join(", ")
+        ));
+    }
+    if mounts.len() != 1 + required.len() {
+        problems.push(format!(
+            "found {} federation-worker volume mounts, expected {}",
+            mounts.len(),
+            1 + required.len()
+        ));
+    }
+    if !problems.is_empty() {
+        return Err(UpdaterError::Precondition(format!(
+            "federation HTTP requires the read-only backend_data root and exactly four fixed writable subpaths: {}. Update the host Compose file before upgrading; do not bypass this check",
+            problems.join("; ")
+        )));
     }
     Ok(())
 }
@@ -754,6 +778,23 @@ mod tests {
                 "accepted {path}"
             );
         }
+    }
+
+    #[test]
+    fn federation_http_storage_reports_legacy_missing_media_subpath() {
+        let mounts = vec![
+            json!({"type":"volume", "source":"backend_data", "target":"/app/data", "read_only":true}),
+            json!({"type":"volume", "source":"backend_data", "target":"/app/data/federation",
+                "volume":{"subpath":"federation","nocopy":true}}),
+            json!({"type":"volume", "source":"backend_data", "target":"/app/data/federation_media",
+                "volume":{"subpath":"federation_media","nocopy":true}}),
+            json!({"type":"volume", "source":"backend_cache", "target":"/tmp/cache/images",
+                "volume":{"subpath":"images","nocopy":true}}),
+        ];
+        let config = json!({"services":{"federation-worker":{"volumes":mounts}}});
+        let error = check_federation_http_storage(&config).unwrap_err();
+        assert!(error.to_string().contains("backend_data/media"), "{error}");
+        assert!(error.to_string().contains("/app/data/media"), "{error}");
     }
 
     #[test]

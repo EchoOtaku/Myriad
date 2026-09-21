@@ -1078,16 +1078,85 @@ pub(crate) fn parse_pg_major(raw: &str) -> std::result::Result<Option<u32>, &'st
 }
 
 fn read_pgdata_major(pgdata: &std::path::Path) -> Result<u32> {
-    let path = pgdata.join("PG_VERSION");
-    let raw = std::fs::read_to_string(&path).map_err(|e| {
+    // PostgreSQL <= 17 is commonly mounted with the data directory itself as
+    // the host root (`pgdata/PG_VERSION`). PostgreSQL 18's official image
+    // instead sets PGDATA to `/var/lib/postgresql/18/docker` while the
+    // Compose volume targets `/var/lib/postgresql`; on the host that becomes
+    // `pgdata/18/docker/PG_VERSION`. Support both layouts without scanning
+    // arbitrary descendants of the data volume.
+    let root = pgdata.join("PG_VERSION");
+    if let Some(major) = read_pg_version_file(&root)? {
+        return Ok(major);
+    }
+
+    let entries = std::fs::read_dir(pgdata).map_err(|e| {
         UpdaterError::Precondition(format!(
             "cannot read {}: {e}; refusing update without a PostgreSQL major",
-            path.display()
+            root.display()
         ))
     })?;
+    let mut nested = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            UpdaterError::Precondition(format!(
+                "cannot inspect PostgreSQL data directory {}: {e}",
+                pgdata.display()
+            ))
+        })?;
+        let file_type = entry.file_type().map_err(|e| {
+            UpdaterError::Precondition(format!(
+                "cannot inspect PostgreSQL data directory entry {}: {e}",
+                entry.path().display()
+            ))
+        })?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !file_type.is_dir() || !name.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let path = entry.path().join("docker/PG_VERSION");
+        if let Some(major) = read_pg_version_file(&path)? {
+            nested.push((path, major));
+        }
+    }
+
+    match nested.as_slice() {
+        [(_path, major)] => Ok(*major),
+        [] => Err(UpdaterError::Precondition(format!(
+            "cannot read {}: no PG_VERSION found in the legacy root or PostgreSQL versioned layout; refusing update without a PostgreSQL major",
+            root.display()
+        ))),
+        entries => Err(UpdaterError::Precondition(format!(
+            "multiple PostgreSQL PG_VERSION files found under {} ({}); refusing update until the active PGDATA is unambiguous",
+            pgdata.display(),
+            entries
+                .iter()
+                .map(|(path, _)| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
+}
+
+/// Read one supported PG_VERSION location. `Ok(None)` means the candidate is
+/// absent; malformed or unreadable candidates remain hard precondition errors.
+fn read_pg_version_file(path: &std::path::Path) -> Result<Option<u32>> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(UpdaterError::Precondition(format!(
+                "cannot read {}: {error}; refusing update without a PostgreSQL major",
+                path.display()
+            )));
+        }
+    };
     parse_pg_major(&raw)
         .ok()
         .flatten()
+        .map(Some)
         .ok_or_else(|| {
             UpdaterError::Precondition(format!(
                 "{} is not a PostgreSQL major version: {:?}",
@@ -1156,6 +1225,15 @@ mod min_pg_version_tests {
     fn bundled_at_floor_is_ok() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("PG_VERSION"), "16\n").unwrap();
+        enforce_min_pg_version(DbMode::Bundled, dir.path(), "16").unwrap();
+    }
+
+    #[test]
+    fn bundled_postgres_18_versioned_layout_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let pgdata = dir.path().join("18/docker");
+        std::fs::create_dir_all(&pgdata).unwrap();
+        std::fs::write(pgdata.join("PG_VERSION"), "18\n").unwrap();
         enforce_min_pg_version(DbMode::Bundled, dir.path(), "16").unwrap();
     }
 
