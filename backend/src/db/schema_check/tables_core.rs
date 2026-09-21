@@ -77,12 +77,7 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     default_value: None,
                     not_null: false,
                 },
-                ColumnDef {
-                    name: "username".into(),
-                    data_type: "character varying".into(),
-                    default_value: None,
-                    not_null: true,
-                },
+                ColumnDef::new("username", "character varying").not_null(),
                 ColumnDef {
                     name: "display_name".into(),
                     data_type: "character varying".into(),

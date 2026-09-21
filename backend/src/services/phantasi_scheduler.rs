@@ -123,6 +123,7 @@ pub(crate) fn due_sources_select_sql() -> String {
     )
 }
 
+#[cfg(test)]
 pub(crate) fn source_is_due(
     now: chrono::DateTime<Utc>,
     last_fetched_at: Option<chrono::DateTime<Utc>>,

@@ -340,19 +340,6 @@ fn effective_max_requests(policy: &RateLimitPolicy, trust: TrustLevel) -> i64 {
     policy.max_requests_per_window * multiplier
 }
 
-/// 检查某域名的联邦请求是否超过速率限制
-///
-/// 1. Process-local window counter (catches all inbound, not just stored activities)
-/// 2. Durable DB count：`COALESCE(received_at, published_at)`
-pub async fn check_rate_limit(
-    db: &DatabaseConnection,
-    domain: &str,
-    policy: &RateLimitPolicy,
-) -> Result<PolicyCheckResult, sea_orm::DbErr> {
-    let trust = get_instance_trust_level(db, domain).await?;
-    check_rate_limit_for_trust(db, domain, policy, trust).await
-}
-
 async fn check_rate_limit_for_trust(
     db: &DatabaseConnection,
     domain: &str,

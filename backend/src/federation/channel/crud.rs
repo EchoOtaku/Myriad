@@ -13,6 +13,7 @@ use super::types::{
 };
 
 /// One active relationship per (user, remote actor, channel type).
+#[cfg(test)]
 pub const ACTIVE_CHANNEL_RELATIONSHIP_UNIQUE_SQL: &str = r#"
 CREATE UNIQUE INDEX IF NOT EXISTS idx_channels_active_relationship
     ON federation_channels (user_id, remote_actor_id, channel_type)

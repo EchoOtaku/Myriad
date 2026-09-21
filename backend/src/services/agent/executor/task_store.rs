@@ -485,6 +485,7 @@ fn next_recipe_persist_at() -> chrono::DateTime<Utc> {
 }
 
 /// True when an older snapshot must not overwrite a newer durable row.
+#[cfg(test)]
 pub(crate) fn recipe_persist_is_stale(
     stored_updated_at: chrono::DateTime<Utc>,
     snapshot_at: chrono::DateTime<Utc>,

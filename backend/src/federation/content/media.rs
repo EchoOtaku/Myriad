@@ -11,6 +11,7 @@ pub fn federation_media_root() -> PathBuf {
 
 struct StoredMediaKind {
     attachment_type: &'static str,
+    #[cfg(test)]
     extension: &'static str,
 }
 
@@ -18,30 +19,37 @@ fn stored_media_kind(mime: &str) -> Option<StoredMediaKind> {
     Some(match mime {
         "image/jpeg" => StoredMediaKind {
             attachment_type: "Image",
+            #[cfg(test)]
             extension: "jpg",
         },
         "image/png" => StoredMediaKind {
             attachment_type: "Image",
+            #[cfg(test)]
             extension: "png",
         },
         "image/gif" => StoredMediaKind {
             attachment_type: "Image",
+            #[cfg(test)]
             extension: "gif",
         },
         "image/webp" => StoredMediaKind {
             attachment_type: "Image",
+            #[cfg(test)]
             extension: "webp",
         },
         "video/mp4" => StoredMediaKind {
             attachment_type: "Video",
+            #[cfg(test)]
             extension: "mp4",
         },
         "video/webm" => StoredMediaKind {
             attachment_type: "Video",
+            #[cfg(test)]
             extension: "webm",
         },
         "video/quicktime" => StoredMediaKind {
             attachment_type: "Video",
+            #[cfg(test)]
             extension: "mov",
         },
         _ => return None,
@@ -52,6 +60,7 @@ pub fn classify_media_mime(mime: &str) -> Option<&'static str> {
     stored_media_kind(mime).map(|kind| kind.attachment_type)
 }
 
+#[cfg(test)]
 fn extension_for_mime(mime: &str) -> Option<&'static str> {
     stored_media_kind(mime).map(|kind| kind.extension)
 }

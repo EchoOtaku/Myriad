@@ -146,12 +146,6 @@ pub fn max_in_flight_chunk_bytes() -> usize {
     crate::services::memory_profile::max_in_flight_chunk_bytes()
 }
 
-/// Live note image cap.
-#[inline]
-pub fn note_image_limit() -> usize {
-    crate::services::memory_profile::note_image_limit()
-}
-
 /// Live note video cap.
 #[inline]
 pub fn note_video_limit() -> usize {

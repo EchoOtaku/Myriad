@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+#[cfg(test)]
 use uuid::Uuid;
 
 fn cache_io_error(action: &str, error: std::io::Error) -> String {
@@ -233,6 +234,7 @@ impl ImageCacheService {
     }
 
     /// Cache-only content-addressed write. Persistent producers must not use this.
+    #[cfg(test)]
     pub async fn store_cache_bytes(
         &self,
         bytes: &[u8],

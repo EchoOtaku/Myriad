@@ -10,29 +10,6 @@ use serde_json::json;
 
 use crate::federation::types::*;
 
-/// 根据用户名查询实际的 user_id，避免硬编码 user_id = 1
-async fn resolve_user_id(
-    db: &impl ConnectionTrait,
-    username: &str,
-) -> Result<i32, (StatusCode, Json<serde_json::Value>)> {
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT id FROM users WHERE username = $1",
-            [username.into()],
-        ))
-        .await
-        .map_err(db_err)?;
-
-    match user_id_from_username_row(row.and_then(|r| r.try_get::<i32>("", "id").ok())) {
-        Ok(uid) => Ok(uid),
-        Err(_) => Err((
-            StatusCode::NOT_FOUND,
-            Json(AppError::public_json("Local user not found")),
-        )),
-    }
-}
-
 /// Username lookup miss is not another subject's id.
 pub fn user_id_from_username_row(id: Option<i32>) -> Result<i32, ()> {
     match id {
@@ -1696,22 +1673,6 @@ mod tests {
         assert_eq!(timeline_import_delta(0), 0);
         assert_eq!(timeline_import_delta(1), 1);
         assert_eq!(timeline_import_delta(2), 1);
-    }
-
-    #[test]
-    fn resolve_user_id_has_no_lowest_id_fallback() {
-        let src = include_str!("ring.rs");
-        let resolve = src
-            .split("async fn resolve_user_id(")
-            .nth(1)
-            .expect("resolve_user_id")
-            .split("pub struct CreateRingRequest")
-            .next()
-            .unwrap();
-        assert!(
-            !resolve.contains("ORDER BY id LIMIT 1"),
-            "admin username miss must not bind the lowest user id"
-        );
     }
 
     #[test]

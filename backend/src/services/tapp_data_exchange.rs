@@ -146,6 +146,8 @@ pub enum DataExchangeError {
     PendingLimit,
     RequestExpired,
     RequestMismatch,
+    /// Reserved for registries that can distinguish replay from expiry.
+    #[allow(dead_code)]
     RequestAlreadyUsed,
     GrantLimit,
     InvalidGrant,
