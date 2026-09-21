@@ -1,12 +1,12 @@
 import type { OnboardingPageChrome } from '../agent/onboarding/onboardingTypes'
 import type { AgentChannelId } from './agentChannels'
-
 import {
   LuChevronLeft,
   LuMessageSquare,
   LuNotebookPen,
   LuRefreshCw,
 } from '@lib/icons'
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConfigI18n as useI18n } from '../../contexts/I18nContext'
 import {
@@ -15,6 +15,7 @@ import {
 import SiteMotionWorkbench from '../../features/merope/SiteMotionWorkbench'
 import { agentService } from '../../services/agent'
 import { invalidatePublicConfigCache } from '../../utils/requestDedup'
+import { siteMediaUrl } from '../../utils/siteMediaUrl'
 import { showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import {
@@ -399,7 +400,7 @@ export const AgentConfigSection: React.FC<AgentConfigSectionProps> = ({
             }
             preview={
               portraitUrl && hasSavedPersona ? (
-                <img src={portraitUrl} alt={savedPersonaName || 'Arael'} />
+                <img src={siteMediaUrl(portraitUrl)} alt={savedPersonaName || 'Arael'} />
               ) : (
                 <span className="info-action-card-preview-empty is-mosaic">
                   <img src="/merope/clothing/everyday.png" alt="" />

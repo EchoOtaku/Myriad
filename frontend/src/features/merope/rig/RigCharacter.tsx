@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { siteMediaUrl } from '../../../utils/siteMediaUrl'
 import Anime25DCharacter from '../anime25drig/Anime25DCharacter'
 import {
   anime25DRuntimeKey,
@@ -79,7 +80,7 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       isAnime25DPlayback(manifest.anime25dPlayback)
         ? manifest.anime25dPlayback
         : null
-    const atlasUrl = manifest?.textures[0]?.url || ''
+    const atlasUrl = siteMediaUrl(manifest?.textures[0]?.url || '')
     const runtimeKey = anime25DRuntimeKey(
       manifest?.sourceMasterAssetId,
       manifest?.characterAssetContractVersion,
@@ -267,7 +268,7 @@ function StaticFaceImage({
     <span className="merope-rig is-ready" data-rig-quality="static">
       <img
         ref={imageRef}
-        src={src}
+        src={siteMediaUrl(src)}
         alt=""
         draggable={false}
         onLoad={() => onPlaybackReady?.()}

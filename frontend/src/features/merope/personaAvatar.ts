@@ -1,4 +1,5 @@
 import { getPublicConfigDeduped } from '../../utils/requestDedup'
+import { siteMediaUrl } from '../../utils/siteMediaUrl'
 import { PERSONA_UPDATED_EVENT } from './events'
 
 /** No sticker → site logo. Shared by settings and notifications. */
@@ -17,7 +18,7 @@ export function personaStickerAvatarFromConfig(config: unknown): string | null {
   const raw = (config as { agentPersonaAvatarUrl?: unknown })
     .agentPersonaAvatarUrl
   if (typeof raw !== 'string') return null
-  return raw.trim() || null
+  return siteMediaUrl(raw) || null
 }
 
 function publish(next: string | null) {

@@ -5,6 +5,7 @@ import {
   parseStickerCrop,
   stickerCropObjectPosition,
 } from '../../utils/homeStickerCrop'
+import { siteMediaUrl } from '../../utils/siteMediaUrl'
 import './StickerWidget.css'
 
 function stickerImageUrl(config: WidgetComponentProps['config']): string {
@@ -89,7 +90,7 @@ const StickerWidget = memo(({
   config,
   isEditMode,
 }: WidgetComponentProps) => {
-  const src = stickerImageUrl(config)
+  const src = siteMediaUrl(stickerImageUrl(config))
   const alt = stickerAlt(config)
   const crop = parseStickerCrop(config.config?.crop)
   const loopOn = stickerFloatLoop(config.config)

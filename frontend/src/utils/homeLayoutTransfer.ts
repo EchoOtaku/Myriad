@@ -179,6 +179,21 @@ export function canonicalStickerImageUrl(url: string): string | null {
     return url
   }
   const withoutQuery = url.split('#')[0]?.split('?')[0] ?? url
+  let local = withoutQuery
+  if (/^https?:\/\//i.test(local)) {
+    try {
+      local = new URL(local).pathname
+    } catch {
+      return null
+    }
+  }
+  // Persistent public assets and authenticated previews replaced image-cache writes.
+  if (
+    /^\/media\/assets\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/[\w-]+\.(?:png|jpe?g|webp)$/i.test(local) ||
+    /^\/api\/media\/[1-9]\d*\/content$/.test(local)
+  ) {
+    return local
+  }
   const cacheAt = withoutQuery.indexOf('/api/phantasi/image-cache/')
   const path = cacheAt >= 0 ? withoutQuery.slice(cacheAt) : withoutQuery
   const match = IMAGE_CACHE_FILE.exec(path)

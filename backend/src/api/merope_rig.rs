@@ -485,7 +485,12 @@ async fn bind_and_activate_outfit_rig(
     Ok(())
 }
 
-async fn detach_worn_outfit_rig<C>(db: &C, user_id: i32) -> ApiResult<()>
+async fn bind_generated_portrait<C>(
+    db: &C,
+    user_id: i32,
+    portrait: &str,
+    fingerprint: &str,
+) -> ApiResult<()>
 where
     C: sea_orm::ConnectionTrait,
 {
@@ -495,7 +500,7 @@ where
     let Some(mut profile) = row.visual_profile.clone() else {
         return Ok(());
     };
-    myriad_merope::detach_active_outfit_rig(&mut profile);
+    bind_worn_portrait(&mut profile, portrait, Some(fingerprint));
     merope::upsert_persona_on(
         db,
         row.name,
@@ -1264,7 +1269,7 @@ fn sanitize_portrait_adjustment(raw: Option<&str>) -> ApiResult<Option<String>> 
 }
 
 /// Keep the worn outfit's picture in sync even when optional visual analysis fails.
-fn bind_uploaded_portrait(profile: &mut Value, portrait: &str) {
+fn bind_worn_portrait(profile: &mut Value, portrait: &str, fingerprint: Option<&str>) {
     myriad_merope::detach_active_outfit_rig(profile);
     let Some(active) = profile
         .get("activeOutfitId")
@@ -1278,11 +1283,25 @@ fn bind_uploaded_portrait(profile: &mut Value, portrait: &str) {
             if item.get("id").and_then(Value::as_str) == Some(active.as_str()) {
                 if let Some(item) = item.as_object_mut() {
                     item.insert("portraitAssetId".into(), json!(portrait));
+                    if let Some(fingerprint) = fingerprint {
+                        item.insert("generationFingerprint".into(), json!(fingerprint));
+                    }
                 }
                 break;
             }
         }
     }
+}
+
+fn uploaded_portrait_reference(bytes: Vec<u8>) -> ApiResult<image_generation::ImageReference> {
+    let mime = match image::guess_format(&bytes) {
+        Ok(image::ImageFormat::Png) => "image/png",
+        Ok(image::ImageFormat::Jpeg) => "image/jpeg",
+        Ok(image::ImageFormat::WebP) => "image/webp",
+        _ => return Err(bad_request("Portrait must be a PNG, JPEG, or WebP image")),
+    };
+    image_generation::ImageReference::new(bytes, mime)
+        .map_err(|error| bad_request(&error.to_string()))
 }
 
 pub async fn upload_portrait(
@@ -1299,11 +1318,6 @@ pub async fn upload_portrait(
     })? {
         match field.name() {
             Some("image") if image_bytes.is_none() => {
-                let media_type = match field.content_type() {
-                    Some("image/jpeg" | "image/jpg") => "image/jpeg",
-                    Some("image/webp") => "image/webp",
-                    _ => "image/png",
-                };
                 let bytes = field.bytes().await.map_err(|error| {
                     tracing::error!(%error, "Invalid portrait image");
                     bad_request("Invalid portrait image")
@@ -1311,8 +1325,7 @@ pub async fn upload_portrait(
                 if bytes.len() > 10 * 1024 * 1024 {
                     return Err(bad_request("Portrait image exceeds 10 MB"));
                 }
-                let reference = image_generation::ImageReference::new(bytes.to_vec(), media_type)
-                    .map_err(|error| bad_request(&error.to_string()))?;
+                let reference = uploaded_portrait_reference(bytes.to_vec())?;
                 image_bytes = Some(reference);
             }
             Some("image") => {
@@ -1342,7 +1355,12 @@ pub async fn upload_portrait(
                 },
             )
             .await
-            .map_err(|error| internal_error(error.to_string()))?;
+            .map_err(|error| match error {
+                crate::services::media::MediaError::Invalid { .. } => {
+                    bad_request(&error.to_string())
+                }
+                _ => internal_error(error.to_string()),
+            })?;
     let stored = crate::services::image_cache::StoredImage {
         url: asset.catalog_url(),
         created: true,
@@ -1375,7 +1393,7 @@ pub async fn upload_portrait(
         .map_err(internal_error)?
         .and_then(|persona| persona.visual_profile)
         .map(|mut profile| {
-            bind_uploaded_portrait(&mut profile, &public_url);
+            bind_worn_portrait(&mut profile, &public_url, None);
             profile
         });
     if let Err(error) = merope::upsert_persona_on(
@@ -1734,7 +1752,9 @@ pub async fn generate_portrait(
             })),
         ));
     }
-    if let Err(error) = detach_worn_outfit_rig(&transaction, user_id).await {
+    if let Err(error) =
+        bind_generated_portrait(&transaction, user_id, &public_url, &contract_fingerprint).await
+    {
         let _ = transaction.rollback().await;
         release_portrait_generation_lease(&db, &generation_token).await;
         cleanup_uncommitted_portrait(&db, &persisted).await;
@@ -2098,7 +2118,7 @@ mod portrait_contract_tests {
             ]
         });
         let original = profile["wardrobe"][0].clone();
-        bind_uploaded_portrait(&mut profile, "/media/assets/id/portrait.png");
+        bind_worn_portrait(&mut profile, "/media/assets/id/portrait.png", None);
         assert_eq!(profile["wardrobe"][0], original);
         assert_eq!(
             profile["wardrobe"][1]["portraitAssetId"],
@@ -2110,6 +2130,38 @@ mod portrait_contract_tests {
                 .get("generationFingerprint")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn portrait_upload_detects_supported_content_without_multipart_mime() {
+        for (bytes, mime) in [
+            (b"\x89PNG\r\n\x1a\n".as_slice(), "image/png"),
+            (b"\xff\xd8\xff\xe0".as_slice(), "image/jpeg"),
+            (b"RIFF\x00\x00\x00\x00WEBP".as_slice(), "image/webp"),
+        ] {
+            assert_eq!(
+                uploaded_portrait_reference(bytes.to_vec())
+                    .unwrap()
+                    .media_type,
+                mime
+            );
+        }
+        assert!(uploaded_portrait_reference(b"GIF89a".to_vec()).is_err());
+        assert!(uploaded_portrait_reference(b"not an image".to_vec()).is_err());
+    }
+
+    #[test]
+    fn generated_portrait_updates_worn_picture_and_provenance() {
+        let mut profile = json!({"activeOutfitId": "stage", "wardrobe": [
+            {"id": "stage", "portraitAssetId": "/old.png", "rigAssetId": "old", "generationFingerprint": "old"}
+        ]});
+        bind_worn_portrait(&mut profile, "/new.png", Some("new-fingerprint"));
+        assert_eq!(profile["wardrobe"][0]["portraitAssetId"], "/new.png");
+        assert_eq!(
+            profile["wardrobe"][0]["generationFingerprint"],
+            "new-fingerprint"
+        );
+        assert!(profile["wardrobe"][0].get("rigAssetId").is_none());
     }
 
     #[test]

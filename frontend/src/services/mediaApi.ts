@@ -54,7 +54,7 @@ export function draftMediaSrc(item: MediaAsset): string {
 
 export function isPrivateMediaPath(src: string): boolean {
   try {
-    const path = src.includes('://') ? new URL(src).pathname : src.trim()
+    const path = new URL(src.trim(), 'https://media.invalid').pathname
     return /^\/api\/media\/\d+\/content$/.test(path)
   } catch {
     return false
@@ -65,7 +65,8 @@ export async function fetchMediaObjectUrl(
   path: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const url = path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')
+  path = path.trim()
+  const url = path.startsWith('http') || path.startsWith('//') || path.startsWith('blob:') || path.startsWith('data:')
     ? path
     : `${API_URL.replace(/\/$/, '')}${path}`
   if (url.startsWith('blob:') || url.startsWith('data:')) return url
@@ -76,6 +77,7 @@ export async function fetchMediaObjectUrl(
     )
   }
   const blob = await response.blob()
+  signal?.throwIfAborted()
   return URL.createObjectURL(blob)
 }
 

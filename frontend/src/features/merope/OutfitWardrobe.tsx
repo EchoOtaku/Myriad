@@ -16,6 +16,7 @@ import { Field, TextArea, TextInput } from '../../components/agent/onboarding/ui
 import { SettingsButton } from '../../components/settings'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
+import { siteMediaUrl } from '../../utils/siteMediaUrl'
 import { showStickyToast } from '../../utils/toastManager'
 import {
   applyOutfit,
@@ -202,7 +203,7 @@ export default function OutfitWardrobe({
                     onClick={() => manageItem(current)}
                   >
                     {currentPicture ? (
-                      <img src={currentPicture} alt="" draggable={false} />
+                      <img src={siteMediaUrl(currentPicture)} alt="" draggable={false} />
                     ) : (
                       <span className="merope-wardrobe__fold">
                         {labelOf(current)}
@@ -211,7 +212,7 @@ export default function OutfitWardrobe({
                   </button>
                 ) : currentPicture ? (
                   <div className="merope-wardrobe__garment">
-                    <img src={currentPicture} alt="" draggable={false} />
+                    <img src={siteMediaUrl(currentPicture)} alt="" draggable={false} />
                   </div>
                 ) : null}
                 {current ? (
@@ -248,7 +249,7 @@ export default function OutfitWardrobe({
                     onClick={() => manageItem(item)}
                   >
                     {picture ? (
-                      <img src={picture} alt="" draggable={false} />
+                      <img src={siteMediaUrl(picture)} alt="" draggable={false} />
                     ) : (
                       <span className="merope-wardrobe__fold">
                         {labelOf(item)}

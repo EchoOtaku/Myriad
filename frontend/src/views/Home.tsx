@@ -71,6 +71,7 @@ import {
   serializeDashboardLayout,
   stickerPixelSize,
 } from '../utils/homeLayout'
+import { applyPublishedStickerUrls } from '../utils/homeLayoutPublication'
 import { stickerCropForSlot } from '../utils/homeStickerCrop'
 import { stickerAspectKey } from '../utils/homeStickerSize'
 import { buildHomePageSeo } from '../utils/modulePageSeo'
@@ -413,7 +414,7 @@ export default function Home() {
             return uploaded.imageUrl
           },
         )
-        const next = restored.layouts
+        let next = restored.layouts
         const res = await fetch(`${API_URL}/api/config/dashboard`, {
           method: 'POST',
           headers: {
@@ -435,6 +436,7 @@ export default function Home() {
           clearTimeout(layoutSaveTimerRef.current)
           layoutSaveTimerRef.current = null
         }
+        next = applyPublishedStickerUrls(next, next, (await res.json()).layout)
         layoutApplyGenerationRef.current += 1
         setRawLayouts(next)
         setLayouts(next)
@@ -523,6 +525,8 @@ export default function Home() {
               `Failed to save dashboard layout: HTTP ${res.status}`,
             )
           }
+          const saved = await res.json()
+          setLayouts(current => applyPublishedStickerUrls(current, nextLayouts, saved.layout))
         } catch (err) {
           console.error('保存小组件配置失败:', err)
           showError(await formatUserFacingError(err, t.errors.dashboardLayoutSaveFailed))

@@ -139,6 +139,11 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/fixture/poseCorrectionEditor.tsx
 !/frontend/tests/browser/fixture/touchHandoff.tsx
 
+# Authenticated media preview lifecycle regressions
+!/frontend/tests/browser/mediaSource.spec.ts
+!/frontend/tests/browser/fixture/mediaSource.html
+!/frontend/tests/browser/fixture/mediaSource.tsx
+
 # Navigation island browser regressions
 !/frontend/tests/browser/navigationIsland.spec.ts
 !/frontend/tests/browser/fixture/navigationIsland.tsx

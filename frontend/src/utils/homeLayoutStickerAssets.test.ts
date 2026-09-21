@@ -6,7 +6,7 @@ import {
   fetchStickerAssets,
   restoreStickerAssets,
 } from './homeLayoutStickerAssets'
-import { encodeBase64 } from './homeLayoutTransfer'
+import { buildHomeLayoutExport, encodeBase64, parseHomeLayoutImport } from './homeLayoutTransfer'
 
 const PNG_1X1 = Uint8Array.from([
   0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
@@ -34,6 +34,29 @@ function layoutsWith(url: string) {
 }
 
 describe('fetchStickerAssets', () => {
+  for (const path of ['/media/assets/12345678-1234-1234-1234-123456789abc/portrait.png', '/api/media/123/content']) {
+    it(`round-trips persistent sticker ${path}`, async () => {
+      const layouts = layoutsWith(path)
+      const { assets, missing } = await fetchStickerAssets(layouts, async (input) => {
+        assert.equal(input, path)
+        return { ok: true, arrayBuffer: async () => PNG_1X1.slice().buffer }
+      })
+      assert.deepEqual(missing, [])
+      const imported = parseHomeLayoutImport(buildHomeLayoutExport(layouts, 'free', assets))
+      assert.equal(imported.ok, true)
+      if (!imported.ok) return
+      let uploads = 0
+      const restored = await restoreStickerAssets(imported.layouts, imported.assets, async data => {
+        assert.equal(data, `data:image/png;base64,${encodeBase64(PNG_1X1)}`)
+        uploads++
+        return '/api/media/456/content'
+      })
+      assert.equal(uploads, 1)
+      assert.equal(restored.layouts.free[0].config?.imageUrl, '/api/media/456/content')
+      assert.deepEqual(restored.failed, [])
+    })
+  }
+
   it('embeds PNG bytes from the image-cache path', async () => {
     const fetched: string[] = []
     const { assets, missing } = await fetchStickerAssets(

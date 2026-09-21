@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { uploadSitePortrait } from '../../../../features/merope/api'
 import { notifyFaceUpdated } from '../../../../features/merope/events'
+import { siteMediaUrl } from '../../../../utils/siteMediaUrl'
 import { userFacingError } from '../../../../utils/userFacingError'
 import { SettingsButton } from '../../../settings'
 
@@ -112,7 +113,7 @@ export default function PortraitImportButton({
             <>
               <img
                 className="merope-ob-import__portrait"
-                src={previewUrl}
+                src={siteMediaUrl(previewUrl)}
                 alt=""
                 draggable={false}
               />

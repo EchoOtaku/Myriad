@@ -28,10 +28,12 @@ pub async fn update_dashboard_config(
         }
     };
     let mut updates = std::collections::HashMap::new();
+    let mut saved_layout = None;
 
     if let Some(layout) = payload.layout {
         match crate::services::media::bind_and_publish_dashboard_layout(&txn, &layout, &[]).await {
             Ok(rewritten) => {
+                saved_layout = Some(rewritten.clone());
                 updates.insert("dashboard_layout".to_string(), json!(rewritten));
             }
             Err(error) => {
@@ -107,7 +109,8 @@ pub async fn update_dashboard_config(
         StatusCode::OK,
         Json(json!({
             "success": true,
-            "message": "ok"
+            "message": "ok",
+            "layout": saved_layout
         })),
     )
 }

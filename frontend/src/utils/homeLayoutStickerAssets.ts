@@ -1,4 +1,4 @@
-/** Same-site image-cache PNG/JPEG/WebP only. */
+/** Bundle persistent site images and legacy image-cache PNG/JPEG/WebP. */
 
 import type { HomeDashboardLayouts } from './homeLayout'
 import type { HomeLayoutAsset, HomeLayoutAssetMap } from './homeLayoutTransfer'

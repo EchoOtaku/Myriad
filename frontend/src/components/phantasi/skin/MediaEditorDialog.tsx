@@ -13,10 +13,9 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
+import { useMediaSource } from '../../../hooks/useMediaSource'
 import { ApiError } from '../../../services/api'
 import {
-  fetchMediaObjectUrl,
-  isPrivateMediaPath,
   previewMediaEdit,
   saveMediaEdit,
 } from '../../../services/mediaApi'
@@ -27,7 +26,6 @@ import {
   SettingTitleTag,
   SwitchItem,
 } from '../../settings'
-import { displayImageUrl } from '../notes/noteImageUrl'
 import {
   resizedDimensions,
   resizeMediaImage,
@@ -154,7 +152,7 @@ export function MediaEditorDialog({
   const catalogSrc = item.exposure === 'public' && item.public_path
     ? item.public_path
     : item.content_path || item.url
-  const [src, setSrc] = useState(() => displayImageUrl(catalogSrc))
+  const src = useMediaSource(catalogSrc)
   useEffect(() => {
     alive.current = true
     const opener = document.activeElement
@@ -171,26 +169,6 @@ export function MediaEditorDialog({
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
   }, [])
-  useEffect(() => {
-    if (!isPrivateMediaPath(catalogSrc)) {
-      setSrc(displayImageUrl(catalogSrc))
-      return
-    }
-    const ac = new AbortController()
-    let objectUrl: string | undefined
-    fetchMediaObjectUrl(catalogSrc, ac.signal)
-      .then((url) => {
-        objectUrl = url
-        setSrc(url)
-      })
-      .catch(() => {
-        if (!ac.signal.aborted) setSrc('')
-      })
-    return () => {
-      ac.abort()
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [catalogSrc])
   const finishClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
     onClose()
@@ -215,7 +193,7 @@ export function MediaEditorDialog({
     )
   }
   const run = async (kind: 'generate' | 'resize' | 'save') => {
-    if (pending.current || closingRef.current) return
+    if (pending.current || closingRef.current || (kind === 'resize' && !src)) return
     pending.current = true
     setBusy(kind)
     setError('')
@@ -240,7 +218,7 @@ export function MediaEditorDialog({
                 dimensions.height,
                 controller.signal,
               )
-            : await resizeMediaImage(src, dimensions.width, dimensions.height)
+            : await resizeMediaImage(src!, dimensions.width, dimensions.height)
         validateMediaEditData(image)
         if (alive.current && !controller.signal.aborted) {
           setDraft({ image, generated: kind === 'generate' })
@@ -482,7 +460,7 @@ export function MediaEditorDialog({
                 disabled={
                   !!busy ||
                   !validMediaDimensions(dimensions.width, dimensions.height) ||
-                  !source.width
+                  !source.width || !src
                 }
                 onClick={() => void run('resize')}
               >

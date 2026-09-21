@@ -5,6 +5,7 @@ import {
   clampStickerCrop,
   stickerCropObjectPosition,
 } from '../../utils/homeStickerCrop'
+import { siteMediaUrl } from '../../utils/siteMediaUrl'
 import './HomeStickerCrop.css'
 
 export interface HomeStickerCropProps {
@@ -95,7 +96,7 @@ export function HomeStickerCrop({
       >
         <img
           className="home-sticker-crop__image"
-          src={src}
+          src={siteMediaUrl(src)}
           alt=""
           draggable={false}
           style={{

@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 import type { StickerFloatMode } from '../widgets/StickerWidget'
 import { useI18n } from '../../contexts/I18nContext'
+import { siteMediaUrl } from '../../utils/siteMediaUrl'
 import {
   WidgetSettingsAction,
   WidgetSettingsChoice,
@@ -35,7 +36,7 @@ function stickerDownloadName(blob: Blob, src: string): string {
 }
 
 async function downloadStickerImage(src: string): Promise<void> {
-  const response = await fetch(src, { credentials: 'include' })
+  const response = await fetch(siteMediaUrl(src), { credentials: 'include' })
   if (!response.ok) throw new Error('download failed')
   const blob = await response.blob()
   const objectUrl = URL.createObjectURL(blob)

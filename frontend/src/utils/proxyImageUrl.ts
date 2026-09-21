@@ -1,5 +1,6 @@
 import hosts from '../../../shared/image_proxy_hosts.json' with { type: 'json' }
 import { API_URL } from '../config'
+import { siteMediaUrl } from './siteMediaUrl'
 
 const HOTLINK_MARKERS: readonly string[] = hosts.markers
 const AKAMAI_AND = (hosts.akamai_and_contains || 'steam').toLowerCase()
@@ -77,7 +78,7 @@ export function proxyImageUrl(
     return `${API_URL || ''}/api/proxy/image?url=${encodeURIComponent(u)}`
   }
 
-  return u
+  return siteMediaUrl(u)
 }
 
 export function proxyImageUrlOr(

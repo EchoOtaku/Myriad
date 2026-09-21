@@ -43,6 +43,7 @@ import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { notifyAvatarChanged } from '../../services/avatarSourceApi'
 import { invalidatePublicConfigCache } from '../../utils/requestDedup'
+import { siteMediaUrl } from '../../utils/siteMediaUrl'
 import { showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
@@ -818,7 +819,7 @@ export default function SiteMotionWorkbench({
 
   const downloadPortrait = useCallback(
     async (url?: string | null) => {
-      const source = url?.trim() || portraitUrl
+      const source = siteMediaUrl(url?.trim() || portraitUrl || '')
       if (!source) return
       try {
         const response = await fetch(source)
@@ -850,7 +851,7 @@ export default function SiteMotionWorkbench({
       {portraitUrl ? (
         <img
           className={`merope-motion-asset__still${motionEnabled ? ' is-behind' : ''}`}
-          src={portraitUrl}
+          src={siteMediaUrl(portraitUrl)}
           alt={t.merope.visualTitle}
         />
       ) : (
@@ -966,7 +967,7 @@ export default function SiteMotionWorkbench({
             {stickerAvatarUrl ? (
               <img
                 className="merope-motion-avatar__preview"
-                src={stickerAvatarUrl}
+                src={siteMediaUrl(stickerAvatarUrl)}
                 alt={t.merope.avatarTitle}
                 width={96}
                 height={96}
@@ -1269,7 +1270,7 @@ export default function SiteMotionWorkbench({
       </header>
       {outfitPicture ? (
         <div className="merope-wardrobe-page__portrait">
-          <img src={outfitPicture} alt="" draggable={false} />
+          <img src={siteMediaUrl(outfitPicture)} alt="" draggable={false} />
         </div>
       ) : (
         <p className="merope-wardrobe__caption">{t.merope.assetEmpty}</p>

@@ -7,6 +7,7 @@ import {
   getSiteFace,
 } from '../../../../features/merope/api'
 import { notifyFaceUpdated } from '../../../../features/merope/events'
+import { siteMediaUrl } from '../../../../utils/siteMediaUrl'
 import { userFacingError } from '../../../../utils/userFacingError'
 import {
   generationFailureMessage,
@@ -251,7 +252,7 @@ export default function MasterPortraitStep({
             className={`merope-ob-master__preview${portraitUrl ? '' : ' is-empty'}`}
           >
             {portraitUrl ? (
-              <img src={portraitUrl} alt={characterName} decoding="async" />
+              <img src={siteMediaUrl(portraitUrl)} alt={characterName} decoding="async" />
             ) : loading || generating ? (
               <div className="merope-ob-master__placeholder">
                 <span className="merope-loading__orb" aria-hidden />

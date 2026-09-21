@@ -5,7 +5,7 @@ import { afterEach, it, mock } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { displayImageUrl } from '../components/phantasi/notes/noteImageUrl'
 import { apiService } from './api'
-import { draftMediaSrc, isPrivateMediaPath, listMedia, saveMediaEdit, uploadMedia } from './mediaApi'
+import { draftMediaSrc, fetchMediaObjectUrl, isPrivateMediaPath, listMedia, saveMediaEdit, uploadMedia } from './mediaApi'
 
 const asset = {
   id: 7, kind: 'upload' as const, url: '/media/federation/1/photo.png',
@@ -84,4 +84,26 @@ it('journal editor uploads through mediaApi, not federationApi', () => {
   )
   assert.match(src, /uploadMedia\(file\)/)
   assert.doesNotMatch(src, /federationApi/)
+})
+
+it('private previews retain authentication with query strings, fragments, and absolute URLs', () => {
+  for (const src of ['/api/media/7/content?v=2', '/api/media/7/content#preview', 'https://api.example/api/media/7/content?v=2', '//api.example/api/media/7/content']) {
+    assert.equal(isPrivateMediaPath(src), true)
+  }
+  for (const src of ['/api/media/7/content/other', '/media/assets/photo.png', 'data:image/png;base64,AA==']) {
+    assert.equal(isPrivateMediaPath(src), false)
+  }
+})
+
+it('a body that completes after cancellation cannot allocate an orphaned preview URL', async () => {
+  const controller = new AbortController()
+  let finish!: (value: Blob) => void
+  const body = new Promise<Blob>((resolve) => { finish = resolve })
+  mock.method(globalThis, 'fetch', async () => ({ ok: true, blob: () => body }))
+  const create = mock.method(URL, 'createObjectURL', () => 'blob:unexpected')
+  const result = fetchMediaObjectUrl('/api/media/7/content', controller.signal)
+  controller.abort()
+  finish(new Blob(['image']))
+  await assert.rejects(result, { name: 'AbortError' })
+  assert.equal(create.mock.callCount(), 0)
 })
