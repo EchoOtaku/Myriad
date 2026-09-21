@@ -1427,15 +1427,17 @@ pub async fn proxy_qq_audio(Path(song_mid): Path<String>) -> Response {
 
 /// Public QQ playlist metadata, without a QQ login cookie.
 fn qq_playlist_request(client: &reqwest::Client, playlist_id: &str) -> reqwest::RequestBuilder {
-    client
-        .get("https://c.y.qq.com/v8/fcg-bin/fcg_v8_playlist_cp.fcg")
-        .query(&[
-            ("id", playlist_id),
-            ("format", "json"),
-            ("newsong", "1"),
-            ("platform", "jqspaframe.json"),
-        ])
-        .header("Referer", "http://y.qq.com")
+    // reqwest 0.13 gates RequestBuilder::query behind an optional feature.
+    // Keep query encoding in the existing url dependency instead.
+    let mut url = url::Url::parse("https://c.y.qq.com/v8/fcg-bin/fcg_v8_playlist_cp.fcg")
+        .expect("static QQ playlist URL must be valid");
+    url.query_pairs_mut().extend_pairs([
+        ("id", playlist_id),
+        ("format", "json"),
+        ("newsong", "1"),
+        ("platform", "jqspaframe.json"),
+    ]);
+    client.get(url).header("Referer", "http://y.qq.com")
 }
 
 /// 代理 QQ 歌单。只缓存播放器瘦视图；播放地址仍由歌曲 MID 按需解析。
