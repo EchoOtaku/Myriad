@@ -559,6 +559,13 @@ Currently Chinese. [Index](docs/INDEX.md).
 
 ---
 
+## Community
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/Jr5HccgxyD)
+[![X](https://img.shields.io/badge/X-Follow%20us-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/myriadyou)
+[![Telegram](https://img.shields.io/badge/Telegram-Join%20us-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/myriadyou)
+![QQ group](https://img.shields.io/badge/QQ%20group-784229925-12B7F5?style=for-the-badge&logo=tencentqq&logoColor=white)
+
 ## Contributing
 
 Issues and PRs welcome. UI copy: `zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE`.

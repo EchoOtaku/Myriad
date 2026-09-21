@@ -556,6 +556,13 @@ Tapp サンドボックス · [MCP](https://github.com/modelcontextprotocol/mode
 
 ---
 
+## コミュニティ
+
+[![Discord](https://img.shields.io/badge/Discord-参加する-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/Jr5HccgxyD)
+[![X](https://img.shields.io/badge/X-フォロー-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/myriadyou)
+[![Telegram](https://img.shields.io/badge/Telegram-参加する-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/myriadyou)
+![QQ グループ](https://img.shields.io/badge/QQ%20グループ-784229925-12B7F5?style=for-the-badge&logo=tencentqq&logoColor=white)
+
 ## 貢献
 
 Issue と PR を歓迎。UI 文言：`zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE`。

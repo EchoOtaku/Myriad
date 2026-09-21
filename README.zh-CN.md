@@ -556,6 +556,13 @@ Tapp 沙箱 · [MCP](https://github.com/modelcontextprotocol/modelcontextprotoco
 
 ---
 
+## 社群媒体
+
+[![Discord](https://img.shields.io/badge/Discord-加入社群-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/Jr5HccgxyD)
+[![X](https://img.shields.io/badge/X-关注我们-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/myriadyou)
+[![Telegram](https://img.shields.io/badge/Telegram-加入频道-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/myriadyou)
+![QQ群](https://img.shields.io/badge/QQ群-784229925-12B7F5?style=for-the-badge&logo=tencentqq&logoColor=white)
+
 ## 贡献
 
 欢迎 Issue 与 PR。UI 文案：`zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE`。
