@@ -22,6 +22,11 @@
 
 [Quick start](docs/QUICKSTART.md) · [Docs](docs/INDEX.md) · [Issues](https://github.com/myriad-you/Myriad/issues)
 
+[![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/Jr5HccgxyD)
+[![X](https://img.shields.io/badge/X-Follow%20us-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/myriadyou)
+[![Telegram](https://img.shields.io/badge/Telegram-Join%20us-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/myriadyou)
+![QQ group](https://img.shields.io/badge/QQ%20group-784229925-12B7F5?style=for-the-badge&logo=tencentqq&logoColor=white)
+
 </div>
 
 ---
@@ -558,13 +563,6 @@ Currently Chinese. [Index](docs/INDEX.md).
 </table>
 
 ---
-
-## Community
-
-[![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/Jr5HccgxyD)
-[![X](https://img.shields.io/badge/X-Follow%20us-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/myriadyou)
-[![Telegram](https://img.shields.io/badge/Telegram-Join%20us-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/myriadyou)
-![QQ group](https://img.shields.io/badge/QQ%20group-784229925-12B7F5?style=for-the-badge&logo=tencentqq&logoColor=white)
 
 ## Contributing
 
